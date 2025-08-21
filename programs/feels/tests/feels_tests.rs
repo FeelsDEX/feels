@@ -25,9 +25,41 @@ mod unit_tests {
         );
     }
 
+    // FeelsSOL Token Operations Tests
     #[test]
-    fn test_create_instruction_data() {
-        let instruction_data = feels::instruction::Create {
+    fn test_feelssol_create_instruction_data() {
+        let instruction_data = feels::instruction::FeelssolCreate {};
+        let serialized = instruction_data.data();
+        assert!(
+            !serialized.is_empty(),
+            "FeelssolCreate instruction should serialize to non-empty data"
+        );
+    }
+
+    #[test]
+    fn test_feelssol_mint_instruction_data() {
+        let instruction_data = feels::instruction::FeelssolMint { amount: 1000 };
+        let serialized = instruction_data.data();
+        assert!(
+            !serialized.is_empty(),
+            "FeelssolMint instruction should serialize to non-empty data"
+        );
+    }
+
+    #[test]
+    fn test_feelssol_burn_instruction_data() {
+        let instruction_data = feels::instruction::FeelssolBurn { amount: 500 };
+        let serialized = instruction_data.data();
+        assert!(
+            !serialized.is_empty(),
+            "FeelssolBurn instruction should serialize to non-empty data"
+        );
+    }
+
+    // Feels Token Operations Tests
+    #[test]
+    fn test_feels_token_create_instruction_data() {
+        let instruction_data = feels::instruction::FeelsTokenCreate {
             name: "Test Token".to_string(),
             symbol: "TEST".to_string(),
             uri: "https://example.com/metadata.json".to_string(),
@@ -36,88 +68,61 @@ mod unit_tests {
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "Create instruction should serialize to non-empty data"
+            "FeelsTokenCreate instruction should serialize to non-empty data"
         );
     }
 
     #[test]
-    fn test_mint_instruction_data() {
-        let instruction_data = feels::instruction::Mint { amount: 1000 };
+    fn test_feels_token_mint_instruction_data() {
+        let instruction_data = feels::instruction::FeelsTokenMint { amount: 1000 };
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "Mint instruction should serialize to non-empty data"
+            "FeelsTokenMint instruction should serialize to non-empty data"
         );
     }
 
     #[test]
-    fn test_burn_instruction_data() {
-        let instruction_data = feels::instruction::Burn { amount: 500 };
+    fn test_feels_token_burn_instruction_data() {
+        let instruction_data = feels::instruction::FeelsTokenBurn { amount: 500 };
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "Burn instruction should serialize to non-empty data"
+            "FeelsTokenBurn instruction should serialize to non-empty data"
         );
     }
 
+    // Pool Position NFT Operations Tests
     #[test]
-    fn test_update_instruction_data() {
-        let instruction_data = feels::instruction::Update {
-            name: Some("Updated Token".to_string()),
-            symbol: Some("UPD".to_string()),
-            uri: Some("https://example.com/new-metadata.json".to_string()),
+    fn test_pool_position_create_instruction_data() {
+        let instruction_data = feels::instruction::PoolPositionCreate {
+            position_id: "pos_123".to_string(),
+            pool_id: "pool_456".to_string(),
         };
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "Update instruction should serialize to non-empty data"
+            "PoolPositionCreate instruction should serialize to non-empty data"
         );
     }
 
     #[test]
-    fn test_create_nft_instruction_data() {
-        let instruction_data = feels::instruction::CreateNft {
-            name: "Test NFT".to_string(),
-            symbol: "TNFT".to_string(),
-            uri: "https://example.com/nft-metadata.json".to_string(),
-        };
+    fn test_pool_position_mint_instruction_data() {
+        let instruction_data = feels::instruction::PoolPositionMint {};
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "CreateNft instruction should serialize to non-empty data"
+            "PoolPositionMint instruction should serialize to non-empty data"
         );
     }
 
     #[test]
-    fn test_mint_nft_instruction_data() {
-        let instruction_data = feels::instruction::MintNft {};
+    fn test_pool_position_burn_instruction_data() {
+        let instruction_data = feels::instruction::PoolPositionBurn {};
         let serialized = instruction_data.data();
         assert!(
             !serialized.is_empty(),
-            "MintNft instruction should serialize to non-empty data"
-        );
-    }
-
-    #[test]
-    fn test_update_nft_instruction_data() {
-        let instruction_data = feels::instruction::UpdateNft {
-            field: "description".to_string(),
-            value: "An amazing NFT".to_string(),
-        };
-        let serialized = instruction_data.data();
-        assert!(
-            !serialized.is_empty(),
-            "UpdateNft instruction should serialize to non-empty data"
-        );
-    }
-
-    #[test]
-    fn test_burn_nft_instruction_data() {
-        let instruction_data = feels::instruction::BurnNft {};
-        let serialized = instruction_data.data();
-        assert!(
-            !serialized.is_empty(),
-            "BurnNft instruction should serialize to non-empty data"
+            "PoolPositionBurn instruction should serialize to non-empty data"
         );
     }
 
@@ -262,72 +267,58 @@ mod unit_tests {
     fn test_instruction_discriminators() {
         // Test that all instructions have unique discriminators
         let initialize = feels::instruction::Initialize {}.data();
-        let create = feels::instruction::Create {
+        let feelssol_create = feels::instruction::FeelssolCreate {}.data();
+        let feelssol_mint = feels::instruction::FeelssolMint { amount: 100 }.data();
+        let feelssol_burn = feels::instruction::FeelssolBurn { amount: 50 }.data();
+        let feels_token_create = feels::instruction::FeelsTokenCreate {
             name: "Test".to_string(),
             symbol: "TEST".to_string(),
             uri: "https://example.com".to_string(),
             decimals: 9,
         }
         .data();
-        let mint = feels::instruction::Mint { amount: 100 }.data();
-        let burn = feels::instruction::Burn { amount: 50 }.data();
-        let update = feels::instruction::Update {
-            name: None,
-            symbol: None,
-            uri: None,
+        let feels_token_mint = feels::instruction::FeelsTokenMint { amount: 100 }.data();
+        let pool_position_create = feels::instruction::PoolPositionCreate {
+            position_id: "pos_123".to_string(),
+            pool_id: "pool_456".to_string(),
         }
         .data();
 
         // All discriminators should be different (first 8 bytes)
         assert_ne!(
             &initialize[..8],
-            &create[..8],
-            "Initialize and Create should have different discriminators"
+            &feelssol_create[..8],
+            "Initialize and FeelssolCreate should have different discriminators"
         );
         assert_ne!(
             &initialize[..8],
-            &mint[..8],
-            "Initialize and Mint should have different discriminators"
+            &feelssol_mint[..8],
+            "Initialize and FeelssolMint should have different discriminators"
         );
         assert_ne!(
-            &initialize[..8],
-            &burn[..8],
-            "Initialize and Burn should have different discriminators"
+            &feelssol_create[..8],
+            &feelssol_mint[..8],
+            "FeelssolCreate and FeelssolMint should have different discriminators"
         );
         assert_ne!(
-            &initialize[..8],
-            &update[..8],
-            "Initialize and Update should have different discriminators"
+            &feelssol_create[..8],
+            &feelssol_burn[..8],
+            "FeelssolCreate and FeelssolBurn should have different discriminators"
         );
         assert_ne!(
-            &create[..8],
-            &mint[..8],
-            "Create and Mint should have different discriminators"
+            &feelssol_mint[..8],
+            &feelssol_burn[..8],
+            "FeelssolMint and FeelssolBurn should have different discriminators"
         );
         assert_ne!(
-            &create[..8],
-            &burn[..8],
-            "Create and Burn should have different discriminators"
+            &feels_token_create[..8],
+            &feels_token_mint[..8],
+            "FeelsTokenCreate and FeelsTokenMint should have different discriminators"
         );
         assert_ne!(
-            &create[..8],
-            &update[..8],
-            "Create and Update should have different discriminators"
-        );
-        assert_ne!(
-            &mint[..8],
-            &burn[..8],
-            "Mint and Burn should have different discriminators"
-        );
-        assert_ne!(
-            &mint[..8],
-            &update[..8],
-            "Mint and Update should have different discriminators"
-        );
-        assert_ne!(
-            &burn[..8],
-            &update[..8],
-            "Burn and Update should have different discriminators"
+            &feels_token_create[..8],
+            &pool_position_create[..8],
+            "FeelsTokenCreate and PoolPositionCreate should have different discriminators"
         );
     }
 }

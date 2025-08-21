@@ -1,8 +1,9 @@
-use crate::MintNft;
+use crate::FeelsTokenMint;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::{self as token_2022};
 
-pub fn handler(ctx: Context<MintNft>) -> Result<()> {
+/// Mint user-created Feels tokens
+pub fn handler(ctx: Context<FeelsTokenMint>, amount: u64) -> Result<()> {
     // Create associated token account if it doesn't exist
     if ctx.accounts.token_account.data_is_empty() {
         let create_ata_accounts = anchor_spl::associated_token::Create {
@@ -20,7 +21,7 @@ pub fn handler(ctx: Context<MintNft>) -> Result<()> {
         ))?;
     }
 
-    // Mint exactly 1 NFT token (NFTs have amount = 1)
+    // Mint user's Feels tokens
     let cpi_accounts = token_2022::MintTo {
         mint: ctx.accounts.mint.to_account_info(),
         to: ctx.accounts.token_account.to_account_info(),
@@ -30,9 +31,13 @@ pub fn handler(ctx: Context<MintNft>) -> Result<()> {
     let cpi_program = ctx.accounts.token_program.to_account_info();
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
-    token_2022::mint_to(cpi_ctx, 1)?; // NFTs always mint exactly 1 token
+    token_2022::mint_to(cpi_ctx, amount)?;
 
-    msg!("Minted NFT to {}", ctx.accounts.token_account.key());
+    msg!(
+        "Minted {} Feels tokens to {}",
+        amount,
+        ctx.accounts.token_account.key()
+    );
 
     Ok(())
 }

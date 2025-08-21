@@ -1,8 +1,9 @@
-use crate::Mint;
+use crate::FeelsSOLMint;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::{self as token_2022};
 
-pub fn handler(ctx: Context<Mint>, amount: u64) -> Result<()> {
+/// Mint FeelsSOL tokens (protocol-controlled, typically backed by JitoSOL deposits)
+pub fn handler(ctx: Context<FeelsSOLMint>, amount: u64) -> Result<()> {
     // Create associated token account if it doesn't exist
     if ctx.accounts.token_account.data_is_empty() {
         let create_ata_accounts = anchor_spl::associated_token::Create {
@@ -20,7 +21,7 @@ pub fn handler(ctx: Context<Mint>, amount: u64) -> Result<()> {
         ))?;
     }
 
-    // Mint tokens to the associated token account
+    // Mint FeelsSOL tokens
     let cpi_accounts = token_2022::MintTo {
         mint: ctx.accounts.mint.to_account_info(),
         to: ctx.accounts.token_account.to_account_info(),
@@ -33,9 +34,10 @@ pub fn handler(ctx: Context<Mint>, amount: u64) -> Result<()> {
     token_2022::mint_to(cpi_ctx, amount)?;
 
     msg!(
-        "Minted {} tokens to {}",
+        "Minted {} FeelsSOL tokens to {}",
         amount,
         ctx.accounts.token_account.key()
     );
+
     Ok(())
 }

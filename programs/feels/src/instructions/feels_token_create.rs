@@ -1,9 +1,16 @@
-use crate::CreateNft;
+use crate::FeelsTokenCreate;
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::{self as token_2022};
 
-pub fn handler(ctx: Context<CreateNft>, name: String, symbol: String, uri: String) -> Result<()> {
-    // Initialize the mint for NFT (decimals = 0, supply will be 1)
+/// Create a new user-defined Feels token
+pub fn handler(
+    ctx: Context<FeelsTokenCreate>,
+    name: String,
+    symbol: String,
+    _uri: String,
+    decimals: u8,
+) -> Result<()> {
+    // Initialize the user's Feels token mint
     token_2022::initialize_mint2(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -11,21 +18,20 @@ pub fn handler(ctx: Context<CreateNft>, name: String, symbol: String, uri: Strin
                 mint: ctx.accounts.mint.to_account_info(),
             },
         ),
-        0, // NFTs have 0 decimals
+        decimals,
         &ctx.accounts.mint_authority.key(),
         Some(&ctx.accounts.mint_authority.key()),
     )?;
 
     msg!(
-        "Created NFT mint: {} | Name: {} | Symbol: {} | URI: {}",
+        "Created Feels token mint: {} | Name: {} | Symbol: {} | Decimals: {}",
         ctx.accounts.mint.key(),
         name,
         symbol,
-        uri
+        decimals
     );
 
-    msg!("NFT mint successfully created with Token-2022 metadata extension");
-    msg!("Note: Metadata initialization will be handled by client-side Token-2022 metadata instructions");
+    msg!("User-created Feels token ready for trading in protocol pools");
 
     Ok(())
 }

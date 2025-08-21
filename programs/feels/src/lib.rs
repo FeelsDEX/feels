@@ -16,64 +16,57 @@ pub mod feels {
         instructions::initialize::handler(ctx)
     }
 
-    /// Create a new Token-2022 mint with metadata support
-    pub fn create(
-        ctx: Context<Create>,
+    // FeelsSOL Token Operations (Protocol Synthetic Token)
+    pub fn feelssol_create(ctx: Context<FeelsSOLCreate>) -> Result<()> {
+        instructions::feelssol_create::handler(ctx)
+    }
+
+    pub fn feelssol_mint(ctx: Context<FeelsSOLMint>, amount: u64) -> Result<()> {
+        instructions::feelssol_mint::handler(ctx, amount)
+    }
+
+    pub fn feelssol_burn(ctx: Context<FeelsSOLBurn>, amount: u64) -> Result<()> {
+        instructions::feelssol_burn::handler(ctx, amount)
+    }
+
+    // Feels Token Operations (User-Created Tokens)
+    pub fn feels_token_create(
+        ctx: Context<FeelsTokenCreate>,
         name: String,
         symbol: String,
         uri: String,
         decimals: u8,
     ) -> Result<()> {
-        instructions::create::handler(ctx, name, symbol, uri, decimals)
+        instructions::feels_token_create::handler(ctx, name, symbol, uri, decimals)
     }
 
-    /// Mint tokens to a specific account
-    pub fn mint(ctx: Context<Mint>, amount: u64) -> Result<()> {
-        instructions::mint::handler(ctx, amount)
+    pub fn feels_token_mint(ctx: Context<FeelsTokenMint>, amount: u64) -> Result<()> {
+        instructions::feels_token_mint::handler(ctx, amount)
     }
 
-    /// Burn tokens from an account
-    pub fn burn(ctx: Context<Burn>, amount: u64) -> Result<()> {
-        instructions::burn::handler(ctx, amount)
+    pub fn feels_token_burn(ctx: Context<FeelsTokenBurn>, amount: u64) -> Result<()> {
+        instructions::feels_token_burn::handler(ctx, amount)
     }
 
-    /// Update token metadata (logs the request for now)
-    pub fn update(
-        ctx: Context<Update>,
-        name: Option<String>,
-        symbol: Option<String>,
-        uri: Option<String>,
+    // Pool Position NFT Operations (Liquidity Positions)
+    pub fn pool_position_create(
+        ctx: Context<PoolPositionCreate>,
+        position_id: String,
+        pool_id: String,
     ) -> Result<()> {
-        instructions::update::handler(ctx, name, symbol, uri)
+        instructions::pool_position_create::handler(ctx, position_id, pool_id)
     }
 
-    /// Create a new NFT with Token-2022 metadata extension
-    pub fn create_nft(
-        ctx: Context<CreateNft>,
-        name: String,
-        symbol: String,
-        uri: String,
-    ) -> Result<()> {
-        instructions::create_nft::handler(ctx, name, symbol, uri)
+    pub fn pool_position_mint(ctx: Context<PoolPositionMint>) -> Result<()> {
+        instructions::pool_position_mint::handler(ctx)
     }
 
-    /// Mint an NFT (exactly 1 token)
-    pub fn mint_nft(ctx: Context<MintNft>) -> Result<()> {
-        instructions::mint_nft::handler(ctx)
-    }
-
-    /// Update NFT metadata field
-    pub fn update_nft(ctx: Context<UpdateNft>, field: String, value: String) -> Result<()> {
-        instructions::update_nft::handler(ctx, field, value)
-    }
-
-    /// Burn an NFT (exactly 1 token)
-    pub fn burn_nft(ctx: Context<BurnNft>) -> Result<()> {
-        instructions::burn_nft::handler(ctx)
+    pub fn pool_position_burn(ctx: Context<PoolPositionBurn>) -> Result<()> {
+        instructions::pool_position_burn::handler(ctx)
     }
 }
 
-// Account structs must be at crate root for Anchor macros
+// Account Structs (must be at crate root for Anchor macros)
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(mut)]
@@ -81,18 +74,18 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// FeelsSOL Token Account Structs
 #[derive(Accounts)]
-#[instruction(name: String, symbol: String, uri: String, decimals: u8)]
-pub struct Create<'info> {
+pub struct FeelsSOLCreate<'info> {
     #[account(
         init,
         payer = payer,
         space = 82, // Token-2022 mint account size
     )]
-    /// CHECK: This account will be initialized as a Token-2022 mint
+    /// CHECK: This account will be initialized as the FeelsSOL mint
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: This will be set as the mint authority
+    /// CHECK: Protocol authority that controls FeelsSOL minting
     pub mint_authority: AccountInfo<'info>,
 
     #[account(mut)]
@@ -104,16 +97,16 @@ pub struct Create<'info> {
 }
 
 #[derive(Accounts)]
-pub struct Mint<'info> {
+pub struct FeelsSOLMint<'info> {
     #[account(mut)]
-    /// CHECK: Token-2022 mint account
+    /// CHECK: FeelsSOL mint account
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: Associated token account for Token-2022
+    /// CHECK: Associated token account for FeelsSOL
     #[account(mut)]
     pub token_account: AccountInfo<'info>,
 
-    /// CHECK: Token recipient
+    /// CHECK: FeelsSOL recipient
     pub recipient: AccountInfo<'info>,
 
     pub mint_authority: Signer<'info>,
@@ -127,12 +120,12 @@ pub struct Mint<'info> {
 }
 
 #[derive(Accounts)]
-pub struct Burn<'info> {
+pub struct FeelsSOLBurn<'info> {
     #[account(mut)]
-    /// CHECK: Token-2022 mint account
+    /// CHECK: FeelsSOL mint account
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: Associated token account for Token-2022
+    /// CHECK: Associated token account for FeelsSOL
     #[account(mut)]
     pub token_account: AccountInfo<'info>,
 
@@ -141,29 +134,19 @@ pub struct Burn<'info> {
     pub token_program: Program<'info, Token2022>,
 }
 
+// Feels Token Account Structs
 #[derive(Accounts)]
-pub struct Update<'info> {
-    pub update_authority: Signer<'info>,
-
-    /// CHECK: Token-2022 mint account for metadata updates
-    pub mint: AccountInfo<'info>,
-
-    pub token_program: Program<'info, Token2022>,
-}
-
-// NFT Account Structs
-#[derive(Accounts)]
-#[instruction(name: String, symbol: String, uri: String)]
-pub struct CreateNft<'info> {
+#[instruction(name: String, symbol: String, uri: String, decimals: u8)]
+pub struct FeelsTokenCreate<'info> {
     #[account(
         init,
         payer = payer,
-        space = 82, // Standard Token-2022 mint account size
+        space = 82, // Token-2022 mint account size
     )]
-    /// CHECK: This account will be initialized as a Token-2022 NFT mint with metadata
+    /// CHECK: This account will be initialized as a user's Feels token mint
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: This will be set as the mint authority and metadata update authority
+    /// CHECK: User authority that controls their Feels token
     pub mint_authority: AccountInfo<'info>,
 
     #[account(mut)]
@@ -175,16 +158,16 @@ pub struct CreateNft<'info> {
 }
 
 #[derive(Accounts)]
-pub struct MintNft<'info> {
+pub struct FeelsTokenMint<'info> {
     #[account(mut)]
-    /// CHECK: Token-2022 NFT mint account
+    /// CHECK: User's Feels token mint account
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: Associated token account for Token-2022 NFT
+    /// CHECK: Associated token account for user's Feels token
     #[account(mut)]
     pub token_account: AccountInfo<'info>,
 
-    /// CHECK: NFT recipient
+    /// CHECK: Feels token recipient
     pub recipient: AccountInfo<'info>,
 
     pub mint_authority: Signer<'info>,
@@ -198,22 +181,73 @@ pub struct MintNft<'info> {
 }
 
 #[derive(Accounts)]
-pub struct UpdateNft<'info> {
-    /// CHECK: Token-2022 NFT mint account with metadata
+pub struct FeelsTokenBurn<'info> {
+    #[account(mut)]
+    /// CHECK: User's Feels token mint account
     pub mint: AccountInfo<'info>,
 
-    pub update_authority: Signer<'info>,
+    /// CHECK: Associated token account for user's Feels token
+    #[account(mut)]
+    pub token_account: AccountInfo<'info>,
+
+    pub owner: Signer<'info>,
 
     pub token_program: Program<'info, Token2022>,
 }
 
+// Pool Position NFT Account Structs
 #[derive(Accounts)]
-pub struct BurnNft<'info> {
-    #[account(mut)]
-    /// CHECK: Token-2022 NFT mint account
+#[instruction(position_id: String, pool_id: String)]
+pub struct PoolPositionCreate<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 82, // Token-2022 mint account size
+    )]
+    /// CHECK: This account will be initialized as a Pool Position NFT mint
     pub mint: AccountInfo<'info>,
 
-    /// CHECK: Associated token account for Token-2022 NFT
+    /// CHECK: Protocol authority that controls Pool Position NFT creation
+    pub mint_authority: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct PoolPositionMint<'info> {
+    #[account(mut)]
+    /// CHECK: Pool Position NFT mint account
+    pub mint: AccountInfo<'info>,
+
+    /// CHECK: Associated token account for Pool Position NFT
+    #[account(mut)]
+    pub token_account: AccountInfo<'info>,
+
+    /// CHECK: Pool Position NFT recipient
+    pub recipient: AccountInfo<'info>,
+
+    pub mint_authority: Signer<'info>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct PoolPositionBurn<'info> {
+    #[account(mut)]
+    /// CHECK: Pool Position NFT mint account
+    pub mint: AccountInfo<'info>,
+
+    /// CHECK: Associated token account for Pool Position NFT
     #[account(mut)]
     pub token_account: AccountInfo<'info>,
 
