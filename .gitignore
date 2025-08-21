@@ -1,0 +1,102 @@
+# ==================================
+# Rust and Node.js
+# ==================================
+
+# Rust/Cargo
+target/
+.cargo/
+**/*.rs.bk
+*.log
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.ts
+
+# ==================================
+# Solana
+# ==================================
+
+# Anchor
+.anchor/
+anchor/
+**/__client_accounts_*.rs
+
+# Solana test environment
+test-ledger/
+e2e/.test-ledger
+
+# Test artifacts and build targets
+test-helpers/target/
+utils/target/
+tests/target/
+artifacts/
+proptest-regressions/
+
+# ==================================
+# Nix
+# ==================================
+
+result
+result-*
+.direnv/
+.nix/
+devenv/
+
+# Flake locks (except root)
+*/flake.lock
+!flake.lock
+
+# ==================================
+# Environment
+# ==================================
+
+# Env
+.env.local
+.envrc
+deployment.env
+valence.env
+.valence-env
+
+# Keys
+*.key
+*.keypair
+keypairs/
+
+# ==================================
+# Editor
+# ==================================
+
+.idea/
+.vscode/
+.claude/
+.cursor/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==================================
+# Temporary
+# ==================================
+
+*.bak
+*.backup
+scratch/
+
+# ==================================
+# Project Specific
+# ==================================
+
+# Working directories
+work/
+app/
+scripts/
+ext/
+
+

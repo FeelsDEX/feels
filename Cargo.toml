@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "programs/feels",
+]
+
+[workspace.dependencies]
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+solana-program = "1.17.22"
+borsh = "0.10"
+spl-token = "4.0.1"
+spl-token-2022 = "1.0.0"
+spl-token-metadata-interface = "0.2.0"
+spl-associated-token-account = "2.3.0"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+# No patches needed
+
+
+
