@@ -1,16 +1,8 @@
-pub mod initialize;
+/// Instruction module organizing all protocol operations into logical groups.
+/// Initialization instructions set up protocol and pool infrastructure,
+/// liquidity instructions manage LP positions, swap instructions handle trading,
+/// and fee/keeper instructions manage protocol revenue and optimizations.
 
-// FeelsSOL token operations (protocol synthetic token)
-pub mod feelssol_burn;
-pub mod feelssol_create;
-pub mod feelssol_mint;
-
-// Feels token operations (user-created tokens)
-pub mod feels_token_burn;
-pub mod feels_token_create;
-pub mod feels_token_mint;
-
-// Pool Position NFT operations (liquidity positions)
-pub mod pool_position_burn;
-pub mod pool_position_create;
-pub mod pool_position_mint;
+pub mod initialize_protocol;
+pub mod initialize_feelssol;
+// pub mod initialize_pool;

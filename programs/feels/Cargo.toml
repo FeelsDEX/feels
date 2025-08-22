@@ -23,10 +23,12 @@ anchor-lang = { workspace = true, features = ["init-if-needed"] }
 anchor-spl = { workspace = true }
 solana-program = { workspace = true }
 borsh = { workspace = true }
+bytemuck = { workspace = true }
 spl-token = { workspace = true }
 spl-token-2022 = { workspace = true }
 spl-token-metadata-interface = { workspace = true }
 spl-associated-token-account = { workspace = true }
+ruint = { version = "1.12.0", default-features = false }
 
 [dev-dependencies]
 getrandom = { version = "0.2.16", features = ["custom"] }

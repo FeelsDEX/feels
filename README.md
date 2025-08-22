@@ -1,92 +1,52 @@
-# Feels Solana
+# Feels Protocol
 
-A concentrated liquidity AMM that unifies exchange, lending, and leverage operations through a 3D position model.
+A concentrated liquidity AMM on Solana with a unique hub-and-spoke model where all tokens trade through a universal FeelsSOL base pair.
 
-## Architecture Overview
+## Overview
 
-The protocol models all financial interactions as lending operations with three orthogonal dimensions:
+Feels Protocol implements Uniswap V3-style concentrated liquidity with a key innovation: every token must pair with FeelsSOL (wrapped liquid staking tokens). This creates efficient routing and unified liquidity while preparing for future three-dimensional trading capabilities.
 
-- **Price**: Liquidity provision price point (specific price for exchange, 1.0 for staking-style positions)
-- **Duration**: Capital commitment timeframe (Flash/Spot/Monthly)
-- **Leverage**: Risk tier (Senior 1x or Junior 3x)
+### FeelsSOL Synthetic Pair
+- All pools use FeelsSOL as the base pair
+- FeelsSOL wraps yield-bearing LSTs (e.g., JitoSOL)
+- Cross-token swaps route automatically: TokenA → FeelsSOL → TokenB
+- Simplifies liquidity aggregation and price discovery
 
-This parameter system allows a single liquidity pool to serve multiple functions that are typically handled by separate protocols.
+### Concentrated Liquidity
+- LPs provide liquidity within custom price ranges
+- Capital efficiency through position concentration
+- NFT-based position tracking with accumulated fees
+- Tick-based pricing with configurable spacing
 
-## Core Components
-
-### Position Model
-All user interactions create positions defined by `{price, duration, leverage}` parameters. Different parameter combinations yield different behaviors:
-- Exchange-focused: `{price: 1.25, duration: Spot, leverage: Senior}`
-- Lending-focused: `{price: 1.0, duration: Monthly, leverage: Senior}`
-- Leverage-focused: `{price: 1.0, duration: Spot, leverage: Junior}`
-
-### FeelsSOL Token
-The protocol uses FeelsSOL as a base asset, designed to be backed by jitoSOL through oracle-driven conversion rates. This allows users to maintain staking yield exposure while participating in DeFi activities. All trading pairs are structured as FeelsSOL ↔ User-Created Token.
-
-### Tranched Risk System
-Positions are allocated between two risk tranches:
-- **Senior Tier (1x leverage)**: Protected positions with priority in loss allocation
-- **Junior Tier (3x leverage)**: Amplified exposure positions that absorb losses first
-
-Positions adjust in value based on pool performance but are never forcibly liquidated.
-
-### Automated Maintenance
-The protocol uses an execution scheduler where users must perform due maintenance operations before executing their own transactions. This eliminates dependency on external keepers while ensuring protocol operations continue.
-
-### Protocol-Owned Liquidity (POL)
-A percentage of fees from all position types is retained to build protocol-owned liquidity. This creates a permanent liquidity base that grows with protocol usage and provides price stability.
-
-## Implementation Status
-
-**Completed Components**:
-- Core concentrated liquidity AMM with tick-based pricing
-- Senior/Junior risk tier allocation without liquidations
-- On-chain scheduler with mandatory execution model
-- Monthly term system with rollover processing
-- Yield distribution accounting for position parameters
-- FeelsSOL Token-2022 implementation
-
-**Planned Components**:
-- jitoSOL oracle integration for FeelsSOL backing
-- Unified three-parameter position interface
-- Advanced tick state monitoring and metrics
-- Synchronized global term boundaries
-
-## Technical Architecture
-
-The protocol consists of several Rust modules:
-
-- **`state`**: Account definitions for `PoolState`, `Position`, `TickBitmap`, and other core data structures
-- **`instructions`**: Transaction handlers for `swap`, `add_liquidity`, `remove_liquidity`, and other user operations
-- **`scheduler`**: Task queue management and incentive distribution for maintenance operations
-- **`yield_distributor`**: Fee allocation logic considering position leverage, duration, and LVR compensation
-- **`term_system`**: Lifecycle management for fixed-term positions including expiry and rollover
-- **`math`**: Q64.96 fixed-point arithmetic for precise AMM calculations
-
-The design uses zero-copy account serialization for efficiency and supports Token-2022 standard for advanced token features.
+### Architecture
+- Canonical token ordering ensuring unique pool addresses
+- 512-byte reserved space in pools for future upgrades
+- Zero-copy accounts
+- Safe math
+- Token-2022 support
 
 ## Building
 
 ```bash
-# Build with Nix
+# Using Nix
 nix develop
 just build
 
-# Or with Anchor
+# Using Anchor
 anchor build
 ```
 
 ## Testing
 
 ```bash
-# Run tests
+# Unit tests
 cargo test
 
 # Integration tests
-cargo test --test integration
+cargo test --test integration_phase1
 ```
 
-## Deployment
+## Program Addresses
 
-Program is deployed to:
-- `feels-protocol`: `Fee1sProtoco11111111111111111111111111111`
+- Protocol: `Fee1sProtoco11111111111111111111111111111111`
+- FeelsSOL Mint: Determined at initialization
