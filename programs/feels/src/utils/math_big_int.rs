@@ -409,18 +409,35 @@ impl U512 {
         Some(quotient)
     }
     
-    /// Full long division algorithm
-    fn long_division(&self, _divisor: &U256, _rounding: Rounding) -> Option<U256> {
-        // Simplified implementation for demonstration
-        // In production, would implement full Knuth Algorithm D
+    /// Full long division algorithm  
+    /// TODO: Implement full Knuth Algorithm D for production use
+    fn long_division(&self, divisor: &U256, _rounding: Rounding) -> Option<U256> {
+        // Simplified implementation - better than returning None for all cases
         
-        // For now, return None for complex cases that exceed U256 quotient
-        // This signals that the result is too large
+        // Check if dividend is smaller than divisor
+        if self.words[4..8].iter().all(|&w| w == 0) {
+            let dividend_u256 = U256 { words: [self.words[0], self.words[1], self.words[2], self.words[3]] };
+            return dividend_u256.checked_div(divisor);
+        }
+        
+        // For very large dividends, attempt a conservative approximation
+        // This is still incomplete but better than always returning None
+        
+        // If divisor is 1, return the dividend (if it fits in U256)
+        if *divisor == U256::ONE {
+            if self.words[4..8].iter().all(|&w| w == 0) {
+                return Some(U256 { words: [self.words[0], self.words[1], self.words[2], self.words[3]] });
+            }
+            return None; // Result too large for U256
+        }
+        
+        // For other complex cases, return None (signals result too large or needs full implementation)
+        // TODO: Implement Knuth Algorithm D for complete long division
         None
     }
     
     /// Convert to U256 if possible
-    fn to_u256(&self) -> Option<U256> {
+    fn to_u256(self) -> Option<U256> {
         if self.words[4..8].iter().any(|&word| word != 0) {
             return None;
         }
@@ -437,7 +454,8 @@ impl Add for U256 {
     type Output = U256;
     
     fn add(self, other: U256) -> U256 {
-        self.checked_add(&other).unwrap_or(U256::MAX)
+        // Panic on overflow instead of silently returning MAX
+        self.checked_add(&other).expect("U256 addition overflow")
     }
 }
 
@@ -445,7 +463,8 @@ impl Sub for U256 {
     type Output = U256;
     
     fn sub(self, other: U256) -> U256 {
-        self.checked_sub(&other).unwrap_or(U256::ZERO)
+        // Panic on underflow instead of silently returning ZERO
+        self.checked_sub(&other).expect("U256 subtraction underflow")
     }
 }
 
@@ -453,7 +472,8 @@ impl Mul for U256 {
     type Output = U256;
     
     fn mul(self, other: U256) -> U256 {
-        self.checked_mul(&other).unwrap_or(U256::MAX)
+        // Panic on overflow instead of silently returning MAX
+        self.checked_mul(&other).expect("U256 multiplication overflow")
     }
 }
 
@@ -469,7 +489,8 @@ impl Shl<u32> for U256 {
     type Output = U256;
     
     fn shl(self, shift: u32) -> U256 {
-        self.checked_shl(shift).unwrap_or(U256::ZERO)
+        // Panic on invalid shift instead of silently returning ZERO
+        self.checked_shl(shift).expect("U256 shift left overflow")
     }
 }
 
@@ -629,5 +650,21 @@ mod tests {
     fn test_u128_extension() {
         let result = 100u128.mul_div_u256(200, 50, Rounding::Down).unwrap();
         assert_eq!(result, 400);
+    }
+    
+    /// Test V56 fix: Improved long division handling
+    #[test]
+    fn test_v56_long_division_improvement() {
+        // Test division by 1 (should work for U256-sized results)
+        let dividend = U512 { words: [100, 0, 0, 0, 0, 0, 0, 0] };
+        let divisor = U256::ONE;
+        let result = dividend.div_u256(&divisor, Rounding::Down);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().to_u128().unwrap(), 100);
+        
+        // Test very large dividend (should return None)
+        let large_dividend = U512 { words: [0, 0, 0, 0, 1, 0, 0, 0] };
+        let result = large_dividend.div_u256(&U256::ONE, Rounding::Down);
+        assert!(result.is_none()); // Result too large for U256
     }
 }

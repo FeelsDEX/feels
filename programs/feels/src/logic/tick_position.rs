@@ -4,7 +4,7 @@
 /// for position NFT metadata management and ownership tracking.
 
 use anchor_lang::prelude::*;
-use crate::state::{PositionMetadata, PoolError};
+use crate::state::{TickPositionMetadata, PoolError};
 use crate::utils::{LiquiditySafeMath, constant::{MIN_TICK, MAX_TICK}};
 
 // ============================================================================
@@ -12,12 +12,12 @@ use crate::utils::{LiquiditySafeMath, constant::{MIN_TICK, MAX_TICK}};
 // ============================================================================
 
 /// Business logic operations for Position management
-impl PositionMetadata {
+impl TickPositionMetadata {
     /// Calculate the seeds for position metadata PDA derivation
-    pub fn seeds(position_mint: &Pubkey) -> Vec<Vec<u8>> {
+    pub fn seeds(tick_position_mint: &Pubkey) -> Vec<Vec<u8>> {
         vec![
             b"position".to_vec(),
-            position_mint.to_bytes().to_vec(),
+            tick_position_mint.to_bytes().to_vec(),
         ]
     }
 
@@ -49,10 +49,10 @@ impl PositionMetadata {
     }
 
     // ------------------------------------------------------------------------
-    // Position State Queries
+    // Tick Position State Queries
     // ------------------------------------------------------------------------
 
-    /// Check if the position is in range at the given current tick
+    /// Check if the tick position is in range at the given current tick
     pub fn is_in_range(&self, current_tick: i32) -> bool {
         current_tick >= self.tick_lower && current_tick < self.tick_upper
     }

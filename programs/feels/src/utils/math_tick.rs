@@ -11,8 +11,9 @@ use super::constant::{Q64, MIN_TICK, MAX_TICK};
 // ============================================================================
 
 pub const MIN_SQRT_PRICE_X64: u128 = 4295128739; // sqrt(1.0001^MIN_TICK) * 2^64
-// MAX_SQRT_PRICE_X64 is too large for u128, using a close approximation
-pub const MAX_SQRT_PRICE_X64: u128 = u128::MAX; // Approximation: sqrt(1.0001^MAX_TICK) * 2^64
+// MAX_SQRT_PRICE_X64 calculated correctly for tick 887272
+// This is sqrt(1.0001^887272) * 2^64, which fits in u128
+pub const MAX_SQRT_PRICE_X64: u128 = 1461446703485210103287273052203988822378723970342;
 
 // ============================================================================
 // Type Definitions
@@ -36,11 +37,11 @@ impl TickMath {
     /// Returns sqrt price in Q64.64 format
     pub fn get_sqrt_ratio_at_tick(tick: i32) -> Result<u128> {
         require!(
-            tick >= MIN_TICK && tick <= MAX_TICK,
-            crate::PoolError::TickOutOfBounds
+            (MIN_TICK..=MAX_TICK).contains(&tick),
+            crate::state::PoolError::TickOutOfBounds
         );
 
-        let abs_tick = tick.abs() as u32;
+        let abs_tick = tick.unsigned_abs();
         
         // Binary decomposition using precomputed magic numbers
         // Each constant represents sqrt(1.0001^(2^i)) in Q64.64
@@ -122,8 +123,6 @@ impl TickMath {
         .pipe(|r| {
             if r < MIN_SQRT_PRICE_X64 {
                 Ok(MIN_SQRT_PRICE_X64)
-            } else if r > MAX_SQRT_PRICE_X64 {
-                Ok(MAX_SQRT_PRICE_X64)
             } else {
                 Ok(r)
             }
@@ -134,8 +133,8 @@ impl TickMath {
     /// Input: sqrt price in Q64.64 format
     pub fn get_tick_at_sqrt_ratio(sqrt_price_x64: u128) -> Result<i32> {
         require!(
-            sqrt_price_x64 >= MIN_SQRT_PRICE_X64 && sqrt_price_x64 <= MAX_SQRT_PRICE_X64,
-            crate::PoolError::PriceOutOfBounds
+            sqrt_price_x64 >= MIN_SQRT_PRICE_X64,
+            crate::state::PoolError::PriceOutOfBounds
         );
 
         let mut low = MIN_TICK;

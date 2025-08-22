@@ -6,6 +6,7 @@
 use anchor_lang::prelude::*;
 use crate::state::PoolError;
 use crate::utils::constant::Q96;
+use crate::utils::U256;
 
 // ============================================================================
 // Core Implementation
@@ -13,7 +14,6 @@ use crate::utils::constant::Q96;
 
 /// These functions perform the core mathematical operations for concentrated liquidity.
 /// They are used by the business logic layer in logic/liquidity_math.rs
-
 /// Calculate amount0 delta for a liquidity change
 pub fn get_amount_0_delta(
     sqrt_ratio_a: u128,
@@ -31,15 +31,26 @@ pub fn get_amount_0_delta(
     require!(sqrt_ratio_a > 0, PoolError::DivisionByZero);
 
     // amount0 = liquidity * (sqrt_ratio_b - sqrt_ratio_a) / (sqrt_ratio_a * sqrt_ratio_b)
+    // Use U256 to avoid overflow in intermediate calculations
     let result = if round_up {
-        // Ceiling division
-        ((numerator1 * numerator2) / sqrt_ratio_a + sqrt_ratio_b - 1) / sqrt_ratio_b
+        // Ceiling division - use U256 for intermediate calculation
+        let numerator = U256::from(numerator1) * U256::from(numerator2);
+        let denominator = U256::from(sqrt_ratio_a) * U256::from(sqrt_ratio_b);
+        let result = (numerator + denominator - U256::from(1u128)).checked_div(&denominator).ok_or(PoolError::DivisionByZero)?;
+        result.to_u128().ok_or(PoolError::MathOverflow)?
     } else {
-        // Floor division  
-        (numerator1 * numerator2) / sqrt_ratio_a / sqrt_ratio_b
+        // Floor division - use U256 for intermediate calculation
+        let numerator = U256::from(numerator1) * U256::from(numerator2);
+        let denominator = U256::from(sqrt_ratio_a) * U256::from(sqrt_ratio_b);
+        let result = numerator.checked_div(&denominator).ok_or(PoolError::DivisionByZero)?;
+        result.to_u128().ok_or(PoolError::MathOverflow)?
     };
 
-    Ok(result.min(u64::MAX as u128) as u64)
+    // Ensure result fits in u64 without silent truncation
+    if result > u64::MAX as u128 {
+        return Err(PoolError::MathOverflow);
+    }
+    Ok(result as u64)
 }
 
 /// Calculate amount1 delta for a liquidity change  
@@ -55,14 +66,20 @@ pub fn get_amount_1_delta(
 
     // amount1 = liquidity * (sqrt_ratio_b - sqrt_ratio_a)
     let result = if round_up {
-        // Ceiling
-        (liquidity * (sqrt_ratio_b - sqrt_ratio_a) + (Q96 - 1)) / Q96
+        // Ceiling - use checked arithmetic
+        let product = liquidity.checked_mul(sqrt_ratio_b - sqrt_ratio_a).ok_or(PoolError::MathOverflow)?;
+        product.div_ceil(Q96)
     } else {
-        // Floor
-        liquidity * (sqrt_ratio_b - sqrt_ratio_a) / Q96
+        // Floor - use checked arithmetic
+        let product = liquidity.checked_mul(sqrt_ratio_b - sqrt_ratio_a).ok_or(PoolError::MathOverflow)?;
+        product / Q96
     };
 
-    Ok(result.min(u64::MAX as u128) as u64)
+    // Ensure result fits in u64 without silent truncation
+    if result > u64::MAX as u128 {
+        return Err(PoolError::MathOverflow);
+    }
+    Ok(result as u64)
 }
 
 /// Calculate liquidity for a given amount0
@@ -75,8 +92,11 @@ pub fn get_liquidity_for_amount_0(
         return get_liquidity_for_amount_0(sqrt_ratio_b, sqrt_ratio_a, amount_0);
     }
 
-    let intermediate = (sqrt_ratio_a * sqrt_ratio_b) / Q96;
-    Ok((amount_0 as u128 * intermediate) / (sqrt_ratio_b - sqrt_ratio_a))
+    // Use U256 to avoid overflow in intermediate calculations
+    let numerator = U256::from(amount_0 as u128) * U256::from(sqrt_ratio_a) * U256::from(sqrt_ratio_b);
+    let denominator = U256::from(sqrt_ratio_b - sqrt_ratio_a) * U256::from(Q96);
+    let result = numerator.checked_div(&denominator).ok_or(PoolError::DivisionByZero)?;
+    Ok(result.to_u128().ok_or(PoolError::MathOverflow)?)
 }
 
 /// Calculate liquidity for a given amount1
@@ -107,7 +127,7 @@ pub fn get_next_sqrt_price_from_amount_0_rounding_up(
         return Ok(sqrt_price_x96);
     }
 
-    let numerator1 = (liquidity as u128) << 96;
+    let numerator1 = liquidity << 96;
 
     if add {
         let product = amount as u128 * sqrt_price_x96;
@@ -199,5 +219,20 @@ mod tests {
         // Test next sqrt price from amount 1
         let next_price_1 = get_next_sqrt_price_from_amount_1_rounding_down(sqrt_price, liquidity, amount, true).unwrap();
         assert!(next_price_1 != sqrt_price);
+    }
+
+    /// Test V63 fix: Ensure overflow detection instead of silent truncation
+    #[test]
+    fn test_v63_overflow_detection() {
+        let sqrt_ratio_a = 1u128;
+        let sqrt_ratio_b = u128::MAX;
+        let liquidity = u128::MAX;
+
+        // This should return an error instead of silently truncating
+        let result = get_amount_0_delta(sqrt_ratio_a, sqrt_ratio_b, liquidity, false);
+        assert!(result.is_err());
+
+        let result = get_amount_1_delta(sqrt_ratio_a, sqrt_ratio_b, liquidity, false);
+        assert!(result.is_err());
     }
 }

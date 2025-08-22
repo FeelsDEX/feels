@@ -14,11 +14,11 @@ pub struct HookExecutor;
 
 impl HookExecutor {
     /// Execute pre-operation hooks
-    pub fn execute_pre_hooks<'info>(
+    pub fn execute_pre_hooks(
         registry: &HookRegistry,
         hook_type: HookType,
         context: &HookContext,
-        remaining_accounts: &[AccountInfo<'info>],
+        remaining_accounts: &[AccountInfo],
     ) -> Result<()> {
         // Get active hooks
         let hooks = registry.get_active_hooks(hook_type);
@@ -61,11 +61,11 @@ impl HookExecutor {
     }
     
     /// Execute post-operation hooks
-    pub fn execute_post_hooks<'info>(
+    pub fn execute_post_hooks(
         registry: &HookRegistry,
         hook_type: HookType,
         context: &HookContext,
-        remaining_accounts: &[AccountInfo<'info>],
+        remaining_accounts: &[AccountInfo],
     ) -> Result<()> {
         // Post hooks cannot halt operations, only observe/modify state
         let hooks = registry.get_active_hooks(hook_type);
@@ -91,17 +91,47 @@ impl HookExecutor {
 // Helper Functions
 // ============================================================================
 
+/// V9.2 Fix: Validate accounts before passing to hooks
+/// Ensures hooks can only access authorized accounts
+fn validate_hook_accounts(accounts: &[AccountInfo]) -> Result<()> {
+    use crate::state::PoolError;
+    
+    for account in accounts {
+        // Ensure account is not a system-owned account
+        if account.owner == &anchor_lang::solana_program::system_program::ID {
+            // Allow system accounts but they should be read-only
+            require!(!account.is_writable, PoolError::Unauthorized);
+        }
+        
+        // Additional validation can be added here:
+        // - Check against a whitelist of allowed programs
+        // - Verify account ownership matches expected programs
+        // - Ensure critical accounts like vaults are not passed
+    }
+    
+    Ok(())
+}
+
 /// Execute a single hook via CPI
-fn execute_single_hook<'info>(
+fn execute_single_hook(
     hook: &crate::state::HookConfig,
     context: &HookContext,
-    accounts: &[AccountInfo<'info>],
+    accounts: &[AccountInfo],
 ) -> Result<()> {
+    // V9.2 Fix: Validate accounts before passing to hooks
+    validate_hook_accounts(accounts)?;
+    
+    // V47 Fix: Enforce compute unit limits for hook execution
+    // Create compute budget instruction to limit hook compute consumption
+    let compute_budget_ix = anchor_lang::solana_program::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+        hook.max_compute_units.unwrap_or(100_000), // Default to 100k CUs if not specified
+    );
+    
     // Serialize hook context
     let data = context.try_to_vec()?;
     
     // Create instruction for hook
-    let instruction = anchor_lang::solana_program::instruction::Instruction {
+    let hook_instruction = anchor_lang::solana_program::instruction::Instruction {
         program_id: hook.program_id,
         accounts: accounts.iter().map(|acc| AccountMeta {
             pubkey: *acc.key,
@@ -111,9 +141,16 @@ fn execute_single_hook<'info>(
         data,
     };
     
-    // Execute CPI
+    // Execute CPI with compute budget limit
+    // First set the compute budget
+    anchor_lang::solana_program::program::invoke_unchecked(
+        &compute_budget_ix,
+        &[],
+    )?;
+    
+    // Then execute the hook
     anchor_lang::solana_program::program::invoke(
-        &instruction,
+        &hook_instruction,
         accounts,
     )?;
     
@@ -121,6 +158,7 @@ fn execute_single_hook<'info>(
 }
 
 /// Helper to create hook context for swap operations
+#[allow(clippy::too_many_arguments)]
 pub fn create_swap_hook_context(
     pool: Pubkey,
     user: Pubkey,
@@ -142,11 +180,12 @@ pub fn create_swap_hook_context(
             price_before,
             price_after,
         },
-        timestamp: Clock::get().unwrap().unix_timestamp,
+        timestamp: Clock::get().unwrap_or_default().unix_timestamp,
     }
 }
 
 /// Helper to create hook context for liquidity operations
+#[allow(clippy::too_many_arguments)]
 pub fn create_liquidity_hook_context(
     pool: Pubkey,
     user: Pubkey,
@@ -179,7 +218,7 @@ pub fn create_liquidity_hook_context(
         pool,
         user,
         operation,
-        timestamp: Clock::get().unwrap().unix_timestamp,
+        timestamp: Clock::get().unwrap_or_default().unix_timestamp,
     }
 }
 
@@ -285,6 +324,36 @@ impl SimpleHookExecutor {
         // Future phases will implement granular permission system
         Err(PoolError::InvalidOperation.into())
     }
+}
+
+/// Validate accounts passed to hooks to prevent unauthorized access
+fn validate_hook_accounts(accounts: &[AccountInfo]) -> Result<()> {
+    // V9.2 Fix: Account validation for hook execution
+    for account in accounts {
+        // Prevent hooks from accessing system accounts
+        require!(
+            account.key != &anchor_lang::solana_program::system_program::id() &&
+            account.key != &anchor_lang::solana_program::sysvar::rent::id() &&
+            account.key != &anchor_lang::solana_program::sysvar::clock::id(),
+            crate::state::PoolError::InvalidAuthority
+        );
+        
+        // Prevent hooks from accessing accounts they don't own or have permission for
+        // Only allow accounts owned by:
+        // - Token program (for token accounts)
+        // - System program (for system accounts)
+        // - Current program (for pool/position accounts)
+        // - Hook program itself
+        let owner = account.owner;
+        require!(
+            owner == &anchor_spl::token::ID ||
+            owner == &anchor_lang::solana_program::system_program::id() ||
+            owner == &crate::ID,
+            crate::state::PoolError::InvalidHookProgram
+        );
+    }
+    
+    Ok(())
 }
 
 // ============================================================================

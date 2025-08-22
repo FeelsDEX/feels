@@ -4,8 +4,6 @@
 /// responsive UIs that react to on-chain state changes in real-time.
 
 use anchor_lang::prelude::*;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use crate::logic::swap::SwapRoute;
 
 // ============================================================================
@@ -32,9 +30,10 @@ impl RoutingLogic {
     pub fn calculate_route(
         token_a: Pubkey, 
         token_b: Pubkey, 
-        feelssol_mint: Pubkey
+        feelssol_mint: Pubkey,
+        program_id: &Pubkey
     ) -> SwapRoute {
-        SwapRoute::find(token_a, token_b, feelssol_mint)
+        SwapRoute::find(token_a, token_b, feelssol_mint, program_id)
     }
     
     /// Estimate gas costs for different routing strategies
@@ -60,21 +59,21 @@ impl RoutingLogic {
 // Helper Functions
 // ============================================================================
 
-/// Helper function to derive pool address (simplified for Phase 1)
-/// TODO: Replace with proper PDA derivation in production
-pub fn derive_pool_address(token_a: Pubkey, token_b: Pubkey) -> Pubkey {
-    // In real implementation, this would use proper PDA derivation with program_id
-    // For Phase 1 simplified version, we create a deterministic but dummy address
+/// Derive pool address using proper PDA derivation
+/// Uses canonical token ordering to ensure deterministic pool addresses
+pub fn derive_pool_address(token_a: Pubkey, token_b: Pubkey, program_id: &Pubkey) -> Result<Pubkey> {
+    // Use canonical token ordering to ensure deterministic pool addresses
+    let (token_0, token_1) = crate::utils::CanonicalSeeds::sort_token_mints(&token_a, &token_b);
     
-    let mut hasher = DefaultHasher::new();
-    token_a.hash(&mut hasher);
-    token_b.hash(&mut hasher);
-    let hash = hasher.finish();
+    // Use proper PDA derivation with program ownership
+    let seeds = &[
+        b"pool",
+        token_0.as_ref(),
+        token_1.as_ref(),
+    ];
     
-    // Create a pseudo-pubkey from hash (Phase 1 only - not for production)
-    let mut bytes = [0u8; 32];
-    bytes[..8].copy_from_slice(&hash.to_le_bytes());
-    Pubkey::new_from_array(bytes)
+    let (pool_address, _bump) = Pubkey::find_program_address(seeds, program_id);
+    Ok(pool_address)
 }
 
 // ============================================================================

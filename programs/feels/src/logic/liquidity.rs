@@ -9,6 +9,7 @@ use crate::utils::math_liquidity::{
     get_amount_0_delta, get_amount_1_delta, get_liquidity_for_amount_0, get_liquidity_for_amount_1,
     get_next_sqrt_price_from_amount_0_rounding_up, get_next_sqrt_price_from_amount_1_rounding_down
 };
+use crate::utils::{MIN_SQRT_PRICE_X64, MAX_SQRT_PRICE_X64};
 
 // ============================================================================
 // Liquidity Math Implementation
@@ -84,7 +85,11 @@ impl LiquidityMath {
         amount_in: u64,
         zero_for_one: bool,
     ) -> Result<u128> {
-        require!(sqrt_price > 0, PoolError::PriceOutOfBounds);
+        // V4.1 Fix: Validate upper bounds for sqrt_price
+        require!(
+            sqrt_price >= MIN_SQRT_PRICE_X64 && sqrt_price <= MAX_SQRT_PRICE_X64,
+            PoolError::PriceOutOfBounds
+        );
         require!(liquidity > 0, PoolError::InsufficientLiquidity);
         require!(amount_in > 0, PoolError::InvalidAmount);
 
@@ -102,7 +107,11 @@ impl LiquidityMath {
         amount_out: u64,
         zero_for_one: bool,
     ) -> Result<u128> {
-        require!(sqrt_price > 0, PoolError::PriceOutOfBounds);
+        // V4.1 Fix: Validate upper bounds for sqrt_price (same as input version)
+        require!(
+            sqrt_price >= MIN_SQRT_PRICE_X64 && sqrt_price <= MAX_SQRT_PRICE_X64,
+            PoolError::PriceOutOfBounds
+        );
         require!(liquidity > 0, PoolError::InsufficientLiquidity);
         require!(amount_out > 0, PoolError::InvalidAmount);
 

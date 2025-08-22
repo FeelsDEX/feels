@@ -42,7 +42,7 @@ fn price_to_tick(price: f64) -> i32 {
 
 Liquidity is distributed across price ranges:
 - **Virtual liquidity**: `L = sqrt(x * y)`
-- **Real reserves**: Calculated based on current price position
+- **Real reserves**: Calculated based on current price tick position
 
 ## Swap Algorithm Deep Dive
 

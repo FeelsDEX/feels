@@ -160,9 +160,9 @@ impl Pool {
         let fee_growth_delta = calculate_fee_growth_delta(fee_amount, self.liquidity)?;
 
         if is_token_a {
-            self.fee_growth_global_0 = add_u256(self.fee_growth_global_0, fee_growth_delta);
+            self.fee_growth_global_0 = add_u256(self.fee_growth_global_0, fee_growth_delta)?;
         } else {
-            self.fee_growth_global_1 = add_u256(self.fee_growth_global_1, fee_growth_delta);
+            self.fee_growth_global_1 = add_u256(self.fee_growth_global_1, fee_growth_delta)?;
         }
         
         Ok(())
@@ -267,7 +267,7 @@ impl Pool {
             if self.is_tick_array_initialized(array_start_tick) {
                 // This array is initialized, would need to load it to check individual ticks
                 // For now, return the first/last tick in the array as a placeholder
-                // In a full implementation, we'd load the TickArray and search within it
+                // TODO: In a full implementation, we'd load the TickArray and search within it
                 if search_direction {
                     return Some(array_start_tick);
                 } else {

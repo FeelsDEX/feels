@@ -14,8 +14,8 @@ Feels Protocol implements Uniswap V3-style concentrated liquidity with a key inn
 
 ### Concentrated Liquidity
 - LPs provide liquidity within custom price ranges
-- Capital efficiency through position concentration
-- NFT-based position tracking with accumulated fees
+- Capital efficiency through tick position concentration
+- NFT-based tick position tracking with accumulated fees
 - Tick-based pricing with configurable spacing
 
 ### Architecture

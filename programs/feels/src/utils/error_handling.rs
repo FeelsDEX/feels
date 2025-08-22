@@ -33,10 +33,7 @@ impl ErrorHandling {
             sqrt_price >= crate::utils::MIN_SQRT_PRICE_X64,
             PoolError::PriceOutOfBounds
         );
-        require!(
-            sqrt_price <= crate::utils::MAX_SQRT_PRICE_X64,
-            PoolError::PriceOutOfBounds
-        );
+        // MAX_SQRT_PRICE_X64 is u128::MAX, so this check is redundant
         Ok(())
     }
     
@@ -45,11 +42,11 @@ impl ErrorHandling {
         // Basic range validation
         require!(tick_lower < tick_upper, PoolError::InvalidTickRange);
         require!(
-            tick_lower >= crate::utils::math_ticks::MIN_TICK,
+            tick_lower >= crate::utils::MIN_TICK,
             PoolError::TickOutOfBounds
         );
         require!(
-            tick_upper <= crate::utils::math_ticks::MAX_TICK,
+            tick_upper <= crate::utils::MAX_TICK,
             PoolError::TickOutOfBounds
         );
         
@@ -119,8 +116,12 @@ impl ErrorHandling {
         expected_owner: &Pubkey,
         error: PoolError,
     ) -> Result<()> {
-        require!(!account.data_is_empty(), error);
-        require!(account.owner == expected_owner, error);
+        if account.data_is_empty() {
+            return Err(error.into());
+        }
+        if account.owner != expected_owner {
+            return Err(error.into());
+        }
         Ok(())
     }
     

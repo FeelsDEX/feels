@@ -146,7 +146,7 @@ impl FeeMath {
     }
 
     /// Calculate effective fee rate after considering all factors
-    /// This is where dynamic fee adjustments would be implemented in Phase 2+
+    /// This is where dynamic fee adjustments would be implemented in Phase 2
     pub fn calculate_effective_fee_rate(
         base_fee_rate: u16,
         _volume_24h: u128,

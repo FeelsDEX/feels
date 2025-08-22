@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document defines the strategy for managing TickArray accounts in the Feels Protocol concentrated liquidity AMM. Each TickArray stores 60 consecutive ticks and serves as the fundamental unit for organizing the price space.
+This document defines the strategy for managing TickArray accounts in the Feels Protocol concentrated liquidity AMM. Each TickArray stores 32 consecutive ticks (changed from 60 to 32 for better memory alignment) and serves as the fundamental unit for organizing the price space.
 
 ## 1. PDA Derivation Strategy
 
@@ -16,330 +16,224 @@ seeds = [
 ```
 
 ### Key Properties
-- Start tick index MUST be divisible by 60 (TICK_ARRAY_SIZE)
-- Each pool can have up to ~30,000 tick arrays (covering tick range -887272 to +887272)
+- Start tick index MUST be divisible by (32 * tick_spacing)
+- Each pool can have up to ~55,000 tick arrays (covering full tick range -887272 to +887272)
 - PDAs are deterministic and can be pre-calculated off-chain
-- Tick arrays contain 60 consecutive ticks each for efficient memory usage
+- Tick arrays contain 32 consecutive ticks each for efficient memory usage and alignment
+- Total size: 3373 bytes per tick array
 
-## 2. Tick Array Lifecycle
+## 2. Tick Array Structure
 
-### 2.1 Creation (Lazy Initialization)
+### 2.1 Tick Data Structure
+```rust
+#[zero_copy]
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct Tick {
+    // Liquidity tracking
+    pub liquidity_net: i128,            // Net liquidity change when crossed
+    pub liquidity_gross: u128,          // Total liquidity referencing this tick
+    
+    // Fee tracking (outside the tick)
+    pub fee_growth_outside_0: [u64; 4], // Fee growth outside (token 0) - u256 as 4 u64s
+    pub fee_growth_outside_1: [u64; 4], // Fee growth outside (token 1) - u256 as 4 u64s
+    
+    // Tick metadata
+    pub initialized: u8,                // Whether this tick is initialized (0/1)
+    pub _padding: [u8; 7],              // Explicit padding for 8-byte alignment
+}
+```
+
+### 2.2 TickArray Account
+```rust
+#[account(zero_copy)]
+#[repr(C, packed)]
+pub struct TickArray {
+    pub pool: Pubkey,                   // Associated pool
+    pub start_tick_index: i32,          // First tick in this array
+    pub ticks: [Tick; TICK_ARRAY_SIZE], // Array of tick data (32 ticks)
+    pub initialized_tick_count: u8,     // Number of initialized ticks
+}
+```
+
+## 3. Tick Array Lifecycle
+
+### 3.1 Creation (Lazy Initialization)
 Tick arrays are created on-demand when:
 - A user adds liquidity to a previously empty price range
 - The first position references ticks in that array
 
+This is handled automatically by the `TickArrayManager` during the `add_liquidity` instruction:
+- Arrays are only created when actually needed
+- The pool's tick_array_bitmap is updated to track initialized arrays
+- Creation is atomic with the liquidity addition
+
+### 3.2 Cleanup Strategy (Rent Reclamation)
+The protocol includes two cleanup mechanisms:
+
+#### Basic Cleanup (Implemented)
 ```rust
-// Creation logic in add_liquidity instruction
-fn ensure_tick_array_exists(
-    pool: &Pubkey,
-    tick_index: i32,
-    payer: &Signer,
-    system_program: &Program<System>,
-) -> Result<()> {
-    let start_tick = (tick_index / TICK_ARRAY_SIZE) * TICK_ARRAY_SIZE;
-    let seeds = tick_array_seeds(pool, start_tick);
-    
-    // Create account if it doesn't exist
-    if !tick_array_account.data_is_empty() {
-        return Ok(());
-    }
-    
-    // Initialize with rent-exempt balance
-    create_account_with_seed(/* ... */)?;
-    
-    // Update pool's tick_array_bitmap
-    update_bitmap(pool, start_tick, true)?;
+// Via CleanupTickArray instruction
+pub fn cleanup_tick_array(ctx: Context<CleanupTickArray>) -> Result<()> {
+    // Validates tick array belongs to pool
+    // Ensures array is completely empty (initialized_tick_count == 0)
+    // Updates the pool's tick_array_bitmap
+    // Closes the account and returns rent
 }
 ```
 
-### 2.2 Cleanup Strategy (Rent Reclamation)
-To prevent state bloat and reclaim rent:
-
+#### Incentivized Cleanup (Implemented)
 ```rust
-// Cleanup empty tick arrays
-fn cleanup_empty_tick_array(
-    pool: &mut Pool,
-    tick_array: &mut TickArray,
-    beneficiary: &AccountInfo,
-) -> Result<()> {
-    // Only cleanup if all ticks are uninitialized
-    require!(tick_array.initialized_tick_count == 0, ErrorCode::ArrayNotEmpty);
-    
-    // Update bitmap
-    let array_index = tick_array.start_tick_index / TICK_ARRAY_SIZE;
-    let word_index = (array_index / 64) as usize;
-    let bit_index = (array_index % 64) as u8;
-    pool.tick_array_bitmap[word_index] &= !(1u64 << bit_index);
-    
-    // Close account and return rent to beneficiary
-    close_account(tick_array, beneficiary)?;
+// Via CleanupTickArray instruction (comprehensive version)
+pub fn cleanup_tick_array(ctx: Context<CleanupTickArray>) -> Result<()> {
+    // Validates array is empty
+    // Calculates rent distribution:
+    //   - Protocol keeps 20% as treasury fee
+    //   - Cleaner gets 80% as incentive
+    // Updates bitmap and closes account
+    // Emits TickArrayCleanedEvent
 }
 ```
 
-### 2.3 Incentivized Cleanup (Future Implementation)
-- Allow anyone to close empty tick arrays and claim a portion of the rent
-- Protocol retains 20% of reclaimed rent as treasury fee  
-- Remaining 80% goes to the cleanup initiator
-- **Status**: Not yet implemented - requires additional security mechanisms
+## 4. Tick Array Router System
 
-## 3. Efficient Traversal Strategy
-
-### 3.1 Swap Traversal
-During swaps, tick arrays must be loaded dynamically:
+### 4.1 Router Structure
+The TickArrayRouter enables efficient tick array access without remaining_accounts:
 
 ```rust
-pub struct SwapTickArrays {
-    // Pre-calculated tick array addresses needed for swap
-    pub current: Pubkey,      // Array containing current tick
-    pub next: Option<Pubkey>, // Next array in swap direction
-    pub boundary: Option<Pubkey>, // Array at price boundary
+#[account]
+pub struct TickArrayRouter {
+    pub pool: Pubkey,
+    pub tick_arrays: [Pubkey; MAX_ROUTER_ARRAYS],     // Up to 8 pre-registered arrays
+    pub start_indices: [i32; MAX_ROUTER_ARRAYS],      // Start tick for each array
+    pub active_bitmap: u8,                            // Which slots are active
+    pub last_update_slot: u64,                        // Cache invalidation
+    pub authority: Pubkey,                            // Update authority
+    pub _reserved: [u8; 64],
 }
+```
 
-impl SwapTickArrays {
-    pub fn calculate(
-        pool: &Pool,
-        current_tick: i32,
-        zero_for_one: bool,
-        sqrt_price_limit: u128,
-    ) -> Self {
-        let current_array = tick_to_array_start(current_tick);
-        
-        // Pre-calculate potential arrays needed
-        let next_array = if zero_for_one {
-            current_array - TICK_ARRAY_SIZE
+### 4.2 Router Configuration
+```rust
+pub struct RouterConfig {
+    pub arrays_around_current: u8,    // Number of arrays to pre-load (default: 3)
+    pub update_frequency: u64,        // Update every N slots (default: 100)
+    pub auto_update_enabled: bool,    // Auto-update on price moves
+    pub price_move_threshold: i32,    // Tick movement threshold (default: 100)
+}
+```
+
+## 5. Efficient Traversal Strategy
+
+### 5.1 Bitmap-Based Search
+The pool maintains a 1024-bit bitmap (16 u64s) for tracking initialized tick arrays:
+
+```rust
+pub tick_array_bitmap: [u64; 16],  // Each bit represents one tick array
+```
+
+Key operations:
+- Check if array exists: `(bitmap[word_index] & (1u64 << bit_index)) != 0`
+- Mark array initialized: `bitmap[word_index] |= 1u64 << bit_index`
+- Mark array uninitialized: `bitmap[word_index] &= !(1u64 << bit_index)`
+
+### 5.2 Array Navigation
+```rust
+impl TickArray {
+    // Get next array in swap direction
+    pub fn next_array_start_index(&self, zero_for_one: bool) -> i32 {
+        if zero_for_one {
+            self.start_tick_index - TICK_ARRAY_SIZE as i32
         } else {
-            current_array + TICK_ARRAY_SIZE
-        };
-        
-        // Calculate boundary array from price limit
-        let boundary_tick = sqrt_price_to_tick(sqrt_price_limit);
-        let boundary_array = tick_to_array_start(boundary_tick);
-        
-        Self {
-            current: derive_tick_array_pda(pool, current_array),
-            next: Some(derive_tick_array_pda(pool, next_array)),
-            boundary: Some(derive_tick_array_pda(pool, boundary_array)),
+            self.start_tick_index + TICK_ARRAY_SIZE as i32
         }
     }
-}
-```
-
-### 3.2 Bitmap-Guided Search
-Use the tick array bitmap for efficient traversal:
-
-```rust
-fn find_next_initialized_tick_array(
-    pool: &Pool,
-    start_array_index: i32,
-    search_direction: bool, // true = up, false = down
-) -> Option<i32> {
-    let mut current_word = (start_array_index / 64) as usize;
-    let mut bit_pos = (start_array_index % 64) as u8;
     
-    loop {
-        let word = pool.tick_array_bitmap[current_word];
-        
-        // Search within current word
-        let mask = if search_direction {
-            !((1u64 << bit_pos) - 1) // Mask bits below
+    // Check if swap needs to cross arrays
+    pub fn needs_crossing(&self, target_tick: i32, zero_for_one: bool) -> bool {
+        if zero_for_one {
+            target_tick < self.start_tick_index
         } else {
-            (1u64 << (bit_pos + 1)) - 1 // Mask bits above
-        };
-        
-        let masked_word = word & mask;
-        if masked_word != 0 {
-            let next_bit = if search_direction {
-                masked_word.trailing_zeros()
-            } else {
-                63 - masked_word.leading_zeros()
-            };
-            
-            return Some((current_word * 64 + next_bit as usize) as i32);
-        }
-        
-        // Move to next word
-        if search_direction {
-            current_word += 1;
-            if current_word >= 16 { break; }
-        } else {
-            if current_word == 0 { break; }
-            current_word -= 1;
-        }
-        
-        bit_pos = if search_direction { 0 } else { 63 };
-    }
-    
-    None
-}
-```
-
-## 4. Cross-Array Operations
-
-### 4.1 Position Management
-When adding/removing liquidity across multiple arrays:
-
-```rust
-pub struct PositionTickArrays {
-    pub lower: Pubkey,  // Array containing lower tick
-    pub upper: Pubkey,  // Array containing upper tick
-    pub middle: Vec<Pubkey>, // Arrays fully covered by position
-}
-
-impl PositionTickArrays {
-    pub fn calculate(pool: &Pubkey, tick_lower: i32, tick_upper: i32) -> Self {
-        let lower_array = tick_to_array_start(tick_lower);
-        let upper_array = tick_to_array_start(tick_upper);
-        
-        // Find all arrays between lower and upper
-        let mut middle = Vec::new();
-        let mut current = lower_array + TICK_ARRAY_SIZE;
-        while current < upper_array {
-            middle.push(derive_tick_array_pda(pool, current));
-            current += TICK_ARRAY_SIZE;
-        }
-        
-        Self {
-            lower: derive_tick_array_pda(pool, lower_array),
-            upper: derive_tick_array_pda(pool, upper_array),
-            middle,
+            target_tick >= self.start_tick_index + TICK_ARRAY_SIZE as i32
         }
     }
 }
 ```
 
-### 4.2 Batched Updates
-For operations affecting multiple tick arrays:
+## 6. Implementation Status
 
-```rust
-pub struct BatchedTickUpdate {
-    pub updates: Vec<(Pubkey, Vec<TickUpdate>)>, // (tick_array_pda, updates)
-}
+### **Fully Implemented**
+- **Core Structure**: 
+  - 32-tick arrays with zero-copy optimization
+  - Packed struct layout for minimal storage (3373 bytes)
+  - Full tick data including liquidity and fee tracking
+  
+- **PDA System**:
+  - Deterministic addressing using pool + start_tick
+  - Automatic validation in instructions
+  
+- **Bitmap Tracking**: 
+  - 1024-bit bitmap in Pool state
+  - Efficient O(1) lookup for array existence
+  - Automatic sync during creation/cleanup
+  
+- **TickArrayRouter**: 
+  - Pre-register up to 8 arrays for gas optimization
+  - Configurable update strategies
+  - Authority-controlled updates
+  
+- **Lifecycle Management**:
+  - Lazy initialization via TickArrayManager
+  - Two cleanup mechanisms (basic and incentivized)
+  - Rent reclamation with configurable fee split
+  
+- **Navigation**:
+  - Cross-array boundary detection
+  - Directional traversal helpers
+  - Bitmap-guided search utilities
 
-impl BatchedTickUpdate {
-    pub fn execute(&self, remaining_accounts: &[AccountInfo]) -> Result<()> {
-        for (array_pda, updates) in &self.updates {
-            // Find matching account
-            let array_account = remaining_accounts
-                .iter()
-                .find(|acc| acc.key == array_pda)
-                .ok_or(ErrorCode::MissingTickArray)?;
-            
-            let mut tick_array = TickArray::load_mut(array_account)?;
-            
-            for update in updates {
-                tick_array.update_tick(update)?;
-            }
-        }
-        Ok(())
-    }
-}
-```
+### **Partially Implemented**
+- **Transient Updates**: Structure exists but not fully integrated with swap operations
+- **Batch Operations**: Infrastructure present but no instruction-level batching
 
-## 5. Gas Optimization Strategies
+### **Not Implemented**
+- **Client-Side Caching**: No SDK-level prefetching strategies
+- **Compressed Arrays**: No optimization for inactive price ranges
+- **Historical Data**: No archival mechanism for old tick data
 
-### 5.1 Tick Array Caching
-For frequently accessed tick arrays:
-- Implement a client-side cache with TTL
-- Pre-fetch likely arrays based on current price and volatility
-- Bundle multiple array loads in single transaction when possible
+## 7. Key Differences from Original Design
 
-### 5.2 Transient Updates
-Use TransientTickUpdates for gas efficiency:
-```rust
-// Collect updates during operation
-let transient = TransientTickUpdates::new(pool_key);
-transient.add_update(tick_index, liquidity_delta, fee_growth);
+1. **Array Size**: Changed from 60 to 32 ticks for better memory alignment
+2. **Cleanup Mechanism**: Both basic and incentivized cleanup are implemented
+3. **Router System**: Added TickArrayRouter for Valence compatibility
+4. **Bitmap Size**: Uses 1024-bit bitmap (16 u64s) instead of variable size
+5. **Fee Tracking**: Uses token 0/1 naming convention instead of A/B
 
-// Apply all updates in single pass
-transient.apply_to_arrays(remaining_accounts)?;
-```
+## 8. Security Considerations
 
-### 5.3 Array Prefetching
-For UI/SDK implementations:
-```rust
-pub fn prefetch_swap_arrays(
-    pool: &Pool,
-    amount_in: u64,
-    zero_for_one: bool,
-) -> Vec<Pubkey> {
-    // Estimate price impact
-    let estimated_ticks = estimate_tick_movement(pool, amount_in);
-    
-    // Prefetch arrays that might be needed
-    let mut arrays = Vec::new();
-    let current_array = tick_to_array_start(pool.current_tick);
-    
-    for i in 0..=estimated_ticks / TICK_ARRAY_SIZE {
-        let array_start = if zero_for_one {
-            current_array - (i * TICK_ARRAY_SIZE)
-        } else {
-            current_array + (i * TICK_ARRAY_SIZE)
-        };
-        arrays.push(derive_tick_array_pda(&pool.key(), array_start));
-    }
-    
-    arrays
-}
-```
+1. **Array Initialization**: Only created when liquidity is actually added
+2. **Cleanup Authorization**: Validates array is truly empty before allowing cleanup
+3. **Bitmap Consistency**: Always updated atomically with array operations
+4. **PDA Validation**: All array addresses verified against expected derivation
+5. **Bounds Checking**: Tick indices validated against valid ranges
+6. **Router Authority**: Only authorized addresses can update router configuration
 
-## 6. Implementation Checklist
+## 9. Gas Optimization Features
 
-### Phase 1 (Core Functionality)
-- [x] Basic TickArray structure and PDA derivation
-- [x] Bitmap tracking of initialized arrays  
-- [x] Efficient next_initialized_tick search
-- [x] TickArrayRouter for optimized access patterns
-- [x] Tick array creation during add_liquidity (integrated in AddLiquidity instruction)
-- [x] Basic cleanup mechanism for empty arrays (CleanupTickArray instruction implemented)
+1. **Zero-Copy Design**: Direct memory access without deserialization
+2. **TickArrayRouter**: Pre-load commonly used arrays
+3. **Bitmap Search**: O(1) existence checks, efficient traversal
+4. **Lazy Initialization**: Arrays only created when needed
+5. **Packed Structs**: Minimal memory footprint with explicit padding
 
-### Phase 2 (Optimizations)
-- [ ] Batched tick updates across arrays
-- [ ] Incentivized cleanup mechanism
-- [ ] Client-side array prefetching
-- [ ] Transient update optimization
-- [ ] Array caching strategy
+## 10. Testing Checklist
 
-### Phase 3 (Advanced Features)
-- [ ] Compressed tick arrays for inactive ranges
-- [ ] Dynamic tick spacing adjustment  
-- [ ] Cross-program composability for tick data
-- [ ] Historical tick data archival
+- [x] Unit tests for tick array operations
+- [x] Integration tests for cross-array liquidity positions
+- [x] Bitmap consistency tests
+- [x] PDA derivation tests
+- [x] Cleanup mechanism tests
+- [ ] Gas usage benchmarks
+- [ ] Stress tests with maximum arrays
 
-## Current Implementation Status
-
-### ✅ **Implemented Features**
-- **TickArray Structure**: 60-tick arrays with zero-copy optimization
-- **TickArrayRouter**: Optimized access patterns for up to 8 pre-registered arrays
-- **Bitmap Tracking**: Efficient tick array initialization tracking in Pool state
-- **PDA Derivation**: Deterministic tick array addressing
-- **Tick Crossing Logic**: Basic tick boundary crossing during swaps
-- **Safety Mechanisms**: Bounds checking and overflow protection
-- **Lazy Initialization**: Tick arrays automatically created during add_liquidity via TickArrayManager
-- **Cleanup Mechanisms**: Rent reclamation for empty tick arrays via cleanup_tick_array instruction
-
-### ⚠️ **Partially Implemented**  
-- **Swap Integration**: Core logic exists but needs instruction-level integration
-- **Fee Growth Tracking**: Infrastructure present but incomplete fee accumulation
-- **Position Management**: Basic structure but missing cross-array position handling
-
-### ❌ **Missing Features**
-- **Batched Updates**: No optimization for multiple tick array modifications
-- **Client-Side Caching**: No prefetching strategies implemented
-
-## 7. Security Considerations
-
-1. **Array Initialization**: Only allow creation when liquidity is actually added
-2. **Cleanup Authorization**: Ensure only truly empty arrays can be closed
-3. **Bitmap Consistency**: Always keep bitmap in sync with actual arrays
-4. **PDA Validation**: Verify tick array PDAs match expected derivation
-5. **Bounds Checking**: Validate all tick indices are within valid ranges
-
-## 8. Testing Strategy
-
-1. **Unit Tests**: Each tick array operation in isolation
-2. **Integration Tests**: Multi-array operations (swaps, positions)
-3. **Stress Tests**: Maximum arrays per pool, bitmap edge cases
-4. **Gas Tests**: Measure CU usage for various array configurations
-5. **Security Tests**: Attempt to corrupt bitmap, invalid cleanups
-
-This strategy ensures efficient, secure, and scalable tick array management while maintaining compatibility with the Uniswap V3 model.
+This implementation provides efficient, secure, and scalable tick array management while maintaining compatibility with concentrated liquidity AMM requirements and optimizing for Solana's architecture.

@@ -29,7 +29,7 @@ impl FeeGrowthMath {
         fee_growth_a: [u64; 4],
         fee_growth_b: [u64; 4],
     ) -> Result<[u64; 4]> {
-        Ok(super::math_u256::add_u256(fee_growth_a, fee_growth_b))
+        super::math_u256::add_u256(fee_growth_a, fee_growth_b)
     }
     
     /// Subtract fee growth values (both Q128.128)
@@ -38,16 +38,8 @@ impl FeeGrowthMath {
         fee_growth_a: [u64; 4],
         fee_growth_b: [u64; 4],
     ) -> Result<[u64; 4]> {
-        let result = super::math_u256::sub_u256(fee_growth_a, fee_growth_b);
-        // Check if underflow occurred (would be all zeros)
-        if super::math_u256::is_u256_zero(result) && !super::math_u256::is_u256_zero(fee_growth_a) && !super::math_u256::is_u256_zero(fee_growth_b) {
-            // Only error if we know underflow happened (a != 0, b != 0, but result == 0)
-            match super::math_u256::cmp_u256(fee_growth_a, fee_growth_b) {
-                std::cmp::Ordering::Less => return Err(PoolError::ArithmeticUnderflow.into()),
-                _ => {}
-            }
-        }
-        Ok(result)
+        // Now that sub_u256 returns Result, we get proper error handling
+        super::math_u256::sub_u256(fee_growth_a, fee_growth_b)
     }
     
     /// Convert fee amount to fee growth delta

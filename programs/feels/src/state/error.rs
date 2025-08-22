@@ -93,6 +93,8 @@ pub enum PoolError {
     InvalidTickArrayIndex,
     #[msg("Invalid account owner")]
     InvalidAccountOwner,
+    #[msg("Invalid tick array account")]
+    InvalidTickArray,
 
     // Swap Errors
     #[msg("Slippage exceeded - output amount below minimum")]
@@ -147,6 +149,12 @@ pub enum PoolError {
     InsufficientFlashLoanRepayment,
     #[msg("Invalid pool for flash loan")]
     InvalidPoolForFlashLoan,
+    
+    // Token Validation Errors
+    #[msg("Token decimals must match for proper price calculations")]
+    IncompatibleDecimals,
+    #[msg("Token decimals too large - must be <= 18")]
+    DecimalsTooLarge,
 
     // Transient Update Errors
     #[msg("Transient updates batch is full")]
@@ -158,7 +166,11 @@ pub enum PoolError {
     #[msg("Transient updates expired")]
     TransientUpdatesExpired,
 
-    // Position Vault Errors (Phase 2)
+    // Hook System Errors
+    #[msg("Invalid hook program - must be a valid executable program")]
+    InvalidHookProgram,
+
+    // Tick Position Vault Errors (Phase 2)
     #[msg("Insufficient POL")]
     InsufficientPOL,
     #[msg("Insufficient user deposits")]

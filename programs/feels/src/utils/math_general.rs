@@ -2,11 +2,9 @@
 /// Includes integer square root for price calculations and other helper functions
 /// that don't fit into specialized math modules. Optimized implementations that
 /// balance precision with gas efficiency for on-chain execution.
-
 // ============================================================================
 // Core Implementation
 // ============================================================================
-
 /// Integer square root calculation using Newton's method
 /// This is a general-purpose utility that can be used across the codebase
 pub fn integer_sqrt(value: u128) -> u128 {
@@ -57,8 +55,19 @@ pub fn calculate_percentage_bp(value: u128, percentage_bps: u16, round_up: bool)
 
 /// Calculate percentage with standard precision (for backwards compatibility)
 /// Returns (value * percentage) / 100
-pub fn calculate_percentage(value: u64, percentage: u8) -> u64 {
-    ((value as u128 * percentage as u128) / 100) as u64
+pub fn calculate_percentage(value: u64, percentage: u8) -> Result<u64, crate::state::PoolError> {
+    if percentage > 100 {
+        return Err(crate::state::PoolError::InvalidAmount);
+    }
+    
+    let result = (value as u128 * percentage as u128) / 100;
+    
+    // Safe cast with overflow checking instead of unsafe truncation
+    if result > u64::MAX as u128 {
+        return Err(crate::state::PoolError::MathOverflow);
+    }
+    
+    Ok(result as u64)
 }
 
 /// Clamp a value between min and max bounds
@@ -108,9 +117,12 @@ mod tests {
 
     #[test]
     fn test_calculate_percentage() {
-        assert_eq!(calculate_percentage(1000, 10), 100);   // 10% of 1000
-        assert_eq!(calculate_percentage(1000, 50), 500);   // 50% of 1000
-        assert_eq!(calculate_percentage(1000, 100), 1000); // 100% of 1000
+        assert_eq!(calculate_percentage(1000, 10).unwrap(), 100);   // 10% of 1000
+        assert_eq!(calculate_percentage(1000, 50).unwrap(), 500);   // 50% of 1000
+        assert_eq!(calculate_percentage(1000, 100).unwrap(), 1000); // 100% of 1000
+        
+        // Test error cases
+        assert!(calculate_percentage(1000, 101).is_err()); // Invalid percentage > 100
     }
 
     #[test]

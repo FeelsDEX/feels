@@ -5,14 +5,14 @@
 use anchor_lang::prelude::*;
 
 // ============================================================================
-// Position NFT Structure
+// Tick Position NFT Structure
 // ============================================================================
 
 #[account]
-pub struct PositionMetadata {
-    // Position identification
+pub struct TickPositionMetadata {
+    // Tick Position identification
     pub pool: Pubkey,
-    pub position_mint: Pubkey,
+    pub tick_position_mint: Pubkey,
     pub owner: Pubkey,
     
     // Range definition
@@ -28,20 +28,18 @@ pub struct PositionMetadata {
     pub tokens_owed_0: u64,
     pub tokens_owed_1: u64,
     
-    // Future extensions
+    // Reserved for future extensions
     pub _reserved: [u8; 64],
 }
 
-impl PositionMetadata {
+impl TickPositionMetadata {
     pub const SIZE: usize = 8 + // discriminator
-        32 * 3 + // pool, position_mint, owner
-        4 * 2 + // tick_lower, tick_upper
-        16 + // liquidity
-        32 * 2 + // fee_growth_inside_last
-        8 * 2 + // tokens_owed
-        64; // reserved
-
-    // Business logic methods moved to logic/position_operations.rs
+        32 * 3 +                // pool, tick_position_mint, owner
+        4 * 2 +                 // tick_lower, tick_upper
+        16 +                    // liquidity
+        32 * 2 +                // fee_growth_inside_last
+        8 * 2 +                 // tokens_owed
+        64;                     // reserved
 }
 
 // ============================================================================

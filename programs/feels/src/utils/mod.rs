@@ -2,7 +2,6 @@
 /// Organized into specialized sub-modules for different mathematical domains:
 /// big integers, liquidity math, tick conversions, and safe arithmetic. These
 /// low-level utilities form the foundation for all protocol calculations.
-
 pub mod constant;              // Mathematical constants
 pub mod math_safe;            // Overflow-safe arithmetic traits
 pub mod math_liquidity;       // Pure mathematical liquidity functions

@@ -2,11 +2,9 @@
 /// and fee parameters. These constants ensure consistent calculations across all
 /// protocol operations and match Uniswap V3 specifications for compatibility.
 /// Critical for maintaining numerical stability and preventing overflows.
-
 // ============================================================================
 // Constants
 // ============================================================================
-
 // Tick Constants
 pub const MIN_TICK: i32 = -887272;           // Minimum tick value
 pub const MAX_TICK: i32 = 887272;            // Maximum tick value

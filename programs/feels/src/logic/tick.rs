@@ -86,6 +86,14 @@ impl TickArray {
         liquidity_delta: i128,
         upper: bool,
     ) -> Result<bool> {
+        // V2.1 Fix: Validate liquidity_delta magnitude is reasonable
+        // Prevent DoS through extreme values that could cause overflow
+        const MAX_LIQUIDITY_DELTA: i128 = i128::MAX / 2; // Half of max to leave room for operations
+        require!(
+            liquidity_delta.abs() <= MAX_LIQUIDITY_DELTA,
+            PoolError::InvalidLiquidityAmount
+        );
+        
         let array_index = self.tick_index_to_array_index(tick_index)?;
         let tick = &mut self.ticks[array_index];
 

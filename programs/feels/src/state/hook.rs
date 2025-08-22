@@ -5,6 +5,7 @@
 
 use anchor_lang::prelude::*;
 use crate::state::PoolError;
+use solana_program::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
 
 // ============================================================================
 // Constants
@@ -293,6 +294,19 @@ pub fn register_hook(
         PoolError::InvalidAuthority
     );
     
+    // Additional validation for critical permissions
+    if permission == HookPermission::Halt {
+        // Halt permission requires emergency authority or protocol-level authority
+        let emergency_authorized = registry.emergency_authority
+            .map(|emergency_auth| emergency_auth == ctx.accounts.authority.key())
+            .unwrap_or(false);
+        
+        require!(
+            emergency_authorized,
+            PoolError::UnauthorizedGuardian
+        );
+    }
+    
     // Register the hook
     let index = registry.register_hook(
         hook_type,
@@ -371,8 +385,14 @@ pub struct RegisterHook<'info> {
     
     pub authority: Signer<'info>,
     
-    /// CHECK: Hook program to register
-    pub hook_program: UncheckedAccount<'info>,
+    /// Hook program to register - must be a valid program account
+    #[account(
+        constraint = hook_program.executable @ PoolError::InvalidHookProgram,
+        constraint = hook_program.owner == &bpf_loader::id() || 
+                     hook_program.owner == &bpf_loader_deprecated::id() ||
+                     hook_program.owner == &bpf_loader_upgradeable::id() @ PoolError::InvalidHookProgram
+    )]
+    pub hook_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]

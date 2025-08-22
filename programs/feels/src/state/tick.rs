@@ -9,8 +9,8 @@ use crate::state::{Pool, PoolError};
 // Constants (moved from utils to break circular dependency)
 // ============================================================================
 
-const TICK_ARRAY_SIZE: usize = 32;
-const TICK_ARRAY_SIZE_BITS: u32 = 5; // log2(32)
+pub const TICK_ARRAY_SIZE: usize = 32;
+const _TICK_ARRAY_SIZE_BITS: u32 = 5; // log2(32) - unused for now
 
 // ============================================================================
 // Tick Data Structures
@@ -105,12 +105,7 @@ impl TickArrayRouter {
     
     /// Check if a tick array is registered in this router
     pub fn contains_array(&self, start_tick: i32) -> Option<usize> {
-        for i in 0..MAX_ROUTER_ARRAYS {
-            if self.is_slot_active(i) && self.start_indices[i] == start_tick {
-                return Some(i);
-            }
-        }
-        None
+        (0..MAX_ROUTER_ARRAYS).find(|&i| self.is_slot_active(i) && self.start_indices[i] == start_tick)
     }
     
     /// Check if a slot is active
@@ -253,11 +248,14 @@ pub fn initialize_router(
             ctx.program_id,
         );
         
+        // V120 Fix: The PDA derivation above ensures the address is owned by our program
+        // Additional validation happens in TickArrayManager::is_initialized which
+        // checks the pool's tick bitmap to ensure only valid tick arrays are registered
+        
         // Register if it exists (check bitmap)
-        // TODO: Re-enable after logic module is available
-        // if crate::logic::TickArrayManager::is_initialized(pool, start_tick) {
-        //     router.register_array(tick_array_pda, start_tick)?;
-        // }
+        if crate::logic::tick_array::TickArrayManager::is_initialized(pool, start_tick) {
+            router.register_array(tick_array_pda, start_tick)?;
+        }
     }
     
     Ok(())
@@ -272,14 +270,23 @@ pub fn update_router_arrays(
     let pool = &ctx.accounts.pool.load()?;
     let clock = Clock::get()?;
     
+    // V121 Fix: Validate that caller has authority to update router
+    require!(
+        ctx.accounts.authority.key() == router.authority,
+        PoolError::InvalidAuthority
+    );
+    
     // Only update if enough time has passed
     require!(
         clock.slot >= router.last_update_slot + 100, // Min 100 slots between updates
         PoolError::InvalidOperation
     );
     
-    // Clear existing arrays
-    router.active_bitmap = 0;
+    // V135 Fix: Build new bitmap atomically to avoid race condition
+    // Create a temporary copy of the router state
+    let mut new_bitmap = 0u64;
+    let mut new_arrays = [TickArrayEntry::default(); MAX_TICK_ARRAYS];
+    let mut new_count = 0usize;
     
     // Re-populate based on current price
     let current_tick = pool.current_tick;
@@ -301,11 +308,25 @@ pub fn update_router_arrays(
             ctx.program_id,
         );
         
-        // TODO: Re-enable after logic module is available
-        // if crate::logic::TickArrayManager::is_initialized(pool, start_tick) {
-        //     router.register_array(tick_array_pda, start_tick)?;
-        // }
+        // V120 Fix: The PDA derivation above ensures the address is owned by our program
+        // Additional validation happens in TickArrayManager::is_initialized
+        
+        if crate::logic::tick_array::TickArrayManager::is_initialized(pool, start_tick) {
+            // Add to temporary arrays
+            if new_count < MAX_TICK_ARRAYS {
+                new_arrays[new_count] = TickArrayEntry {
+                    address: tick_array_pda,
+                    start_tick_index: start_tick,
+                };
+                new_bitmap |= 1u64 << new_count;
+                new_count += 1;
+            }
+        }
     }
+    
+    // Atomically update the router state
+    router.active_bitmap = new_bitmap;
+    router.tick_arrays = new_arrays;
     
     router.last_update_slot = clock.slot;
     

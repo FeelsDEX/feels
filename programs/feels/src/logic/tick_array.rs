@@ -215,12 +215,12 @@ impl TickArrayManager {
     }
     
     /// Calculate tick arrays needed for a position spanning multiple arrays
-    pub fn calculate_position_arrays(
+    pub fn calculate_tick_position_arrays(
         pool_key: &Pubkey,
         tick_lower: i32,
         tick_upper: i32,
         program_id: &Pubkey,
-    ) -> PositionTickArrays {
+    ) -> TickPositionArrays {
         let lower_array_start = Self::tick_to_array_start(tick_lower);
         let upper_array_start = Self::tick_to_array_start(tick_upper);
         
@@ -236,7 +236,7 @@ impl TickArrayManager {
         let (lower_pda, _) = Self::derive_tick_array_pda(pool_key, lower_array_start, program_id);
         let (upper_pda, _) = Self::derive_tick_array_pda(pool_key, upper_array_start, program_id);
         
-        PositionTickArrays {
+        TickPositionArrays {
             lower: lower_pda,
             upper: upper_pda,
             middle: middle_arrays,
@@ -245,7 +245,7 @@ impl TickArrayManager {
 }
 
 /// Structure to hold tick arrays needed for a position
-pub struct PositionTickArrays {
+pub struct TickPositionArrays {
     pub lower: Pubkey,
     pub upper: Pubkey,
     pub middle: Vec<Pubkey>,

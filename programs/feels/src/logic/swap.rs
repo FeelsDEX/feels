@@ -23,41 +23,38 @@ impl SwapRoute {
         token_in: Pubkey,
         token_out: Pubkey,
         feelssol_mint: Pubkey,
+        program_id: &Pubkey,
     ) -> SwapRoute {
         // Check if either token is FeelsSOL
         if token_in == feelssol_mint || token_out == feelssol_mint {
             // Direct swap possible - one token is FeelsSOL
-            let pool_key = Self::derive_pool_key(token_in, token_out, 30); // Default 0.3% fee
+            let pool_key = Self::derive_pool_key(token_in, token_out, 30, program_id); // Default 0.3% fee
             SwapRoute::Direct(pool_key)
         } else {
             // Two-hop swap needed - neither token is FeelsSOL
-            let pool1_key = Self::derive_pool_key(token_in, feelssol_mint, 30);
-            let pool2_key = Self::derive_pool_key(feelssol_mint, token_out, 30);
+            let pool1_key = Self::derive_pool_key(token_in, feelssol_mint, 30, program_id);
+            let pool2_key = Self::derive_pool_key(feelssol_mint, token_out, 30, program_id);
             SwapRoute::TwoHop(pool1_key, pool2_key)
         }
     }
 
-    /// Derive pool PDA for a token pair
-    /// In production, this would consider multiple fee tiers and find the best liquidity
-    fn derive_pool_key(token_a: Pubkey, token_b: Pubkey, fee_rate: u16) -> Pubkey {
-        // Sort tokens into canonical order
-        let (token_0, token_1) = if token_a < token_b {
-            (token_a, token_b)
-        } else {
-            (token_b, token_a)
-        };
+    /// Derive pool PDA for a token pair using proper program derivation
+    /// Considers fee tiers and ensures canonical token ordering
+    pub fn derive_pool_key(token_a: Pubkey, token_b: Pubkey, fee_rate: u16, program_id: &Pubkey) -> Pubkey {
+        // Use canonical token ordering to ensure deterministic pool addresses
+        let (token_0, token_1) = crate::utils::CanonicalSeeds::sort_token_mints(&token_a, &token_b);
 
-        // This is a simplified derivation - in production would use actual program ID
-        let _seeds = &[
+        // Use proper PDA derivation with program ownership
+        let seeds = &[
             b"pool",
             token_0.as_ref(),
             token_1.as_ref(),
             &fee_rate.to_le_bytes(),
         ];
         
-        // For Phase 1, return a placeholder. In production, use:
-        // Pubkey::find_program_address(seeds, &program_id).0
-        Pubkey::new_unique()
+        // Proper PDA derivation owned by the program
+        let (pool_address, _bump) = Pubkey::find_program_address(seeds, program_id);
+        pool_address
     }
 
     /// Get all pools involved in this route
@@ -86,7 +83,7 @@ impl SwapRoute {
 pub struct RouteAnalysis {
     pub route: SwapRoute,
     pub estimated_gas: u64,
-    pub estimated_slippage: u16, // basis points
+    pub estimated_slippage: u16,   // basis points
     pub liquidity_utilization: u8, // percentage
 }
 
@@ -103,7 +100,7 @@ impl RouteAnalysis {
             route,
             estimated_gas,
             estimated_slippage,
-            liquidity_utilization: 85, // Placeholder - would be calculated from actual pool data
+            liquidity_utilization: 85, // TODO: Placeholder - would be calculated from actual pool data
         }
     }
 }

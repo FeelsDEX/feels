@@ -5,10 +5,10 @@
 use anchor_lang::prelude::*;
 
 // ============================================================================
-// Phase 2+ Constants (Three-Dimensional System)
+// Phase 2 Constants (Three-Dimensional System)
 // ============================================================================
 
-// Three-dimensional system constants (Phase 2+ preparation)
+// Three-dimensional system constants (Phase 2 preparation)
 pub const RATE_BITS: u8 = 20;
 pub const DURATION_BITS: u8 = 6;
 pub const LEVERAGE_BITS: u8 = 6;
@@ -54,17 +54,35 @@ pub struct Tick3D {
 
 impl Tick3D {
     /// Encode 3D tick into single i32 for efficient storage
-    pub fn encode(&self) -> i32 {
+    pub fn encode(&self) -> Result<i32> {
+        // V119 Fix: Add overflow checks for bit shifting operations
+        // Validate that values fit within their allocated bit ranges
+        
         // Rate uses primary bits (highest precision needed)
+        if self.rate_tick.abs() >= (1 << RATE_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
         let rate_masked = self.rate_tick & ((1 << RATE_BITS) - 1);
         
         // Duration uses 6 bits (supports Duration enum)
-        let duration_shifted = (self.duration_tick as i32) << RATE_BITS;
+        if self.duration_tick.abs() >= (1 << DURATION_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
+        let duration_shifted = (self.duration_tick as i32)
+            .checked_shl(RATE_BITS as u32)
+            .ok_or(PoolError::MathOverflow)?;
         
         // Leverage uses 6 bits (64 discrete levels of continuous leverage)
-        let leverage_shifted = (self.leverage_tick as i32) << (RATE_BITS + DURATION_BITS);
+        if self.leverage_tick.abs() >= (1 << LEVERAGE_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
+        let leverage_shifted = (self.leverage_tick as i32)
+            .checked_shl((RATE_BITS + DURATION_BITS) as u32)
+            .ok_or(PoolError::MathOverflow)?;
         
-        rate_masked | duration_shifted | leverage_shifted
+        // Combine with overflow protection
+        let result = rate_masked | duration_shifted | leverage_shifted;
+        Ok(result)
     }
     
     /// Decode i32 back into 3D tick structure
@@ -172,7 +190,7 @@ impl FeelsSOL {
 // ============================================================================
 
 /// Circuit breaker status for emergency controls
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
 pub struct CircuitBreakerStatus {
     pub swaps_paused: bool,
     pub deposits_paused: bool,
@@ -180,19 +198,6 @@ pub struct CircuitBreakerStatus {
     pub fee_collection_paused: bool,
     pub guardian: Option<Pubkey>,
     pub pause_expiry: Option<i64>,
-}
-
-impl Default for CircuitBreakerStatus {
-    fn default() -> Self {
-        Self {
-            swaps_paused: false,
-            deposits_paused: false,
-            withdrawals_paused: false,
-            fee_collection_paused: false,
-            guardian: None,
-            pause_expiry: None,
-        }
-    }
 }
 
 // ============================================================================
@@ -240,23 +245,23 @@ pub struct TransientTickUpdates {
     pub pool: Pubkey,
     pub slot: u64,
     pub updates: [TickUpdate; MAX_TICK_UPDATES],
-    pub update_count: u8,        // Number of active updates (0-20)
-    pub finalized: u8,           // 0 = false, 1 = true
-    pub created_at: i64,         // Timestamp for cleanup management
+    pub update_count: u8,          // Number of active updates (0-20)
+    pub finalized: u8,             // 0 = false, 1 = true
+    pub created_at: i64,           // Timestamp for cleanup management
     pub gas_budget_remaining: u32, // For rate limiting
-    pub _reserved: [u8; 64],     // Future expansion
+    pub _reserved: [u8; 64],       // Future extensibility
 }
 
 impl TransientTickUpdates {
     pub const SIZE: usize = 8 + // discriminator
         32 + // pool
-        8 + // slot
+        8 +  // slot
         (32 + 4 + 16 + 32 + 32 + 8 + 1) * MAX_TICK_UPDATES + // updates array
-        1 + // update_count
-        1 + // finalized
-        8 + // created_at
-        4 + // gas_budget_remaining
-        64; // _reserved
+        1 +  // update_count
+        1 +  // finalized
+        8 +  // created_at
+        4 +  // gas_budget_remaining
+        64;  // _reserved
         // Total: ~2,500 bytes - well under account limits
     
     /// Initialize a new TransientTickUpdates account
@@ -300,7 +305,7 @@ impl TransientTickUpdates {
         
         // Shift remaining updates down
         for i in (index as usize)..((self.update_count - 1) as usize) {
-            self.updates[i] = self.updates[i + 1].clone();
+            self.updates[i] = self.updates[i + 1];
         }
         
         // Clear the last update and decrement count

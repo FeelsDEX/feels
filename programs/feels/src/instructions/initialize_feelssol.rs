@@ -3,11 +3,7 @@
 /// liquidity model where all tokens must trade against FeelsSOL. This enables automatic yield
 /// generation and simplified routing between any two tokens through the FeelsSOL intermediary.
 
-use crate::state::FeelsSOL;
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::Token2022;
-use anchor_spl::token_interface::Mint;
-use anchor_lang::accounts::interface_account::InterfaceAccount;
 
 // ============================================================================
 // Handler Functions
@@ -21,6 +17,18 @@ pub fn handler(
     let feelssol = &mut ctx.accounts.feelssol;
     let clock = Clock::get()?;
     
+    // V79 Fix: Validate underlying mint is not the same as FeelsSOL mint
+    require!(
+        underlying_mint != ctx.accounts.feels_mint.key(),
+        crate::state::FeelsError::InvalidMint
+    );
+    
+    // Validate underlying mint is not a system account
+    require!(
+        underlying_mint != anchor_lang::solana_program::system_program::id(),
+        crate::state::FeelsError::InvalidMint
+    );
+    
     // Initialize FeelsSOL wrapper
     feelssol.underlying_mint = underlying_mint;
     feelssol.feels_mint = ctx.accounts.feels_mint.key();
@@ -29,6 +37,18 @@ pub fn handler(
     feelssol.yield_accumulator = 0;
     feelssol.last_update_slot = clock.slot;
     feelssol.authority = ctx.accounts.authority.key();
+    
+    // V136 Fix: Validate mint authority was properly set
+    // Although Anchor handles this with mint::authority constraint,
+    // we explicitly validate for extra safety
+    require!(
+        ctx.accounts.feels_mint.mint_authority.unwrap() == feelssol.key(),
+        crate::state::FeelsError::Unauthorized
+    );
+    require!(
+        ctx.accounts.feels_mint.freeze_authority.unwrap() == feelssol.key(),
+        crate::state::FeelsError::Unauthorized
+    );
     
     emit!(FeelsSOLInitialized {
         feels_mint: feelssol.feels_mint,

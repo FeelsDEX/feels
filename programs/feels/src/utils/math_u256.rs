@@ -9,11 +9,9 @@ use super::math_big_int::{U256, Rounding};
 
 /// This module provides production-grade arithmetic operations following
 /// patterns from established Solana DEX protocols (Meteora, Orca, Raydium).
-
 // ============================================================================
 // Core Conversion Functions
 // ============================================================================
-
 /// Convert u128 to U256 representation
 pub fn u128_to_u256(value: u128) -> [u64; 4] {
     let u256_val = U256::from_u128(value);
@@ -53,26 +51,26 @@ pub fn calculate_fee_growth_delta(fee_amount: u64, liquidity: u128) -> Result<[u
 // ============================================================================
 
 /// Add two U256 values with overflow checking
-pub fn add_u256(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+pub fn add_u256(a: [u64; 4], b: [u64; 4]) -> Result<[u64; 4]> {
     let a_u256 = U256 { words: a };
     let b_u256 = U256 { words: b };
     
-    // Use checked addition - overflows saturate max value (safer than panicking)
+    // Use checked addition - return error on overflow
     match a_u256.checked_add(&b_u256) {
-        Some(result) => result.words,
-        None => U256::MAX.words, // Saturate on overflow
+        Some(result) => Ok(result.words),
+        None => Err(PoolError::MathOverflow.into()), // Return error on overflow
     }
 }
 
 /// Subtract two U256 values with underflow checking
-pub fn sub_u256(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+pub fn sub_u256(a: [u64; 4], b: [u64; 4]) -> Result<[u64; 4]> {
     let a_u256 = U256 { words: a };
     let b_u256 = U256 { words: b };
     
-    // Use checked subtraction - underflows return zero (safer than panicking)
+    // Use checked subtraction - return error on underflow
     match a_u256.checked_sub(&b_u256) {
-        Some(result) => result.words,
-        None => U256::ZERO.words, // Saturate at zero on underflow
+        Some(result) => Ok(result.words),
+        None => Err(PoolError::ArithmeticUnderflow.into()), // Return error on underflow
     }
 }
 
@@ -149,11 +147,11 @@ mod tests {
         let b = u128_to_u256(50);
         
         // Test addition
-        let sum = add_u256(a, b);
+        let sum = add_u256(a, b).unwrap();
         assert_eq!(u256_to_u128(sum).unwrap(), 150);
         
         // Test subtraction
-        let diff = sub_u256(a, b);
+        let diff = sub_u256(a, b).unwrap();
         assert_eq!(u256_to_u128(diff).unwrap(), 50);
         
         // Test comparison
@@ -175,18 +173,18 @@ mod tests {
     
     #[test]
     fn test_overflow_safety() {
-        // Test that operations handle overflow gracefully
+        // Test that operations handle overflow by returning errors
         let max_val = U256::MAX.words;
         let one = u128_to_u256(1);
         
-        // Addition overflow should saturate
+        // Addition overflow should return error
         let result = add_u256(max_val, one);
-        assert_eq!(result, U256::MAX.words);
+        assert!(result.is_err());
         
-        // Subtraction underflow should saturate to zero
+        // Subtraction underflow should return error
         let zero = U256::ZERO.words;
         let result = sub_u256(zero, one);
-        assert_eq!(result, U256::ZERO.words);
+        assert!(result.is_err());
     }
     
     #[test]
