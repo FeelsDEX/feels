@@ -5,6 +5,7 @@
 pub mod initialize_protocol;
 pub mod initialize_feelssol;
 pub mod initialize_pool;
+pub mod token_create;
 pub mod liquidity_add;
 pub mod liquidity_remove;
 pub mod fee_collect_pool;

@@ -1,6 +1,7 @@
 /// Comprehensive error definitions for all protocol operations and edge cases.
 /// Provides clear, actionable error messages for debugging transaction failures.
-/// Organized into general protocol errors and pool-specific errors to help
+/// Organized into general protocol errors and pool-specific errors. Recently added
+/// RouterFull error to properly handle TickArrayRouter capacity limits. Helps
 /// developers quickly identify and resolve issues in their integrations.
 use anchor_lang::prelude::*;
 
@@ -22,6 +23,8 @@ pub enum FeelsError {
     MintFailed,
     #[msg("Token burn operation failed")]
     BurnFailed,
+    #[msg("Invalid mint - mint cannot be the same as underlying asset")]
+    InvalidMint,
 }
 
 // ============================================================================
@@ -61,6 +64,10 @@ pub enum PoolError {
     InvalidTickRange,
     #[msg("Invalid tick index")]
     InvalidTickIndex,
+    #[msg("Invalid sqrt price")]
+    InvalidSqrtPrice,
+    #[msg("Invalid liquidity")]
+    InvalidLiquidity,
 
     // Liquidity Errors
     #[msg("Liquidity overflow")]
@@ -95,6 +102,8 @@ pub enum PoolError {
     InvalidAccountOwner,
     #[msg("Invalid tick array account")]
     InvalidTickArray,
+    #[msg("Invalid tick array boundary")]
+    InvalidTickArrayBoundary,
 
     // Swap Errors
     #[msg("Slippage exceeded - output amount below minimum")]
@@ -119,6 +128,8 @@ pub enum PoolError {
     ArithmeticUnderflow,
     #[msg("Math overflow")]
     MathOverflow,
+    #[msg("Invalid percentage - must be between 0 and 100")]
+    InvalidPercentage,
 
     // Access Control Errors
     #[msg("Unauthorized")]
@@ -165,6 +176,14 @@ pub enum PoolError {
     UpdatesAlreadyFinalized,
     #[msg("Transient updates expired")]
     TransientUpdatesExpired,
+    
+    // Router Errors
+    #[msg("Tick array router is full - maximum arrays reached")]
+    RouterFull,
+    
+    // Hook registry full
+    #[msg("Hook registry is full - maximum hooks per type reached")]
+    HookRegistryFull,
 
     // Hook System Errors
     #[msg("Invalid hook program - must be a valid executable program")]
@@ -181,4 +200,12 @@ pub enum PoolError {
     JITDisabled,
     #[msg("Volume below threshold")]
     VolumeBelowThreshold,
+
+    // Token Ticker Validation Errors
+    #[msg("Token ticker is restricted and cannot be used")]
+    RestrictedTicker,
+    #[msg("Token ticker length must be between 1 and 12 characters")]
+    InvalidTickerLength,
+    #[msg("Token ticker contains invalid characters - only alphanumeric allowed")]
+    InvalidTickerFormat,
 }

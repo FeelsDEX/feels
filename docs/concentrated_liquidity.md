@@ -9,14 +9,15 @@ This document provides documentation for the concentrated liquidity swap algorit
 ### 1. Price Representation
 
 The protocol uses **square root price** representation for efficiency:
-- **Format**: Q64.64 fixed-point (128-bit total)
-- **Formula**: `sqrt_price = sqrt(token1_amount / token0_amount) * 2^64`
+- **Format**: Q96 fixed-point for external APIs (Uniswap V3 compatible)
+- **Internal**: Q64 fixed-point for calculations (Orca Whirlpools compatible)
+- **Formula**: `sqrt_price_x96 = sqrt(token1_amount / token0_amount) * 2^96`
 - **Benefits**: Avoids expensive division operations during swaps
 
 ```rust
-// Example: ETH/USDC at $2000
-// price = 2000 USDC/ETH
-// sqrt_price = sqrt(2000) * 2^64 ≈ 8.25e20
+// Example: FeelsSOL/FEELS at $2000
+// price = 2000 FEELS/FeelsSOL
+// sqrt_price_x96 = sqrt(2000) * 2^96 ≈ 3.54e30
 ```
 
 ### 2. Tick System
@@ -24,7 +25,8 @@ The protocol uses **square root price** representation for efficiency:
 Ticks represent discrete price points:
 - **Tick spacing**: Varies by fee tier (1, 10, 60, 200)
 - **Price formula**: `price = 1.0001^tick`
-- **Range**: -887272 to +887272
+- **Implementation Range**: -443636 to +443636 (practical limits)
+- **Theoretical Range**: -887272 to +887272
 
 ```rust
 // Tick to price conversion
@@ -126,7 +128,7 @@ For token1 -> token0 swaps (zero_for_one = false):
 Δy = L * (√P_current - √P_new)      // Amount token1 in
 ```
 
-**Note**: All calculations use Q64.64 fixed-point arithmetic with 2^64 scaling factor.
+**Note**: External API uses Q96 fixed-point arithmetic (2^96 scaling), while internal calculations use Q64 (2^64 scaling) for efficiency on Solana.
 
 ### Phase 4: Tick Crossing
 
@@ -187,14 +189,14 @@ Fees are handled in multiple layers:
 
 ### 1. Price Bounds
 ```rust
-const MIN_SQRT_PRICE_X64: u128 = 4295128739;  // sqrt(1.0001^MIN_TICK) * 2^64
-const MAX_SQRT_PRICE_X64: u128 = u128::MAX;   // Approximation for sqrt(1.0001^MAX_TICK) * 2^64
+const MIN_SQRT_PRICE_X96: u128 = 18447090763469684736;  // sqrt(1.0001^-443636) * 2^96
+const MAX_SQRT_PRICE_X96: u128 = 340_275_971_719_517_849_884_101_479_037_289_023_427;  // sqrt(1.0001^443636) * 2^96
 ```
 
 ### 2. Overflow Protection
-- All arithmetic uses SafeMath
-- Checked operations throughout
-- Saturating math for non-critical paths
+- All arithmetic uses native Rust checked operations (checked_add, checked_sub, etc.)
+- U256/U512 from ruint library for large number operations
+- Fee growth tracked in Q128.128 format using 256-bit integers
 
 ### 3. Slippage Protection
 - User specifies `sqrt_price_limit`
@@ -204,34 +206,34 @@ const MAX_SQRT_PRICE_X64: u128 = u128::MAX;   // Approximation for sqrt(1.0001^M
 ## Example: Complete Swap Flow
 
 ```rust
-// User wants to swap 1000 USDC for ETH
-// Current price: 2000 USDC/ETH (sqrt_price ≈ 8.26e20)
+// User wants to swap 1000 FEELS for FeelsSOL
+// Current price: 2000 FEELS/FeelsSOL (sqrt_price ≈ 8.26e20)
 
 // 1. Initialize swap state
 let mut swap_state = SwapState {
-    amount_remaining: 1000e6,  // 1000 USDC
+    amount_remaining: 1000_000_000,  // 1000 FEELS (6 decimals)
     amount_calculated: 0,
-    sqrt_price: 825_955_906_780_000_000u128,  // sqrt(2000) * 2^64
+    sqrt_price: 3_543_191_142_285_914_205_922_034_323_338_780,  // sqrt(2000) * 2^96
     tick: 69081,  // Current tick
     fee_amount: 0,
     liquidity: 50_000_000_000_000u128,  // Active liquidity
 };
 
 // 2. Calculate fee (0.3%)
-let fee = 1000e6 * 30 / 10000 = 3e6;  // 3 USDC
-swap_state.amount_remaining = 997e6;  // After fee
+let fee = 1000_000_000 * 30 / 10000;  // 3,000,000 = 3 FEELS
+swap_state.amount_remaining = 997_000_000;  // After fee
 
 // 3. Compute swap step
-// Price moves from 8.26e20 to 8.25e20
-// Output: ~0.498 ETH
+// Price moves slightly due to liquidity depth
+// Output: ~0.498 FeelsSOL
 
 // 4. Update pool state
-pool.current_sqrt_price = 825_000_000_000_000_000u128;  // New price after swap
+pool.current_sqrt_price = 3_541_000_000_000_000_000_000_000_000_000_000;  // New price after swap
 pool.current_tick = 69060;
 
 // 5. Transfer tokens
-// User sends: 1000 USDC
-// User receives: 0.498 ETH
+// User sends: 1000 FEELS
+// User receives: 0.498 FeelsSOL
 ```
 
 ## Common Pitfalls and Solutions

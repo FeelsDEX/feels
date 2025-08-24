@@ -5,7 +5,7 @@
 
 use anchor_lang::prelude::*;
 use crate::state::{TickPositionMetadata, PoolError};
-use crate::utils::{LiquiditySafeMath, constant::{MIN_TICK, MAX_TICK}};
+use crate::utils::{add_liquidity_delta, MIN_TICK, MAX_TICK};
 
 // ============================================================================
 // Core Implementation
@@ -87,7 +87,7 @@ impl TickPositionMetadata {
 
     /// Update the position's liquidity using safe arithmetic
     pub fn update_liquidity(&mut self, liquidity_delta: i128) -> Result<()> {
-        self.liquidity = self.liquidity.safe_add_liquidity(liquidity_delta)?;
+        self.liquidity = add_liquidity_delta(self.liquidity, liquidity_delta)?;
         Ok(())
     }
 

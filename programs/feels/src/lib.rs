@@ -1,3 +1,10 @@
+#![allow(deprecated)]
+
+/// Feels Protocol - Concentrated Liquidity AMM
+/// A next-generation automated market maker implementing concentrated liquidity positions
+/// with advanced features like hooks, Token-2022 support, and oracle price feeds.
+/// Built on Solana for high-performance decentralized trading.
+
 use anchor_lang::prelude::*;
 use anchor_lang::accounts::interface_account::InterfaceAccount;
 use anchor_spl::token_interface::{Mint, TokenAccount};
@@ -8,6 +15,9 @@ pub mod instructions;
 pub mod state;
 pub mod utils;
 pub mod logic;
+pub mod constant;
+
+// Import instruction contexts
 
 declare_id!("Fee1sProtoco11111111111111111111111111111111");
 
@@ -62,6 +72,52 @@ pub struct InitializeFeelsSOL<'info> {
     pub authority: Signer<'info>,
     
     pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+#[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
+pub struct CreateToken<'info> {
+    /// New token mint to create
+    #[account(
+        init,
+        payer = authority,
+        mint::decimals = decimals,
+        mint::authority = authority,
+        mint::freeze_authority = authority,
+    )]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+    
+    /// Token metadata account to store ticker, name, symbol
+    #[account(
+        init,
+        payer = authority,
+        space = state::TokenMetadata::SIZE,
+        seeds = [
+            b"token_metadata",
+            token_mint.key().as_ref()
+        ],
+        bump
+    )]
+    pub token_metadata: Account<'info, state::TokenMetadata>,
+    
+    /// Authority's token account for initial mint
+    #[account(
+        init_if_needed,
+        payer = authority,
+        associated_token::mint = token_mint,
+        associated_token::authority = authority,
+    )]
+    pub authority_token_account: InterfaceAccount<'info, TokenAccount>,
+    
+    /// Token create authority (becomes mint authority)
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    
+    /// Required programs
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -608,6 +664,9 @@ pub struct InitializeTransientUpdates<'info> {
     pub pool: AccountLoader<'info, state::Pool>,
     
     /// Transient updates account
+    /// Note: Using slot as PDA seed means only one batch per pool per slot.
+    /// This is intentional - prevents multiple conflicting batches in same slot.
+    /// For higher throughput, use different slots or wait for next slot.
     #[account(
         init,
         payer = authority,
@@ -735,6 +794,10 @@ pub mod feels {
     
     pub fn initialize_feelssol(ctx: Context<InitializeFeelsSOL>, underlying_mint: Pubkey) -> Result<()> {
         instructions::initialize_feelssol::handler(ctx, underlying_mint)
+    }
+    
+    pub fn create_token(ctx: Context<CreateToken>, ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64) -> Result<()> {
+        instructions::token_create::handler(ctx, ticker, name, symbol, decimals, initial_supply)
     }
     
     pub fn initialize_pool(ctx: Context<InitializePool>, fee_rate: u16, initial_sqrt_price: u128) -> Result<()> {

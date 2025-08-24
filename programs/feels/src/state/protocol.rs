@@ -38,15 +38,20 @@ pub struct ProtocolState {
 }
 
 impl ProtocolState {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // authority
-        32 + // treasury
-        2 + // default_protocol_fee_rate
-        2 + // max_pool_fee_rate
-        1 + // paused
-        1 + // pool_creation_allowed
-        8 + // total_pools
-        8 + // total_fees_collected
-        8 + // initialized_at
-        128; // _reserved
+    // Size breakdown for clarity and maintainability
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const AUTHORITY_SIZE: usize = 32 + 32;  // authority + treasury
+    const FEE_CONFIG_SIZE: usize = 2 + 2;  // default_protocol_fee_rate + max_pool_fee_rate
+    const FLAGS_SIZE: usize = 1 + 1;  // paused + pool_creation_allowed
+    const STATISTICS_SIZE: usize = 8 + 8;  // total_pools + total_fees_collected
+    const METADATA_SIZE: usize = 8;  // initialized_at
+    const RESERVED_SIZE: usize = 128;  // reserved for future upgrades
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::AUTHORITY_SIZE +
+        Self::FEE_CONFIG_SIZE +
+        Self::FLAGS_SIZE +
+        Self::STATISTICS_SIZE +
+        Self::METADATA_SIZE +
+        Self::RESERVED_SIZE;  // Total: 228 bytes
 }

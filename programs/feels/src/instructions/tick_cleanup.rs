@@ -4,9 +4,33 @@
 /// ensuring active liquidity positions are never affected.
 
 use anchor_lang::prelude::*;
-use crate::state::PoolError;
+use crate::state::{PoolError, TickArray};
+use crate::constant::TICK_ARRAY_SIZE;
+use crate::logic::event::{TickArrayCleanedEvent, TickArrayCleanedUpEvent};
 
-const TICK_ARRAY_SIZE: usize = 32;
+// ============================================================================
+// Shared Validation Functions
+// ============================================================================
+
+/// Validate that a tick array can be cleaned up
+fn validate_tick_array_cleanup(
+    tick_array: &TickArray,
+    pool_key: &Pubkey,
+) -> Result<()> {
+    // Validate tick array belongs to pool
+    require!(
+        tick_array.pool == *pool_key,
+        PoolError::InvalidPool
+    );
+    
+    // Only allow cleanup if array is completely empty
+    require!(
+        tick_array.initialized_tick_count == 0,
+        PoolError::TickArrayNotEmpty
+    );
+    
+    Ok(())
+}
 
 // ============================================================================
 // Handler Functions
@@ -17,17 +41,8 @@ pub fn handler(ctx: Context<crate::CleanupTickArray>) -> Result<()> {
     let pool = &mut ctx.accounts.pool.load_mut()?;
     let tick_array = &ctx.accounts.tick_array.load()?;
     
-    // Validate tick array belongs to pool
-    require!(
-        tick_array.pool == ctx.accounts.pool.key(),
-        PoolError::InvalidPool
-    );
-    
-    // Only allow cleanup if array is completely empty
-    require!(
-        tick_array.initialized_tick_count == 0,
-        PoolError::TickArrayNotEmpty
-    );
+    // Validate tick array can be cleaned up
+    validate_tick_array_cleanup(tick_array, &ctx.accounts.pool.key())?;
     
     // Calculate array index for bitmap update
     let array_index = tick_array.start_tick_index / (TICK_ARRAY_SIZE as i32);
@@ -55,7 +70,7 @@ pub fn handler(ctx: Context<crate::CleanupTickArray>) -> Result<()> {
     let protocol_fee = rent_amount * 20 / 100;
     let cleaner_reward = rent_amount - protocol_fee;
     
-    // V-NEW-16 Fix: Use safe lamport transfers instead of direct manipulation
+    // Use safe lamport transfers instead of direct manipulation
     // Transfer cleaner reward
     **ctx.accounts.cleaner.try_borrow_mut_lamports()? = ctx.accounts.cleaner.lamports()
         .checked_add(cleaner_reward)
@@ -73,11 +88,8 @@ pub fn handler(ctx: Context<crate::CleanupTickArray>) -> Result<()> {
     emit!(TickArrayCleanedEvent {
         pool: ctx.accounts.pool.key(),
         tick_array: ctx.accounts.tick_array.key(),
-        start_tick_index: tick_array.start_tick_index,
-        cleaner: ctx.accounts.cleaner.key(),
-        rent_reclaimed: rent_amount,
-        cleaner_reward,
-        protocol_fee,
+        start_tick: tick_array.start_tick_index,
+        initialized_count: 0, // We just cleaned it
         timestamp: Clock::get()?.unix_timestamp,
     });
     
@@ -86,56 +98,22 @@ pub fn handler(ctx: Context<crate::CleanupTickArray>) -> Result<()> {
 
 /// Cleanup an empty tick array (simplified version for CleanupEmptyTickArray)
 pub fn handler_empty(ctx: Context<crate::CleanupEmptyTickArray>) -> Result<()> {
-    let _pool = &mut ctx.accounts.pool.load_mut()?;
-    
-    // Validate tick array belongs to pool
+    let _pool = &ctx.accounts.pool.load()?;
     let tick_array = ctx.accounts.tick_array.load()?;
-    require!(
-        tick_array.pool == ctx.accounts.pool.key(),
-        PoolError::InvalidPool
-    );
     
-    // Validate tick array is empty before cleanup
-    require!(
-        tick_array.initialized_tick_count == 0,
-        PoolError::TickArrayNotEmpty
-    );
+    // Validate tick array can be cleaned up
+    validate_tick_array_cleanup(&tick_array, &ctx.accounts.pool.key())?;
     
+    // Emit simplified cleanup event
     emit!(TickArrayCleanedUpEvent {
         pool: ctx.accounts.pool.key(),
         tick_array: ctx.accounts.tick_array.key(),
-        start_tick_index: tick_array.start_tick_index,
-        beneficiary: ctx.accounts.beneficiary.key(),
-        rent_reclaimed: ctx.accounts.tick_array.to_account_info().lamports(),
+        start_tick: tick_array.start_tick_index,
+        ticks_cleaned: 0, // All cleaned
+        gas_refund_estimate: 5000, // Estimate
+        cleaner: ctx.accounts.beneficiary.key(),
         timestamp: Clock::get()?.unix_timestamp,
     });
     
     Ok(())
-}
-
-#[event]
-pub struct TickArrayCleanedUpEvent {
-    pub pool: Pubkey,
-    pub tick_array: Pubkey,
-    pub start_tick_index: i32,
-    pub beneficiary: Pubkey,
-    pub rent_reclaimed: u64,
-    pub timestamp: i64,
-}
-
-// ============================================================================
-// Events
-// ============================================================================
-
-#[event]
-pub struct TickArrayCleanedEvent {
-    #[index]
-    pub pool: Pubkey,
-    pub tick_array: Pubkey,
-    pub start_tick_index: i32,
-    pub cleaner: Pubkey,
-    pub rent_reclaimed: u64,
-    pub cleaner_reward: u64,
-    pub protocol_fee: u64,
-    pub timestamp: i64,
 }

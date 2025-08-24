@@ -5,6 +5,7 @@
 
 use anchor_lang::prelude::*;
 use crate::state::{TickUpdate, PoolError};
+use crate::logic::event::TransientUpdatesFinalized;
 
 // ============================================================================
 // Handler Functions
@@ -49,6 +50,8 @@ pub fn add_tick_update(
         PoolError::InvalidPool
     );
     
+    let clock = Clock::get()?;
+    
     // Create tick update from parameters
     let tick_update = TickUpdate {
         tick_array_pubkey,
@@ -56,7 +59,7 @@ pub fn add_tick_update(
         liquidity_net_delta,
         fee_growth_outside_0: [0; 4],
         fee_growth_outside_1: [0; 4],
-        slot: Clock::get()?.slot,
+        slot: clock.slot,
         priority: 1,
         _padding: [0; 7],
     };
@@ -118,7 +121,7 @@ pub fn cleanup_transient_updates(
     );
     
     // Close the account and return rent to authority
-    // The account closure happens automatically via the close constraint
+    // Account closure happens automatically via close constraint
     
     Ok(())
 }
@@ -139,12 +142,4 @@ pub fn reset_transient_updates(
     transient_updates.reset(clock.slot, clock.unix_timestamp);
     
     Ok(())
-}
-
-#[event]
-pub struct TransientUpdatesFinalized {
-    pub pool: Pubkey,
-    pub slot: u64,
-    pub update_count: u8,
-    pub finalized_at: i64,
 }

@@ -1,10 +1,11 @@
-/// Provides comprehensive validation and error handling utilities across the protocol.
-/// Implements defensive programming practices with extensive input validation,
+/// Provides validation and error handling utilities across the protocol.
+/// Implements defensive programming practices with input validation,
 /// bounds checking, and edge case handling. Ensures protocol safety by catching
-/// potential issues early and providing clear error messages for debugging.
+/// potential issues early and providing error messages for debugging.
 
 use anchor_lang::prelude::*;
 use crate::state::PoolError;
+use spl_math::precise_number::PreciseNumber;
 
 // ============================================================================
 // Type Definitions
@@ -30,10 +31,9 @@ impl ErrorHandling {
     /// Validate price bounds with overflow protection
     pub fn validate_sqrt_price(sqrt_price: u128) -> Result<()> {
         require!(
-            sqrt_price >= crate::utils::MIN_SQRT_PRICE_X64,
+            (crate::utils::MIN_SQRT_PRICE_X96..=crate::utils::MAX_SQRT_PRICE_X96).contains(&sqrt_price),
             PoolError::PriceOutOfBounds
         );
-        // MAX_SQRT_PRICE_X64 is u128::MAX, so this check is redundant
         Ok(())
     }
     
@@ -71,7 +71,8 @@ impl ErrorHandling {
             Ok(new_liquidity)
         } else {
             // Removing liquidity
-            let abs_delta = (-delta) as u128;
+            // Convert negative i128 to positive u128 safely
+            let abs_delta = delta.unsigned_abs();
             require!(current >= abs_delta, PoolError::LiquidityUnderflow);
             Ok(current - abs_delta)
         }
@@ -81,17 +82,23 @@ impl ErrorHandling {
     pub fn calculate_fee_safe(amount: u64, fee_rate: u16) -> Result<u64> {
         require!(fee_rate <= 10000, PoolError::InvalidFeeRate); // Max 100%
         
-        let amount_u128 = amount as u128;
-        let fee_rate_u128 = fee_rate as u128;
+        // Use PreciseNumber for exact calculation
+        let amount_precise = PreciseNumber::new(amount as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let fee_rate_precise = PreciseNumber::new(fee_rate as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let divisor_precise = PreciseNumber::new(10000u128)
+            .ok_or(PoolError::MathOverflow)?;
         
-        let fee = amount_u128
-            .checked_mul(fee_rate_u128)
+        let fee_precise = amount_precise
+            .checked_mul(&fee_rate_precise)
             .ok_or(PoolError::MathOverflow)?
-            .checked_div(10000)
+            .checked_div(&divisor_precise)
             .ok_or(PoolError::DivisionByZero)?;
         
-        require!(fee <= u64::MAX as u128, PoolError::MathOverflow);
-        Ok(fee as u64)
+        let fee = fee_precise.to_imprecise().ok_or(PoolError::MathOverflow)?;
+        fee.try_into()
+            .map_err(|_| PoolError::MathOverflow.into())
     }
     
     /// Validate slippage protection
@@ -138,9 +145,7 @@ impl ErrorHandling {
         );
         Ok(())
     }
-    
-    // calculate_percentage moved to math_general.rs
-    
+        
     /// Validate timestamp for time-based operations
     pub fn validate_timestamp(
         current_timestamp: i64,
@@ -188,8 +193,7 @@ PoolError::InsufficientLiquidity
 // ============================================================================
 
 /// Helper function to create error with context
-pub fn create_error_with_context(message: &str) -> anchor_lang::error::Error {
-    msg!("Error: {}", message);
+pub fn create_error_with_context(_message: &str) -> anchor_lang::error::Error {
     anchor_lang::error::Error::from(PoolError::InvalidOperation)
 }
 

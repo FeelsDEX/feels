@@ -5,20 +5,16 @@
 
 use anchor_lang::prelude::*;
 use crate::state::PoolError;
+use crate::constant::MAX_HOOKS_PER_TYPE;
+use crate::logic::event::{HookRegistryInitializedEvent, HookRegisteredEvent, HooksEmergencyPausedEvent};
 use solana_program::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-pub const MAX_HOOKS_PER_TYPE: usize = 4;
 
 // ============================================================================
 // Type Definitions
 // ============================================================================
 
 /// Hook types supported by the protocol
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookType {
     PreSwap,
     PostSwap,
@@ -29,7 +25,7 @@ pub enum HookType {
 }
 
 /// Hook permission levels
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HookPermission {
     /// Hook can only read state
     ReadOnly,
@@ -40,7 +36,7 @@ pub enum HookPermission {
 }
 
 /// Individual hook configuration
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
 pub struct HookConfig {
     /// Hook program address
     pub program_id: Pubkey,
@@ -113,15 +109,41 @@ pub struct HookRegistry {
     pub _reserved: [u8; 128],
 }
 
+impl Default for HookRegistry {
+    fn default() -> Self {
+        Self {
+            pool: Pubkey::default(),
+            authority: Pubkey::default(),
+            pre_swap_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            post_swap_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            pre_add_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            post_add_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            pre_remove_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            post_remove_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
+            hooks_enabled: true,
+            emergency_authority: None,
+            last_update_timestamp: 0,
+            _reserved: [0; 128],
+        }
+    }
+}
+
 impl HookRegistry {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // pool
-        32 + // authority
-        (32 + 1 + 1 + 4 + 8 + 8) * MAX_HOOKS_PER_TYPE * 6 + // all hook arrays
-        1 + // hooks_enabled
-        33 + // emergency_authority (Option<Pubkey>)
-        8 + // last_update_timestamp
-        128; // reserved
+    // Size breakdown for clarity and maintainability
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const AUTHORITY_SIZE: usize = 32 + 32;  // pool + authority
+    const HOOK_CONFIG_SIZE: usize = 32 + 1 + 1 + 4 + 8 + 8;  // Single HookConfig size
+    const ALL_HOOKS_SIZE: usize = Self::HOOK_CONFIG_SIZE * MAX_HOOKS_PER_TYPE * 6;  // 6 hook arrays
+    const FLAGS_SIZE: usize = 1 + 33;  // hooks_enabled + emergency_authority (Option<Pubkey>)
+    const METADATA_SIZE: usize = 8;  // last_update_timestamp
+    const RESERVED_SIZE: usize = 128;  // reserved for future upgrades
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::AUTHORITY_SIZE +
+        Self::ALL_HOOKS_SIZE +
+        Self::FLAGS_SIZE +
+        Self::METADATA_SIZE +
+        Self::RESERVED_SIZE;  // Total size depends on MAX_HOOKS_PER_TYPE
     
     /// Get hooks for a specific type
     pub fn get_hooks(&self, hook_type: HookType) -> &[HookConfig; MAX_HOOKS_PER_TYPE] {
@@ -171,7 +193,8 @@ impl HookRegistry {
             }
         }
         
-        Err(PoolError::TransientUpdatesFull.into())
+        // Return more descriptive error for full hook registry
+        Err(PoolError::HookRegistryFull.into())
     }
     
     /// Unregister a hook
@@ -256,18 +279,18 @@ pub fn initialize_hook_registry(
     let registry = &mut ctx.accounts.registry;
     let clock = Clock::get()?;
     
+    // Initialize with default values
     registry.pool = ctx.accounts.pool.key();
     registry.authority = ctx.accounts.authority.key();
+    registry.emergency_authority = Some(ctx.accounts.authority.key());
+    registry.last_update_timestamp = clock.unix_timestamp;
+    registry.hooks_enabled = true;
     registry.pre_swap_hooks = core::array::from_fn(|_| HookConfig::default());
     registry.post_swap_hooks = core::array::from_fn(|_| HookConfig::default());
     registry.pre_add_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
     registry.post_add_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
     registry.pre_remove_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
     registry.post_remove_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.hooks_enabled = true;
-    registry.emergency_authority = Some(ctx.accounts.authority.key());
-    registry.last_update_timestamp = clock.unix_timestamp;
-    registry._reserved = [0; 128];
     
     emit!(HookRegistryInitializedEvent {
         pool: ctx.accounts.pool.key(),
@@ -407,31 +430,4 @@ pub struct EmergencyPauseHooks<'info> {
     pub authority: Signer<'info>,
 }
 
-// ============================================================================
-// Events
-// ============================================================================
-
-#[event]
-pub struct HookRegistryInitializedEvent {
-    pub pool: Pubkey,
-    pub registry: Pubkey,
-    pub authority: Pubkey,
-    pub timestamp: i64,
-}
-
-#[event]
-pub struct HookRegisteredEvent {
-    pub pool: Pubkey,
-    pub hook_program: Pubkey,
-    pub hook_type: HookType,
-    pub permission: HookPermission,
-    pub index: u8,
-    pub timestamp: i64,
-}
-
-#[event]
-pub struct HooksEmergencyPausedEvent {
-    pub pool: Pubkey,
-    pub authority: Pubkey,
-    pub timestamp: i64,
-}
+// Hook events are now imported from logic::event

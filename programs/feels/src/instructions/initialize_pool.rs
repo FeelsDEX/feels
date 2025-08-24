@@ -1,64 +1,72 @@
-/// Creates a new concentrated liquidity pool pairing any token with FeelsSOL.
-/// Implements Uniswap V3-style concentrated liquidity with canonical token ordering
-/// to ensure deterministic pool addresses. All pools must have FeelsSOL as one token,
-/// enforcing the hub-and-spoke model where cross-token swaps route through FeelsSOL.
+/// Initializes a new liquidity pool with the given token pair and fee rate.
+/// Validates token ordering, sets initial price, and configures fee parameters.
+/// Each pool is uniquely identified by its token pair and fee tier. Only
+/// authorized accounts can create new pools when the protocol allows it.
 
-use crate::state::PoolError;
-use crate::utils::{CanonicalSeeds, TickMath};
 use anchor_lang::prelude::*;
+use crate::state::PoolError;
+use crate::utils::MIN_SQRT_PRICE_X96;
 
 // ============================================================================
 // Handler Functions
 // ============================================================================
 
-/// Initialize a new concentrated liquidity pool with canonical token ordering
+/// Initialize a new concentrated liquidity pool  
 /// This ensures only one pool can exist for any token pair regardless of input order
 pub fn handler(
     ctx: Context<crate::InitializePool>,
     fee_rate: u16,
     initial_sqrt_price: u128,
 ) -> Result<()> {
+    let clock = Clock::get()?;
+    
+    // Get token information for validation
+    let decimals_a = ctx.accounts.token_a_mint.decimals;
+    let decimals_b = ctx.accounts.token_b_mint.decimals;
+    
     // Validate protocol state allows pool creation
-    let protocol_state = &ctx.accounts.protocol_state;
     require!(
-        !protocol_state.paused,
+        !ctx.accounts.protocol_state.paused,
         PoolError::PoolOperationsPaused
     );
     require!(
-        protocol_state.pool_creation_allowed,
+        ctx.accounts.protocol_state.pool_creation_allowed,
         PoolError::InvalidOperation
     );
     
     // Validate authority can create pools
     require!(
-        ctx.accounts.authority.key() == protocol_state.authority,
+        ctx.accounts.authority.key() == ctx.accounts.protocol_state.authority,
         PoolError::InvalidAuthority
+    );
+    
+    // Ensure different tokens
+    require!(
+        ctx.accounts.token_a_mint.key() != ctx.accounts.token_b_mint.key(),
+        PoolError::InvalidTokenPair
+    );
+    
+    // Ensure one token is FeelsSOL
+    require!(
+        ctx.accounts.token_a_mint.key() == ctx.accounts.feelssol.feels_mint || 
+        ctx.accounts.token_b_mint.key() == ctx.accounts.feelssol.feels_mint,
+        PoolError::NotFeelsSOLPair
     );
     
     // Validate fee rate
     require!(
-        fee_rate <= crate::utils::constant::MAX_FEE_RATE,
+        fee_rate <= crate::utils::MAX_FEE_RATE,
         PoolError::InvalidFeeRate
     );
+    crate::utils::FeeMath::validate_fee_rate(fee_rate)?;
     
     // Validate initial price bounds
     require!(
-        initial_sqrt_price >= crate::utils::MIN_SQRT_PRICE_X64,
+        initial_sqrt_price >= MIN_SQRT_PRICE_X96,
         PoolError::PriceOutOfBounds
     );
     
-    let mut pool = ctx.accounts.pool.load_init()?;
-    let clock = Clock::get()?;
-    
-    // Get token mints from context
-    let mint_a = ctx.accounts.token_a_mint.key();
-    let mint_b = ctx.accounts.token_b_mint.key();
-    
-    // V124 Fix: Validate token decimals compatibility
-    let decimals_a = ctx.accounts.token_a_mint.decimals;
-    let decimals_b = ctx.accounts.token_b_mint.decimals;
-    
-    // Both tokens must have the same decimals for proper price calculations
+    // Validate token decimals compatibility
     require!(
         decimals_a == decimals_b,
         PoolError::IncompatibleDecimals
@@ -69,122 +77,79 @@ pub fn handler(
         decimals_a <= 18 && decimals_b <= 18,
         PoolError::DecimalsTooLarge
     );
+
+    let mut pool = ctx.accounts.pool.load_init()?;
     
     // Sort tokens into canonical order
-    let (token_0, token_1) = CanonicalSeeds::sort_token_mints(&mint_a, &mint_b);
+    let (token_0_mint, token_1_mint) = if ctx.accounts.token_a_mint.key() < ctx.accounts.token_b_mint.key() {
+        (ctx.accounts.token_a_mint.key(), ctx.accounts.token_b_mint.key())
+    } else {
+        (ctx.accounts.token_b_mint.key(), ctx.accounts.token_a_mint.key())
+    };
     
-    // Validate that FeelsSOL is one of the tokens
-    let feelssol = &ctx.accounts.feelssol;
+    // Set pool tokens with canonical ordering
+    pool.token_a_mint = token_0_mint;
+    pool.token_b_mint = token_1_mint;
+    
+    // Ensure feelssol is one of the tokens
+    let feelssol_mint = ctx.accounts.feelssol.feels_mint;
     require!(
-        feelssol.feels_mint == token_0 || feelssol.feels_mint == token_1,
+        pool.token_a_mint == feelssol_mint || pool.token_b_mint == feelssol_mint,
         PoolError::NotFeelsSOLPair
     );
     
-    // Initialize pool with canonical token order
-    pool.version = 1;
-    pool.token_a_mint = token_0;
-    pool.token_b_mint = token_1;
+    // Set initial liquidity state
+    pool.liquidity = 0;
+    pool.current_sqrt_price = initial_sqrt_price;
     
-    // Map vaults to canonical order
-    if token_0 == mint_a {
-        pool.token_a_vault = ctx.accounts.token_a_vault.key();
-        pool.token_b_vault = ctx.accounts.token_b_vault.key();
-    } else {
-        pool.token_a_vault = ctx.accounts.token_b_vault.key();
-        pool.token_b_vault = ctx.accounts.token_a_vault.key();
-    }
+    // Calculate initial tick from sqrt price
+    pool.current_tick = crate::utils::TickMath::get_tick_at_sqrt_ratio(initial_sqrt_price)?;
     
-    // Initialize fee configuration
+    // Initialize fee parameters
     pool.fee_rate = fee_rate;
-    pool.protocol_fee_rate = 2000; // 20% of swap fees go to protocol
+    pool.protocol_fee_rate = ctx.accounts.protocol_state.default_protocol_fee_rate;
+    pool.fee_growth_global_0 = [0u64; 4];
+    pool.fee_growth_global_1 = [0u64; 4];
+    
+    // Calculate tick spacing based on fee rate
     pool.tick_spacing = match fee_rate {
-        1 => 1,      // 0.01% fee = 1 tick spacing
-        5 => 10,     // 0.05% fee = 10 tick spacing  
-        30 => 60,    // 0.3% fee = 60 tick spacing
-        100 => 200,  // 1% fee = 200 tick spacing
+        1 => 1,      // 0.01%
+        5 => 10,     // 0.05%
+        30 => 60,    // 0.30%
+        100 => 200,  // 1.00%
         _ => return Err(PoolError::InvalidFeeRate.into()),
     };
     
-    // Initialize price and liquidity state
-    pool.current_tick = TickMath::get_tick_at_sqrt_ratio(initial_sqrt_price)?;
-    pool.current_sqrt_price = initial_sqrt_price;
-    pool.liquidity = 0;
-    
-    // Initialize empty state
+    // Initialize bitmap (empty - no tick arrays initialized)
     pool.tick_array_bitmap = [0u64; 16];
-    pool.fee_growth_global_0 = [0u64; 4];
-    pool.fee_growth_global_1 = [0u64; 4];
+    
+    // Initialize authority and metadata
+    pool.authority = ctx.accounts.authority.key();
+    pool.creation_timestamp = clock.unix_timestamp;
+    
+    // Initialize timestamps
+    // Initialize volumes
+    pool.total_volume_0 = 0;
+    pool.total_volume_1 = 0;
+    pool.last_update_slot = clock.slot;
+    
+    // Initialize protocol fees
     pool.protocol_fees_0 = 0;
     pool.protocol_fees_1 = 0;
     
-    // Set metadata
-    pool.authority = ctx.accounts.authority.key();
-    pool.creation_timestamp = clock.unix_timestamp;
-    pool.last_update_slot = clock.slot;
-    
-    // Initialize statistics
-    pool.total_volume_0 = 0;
-    pool.total_volume_1 = 0;
-    
-    // Reserved for future use
+    // Initialize padding and reserved space
+    pool._padding2 = [0u8; 6];
     pool._reserved = [0u8; 512];
     
-    emit!(PoolInitialized {
-        pool: ctx.accounts.pool.key(),
-        token_0: pool.token_a_mint,
-        token_1: pool.token_b_mint,
-        fee_rate,
-        tick_spacing: pool.tick_spacing,
-        initial_sqrt_price,
-        initial_tick: pool.current_tick,
-        authority: ctx.accounts.authority.key(),
-        timestamp: clock.unix_timestamp,
-    });
+    // Log pool initialization (copy values from packed struct)
+    let pool_token_a = pool.token_a_mint;
+    let pool_token_b = pool.token_b_mint;
+    let tick_spacing = pool.tick_spacing;
+    let current_tick = pool.current_tick;
     
-    msg!("Pool initialized with canonical token order");
-    msg!("Token 0: {}", token_0);
-    msg!("Token 1: {}", token_1);
-    let current_tick = pool.current_tick; // Copy to avoid packed field reference
-    msg!("Initial price: {} (tick {})", initial_sqrt_price, current_tick);
-    
-    Ok(())
-}
-
-#[event]
-pub struct PoolInitialized {
-    #[index]
-    pub pool: Pubkey,
-    pub token_0: Pubkey,
-    pub token_1: Pubkey,
-    pub fee_rate: u16,
-    pub tick_spacing: i16,
-    pub initial_sqrt_price: u128,
-    pub initial_tick: i32,
-    pub authority: Pubkey,
-    pub timestamp: i64,
-}
-
-/// Validate that a pool can be initialized with the given parameters
-pub fn validate_pool_initialization(
-    token_a: &Pubkey,
-    token_b: &Pubkey,
-    feelssol_mint: &Pubkey,
-    _fee_rate: u16,
-) -> Result<()> {
-    // Ensure different tokens
-    require!(
-        token_a != token_b,
-        PoolError::InvalidTokenPair
-    );
-    
-    // Ensure one token is FeelsSOL
-    require!(
-        token_a == feelssol_mint || token_b == feelssol_mint,
-        PoolError::NotFeelsSOLPair
-    );
-    
-    // Validate fee rate
-    crate::logic::fee::FeeMath::validate_fee_rate(_fee_rate)?;
+    msg!("Pool initialized: {} <-> {}", pool_token_a, pool_token_b);
+    msg!("Fee rate: {} bps, tick spacing: {}", fee_rate, tick_spacing);
+    msg!("Initial sqrt price: {}, tick: {}", initial_sqrt_price, current_tick);
     
     Ok(())
 }

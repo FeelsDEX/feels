@@ -5,6 +5,7 @@
 
 use crate::state::PoolError;
 use crate::utils::TickMath;
+use crate::constant::{TICK_ARRAY_SIZE, MAX_TICK_ARRAYS_PER_SWAP};
 use anchor_lang::prelude::*;
 
 // ============================================================================
@@ -48,12 +49,9 @@ pub fn handler(
     // Generate PDAs for each required tick array
     let mut tick_array_pdas = Vec::new();
     for start_tick_index in tick_arrays {
-        let (pda, bump) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                ctx.accounts.pool.key().as_ref(),
-                &start_tick_index.to_le_bytes(),
-            ],
+        let (pda, bump) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
+            &ctx.accounts.pool.key(),
+            start_tick_index,
             ctx.program_id,
         );
         tick_array_pdas.push(TickArrayPda {
@@ -109,10 +107,8 @@ fn calculate_required_tick_arrays(
     tick_spacing: i16,
     zero_for_one: bool,
 ) -> Result<Vec<i32>> {
-    const TICK_ARRAY_SIZE: i32 = 60; // From TICK_ARRAY_SIZE constant
-    
     let tick_array_start_tick_index = |tick: i32| {
-        let ticks_per_array = TICK_ARRAY_SIZE * tick_spacing as i32;
+        let ticks_per_array = TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
         (tick / ticks_per_array) * ticks_per_array
     };
     
@@ -120,7 +116,7 @@ fn calculate_required_tick_arrays(
     let end_array_index = tick_array_start_tick_index(end_tick);
     
     let mut arrays = Vec::new();
-    let ticks_per_array = TICK_ARRAY_SIZE * tick_spacing as i32;
+    let ticks_per_array = TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
     
     if zero_for_one {
         // Price decreasing, traverse downward
@@ -129,8 +125,16 @@ fn calculate_required_tick_arrays(
             arrays.push(current);
             current -= ticks_per_array;
             
-            // Safety limit to prevent infinite loops
-            if arrays.len() > 20 {
+            // Calculate reasonable limit based on tick range
+            // Max tick range is 887272 * 2 = 1,774,544 ticks
+            // With TICK_ARRAY_SIZE=32 and min tick_spacing=1, max arrays = 55,454
+            // But realistically, with typical tick spacings:
+            // - spacing=1: max ~55k arrays (unrealistic for one swap)
+            // - spacing=10: max ~5.5k arrays
+            // - spacing=60: max ~925 arrays
+            // - spacing=200: max ~277 arrays
+            // A limit of 100 arrays is conservative but allows large swaps
+            if arrays.len() >= MAX_TICK_ARRAYS_PER_SWAP {
                 break;
             }
         }
@@ -141,8 +145,16 @@ fn calculate_required_tick_arrays(
             arrays.push(current);
             current += ticks_per_array;
             
-            // Safety limit to prevent infinite loops
-            if arrays.len() > 20 {
+            // Calculate reasonable limit based on tick range
+            // Max tick range is 887272 * 2 = 1,774,544 ticks
+            // With TICK_ARRAY_SIZE=32 and min tick_spacing=1, max arrays = 55,454
+            // But realistically, with typical tick spacings:
+            // - spacing=1: max ~55k arrays (unrealistic for one swap)
+            // - spacing=10: max ~5.5k arrays
+            // - spacing=60: max ~925 arrays
+            // - spacing=200: max ~277 arrays
+            // A limit of 100 arrays is conservative but allows large swaps
+            if arrays.len() >= MAX_TICK_ARRAYS_PER_SWAP {
                 break;
             }
         }

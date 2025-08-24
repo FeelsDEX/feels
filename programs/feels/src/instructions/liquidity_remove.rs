@@ -7,11 +7,9 @@ use anchor_lang::prelude::*;
 #[allow(deprecated)]
 use anchor_spl::token_2022::{Transfer, transfer};
 use crate::state::{TickArray, PoolError};
-
-// Import TICK_ARRAY_SIZE from constants
-const TICK_ARRAY_SIZE: usize = 32;
-use crate::utils::{SafeMath, LiquiditySafeMath};
-use crate::utils::math_tick;
+use crate::constant::TICK_ARRAY_SIZE;
+use crate::utils::{safe_add_i128, sub_liquidity_delta, add_liquidity_delta, get_amount_0_delta, get_amount_1_delta};
+use crate::logic::event::{LiquidityEvent, LiquidityEventType};
 
 // ============================================================================
 // Handler Functions
@@ -49,11 +47,12 @@ pub fn handler(
     require!(amount_1 >= amount_1_min, PoolError::SlippageExceeded);
     
     // Update position liquidity using safe arithmetic
-    position.liquidity = position.liquidity.safe_sub_liquidity(liquidity_amount as i128)?;
+    position.liquidity = sub_liquidity_delta(position.liquidity, liquidity_amount as i128)?;
     
     // Update tick liquidity if position is in range using safe arithmetic
     if pool.current_tick >= position.tick_lower && pool.current_tick < position.tick_upper {
-        pool.liquidity = pool.liquidity.safe_sub_liquidity(liquidity_amount as i128)?;
+        let current_liquidity = pool.liquidity;
+        pool.liquidity = sub_liquidity_delta(current_liquidity, liquidity_amount as i128)?;
     }
     
     // Update tick states
@@ -92,14 +91,18 @@ pub fn handler(
         pool.tick_array_bitmap = bitmap;
     }
     
-    // Get the canonical token order to derive proper seeds
-    let token_a_key = pool.token_a_mint;
-    let token_b_key = pool.token_b_mint;
-    let pool_fee_rate = pool.fee_rate;
+    // Get pool authority seeds for CPI signing
+    let pool_seeds = crate::utils::CanonicalSeeds::get_pool_seeds(
+        &pool.token_a_mint,
+        &pool.token_b_mint,
+        pool.fee_rate,
+        ctx.bumps.pool,
+    );
     
     // Transfer tokens from pool to user
+    // Note: Transfer logic kept inline for Phase 2 Valence hook integration.
+    // Liquidity operations may need complex multi-step atomic guarantees.
     if amount_0 > 0 {
-        #[allow(deprecated)]
         
         transfer(
             CpiContext::new_with_signer(
@@ -109,20 +112,13 @@ pub fn handler(
                     to: ctx.accounts.token_account_0.to_account_info(),
                     authority: ctx.accounts.pool.to_account_info(),
                 },
-                &[&[
-                    b"pool",
-                    token_a_key.as_ref(),
-                    token_b_key.as_ref(),
-                    &pool_fee_rate.to_le_bytes(),
-                    &[ctx.bumps.pool],
-                ]],
+                &[&pool_seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>()],
             ),
             amount_0,
         )?;
     }
     
     if amount_1 > 0 {
-        #[allow(deprecated)]
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -131,20 +127,15 @@ pub fn handler(
                     to: ctx.accounts.token_account_1.to_account_info(),
                     authority: ctx.accounts.pool.to_account_info(),
                 },
-                &[&[
-                    b"pool",
-                    token_a_key.as_ref(),
-                    token_b_key.as_ref(),
-                    &pool_fee_rate.to_le_bytes(),
-                    &[ctx.bumps.pool],
-                ]],
+                &[&pool_seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>()],
             ),
             amount_1,
         )?;
     }
     
-    // Update pool statistics
-    pool.last_update_slot = Clock::get()?.slot;
+    // Update pool statistics with consistent clock
+    let clock = Clock::get()?;
+    pool.last_update_slot = clock.slot;
     
     // Emit event
     emit!(LiquidityEvent {
@@ -156,7 +147,7 @@ pub fn handler(
         tick_lower: position.tick_lower,
         tick_upper: position.tick_upper,
         event_type: LiquidityEventType::Remove,
-        timestamp: Clock::get()?.unix_timestamp,
+        timestamp: clock.unix_timestamp,
     });
     
     Ok((amount_0, amount_1))
@@ -166,92 +157,36 @@ pub fn handler(
 fn calculate_token_amounts(
     liquidity: u128,
     current_sqrt_price: u128,
-    _tick_lower: i32,
-    _tick_upper: i32,
+    tick_lower: i32,
+    tick_upper: i32,
 ) -> Result<(u64, u64)> {
-    let sqrt_price_lower = math_tick::TickMath::get_sqrt_ratio_at_tick(_tick_lower)?;
-    let sqrt_price_upper = math_tick::TickMath::get_sqrt_ratio_at_tick(_tick_upper)?;
+    use crate::utils::TickMath;
     
-    let (amount_0, amount_1) = if current_sqrt_price < sqrt_price_lower {
+    let sqrt_price_lower = TickMath::get_sqrt_ratio_at_tick(tick_lower)?;
+    let sqrt_price_upper = TickMath::get_sqrt_ratio_at_tick(tick_upper)?;
+    
+    // Calculate amounts using round_down (false) for removing liquidity
+    let (amount_0_u128, amount_1_u128) = if current_sqrt_price < sqrt_price_lower {
         // Current price below range - all in token 0
-        let amount_0 = get_amount_0_delta(
-            sqrt_price_lower,
-            sqrt_price_upper,
-            liquidity,
-            false
-        )?;
-        (amount_0 as u64, 0u64)
+        (get_amount_0_delta(sqrt_price_lower, sqrt_price_upper, liquidity, false)?, 0u128)
     } else if current_sqrt_price >= sqrt_price_upper {
         // Current price above range - all in token 1
-        let amount_1 = get_amount_1_delta(
-            sqrt_price_lower,
-            sqrt_price_upper,
-            liquidity,
-            false
-        )?;
-        (0u64, amount_1 as u64)
+        (0u128, get_amount_1_delta(sqrt_price_lower, sqrt_price_upper, liquidity, false)?)
     } else {
         // Current price in range - both tokens
-        let amount_0 = get_amount_0_delta(
-            current_sqrt_price,
-            sqrt_price_upper,
-            liquidity,
-            false
-        )?;
-        let amount_1 = get_amount_1_delta(
-            sqrt_price_lower,
-            current_sqrt_price,
-            liquidity,
-            false
-        )?;
-        (amount_0 as u64, amount_1 as u64)
+        (
+            get_amount_0_delta(current_sqrt_price, sqrt_price_upper, liquidity, false)?,
+            get_amount_1_delta(sqrt_price_lower, current_sqrt_price, liquidity, false)?
+        )
     };
+    
+    // Convert with overflow checking
+    let amount_0 = amount_0_u128.try_into()
+        .map_err(|_| PoolError::ArithmeticOverflow)?;
+    let amount_1 = amount_1_u128.try_into()
+        .map_err(|_| PoolError::ArithmeticOverflow)?;
     
     Ok((amount_0, amount_1))
-}
-
-/// Calculate amount of token 0 for given liquidity delta
-fn get_amount_0_delta(
-    sqrt_price_a: u128,
-    sqrt_price_b: u128,
-    liquidity: u128,
-    round_up: bool,
-) -> Result<u128> {
-    let (sqrt_price_lower, sqrt_price_upper) = if sqrt_price_a < sqrt_price_b {
-        (sqrt_price_a, sqrt_price_b)
-    } else {
-        (sqrt_price_b, sqrt_price_a)
-    };
-    
-    let numerator = liquidity.checked_mul(sqrt_price_upper.checked_sub(sqrt_price_lower).ok_or(PoolError::MathOverflow)?).ok_or(PoolError::MathOverflow)?;
-    let denominator = sqrt_price_upper.checked_mul(sqrt_price_lower).ok_or(PoolError::MathOverflow)? >> 96;
-    
-    if round_up {
-        Ok(numerator.checked_add(denominator.checked_sub(1).ok_or(PoolError::MathOverflow)?).ok_or(PoolError::MathOverflow)?.checked_div(denominator).ok_or(PoolError::MathOverflow)?)
-    } else {
-        Ok(numerator.checked_div(denominator).ok_or(PoolError::MathOverflow)?)
-    }
-}
-
-/// Calculate amount of token 1 for given liquidity delta
-fn get_amount_1_delta(
-    sqrt_price_a: u128,
-    sqrt_price_b: u128,
-    liquidity: u128,
-    round_up: bool,
-) -> Result<u128> {
-    let (sqrt_price_lower, sqrt_price_upper) = if sqrt_price_a < sqrt_price_b {
-        (sqrt_price_a, sqrt_price_b)
-    } else {
-        (sqrt_price_b, sqrt_price_a)
-    };
-    
-    let delta = sqrt_price_upper.checked_sub(sqrt_price_lower).ok_or(PoolError::MathOverflow)?;
-    if round_up {
-        Ok(liquidity.checked_mul(delta).ok_or(PoolError::MathOverflow)?.checked_add((1u128 << 96).checked_sub(1).ok_or(PoolError::MathOverflow)?).ok_or(PoolError::MathOverflow)? >> 96)
-    } else {
-        Ok(liquidity.checked_mul(delta).ok_or(PoolError::MathOverflow)? >> 96)
-    }
 }
 
 /// Update tick liquidity and fee growth
@@ -269,11 +204,13 @@ fn update_tick(
     let tick = &mut tick_array.ticks[array_index];
     
     // Update liquidity using safe arithmetic
-    tick.liquidity_net = tick.liquidity_net.safe_add(liquidity_delta)?;
+    let current_liquidity_net = tick.liquidity_net;
+    tick.liquidity_net = safe_add_i128(current_liquidity_net, liquidity_delta)?;
+    let current_liquidity_gross = tick.liquidity_gross;
     tick.liquidity_gross = if liquidity_delta > 0 {
-        tick.liquidity_gross.safe_add_liquidity(liquidity_delta)?
+        add_liquidity_delta(current_liquidity_gross, liquidity_delta)?
     } else {
-        tick.liquidity_gross.safe_sub_liquidity(-liquidity_delta)?
+        sub_liquidity_delta(current_liquidity_gross, -liquidity_delta)?
     };
     
     // Update fee growth if tick is initialized
@@ -295,40 +232,4 @@ fn clear_tick_bit(bitmap: &mut [u64; 16], tick: i32) -> Result<()> {
     bitmap[word_pos] &= !(1u64 << bit_pos);
     
     Ok(())
-}
-
-/// Liquidity event types
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub enum LiquidityEventType {
-    Add,
-    Remove,
-}
-
-/// Event emitted when liquidity changes
-#[event]
-pub struct LiquidityEvent {
-    #[index]
-    pub pool: Pubkey,
-    pub position: Pubkey,
-    pub liquidity_delta: i128,
-    pub amount_0: u64,
-    pub amount_1: u64,
-    pub tick_lower: i32,
-    pub tick_upper: i32,
-    pub event_type: LiquidityEventType,
-    pub timestamp: i64,
-}
-
-impl crate::logic::EventBase for LiquidityEvent {
-    fn pool(&self) -> Pubkey {
-        self.pool
-    }
-    
-    fn timestamp(&self) -> i64 {
-        self.timestamp
-    }
-    
-    fn actor(&self) -> Pubkey {
-        self.position
-    }
 }

@@ -4,7 +4,7 @@
 /// Must be called before any pools can be created or other operations performed.
 
 use anchor_lang::prelude::*;
-use crate::utils::constant::MAX_FEE_RATE;
+use crate::utils::MAX_FEE_RATE;
 
 // ============================================================================
 // Handler Functions
@@ -37,11 +37,5 @@ pub fn handler(ctx: Context<crate::InitializeFeels>) -> Result<()> {
     // Clear reserved space
     protocol_state._reserved = [0u8; 128];
     
-    msg!("Feels Protocol initialized with authority: {}", ctx.accounts.authority.key());
-    msg!("Treasury: {}", ctx.accounts.treasury.key());
-    msg!("Max pool fee rate: {} bps", protocol_state.max_pool_fee_rate);
-    
     Ok(())
 }
-
-// Account structure moved to lib.rs

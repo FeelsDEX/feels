@@ -1,16 +1,11 @@
-/// Manages liquidity distribution across price ranges using space-efficient tick arrays.
-/// Groups 60 ticks together to minimize account lookups during swaps. Each tick tracks
-/// liquidity changes and fee accumulation. Zero-copy design optimizes gas usage for
-/// high-frequency operations. Critical for concentrated liquidity AMM performance.
+/// Data structures for tick-based liquidity management in concentrated liquidity AMM.
+/// Defines TickArray and TickArrayRouter accounts with their size calculations and
+/// basic state query methods. Business logic for tick operations is in logic/tick.rs.
+/// Zero-copy design optimizes gas usage for high-frequency operations.
 use anchor_lang::prelude::*;
-use crate::state::{Pool, PoolError};
+use crate::state::Pool;
+use crate::constant::{TICK_ARRAY_SIZE, MAX_ROUTER_ARRAYS};
 
-// ============================================================================
-// Constants (moved from utils to break circular dependency)
-// ============================================================================
-
-pub const TICK_ARRAY_SIZE: usize = 32;
-const _TICK_ARRAY_SIZE_BITS: u32 = 5; // log2(32) - unused for now
 
 // ============================================================================
 // Tick Data Structures
@@ -50,21 +45,38 @@ pub struct TickArray {
 }
 
 impl TickArray {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // pool
-        4 + // start_tick_index
-        (16 + 16 + 32 + 32 + 1 + 7) * TICK_ARRAY_SIZE + // ticks array (104 bytes per tick * 32)
-        1; // initialized_tick_count
-        // Total: 8 + 32 + 4 + (104 * 32) + 1 = 3373 bytes
-
-    // Business logic methods moved to logic/tick_operations.rs
+    // Size constants for each section of the TickArray struct
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const POOL_SIZE: usize = 32;
+    const START_TICK_INDEX_SIZE: usize = 4;
+    const INITIALIZED_TICK_COUNT_SIZE: usize = 1;
+    
+    // Individual Tick struct size breakdown
+    const TICK_LIQUIDITY_NET_SIZE: usize = 16;  // i128
+    const TICK_LIQUIDITY_GROSS_SIZE: usize = 16;  // u128
+    const TICK_FEE_GROWTH_OUTSIDE_0_SIZE: usize = 32;  // [u64; 4]
+    const TICK_FEE_GROWTH_OUTSIDE_1_SIZE: usize = 32;  // [u64; 4]
+    const TICK_INITIALIZED_SIZE: usize = 1;  // u8
+    const TICK_PADDING_SIZE: usize = 7;  // [u8; 7]
+    
+    const SINGLE_TICK_SIZE: usize = Self::TICK_LIQUIDITY_NET_SIZE +
+        Self::TICK_LIQUIDITY_GROSS_SIZE +
+        Self::TICK_FEE_GROWTH_OUTSIDE_0_SIZE +
+        Self::TICK_FEE_GROWTH_OUTSIDE_1_SIZE +
+        Self::TICK_INITIALIZED_SIZE +
+        Self::TICK_PADDING_SIZE;  // Total: 104 bytes per tick
+    
+    const TICKS_ARRAY_SIZE: usize = Self::SINGLE_TICK_SIZE * TICK_ARRAY_SIZE;  // 104 * 32 = 3328 bytes
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::POOL_SIZE +
+        Self::START_TICK_INDEX_SIZE +
+        Self::TICKS_ARRAY_SIZE +
+        Self::INITIALIZED_TICK_COUNT_SIZE;  // Total: 3373 bytes
 }
 // ============================================================================
 // Tick Array Router System
 // ============================================================================
-
-/// Maximum number of tick arrays that can be pre-registered in a router
-pub const MAX_ROUTER_ARRAYS: usize = 8;
 
 /// Tick array router for efficient access without remaining_accounts
 /// This structure enables Valence-compatible operations by pre-registering
@@ -94,14 +106,24 @@ pub struct TickArrayRouter {
 }
 
 impl TickArrayRouter {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // pool
-        32 * MAX_ROUTER_ARRAYS + // tick_arrays
-        4 * MAX_ROUTER_ARRAYS + // start_indices
-        1 + // active_bitmap
-        8 + // last_update_slot
-        32 + // authority
-        64; // reserved
+    // Size constants for each section of the TickArrayRouter struct
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const POOL_SIZE: usize = 32;
+    const TICK_ARRAYS_SIZE: usize = 32 * MAX_ROUTER_ARRAYS;  // 32 * 8 = 256 bytes
+    const START_INDICES_SIZE: usize = 4 * MAX_ROUTER_ARRAYS;  // 4 * 8 = 32 bytes
+    const ACTIVE_BITMAP_SIZE: usize = 1;
+    const LAST_UPDATE_SLOT_SIZE: usize = 8;
+    const AUTHORITY_SIZE: usize = 32;
+    const RESERVED_SIZE: usize = 64;
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::POOL_SIZE +
+        Self::TICK_ARRAYS_SIZE +
+        Self::START_INDICES_SIZE +
+        Self::ACTIVE_BITMAP_SIZE +
+        Self::LAST_UPDATE_SLOT_SIZE +
+        Self::AUTHORITY_SIZE +
+        Self::RESERVED_SIZE;  // Total: 433 bytes
     
     /// Check if a tick array is registered in this router
     pub fn contains_array(&self, start_tick: i32) -> Option<usize> {
@@ -114,73 +136,6 @@ impl TickArrayRouter {
             return false;
         }
         (self.active_bitmap & (1 << index)) != 0
-    }
-    
-    /// Register a new tick array in the router
-    pub fn register_array(
-        &mut self,
-        tick_array: Pubkey,
-        start_tick: i32,
-    ) -> Result<usize> {
-        // Check if already registered
-        if let Some(index) = self.contains_array(start_tick) {
-            return Ok(index);
-        }
-        
-        // Find first available slot
-        for i in 0..MAX_ROUTER_ARRAYS {
-            if !self.is_slot_active(i) {
-                self.tick_arrays[i] = tick_array;
-                self.start_indices[i] = start_tick;
-                self.active_bitmap |= 1 << i;
-                return Ok(i);
-            }
-        }
-        
-        Err(PoolError::TransientUpdatesFull.into())
-    }
-    
-    /// Unregister a tick array from the router
-    pub fn unregister_array(&mut self, start_tick: i32) -> Result<()> {
-        if let Some(index) = self.contains_array(start_tick) {
-            self.tick_arrays[index] = Pubkey::default();
-            self.start_indices[index] = i32::MIN;
-            self.active_bitmap &= !(1 << index);
-            Ok(())
-        } else {
-            Err(PoolError::TickNotFound.into())
-        }
-    }
-    
-    /// Get the optimal set of tick arrays for a price range
-    pub fn get_arrays_for_range(
-        &self,
-        tick_lower: i32,
-        tick_upper: i32,
-        tick_spacing: i16,
-    ) -> Vec<(usize, Pubkey)> {
-        let mut arrays = Vec::new();
-        
-        // Calculate array boundaries
-        let lower_array_start = (tick_lower / (TICK_ARRAY_SIZE as i32 * tick_spacing as i32)) 
-            * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-        let upper_array_start = (tick_upper / (TICK_ARRAY_SIZE as i32 * tick_spacing as i32)) 
-            * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-        
-        // Find all arrays in range
-        for i in 0..MAX_ROUTER_ARRAYS {
-            if !self.is_slot_active(i) {
-                continue;
-            }
-            
-            let start = self.start_indices[i];
-            if start >= lower_array_start && start <= upper_array_start {
-                arrays.push((i, self.tick_arrays[i]));
-            }
-        }
-        
-        arrays.sort_by_key(|(i, _)| self.start_indices[*i]);
-        arrays
     }
 }
 
@@ -209,136 +164,6 @@ impl Default for RouterConfig {
             price_move_threshold: 100, // Update if price moves 100 ticks
         }
     }
-}
-
-/// Initialize a tick array router for a pool
-pub fn initialize_router(
-    ctx: Context<InitializeRouter>,
-    config: RouterConfig,
-) -> Result<()> {
-    let router = &mut ctx.accounts.router;
-    let pool = &ctx.accounts.pool.load()?;
-    
-    router.pool = ctx.accounts.pool.key();
-    router.tick_arrays = [Pubkey::default(); MAX_ROUTER_ARRAYS];
-    router.start_indices = [i32::MIN; MAX_ROUTER_ARRAYS];
-    router.active_bitmap = 0;
-    router.last_update_slot = Clock::get()?.slot;
-    router.authority = ctx.accounts.authority.key();
-    router._reserved = [0; 64];
-    
-    // Pre-load arrays around current price
-    let current_tick = pool.current_tick;
-    let tick_spacing = pool.tick_spacing;
-    let current_array_start = (current_tick / (TICK_ARRAY_SIZE as i32 * tick_spacing as i32)) 
-        * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-    
-    // Register current array and surrounding arrays
-    let arrays_to_load = config.arrays_around_current as i32;
-    for i in -arrays_to_load..=arrays_to_load {
-        let start_tick = current_array_start + i * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-        
-        // Derive tick array PDA
-        let (tick_array_pda, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                ctx.accounts.pool.key().as_ref(),
-                &start_tick.to_le_bytes(),
-            ],
-            ctx.program_id,
-        );
-        
-        // V120 Fix: The PDA derivation above ensures the address is owned by our program
-        // Additional validation happens in TickArrayManager::is_initialized which
-        // checks the pool's tick bitmap to ensure only valid tick arrays are registered
-        
-        // Register if it exists (check bitmap)
-        if crate::logic::tick_array::TickArrayManager::is_initialized(pool, start_tick) {
-            router.register_array(tick_array_pda, start_tick)?;
-        }
-    }
-    
-    Ok(())
-}
-
-/// Update router with new tick arrays based on current price
-pub fn update_router_arrays(
-    ctx: Context<UpdateRouter>,
-) -> Result<()> {
-    let router_key = ctx.accounts.router.key();
-    let router = &mut ctx.accounts.router;
-    let pool = &ctx.accounts.pool.load()?;
-    let clock = Clock::get()?;
-    
-    // V121 Fix: Validate that caller has authority to update router
-    require!(
-        ctx.accounts.authority.key() == router.authority,
-        PoolError::InvalidAuthority
-    );
-    
-    // Only update if enough time has passed
-    require!(
-        clock.slot >= router.last_update_slot + 100, // Min 100 slots between updates
-        PoolError::InvalidOperation
-    );
-    
-    // V135 Fix: Build new bitmap atomically to avoid race condition
-    // Create a temporary copy of the router state
-    let mut new_bitmap = 0u64;
-    let mut new_arrays = [TickArrayEntry::default(); MAX_TICK_ARRAYS];
-    let mut new_count = 0usize;
-    
-    // Re-populate based on current price
-    let current_tick = pool.current_tick;
-    let tick_spacing = pool.tick_spacing;
-    let current_array_start = (current_tick / (TICK_ARRAY_SIZE as i32 * tick_spacing as i32)) 
-        * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-    
-    // Load 3 arrays on each side of current price
-    for i in -3..=3 {
-        let start_tick = current_array_start + i * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
-        
-        // Derive tick array PDA
-        let (tick_array_pda, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                ctx.accounts.pool.key().as_ref(),
-                &start_tick.to_le_bytes(),
-            ],
-            ctx.program_id,
-        );
-        
-        // V120 Fix: The PDA derivation above ensures the address is owned by our program
-        // Additional validation happens in TickArrayManager::is_initialized
-        
-        if crate::logic::tick_array::TickArrayManager::is_initialized(pool, start_tick) {
-            // Add to temporary arrays
-            if new_count < MAX_TICK_ARRAYS {
-                new_arrays[new_count] = TickArrayEntry {
-                    address: tick_array_pda,
-                    start_tick_index: start_tick,
-                };
-                new_bitmap |= 1u64 << new_count;
-                new_count += 1;
-            }
-        }
-    }
-    
-    // Atomically update the router state
-    router.active_bitmap = new_bitmap;
-    router.tick_arrays = new_arrays;
-    
-    router.last_update_slot = clock.slot;
-    
-    emit!(RouterUpdatedEvent {
-        pool: ctx.accounts.pool.key(),
-        router: router_key,
-        arrays_loaded: router.active_bitmap.count_ones() as u8,
-        current_tick: pool.current_tick,
-        timestamp: clock.unix_timestamp,
-    });
-    
-    Ok(())
 }
 
 // ============================================================================
@@ -379,15 +204,4 @@ pub struct UpdateRouter<'info> {
     pub authority: Signer<'info>,
 }
 
-// ============================================================================
-// Events
-// ============================================================================
-
-#[event]
-pub struct RouterUpdatedEvent {
-    pub pool: Pubkey,
-    pub router: Pubkey,
-    pub arrays_loaded: u8,
-    pub current_tick: i32,
-    pub timestamp: i64,
-}
+// RouterUpdatedEvent is now imported from logic::event

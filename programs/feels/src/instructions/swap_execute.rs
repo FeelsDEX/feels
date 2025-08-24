@@ -4,11 +4,11 @@
 /// for indexing. This is the core trading mechanism of the Feels Protocol AMM.
 
 use crate::state::{Pool, ObservationState, Observation, PoolError, TickArray};
-use crate::utils::{SafeMath, TickMath};
+use crate::utils::{TickMath, FeeGrowthMath, MIN_SQRT_PRICE_X96, add_liquidity_delta};
 use crate::logic::swap::SwapRoute;
-use crate::utils::math_liquidity;
-use crate::utils::FeeGrowthMath;
-use crate::logic::LiquidityMath;
+use crate::logic::event::{SwapEvent, CrossTokenSwapEvent};
+use crate::utils;
+use crate::logic::ConcentratedLiquidityMath;
 use anchor_lang::prelude::*;
 #[allow(deprecated)]
 use anchor_spl::token_2022::{Transfer, transfer};
@@ -56,7 +56,9 @@ pub fn handler<'info>(
     
     // Calculate fees using unified fee system
     let fee_breakdown = pool.calculate_swap_fees(amount_in)?;
-    let amount_in_after_fee = amount_in.safe_sub(fee_breakdown.total_fee)?;
+    let amount_in_after_fee = amount_in
+        .checked_sub(fee_breakdown.total_fee)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
     
     swap_state.amount_remaining = amount_in_after_fee;
     swap_state.fee_amount = fee_breakdown.total_fee;
@@ -83,31 +85,44 @@ pub fn handler<'info>(
     
     // Final verification that pool state is synchronized with swap results
     // Note: Pool state should already be synchronized due to updates during the swap loop,
-    // but we ensure consistency here as a safety measure
+    // however we ensure consistency here as a safety measure
     pool.current_sqrt_price = swap_state.sqrt_price;
     pool.current_tick = swap_state.tick;
     pool.liquidity = swap_state.liquidity;
     
     // Accumulate protocol fees using unified fee system
     if fee_breakdown.protocol_fee > 0 {
-        pool.accumulate_protocol_fees(&fee_breakdown, is_token_0_to_1)?;
+        pool.accumulate_protocol_fees_from_breakdown(&fee_breakdown, is_token_0_to_1)?;
     }
     
     // Update volume statistics using safe arithmetic
     if is_token_0_to_1 {
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_in as u128)?;
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        pool.total_volume_0 = current_volume_0
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_1 = current_volume_1
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
     } else {
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_in as u128)?;
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        pool.total_volume_1 = current_volume_1
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_0 = current_volume_0
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
     }
     
     pool.last_update_slot = clock.slot;
     
     // Execute token transfers
+    // Note: Transfer logic kept inline for Phase 2 Valence hook integration.
+    // Swaps will be first to transition to atomic position vault adjustments.
     if is_token_0_to_1 {
         // Transfer token A from user to pool
-        #[allow(deprecated)]
         transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -129,7 +144,6 @@ pub fn handler<'info>(
             &[pool_bump],
         ];
         
-        #[allow(deprecated)]
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -144,7 +158,6 @@ pub fn handler<'info>(
         )?;
     } else {
         // Transfer token B from user to pool
-        #[allow(deprecated)]
         transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -166,7 +179,6 @@ pub fn handler<'info>(
             &[pool_bump],
         ];
         
-        #[allow(deprecated)]
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -201,33 +213,6 @@ pub fn handler<'info>(
     });
     
     Ok(amount_out)
-}
-
-#[event]
-pub struct SwapEvent {
-    #[index]
-    pub pool: Pubkey,
-    pub user: Pubkey,
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub sqrt_price_after: u128,
-    pub tick_after: i32,
-    pub fee: u64,
-    pub timestamp: i64,
-}
-
-impl crate::logic::EventBase for SwapEvent {
-    fn pool(&self) -> Pubkey {
-        self.pool
-    }
-    
-    fn timestamp(&self) -> i64 {
-        self.timestamp
-    }
-    
-    fn actor(&self) -> Pubkey {
-        self.user
-    }
 }
 
 /// Swap state for tracking computation
@@ -269,20 +254,12 @@ fn execute_concentrated_liquidity_swap<'info>(
     zero_for_one: bool,
     remaining_accounts: &'info [AccountInfo<'info>],
 ) -> Result<u64> {
-    // Ensure price limit is within protocol bounds to prevent overflow
-    // For sells (zero_for_one): price decreases, so limit must be above minimum
-    // For buys (!zero_for_one): price increases, so limit must be below maximum
-    let _sqrt_price_start = swap_state.sqrt_price;
-    let sqrt_price_limit_adjusted = if zero_for_one {
-        sqrt_price_limit.max(crate::utils::MIN_SQRT_PRICE_X64)
-    } else {
-        sqrt_price_limit
-    };
+    // Adjust price limit to ensure it's within protocol bounds
+    let sqrt_price_limit_adjusted = adjust_price_limit(sqrt_price_limit, zero_for_one);
 
-    // Main swap loop - iterate through price space until:
-    // 1. All input tokens are consumed (amount_remaining = 0), OR
-    // 2. Price limit is reached (current price = limit price)
-    while swap_state.amount_remaining > 0 && swap_state.sqrt_price != sqrt_price_limit_adjusted {
+    // Main swap loop - iterate through price space
+    while should_continue_swap(swap_state, sqrt_price_limit_adjusted) {
+        // Execute one step of the swap within current tick range
         let step = compute_swap_step(
             swap_state.sqrt_price,
             sqrt_price_limit_adjusted,
@@ -292,58 +269,109 @@ fn execute_concentrated_liquidity_swap<'info>(
             zero_for_one,
         )?;
 
-        // Update swap state with the results of this step
-        // Each step consumes some input and produces some output
-        swap_state.sqrt_price = step.sqrt_price_next;
-        swap_state.amount_remaining = swap_state.amount_remaining.safe_sub(step.amount_in)?;
-        swap_state.amount_calculated = swap_state.amount_calculated.safe_add(step.amount_out)?;
-        swap_state.fee_amount = swap_state.fee_amount.safe_add(step.fee_amount)?;
+        // Apply step results to swap state
+        apply_swap_step(swap_state, &step)?;
 
-        // Update global fee growth to track fees earned by liquidity providers
-        // Fee growth is stored as a Q128.128 fixed-point number for precision
-        // Formula: fee_growth += (fees_collected * 2^128) / active_liquidity
-        if swap_state.liquidity > 0 {
-            let fee_growth_delta = FeeGrowthMath::fee_to_fee_growth(
-                step.fee_amount,
-                swap_state.liquidity
-            )?;
-            
-            if zero_for_one {
-                pool.fee_growth_global_0 = FeeGrowthMath::add_fee_growth(
-                    pool.fee_growth_global_0,
-                    fee_growth_delta,
-                )?;
-            } else {
-                pool.fee_growth_global_1 = FeeGrowthMath::add_fee_growth(
-                    pool.fee_growth_global_1,
-                    fee_growth_delta,
-                )?;
-            }
-        }
+        // Update pool's fee growth tracking
+        update_fee_growth(pool, swap_state.liquidity, step.fee_amount, zero_for_one)?;
 
-        // Check if this step moved the price to a tick boundary
-        // If so, we need to cross the tick and update all state consistently
-        if step.sqrt_price_next == step.sqrt_price_target {
-            // We've hit a tick boundary - cross it and update all related state
-            // This updates liquidity, tick, and price in both swap_state and pool
-            cross_tick(
-                pool,
-                swap_state,
-                step.tick_next,
-                zero_for_one,
-                remaining_accounts,
-            )?;
-        } else {
-            // If we didn't cross a tick, still ensure tick is consistent with price
-            // and update pool state to maintain synchronization
-            swap_state.tick = TickMath::get_tick_at_sqrt_ratio(swap_state.sqrt_price)?;
-            pool.current_tick = swap_state.tick;
-            pool.current_sqrt_price = swap_state.sqrt_price;
-            pool.liquidity = swap_state.liquidity;
-        }
+        // Handle tick crossing if we hit a boundary
+        handle_tick_crossing(
+            pool,
+            swap_state,
+            &step,
+            zero_for_one,
+            remaining_accounts,
+        )?;
     }
 
     Ok(swap_state.amount_calculated)
+}
+
+/// Check if swap should continue based on remaining amount and price limit
+fn should_continue_swap(swap_state: &SwapState, sqrt_price_limit: u128) -> bool {
+    swap_state.amount_remaining > 0 && swap_state.sqrt_price != sqrt_price_limit
+}
+
+/// Adjust price limit to ensure it's within protocol bounds
+fn adjust_price_limit(sqrt_price_limit: u128, zero_for_one: bool) -> u128 {
+    if zero_for_one {
+        // For sells: price decreases, so limit must be above minimum
+        sqrt_price_limit.max(MIN_SQRT_PRICE_X96)
+    } else {
+        // For buys: price increases, limit is already bounded by caller
+        sqrt_price_limit
+    }
+}
+
+/// Apply the results of a swap step to the swap state
+fn apply_swap_step(swap_state: &mut SwapState, step: &SwapStep) -> Result<()> {
+    swap_state.sqrt_price = step.sqrt_price_next;
+    swap_state.amount_remaining = swap_state.amount_remaining
+        .checked_sub(step.amount_in)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
+    swap_state.amount_calculated = swap_state.amount_calculated
+        .checked_add(step.amount_out)
+        .ok_or(PoolError::MathOverflow)?;
+    swap_state.fee_amount = swap_state.fee_amount
+        .checked_add(step.fee_amount)
+        .ok_or(PoolError::MathOverflow)?;
+    Ok(())
+}
+
+/// Update global fee growth for liquidity providers
+fn update_fee_growth(
+    pool: &mut Pool,
+    liquidity: u128,
+    fee_amount: u64,
+    zero_for_one: bool,
+) -> Result<()> {
+    if liquidity == 0 {
+        return Ok(());
+    }
+
+    let fee_growth_delta = FeeGrowthMath::fee_to_fee_growth(fee_amount, liquidity)?;
+    
+    if zero_for_one {
+        pool.fee_growth_global_0 = FeeGrowthMath::add_fee_growth(
+            pool.fee_growth_global_0,
+            fee_growth_delta,
+        )?;
+    } else {
+        pool.fee_growth_global_1 = FeeGrowthMath::add_fee_growth(
+            pool.fee_growth_global_1,
+            fee_growth_delta,
+        )?;
+    }
+    
+    Ok(())
+}
+
+/// Handle tick crossing or update pool state if no crossing occurred
+fn handle_tick_crossing<'info>(
+    pool: &mut Pool,
+    swap_state: &mut SwapState,
+    step: &SwapStep,
+    zero_for_one: bool,
+    remaining_accounts: &'info [AccountInfo<'info>],
+) -> Result<()> {
+    if step.sqrt_price_next == step.sqrt_price_target {
+        // We've hit a tick boundary - cross it
+        cross_tick(
+            pool,
+            swap_state,
+            step.tick_next,
+            zero_for_one,
+            remaining_accounts,
+        )?;
+    } else {
+        // No tick crossed - just sync pool state with swap state
+        swap_state.tick = TickMath::get_tick_at_sqrt_ratio(swap_state.sqrt_price)?;
+        pool.current_tick = swap_state.tick;
+        pool.current_sqrt_price = swap_state.sqrt_price;
+        pool.liquidity = swap_state.liquidity;
+    }
+    Ok(())
 }
 
 /// Compute a single swap step within the current tick range
@@ -381,14 +409,14 @@ fn compute_swap_step(
     // Calculate the furthest price we can move given available liquidity
     // This may be limited by the amount remaining or by reaching a tick
     let sqrt_price_next = if exact_in {
-        LiquidityMath::get_next_sqrt_price_from_input(
+        ConcentratedLiquidityMath::get_next_sqrt_price_from_input(
             sqrt_price_current,
             liquidity,
             amount_remaining,
             zero_for_one,
         )?
     } else {
-        LiquidityMath::get_next_sqrt_price_from_output(
+        ConcentratedLiquidityMath::get_next_sqrt_price_from_output(
             sqrt_price_current,
             liquidity,
             amount_remaining,
@@ -404,22 +432,28 @@ fn compute_swap_step(
     };
 
     // Calculate amounts based on price movement
-    let amount_in = if zero_for_one {
-        math_liquidity::get_amount_0_delta(sqrt_price_next_bounded, sqrt_price_current, liquidity, true)?
+    let amount_in_u128 = if zero_for_one {
+        utils::get_amount_0_delta(sqrt_price_next_bounded, sqrt_price_current, liquidity, true)?
     } else {
-        math_liquidity::get_amount_1_delta(sqrt_price_current, sqrt_price_next_bounded, liquidity, true)?
+        utils::get_amount_1_delta(sqrt_price_current, sqrt_price_next_bounded, liquidity, true)?
     };
+    let amount_in = amount_in_u128.try_into()
+        .map_err(|_| PoolError::ArithmeticOverflow)?;
 
-    let amount_out = if zero_for_one {
-        math_liquidity::get_amount_1_delta(sqrt_price_next_bounded, sqrt_price_current, liquidity, false)?
+    let amount_out_u128 = if zero_for_one {
+        utils::get_amount_1_delta(sqrt_price_next_bounded, sqrt_price_current, liquidity, false)?
     } else {
-        math_liquidity::get_amount_0_delta(sqrt_price_current, sqrt_price_next_bounded, liquidity, false)?
+        utils::get_amount_0_delta(sqrt_price_current, sqrt_price_next_bounded, liquidity, false)?
     };
+    let amount_out = amount_out_u128.try_into()
+        .map_err(|_| PoolError::ArithmeticOverflow)?;
 
     // Calculate fee based on the actual amount consumed in this step
     // The fee should always be calculated on amount_in (the step amount), 
     // never on amount_remaining (the total remaining for the entire swap)
-    let fee_amount = ((amount_in as u128 * fee_rate as u128) / 10000) as u64;
+    let fee_amount_u128 = (amount_in as u128 * fee_rate as u128) / 10000;
+    let fee_amount = fee_amount_u128.try_into()
+        .map_err(|_| PoolError::ArithmeticOverflow)?;
     
     // Find the next initialized tick
     let tick_next = if sqrt_price_next_bounded == sqrt_price_target {
@@ -449,7 +483,7 @@ fn cross_tick<'info>(
     zero_for_one: bool,
     remaining_accounts: &'info [AccountInfo<'info>],
 ) -> Result<()> {
-    // V128 Fix: Add validation before casting accounts
+    // Add validation before casting accounts
     // Find the tick array containing this tick
     for account_info in remaining_accounts.iter() {
         // Validate account is owned by the program before casting
@@ -481,9 +515,9 @@ fn cross_tick<'info>(
                 
                 // Update active liquidity in swap state
                 let new_liquidity = if liquidity_delta >= 0 {
-                    swap_state.liquidity.safe_add(liquidity_delta as u128)?
+                    add_liquidity_delta(swap_state.liquidity, liquidity_delta)?
                 } else {
-                    swap_state.liquidity.safe_sub((-liquidity_delta) as u128)?
+                    add_liquidity_delta(swap_state.liquidity, liquidity_delta)?
                 };
                 
                 swap_state.liquidity = new_liquidity;
@@ -579,7 +613,9 @@ fn update_oracle_observation(
 }
 
 /// Execute a cross-token swap via FeelsSOL routing
-/// For tokens that don't directly pair with FeelsSOL, route through two pools
+/// Since all pools pair with FeelsSOL as the universal base pair, this handles:
+/// 1. External LST <-> Feels token swaps (e.g., JitoSOL -> FeelsSOL -> PEPE)
+/// 2. Feels token <-> Feels token swaps (e.g., PEPE -> FeelsSOL -> DOGE)
 pub fn execute_routed_swap_handler<'info>(
     ctx: Context<'_, '_, 'info, 'info, crate::ExecuteRoutedSwap<'info>>,
     amount_in: u64,
@@ -648,7 +684,9 @@ fn execute_single_hop_swap(
     
     // Calculate fees using unified fee system
     let fee_breakdown = pool.calculate_swap_fees(amount_in)?;
-    let amount_in_after_fee = amount_in.safe_sub(fee_breakdown.total_fee)?;
+    let amount_in_after_fee = amount_in
+        .checked_sub(fee_breakdown.total_fee)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
     
     swap_state.amount_remaining = amount_in_after_fee;
     swap_state.fee_amount = fee_breakdown.total_fee;
@@ -671,16 +709,28 @@ fn execute_single_hop_swap(
     
     // Accumulate protocol fees
     if fee_breakdown.protocol_fee > 0 {
-        pool.accumulate_protocol_fees(&fee_breakdown, zero_for_one)?;
+        pool.accumulate_protocol_fees_from_breakdown(&fee_breakdown, zero_for_one)?;
     }
     
     // Update volume statistics using safe arithmetic
     if zero_for_one {
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_in as u128)?;
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        pool.total_volume_0 = current_volume_0
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_1 = current_volume_1
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
     } else {
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_in as u128)?;
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        pool.total_volume_1 = current_volume_1
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_0 = current_volume_0
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
     }
     
     // Execute token transfers for single hop swap
@@ -781,6 +831,7 @@ fn execute_first_hop_concentrated(
     sqrt_price_limit: u128,
 ) -> Result<u64> {
     let mut pool = ctx.accounts.pool_1.load_mut()?;
+    let clock = Clock::get()?;
     
     // Determine swap direction: Token A -> FeelsSOL
     let token_in_mint = ctx.accounts.token_in_mint.key();
@@ -798,7 +849,9 @@ fn execute_first_hop_concentrated(
     
     // Calculate fees and execute swap
     let fee_breakdown = pool.calculate_swap_fees(amount_in)?;
-    let amount_in_after_fee = amount_in.safe_sub(fee_breakdown.total_fee)?;
+    let amount_in_after_fee = amount_in
+        .checked_sub(fee_breakdown.total_fee)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
     swap_state.amount_remaining = amount_in_after_fee;
     
     let amount_out = execute_concentrated_liquidity_swap(
@@ -810,18 +863,34 @@ fn execute_first_hop_concentrated(
     )?;
     
     // Update pool state
-    pool.last_update_slot = Clock::get()?.slot;
+    pool.last_update_slot = clock.slot;
     if fee_breakdown.protocol_fee > 0 {
-        pool.accumulate_protocol_fees(&fee_breakdown, zero_for_one)?;
+        pool.accumulate_protocol_fees_from_breakdown(&fee_breakdown, zero_for_one)?;
     }
     
     // Update volume statistics
     if zero_for_one {
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_in as u128)?;
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        let new_volume_0 = current_volume_0
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let new_volume_1 = current_volume_1
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_0 = new_volume_0;
+        pool.total_volume_1 = new_volume_1;
     } else {
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_in as u128)?;
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        let new_volume_1 = current_volume_1
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let new_volume_0 = current_volume_0
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_1 = new_volume_1;
+        pool.total_volume_0 = new_volume_0;
     }
     
     Ok(amount_out)
@@ -834,6 +903,7 @@ fn execute_second_hop_concentrated(
     sqrt_price_limit: u128,
 ) -> Result<u64> {
     let mut pool = ctx.accounts.pool_2.load_mut()?;
+    let clock = Clock::get()?;
     
     // For second hop, FeelsSOL is always the input token
     let feelssol_mint = ctx.accounts.feelssol.feels_mint;
@@ -851,7 +921,9 @@ fn execute_second_hop_concentrated(
     
     // Calculate fees and execute swap
     let fee_breakdown = pool.calculate_swap_fees(amount_in)?;
-    let amount_in_after_fee = amount_in.safe_sub(fee_breakdown.total_fee)?;
+    let amount_in_after_fee = amount_in
+        .checked_sub(fee_breakdown.total_fee)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
     swap_state.amount_remaining = amount_in_after_fee;
     
     let amount_out = execute_concentrated_liquidity_swap(
@@ -863,62 +935,40 @@ fn execute_second_hop_concentrated(
     )?;
     
     // Update pool state
-    pool.last_update_slot = Clock::get()?.slot;
+    pool.last_update_slot = clock.slot;
     if fee_breakdown.protocol_fee > 0 {
-        pool.accumulate_protocol_fees(&fee_breakdown, zero_for_one)?;
+        pool.accumulate_protocol_fees_from_breakdown(&fee_breakdown, zero_for_one)?;
     }
     
     // Update volume statistics
     if zero_for_one {
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_in as u128)?;
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        let new_volume_0 = current_volume_0
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let new_volume_1 = current_volume_1
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_0 = new_volume_0;
+        pool.total_volume_1 = new_volume_1;
     } else {
-        pool.total_volume_1 = pool.total_volume_1.safe_add(amount_in as u128)?;
-        pool.total_volume_0 = pool.total_volume_0.safe_add(amount_out as u128)?;
+        let current_volume_0 = pool.total_volume_0;
+        let current_volume_1 = pool.total_volume_1;
+        let new_volume_1 = current_volume_1
+            .checked_add(amount_in as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        let new_volume_0 = current_volume_0
+            .checked_add(amount_out as u128)
+            .ok_or(PoolError::MathOverflow)?;
+        pool.total_volume_1 = new_volume_1;
+        pool.total_volume_0 = new_volume_0;
     }
     
     Ok(amount_out)
 }
 
-#[event]
-pub struct CrossTokenSwapEvent {
-    #[index]
-    pub user: Pubkey,
-    pub token_in: Pubkey,
-    pub token_out: Pubkey,
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub route: SwapRoute,
-    pub intermediate_amount: Option<u64>, // For two-hop swaps
-    pub sqrt_price_after_hop1: Option<u128>, // Price after first hop
-    pub sqrt_price_after_final: u128, // Final price state
-    pub tick_after_hop1: Option<i32>, // Tick after first hop
-    pub tick_after_final: i32, // Final tick state
-    pub total_fees_paid: u64, // Sum of all fees across hops
-    pub protocol_fees_collected: u64, // Protocol fees from all hops
-    pub gas_used_estimate: u64, // Estimated compute units used
-    pub timestamp: i64,
-}
-
-impl crate::logic::EventBase for CrossTokenSwapEvent {
-    fn pool(&self) -> Pubkey {
-        match self.route {
-            SwapRoute::Direct(pool) => pool,
-            SwapRoute::TwoHop(pool1, _pool2) => pool1, // Return first pool
-        }
-    }
-    
-    fn timestamp(&self) -> i64 {
-        self.timestamp
-    }
-    
-    fn actor(&self) -> Pubkey {
-        self.user
-    }
-}
-
 /// Execute token transfers for single hop routed swap
-#[allow(deprecated)]
 fn execute_single_hop_transfers(
     ctx: &Context<crate::ExecuteRoutedSwap>,
     amount_in: u64,
@@ -939,7 +989,6 @@ fn execute_single_hop_transfers(
     );
     
     // Transfer input token from user to pool
-    #[allow(deprecated)]
     transfer(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -978,7 +1027,6 @@ fn execute_single_hop_transfers(
 }
 
 /// Execute token transfers for two hop routed swap
-#[allow(deprecated)]
 fn execute_two_hop_transfers(
     ctx: &Context<crate::ExecuteRoutedSwap>,
     amount_in: u64,

@@ -43,7 +43,7 @@ anchor build
 cargo test
 
 # Integration tests
-cargo test --test integration_phase1
+cargo test integration
 ```
 
 ## Program Addresses

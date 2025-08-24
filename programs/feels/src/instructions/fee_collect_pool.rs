@@ -7,7 +7,7 @@ use anchor_lang::prelude::*;
 #[allow(deprecated)]
 use anchor_spl::token_2022::{Transfer, transfer};
 use crate::state::PoolError;
-use crate::utils::SafeMath;
+use crate::logic::event::FeeCollectionEvent;
 
 // ============================================================================
 // Handler Functions
@@ -45,19 +45,27 @@ pub fn handler(
     let amount_0 = amount_0_requested.min(position.tokens_owed_0);
     let amount_1 = amount_1_requested.min(position.tokens_owed_1);
     
-    // Update position state using safe arithmetic
-    position.tokens_owed_0 = position.tokens_owed_0.safe_sub(amount_0)?;
-    position.tokens_owed_1 = position.tokens_owed_1.safe_sub(amount_1)?;
+    // Update position state using native checked arithmetic
+    position.tokens_owed_0 = position.tokens_owed_0
+        .checked_sub(amount_0)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
+    position.tokens_owed_1 = position.tokens_owed_1
+        .checked_sub(amount_1)
+        .ok_or(PoolError::ArithmeticUnderflow)?;
     
-    // V-NEW-13 Fix: Get pool PDA seeds for authority
+    // Get pool PDA seeds for authority
     let pool_data = ctx.accounts.pool.load()?;
-    let token_a_key = pool_data.token_a_mint;
-    let token_b_key = pool_data.token_b_mint;
-    let pool_fee_rate = pool_data.fee_rate;
+    let pool_seeds = crate::utils::CanonicalSeeds::get_pool_seeds(
+        &pool_data.token_a_mint,
+        &pool_data.token_b_mint,
+        pool_data.fee_rate,
+        ctx.bumps.pool,
+    );
 
     // Transfer fees to user
+    // Note: Transfer logic kept inline for Phase 2 Valence hook integration.
+    // Fee collection may have different atomic requirements than swaps/liquidity.
     if amount_0 > 0 {
-        #[allow(deprecated)]
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -66,20 +74,13 @@ pub fn handler(
                     to: ctx.accounts.token_account_0.to_account_info(),
                     authority: ctx.accounts.pool.to_account_info(),
                 },
-                &[&[
-                    b"pool",
-                    token_a_key.as_ref(),
-                    token_b_key.as_ref(),
-                    &pool_fee_rate.to_le_bytes(),
-                    &[ctx.bumps.pool],
-                ]],
+                &[&pool_seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>()],
             ),
             amount_0,
         )?;
     }
     
     if amount_1 > 0 {
-        #[allow(deprecated)]
         transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -88,13 +89,7 @@ pub fn handler(
                     to: ctx.accounts.token_account_1.to_account_info(),
                     authority: ctx.accounts.pool.to_account_info(),
                 },
-                &[&[
-                    b"pool",
-                    token_a_key.as_ref(),
-                    token_b_key.as_ref(),
-                    &pool_fee_rate.to_le_bytes(),
-                    &[ctx.bumps.pool],
-                ]],
+                &[&pool_seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>()],
             ),
             amount_1,
         )?;
@@ -104,44 +99,10 @@ pub fn handler(
     emit!(FeeCollectionEvent {
         pool: ctx.accounts.pool.key(),
         position: ctx.accounts.position.key(),
-        recipient: ctx.accounts.owner.key(),
         amount_0,
         amount_1,
         timestamp: Clock::get()?.unix_timestamp,
     });
     
-    msg!("Fee collection stub: collected {} token0, {} token1", amount_0, amount_1);
-    msg!("TODO: Implement full fee calculation based on fee growth");
-    
     Ok((amount_0, amount_1))
-}
-
-// ============================================================================
-// Events
-// ============================================================================
-
-/// Event emitted when fees are collected
-#[event]
-pub struct FeeCollectionEvent {
-    #[index]
-    pub pool: Pubkey,
-    pub position: Pubkey,
-    pub recipient: Pubkey,
-    pub amount_0: u64,
-    pub amount_1: u64,
-    pub timestamp: i64,
-}
-
-impl crate::logic::EventBase for FeeCollectionEvent {
-    fn pool(&self) -> Pubkey {
-        self.pool
-    }
-    
-    fn timestamp(&self) -> i64 {
-        self.timestamp
-    }
-    
-    fn actor(&self) -> Pubkey {
-        self.recipient
-    }
 }

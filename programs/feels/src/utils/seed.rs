@@ -1,7 +1,8 @@
 /// Ensures deterministic PDA derivation by enforcing canonical token ordering.
 /// Prevents duplicate pools by sorting token mints consistently regardless of
-/// user input order. Critical for maintaining pool uniqueness and enabling
-/// efficient pool discovery without requiring additional lookup tables.
+/// user input order. Now includes tick array PDA derivation helpers to centralize
+/// all PDA logic. Critical for maintaining pool uniqueness and enabling efficient
+/// pool and tick array discovery without requiring additional lookup tables.
 
 use anchor_lang::prelude::*;
 use std::cmp::Ordering;
@@ -74,6 +75,37 @@ impl CanonicalSeeds {
     /// Check if token pair needs to be swapped for canonical ordering
     pub fn needs_swap(mint_a: &Pubkey, mint_b: &Pubkey) -> bool {
         mint_a.as_ref() > mint_b.as_ref()
+    }
+    
+    /// Derive tick array PDA for a given pool and start tick
+    /// This helper centralizes the tick array PDA derivation logic
+    pub fn derive_tick_array_pda(
+        pool: &Pubkey,
+        start_tick: i32,
+        program_id: &Pubkey,
+    ) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[
+                b"tick_array",
+                pool.as_ref(),
+                &start_tick.to_le_bytes(),
+            ],
+            program_id,
+        )
+    }
+    
+    /// Get tick array seeds for PDA signing
+    pub fn get_tick_array_seeds(
+        pool: &Pubkey,
+        start_tick: i32,
+        bump: u8,
+    ) -> Vec<Vec<u8>> {
+        vec![
+            b"tick_array".to_vec(),
+            pool.as_ref().to_vec(),
+            start_tick.to_le_bytes().to_vec(),
+            vec![bump],
+        ]
     }
 }
 

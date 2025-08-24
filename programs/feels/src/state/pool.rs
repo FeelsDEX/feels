@@ -1,17 +1,11 @@
 /// Core pool state account implementing concentrated liquidity with Uniswap V3-style mechanics.
 /// Stores price, liquidity, fee data, and tick bitmap for efficient position management.
-/// Designed with 512 bytes of reserved space for future Phase 2/3 upgrades including
-/// leverage parameters, enhanced oracles, and three-dimensional trading capabilities.
+/// Contains data structures and state mutation methods including PDA derivation,
+/// bitmap operations, and fee growth updates. Designed with 512 bytes of reserved space
+/// for future Phase 2/3 upgrades.
 use anchor_lang::prelude::*;
-
-// ============================================================================
-// Phase 2 Constants (Three-Dimensional System)
-// ============================================================================
-
-// Three-dimensional system constants (Phase 2 preparation)
-pub const RATE_BITS: u8 = 20;
-pub const DURATION_BITS: u8 = 6;
-pub const LEVERAGE_BITS: u8 = 6;
+use crate::state::PoolError;
+use crate::constant::{TICK_ARRAY_SIZE, RATE_BITS, DURATION_BITS, LEVERAGE_BITS};
 
 // ============================================================================
 // Phase 2+ Types (Three-Dimensional System)
@@ -55,7 +49,7 @@ pub struct Tick3D {
 impl Tick3D {
     /// Encode 3D tick into single i32 for efficient storage
     pub fn encode(&self) -> Result<i32> {
-        // V119 Fix: Add overflow checks for bit shifting operations
+        // Add overflow checks for bit shifting operations
         // Validate that values fit within their allocated bit ranges
         
         // Rate uses primary bits (highest precision needed)
@@ -85,13 +79,26 @@ impl Tick3D {
         Ok(result)
     }
     
-    /// Decode i32 back into 3D tick structure
-    pub fn decode(encoded: i32) -> Self {
+    /// Decode i32 back into 3D tick structure with validation
+    pub fn decode(encoded: i32) -> Result<Self> {
         let rate_tick = encoded & ((1 << RATE_BITS) - 1);
         let duration_tick = ((encoded >> RATE_BITS) & ((1 << DURATION_BITS) - 1)) as i16;
         let leverage_tick = ((encoded >> (RATE_BITS + DURATION_BITS)) & ((1 << LEVERAGE_BITS) - 1)) as i16;
         
-        Self { rate_tick, duration_tick, leverage_tick }
+        // Validate decoded values are within expected ranges
+        if rate_tick.abs() >= (1 << RATE_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
+        
+        if duration_tick.abs() >= (1 << DURATION_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
+        
+        if leverage_tick.abs() >= (1 << LEVERAGE_BITS) {
+            return Err(PoolError::InvalidTickRange.into());
+        }
+        
+        Ok(Self { rate_tick, duration_tick, leverage_tick })
     }
 }
 
@@ -148,18 +155,125 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub const SIZE: usize = 8 +         // Discriminator
-        1 +                             // version
-        32 * 4 +                        // token configuration (128)
-        2 + 2 +                         // fee rates (4)
-        4 + 16 + 16 +                   // price and liquidity (36)
-        128 + 2 +                       // tick bitmap (130)
-        32 + 32 + 8 + 8 +               // fee tracking (80)
-        32 + 8 + 8 +                    // metadata (48)
-        16 + 16 +                       // statistics (32)
-        512;                            // reserved
-        // Total: 8 + 1 + 128 + 4 + 36 + 130 + 80 + 48 + 32 + 512 = 979
-        // Business logic methods moved to logic/pool_operations.rs
+    // Size constants for each section of the Pool struct
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const VERSION_SIZE: usize = 1 + 7;  // version + padding
+    const TOKEN_CONFIG_SIZE: usize = 32 * 4;  // 4 pubkeys (token_a_mint, token_b_mint, token_a_vault, token_b_vault)
+    const FEE_RATES_SIZE: usize = 2 + 2;  // fee_rate + protocol_fee_rate
+    const PRICE_LIQUIDITY_SIZE: usize = 4 + 16 + 16;  // current_tick + current_sqrt_price + liquidity
+    const TICK_BITMAP_SIZE: usize = 128 + 2 + 6;  // tick_array_bitmap + tick_spacing + padding
+    const FEE_TRACKING_SIZE: usize = 32 + 32 + 8 + 8;  // fee_growth_global_0 + fee_growth_global_1 + protocol_fees
+    const METADATA_SIZE: usize = 32 + 8 + 8;  // authority + creation_timestamp + last_update_slot
+    const STATISTICS_SIZE: usize = 16 + 16;  // total_volume_0 + total_volume_1
+    const RESERVED_SIZE: usize = 512;  // reserved for future upgrades
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::VERSION_SIZE +
+        Self::TOKEN_CONFIG_SIZE +
+        Self::FEE_RATES_SIZE +
+        Self::PRICE_LIQUIDITY_SIZE +
+        Self::TICK_BITMAP_SIZE +
+        Self::FEE_TRACKING_SIZE +
+        Self::METADATA_SIZE +
+        Self::STATISTICS_SIZE +
+        Self::RESERVED_SIZE;  // Total: 979 bytes
+        
+    // ------------------------------------------------------------------------
+    // PDA Derivation
+    // ------------------------------------------------------------------------
+    
+    /// Calculate the pool's seeds for PDA derivation
+    pub fn seeds(token_a: &Pubkey, token_b: &Pubkey, fee_rate: u16) -> Vec<Vec<u8>> {
+        // Use canonical ordering to ensure consistency
+        let (token_0, token_1) = crate::utils::CanonicalSeeds::sort_token_mints(token_a, token_b);
+        vec![
+            b"pool".to_vec(),
+            token_0.to_bytes().to_vec(),
+            token_1.to_bytes().to_vec(),
+            fee_rate.to_le_bytes().to_vec(),
+        ]
+    }
+    
+    /// Calculate the pool's seeds for PDA derivation with bump
+    pub fn seeds_with_bump(token_a: &Pubkey, token_b: &Pubkey, fee_rate: u16, bump: u8) -> Vec<Vec<u8>> {
+        // Delegate to the canonical implementation
+        crate::utils::CanonicalSeeds::get_pool_seeds(token_a, token_b, fee_rate, bump)
+    }
+    
+    // ------------------------------------------------------------------------
+    // State Mutations
+    // ------------------------------------------------------------------------
+    
+    /// Update the tick array bitmap when initializing a new tick array
+    pub fn set_tick_array_initialized(&mut self, start_tick: i32) {
+        let tick_array_index = start_tick / TICK_ARRAY_SIZE as i32;
+        let word_index = (tick_array_index / 64) as usize;
+        let bit_index = (tick_array_index % 64) as u32;
+
+        if word_index < 16 {
+            self.tick_array_bitmap[word_index] |= 1u64 << bit_index;
+        }
+    }
+    
+    /// Update global fee growth using production-grade big integer arithmetic
+    /// 
+    /// This is a critical operation for concentrated liquidity fee distribution.
+    /// Uses the new robust U256 implementation for overflow-safe calculations.
+    pub fn update_fee_growth(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
+        if self.liquidity == 0 {
+            return Ok(()); // No liquidity to distribute fees to
+        }
+
+        // Calculate fee growth using the new high-precision implementation
+        let fee_growth_delta = crate::utils::calculate_fee_growth_delta(fee_amount, self.liquidity)?;
+
+        if is_token_a {
+            // Use FeeGrowthMath to handle fee growth addition
+            self.fee_growth_global_0 = crate::utils::FeeGrowthMath::add_fee_growth(
+                self.fee_growth_global_0,
+                fee_growth_delta
+            )?;
+        } else {
+            // Use FeeGrowthMath to handle fee growth addition
+            self.fee_growth_global_1 = crate::utils::FeeGrowthMath::add_fee_growth(
+                self.fee_growth_global_1,
+                fee_growth_delta
+            )?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Update protocol fees after a swap
+    pub fn accumulate_protocol_fees(&mut self, protocol_fee: u64, zero_for_one: bool) -> Result<()> {
+        if zero_for_one {
+            self.protocol_fees_0 = self.protocol_fees_0
+                .checked_add(protocol_fee)
+                .ok_or(PoolError::MathOverflow)?;
+        } else {
+            self.protocol_fees_1 = self.protocol_fees_1
+                .checked_add(protocol_fee)
+                .ok_or(PoolError::MathOverflow)?;
+        }
+        Ok(())
+    }
+    
+    // ------------------------------------------------------------------------
+    // State Queries
+    // ------------------------------------------------------------------------
+    
+    /// Check if a tick array is initialized
+    pub fn is_tick_array_initialized(&self, start_tick: i32) -> bool {
+        let tick_array_index = start_tick / TICK_ARRAY_SIZE as i32;
+        let word_index = (tick_array_index / 64) as usize;
+        let bit_index = (tick_array_index % 64) as u32;
+
+        if word_index >= 16 {
+            return false;
+        }
+
+        (self.tick_array_bitmap[word_index] & (1u64 << bit_index)) != 0
+    }
 }
 
 // ============================================================================
@@ -228,7 +342,6 @@ pub struct Observation {
     pub cumulative_tick: i128,
     pub initialized: bool,
 }
-
 
 // ============================================================================
 // Transient Update System

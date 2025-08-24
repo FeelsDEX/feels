@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document defines the strategy for managing TickArray accounts in the Feels Protocol concentrated liquidity AMM. Each TickArray stores 32 consecutive ticks (changed from 60 to 32 for better memory alignment) and serves as the fundamental unit for organizing the price space.
+This document defines the strategy for managing TickArray accounts in the Feels Protocol concentrated liquidity AMM. Each TickArray stores 32 consecutive ticks (for memory alignment) and serves as the fundamental unit for organizing the price space.
 
 ## 1. PDA Derivation Strategy
 
@@ -17,7 +17,7 @@ seeds = [
 
 ### Key Properties
 - Start tick index MUST be divisible by (32 * tick_spacing)
-- Each pool can have up to ~55,000 tick arrays (covering full tick range -887272 to +887272)
+- Each pool can have up to ~27,727 tick arrays (covering implementation range -443636 to +443636)
 - PDAs are deterministic and can be pre-calculated off-chain
 - Tick arrays contain 32 consecutive ticks each for efficient memory usage and alignment
 - Total size: 3373 bytes per tick array

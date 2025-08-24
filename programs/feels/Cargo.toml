@@ -2,6 +2,12 @@
 name = "feels"
 version = "0.1.0"
 edition = "2021"
+description = "Concentrated liquidity AMM protocol for Solana"
+license = "MIT"
+repository = "https://github.com/timewave/feels-solana"
+readme = "../README.md"
+keywords = ["solana", "amm", "defi", "liquidity", "uniswap"]
+categories = ["cryptography::cryptocurrencies", "finance"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -28,10 +34,15 @@ spl-token = { workspace = true }
 spl-token-2022 = { workspace = true }
 spl-token-metadata-interface = { workspace = true }
 spl-associated-token-account = { workspace = true }
+spl-math = { version = "0.3.0" }
 ruint = { version = "1.12.0", default-features = false }
 
 [dev-dependencies]
 getrandom = { version = "0.2.16", features = ["custom"] }
+# Integration test dependencies disabled due to yanked solana_rbpf
+# solana-program-test = { workspace = true }
+# solana-sdk = { workspace = true }
+# tokio = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)', 'cfg(target_os, values("solana"))'] }

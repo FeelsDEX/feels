@@ -33,61 +33,21 @@ pub struct TickPositionMetadata {
 }
 
 impl TickPositionMetadata {
-    pub const SIZE: usize = 8 + // discriminator
-        32 * 3 +                // pool, tick_position_mint, owner
-        4 * 2 +                 // tick_lower, tick_upper
-        16 +                    // liquidity
-        32 * 2 +                // fee_growth_inside_last
-        8 * 2 +                 // tokens_owed
-        64;                     // reserved
+    // Size breakdown for clarity and maintainability
+    const DISCRIMINATOR_SIZE: usize = 8;
+    const IDENTIFICATION_SIZE: usize = 32 * 3;  // pool, tick_position_mint, owner
+    const RANGE_SIZE: usize = 4 * 2;  // tick_lower, tick_upper
+    const LIQUIDITY_SIZE: usize = 16;  // liquidity (u128)
+    const FEE_TRACKING_SIZE: usize = 32 * 2 + 8 * 2;  // fee_growth_inside_last + tokens_owed
+    const RESERVED_SIZE: usize = 64;  // reserved for future upgrades
+    
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
+        Self::IDENTIFICATION_SIZE +
+        Self::RANGE_SIZE +
+        Self::LIQUIDITY_SIZE +
+        Self::FEE_TRACKING_SIZE +
+        Self::RESERVED_SIZE;  // Total: 246 bytes
 }
 
-// ============================================================================
-// Trading Parameter Types
-// ============================================================================
-
-/// Swap parameters for executing trades
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct SwapParams {
-    pub amount_in: u64,
-    pub amount_out_minimum: u64,
-    pub sqrt_price_limit: u128,
-    pub is_token_0_to_1: bool, // Updated to use 0/1 naming
-}
-
-/// Results from a swap operation
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct SwapResult {
-    pub amount_out: u64,
-    pub fee_amount: u64,
-    pub new_sqrt_price: u128,
-    pub new_tick: i32,
-    pub new_liquidity: u128,
-}
-
-// ============================================================================
-// Event and Hook Types
-// ============================================================================
-
-/// Hook data for event emission
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct HookData {
-    pub pre_swap_price: u128,
-    pub post_swap_price: u128,
-    pub price_impact_bps: u16,
-    pub volume: u64,
-}
-
-// ============================================================================
-// Liquidity Operation Types
-// ============================================================================
-
-/// Liquidity operation parameters
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct LiquidityParams {
-    pub liquidity_amount: u128,
-    pub amount_0_max: u64,
-    pub amount_1_max: u64,
-    pub amount_0_min: u64,
-    pub amount_1_min: u64,
-}
+// Parameter and result types have been moved to utils::types for better organization
+// Import them as needed: use crate::utils::types::{SwapParams, SwapResult, LiquidityParams, etc.}
