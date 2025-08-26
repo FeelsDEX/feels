@@ -1,12 +1,10 @@
 use crate::{
     error::ProtocolError,
     events::ProtocolInitialized,
+    instructions::{MAX_POOL_FEE_RATE, MAX_PROTOCOL_FEE_RATE},
     state::{protocol::ProtocolState, treasury::Treasury},
 };
 use anchor_lang::prelude::*;
-
-pub const MAX_PROTOCOL_FEE_RATE: u16 = 5000; // 50%
-pub const MAX_POOL_FEE_RATE: u16 = 10000; // 100%
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -69,6 +67,8 @@ pub fn initialize_protocol(
     protocol_state.total_volume = 0;
     protocol_state.initialized_at = clock.unix_timestamp;
     protocol_state.last_updated = clock.unix_timestamp;
+    protocol_state.pending_authority = None;
+    protocol_state.authority_transfer_initiated_at = None;
 
     // Initialize treasury
     treasury.protocol = protocol_state_key;
@@ -76,7 +76,6 @@ pub fn initialize_protocol(
     treasury.total_collected = 0;
     treasury.total_withdrawn = 0;
     treasury.last_withdrawal = 0;
-    treasury.withdrawal_limit_per_epoch = u64::MAX; // No limit by default
     treasury.current_epoch_withdrawn = 0;
 
     emit!(ProtocolInitialized {

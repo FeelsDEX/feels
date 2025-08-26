@@ -2,11 +2,9 @@ use crate::{
     error::ProtocolError,
     instructions::{MAX_POOL_FEE_RATE, MAX_PROTOCOL_FEE_RATE},
     state::{protocol::ProtocolState, treasury::Treasury},
-    tests::instructions::InstructionBuilder,
+    tests::{instructions::InstructionBuilder, PROGRAM_PATH},
 };
 use feels_test_utils::{to_sdk_instruction, TestContext};
-
-const PROGRAM_PATH: &str = "../../target/deploy/feels_protocol.so";
 
 #[tokio::test]
 async fn test_initialize_protocol_success() {
@@ -42,7 +40,6 @@ async fn test_initialize_protocol_success() {
     assert_eq!(treasury.total_collected, 0);
     assert_eq!(treasury.total_withdrawn, 0);
     assert_eq!(treasury.last_withdrawal, 0);
-    assert_eq!(treasury.withdrawal_limit_per_epoch, u64::MAX);
     assert_eq!(treasury.current_epoch_withdrawn, 0);
 }
 

@@ -23,4 +23,5 @@ anchor-spl  = { workspace = true }
 
 [dev-dependencies]
 feels-test-utils = { workspace = true }
+solana-sdk       = { workspace = true }
 tokio            = { workspace = true }
