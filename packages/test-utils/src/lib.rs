@@ -90,7 +90,7 @@ impl TestContext {
     pub async fn process_instruction(
         &mut self,
         instruction: SdkInstruction,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ) -> std::result::Result<(), BanksClientError> {
         let transaction = Transaction::new_signed_with_payer(
             &[instruction],
             Some(&self.payer.pubkey()),
@@ -98,16 +98,13 @@ impl TestContext {
             self.recent_blockhash,
         );
 
-        self.banks_client
-            .process_transaction(transaction)
-            .await
-            .map_err(Into::into)
+        self.banks_client.process_transaction(transaction).await
     }
 
     pub async fn process_instructions(
         &mut self,
         instructions: Vec<SdkInstruction>,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ) -> std::result::Result<(), BanksClientError> {
         let transaction = Transaction::new_signed_with_payer(
             &instructions,
             Some(&self.payer.pubkey()),
@@ -115,10 +112,7 @@ impl TestContext {
             self.recent_blockhash,
         );
 
-        self.banks_client
-            .process_transaction(transaction)
-            .await
-            .map_err(Into::into)
+        self.banks_client.process_transaction(transaction).await
     }
 
     pub async fn get_account_data<T: anchor_lang::AccountDeserialize>(

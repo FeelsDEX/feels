@@ -41,11 +41,11 @@ pub fn initialize_protocol(
 ) -> Result<()> {
     require!(
         default_protocol_fee_rate <= MAX_PROTOCOL_FEE_RATE,
-        ProtocolError::FeeTooHigh
+        ProtocolError::ProtocolFeeTooHigh
     );
     require!(
         max_pool_fee_rate <= MAX_POOL_FEE_RATE,
-        ProtocolError::FeeTooHigh
+        ProtocolError::PoolFeeTooHigh
     );
 
     // Get keys before creating mutable borrows

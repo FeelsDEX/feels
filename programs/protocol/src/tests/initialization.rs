@@ -1,4 +1,5 @@
 use crate::{
+    error::ProtocolError,
     instructions::{MAX_POOL_FEE_RATE, MAX_PROTOCOL_FEE_RATE},
     state::{protocol::ProtocolState, treasury::Treasury},
     tests::instructions::InstructionBuilder,
@@ -56,6 +57,12 @@ async fn test_initialize_protocol_fee_too_high() {
         .process_instruction(to_sdk_instruction(instruction))
         .await;
     assert!(result.is_err());
+    let anchor_error_code: u32 = ProtocolError::ProtocolFeeTooHigh.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[tokio::test]
@@ -69,6 +76,12 @@ async fn test_initialize_max_pool_fee_too_high() {
         .process_instruction(to_sdk_instruction(instruction))
         .await;
     assert!(result.is_err());
+    let anchor_error_code: u32 = ProtocolError::PoolFeeTooHigh.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[tokio::test]
