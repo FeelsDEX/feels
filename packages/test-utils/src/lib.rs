@@ -8,11 +8,11 @@ use solana_sdk::{
 };
 use std::fs;
 
-pub struct TestContext {
+pub struct TestApp {
     pub context: ProgramTestContext,
 }
 
-impl TestContext {
+impl TestApp {
     /// Create a new test context with a program loaded from the specified path
     pub async fn new_with_program(program_id: Pubkey, program_path: &str) -> Self {
         let program_id = Address::new_from_array(program_id.to_bytes());

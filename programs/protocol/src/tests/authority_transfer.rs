@@ -1,5 +1,5 @@
 use anchor_lang::{prelude::Pubkey, solana_program::system_instruction::transfer};
-use feels_test_utils::{to_sdk_instruction, TestContext};
+use feels_test_utils::{to_sdk_instruction, TestApp};
 use solana_sdk::signature::Signer;
 
 use crate::{
@@ -11,14 +11,14 @@ use crate::{
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_success() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -26,27 +26,27 @@ async fn test_initiate_authority_transfer_success() {
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority_pubkey);
 
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Verify the transfer was initiated
-    let protocol_state: ProtocolState = ctx.get_account_data(protocol_pda).await.unwrap();
+    let protocol_state: ProtocolState = app.get_account_data(protocol_pda).await.unwrap();
     assert_eq!(protocol_state.pending_authority, Some(new_authority_pubkey));
     assert!(protocol_state.authority_transfer_initiated_at.is_some());
 }
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_fails_invalid_authority() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let fake_authority = solana_sdk::signer::keypair::Keypair::new();
     let fake_authority_pubkey = Pubkey::from(fake_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -54,10 +54,10 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
     let fund_instruction = transfer(&payer_pubkey, &fake_authority_pubkey, 1_000_000);
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -73,9 +73,9 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
         &[to_sdk_instruction(instruction)],
         Some(&fake_authority.pubkey()),
     );
-    transaction.sign(&[&fake_authority], ctx.context.last_blockhash);
+    transaction.sign(&[&fake_authority], app.context.last_blockhash);
 
-    let result = ctx
+    let result = app
         .context
         .banks_client
         .process_transaction(transaction)
@@ -91,8 +91,8 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_fails_pending_exists() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority1 = solana_sdk::signer::keypair::Keypair::new();
     let new_authority2 = solana_sdk::signer::keypair::Keypair::new();
     let new_authority1_pubkey = Pubkey::from(new_authority1.pubkey().to_bytes());
@@ -100,14 +100,14 @@ async fn test_initiate_authority_transfer_fails_pending_exists() {
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Initiate first transfer
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority1_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -115,7 +115,7 @@ async fn test_initiate_authority_transfer_fails_pending_exists() {
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority2_pubkey);
 
-    let result = ctx
+    let result = app
         .process_instruction(to_sdk_instruction(instruction))
         .await;
     assert!(result.is_err());
@@ -129,51 +129,51 @@ async fn test_initiate_authority_transfer_fails_pending_exists() {
 
 #[tokio::test]
 async fn test_cancel_authority_transfer_success() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Initiate authority transfer
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Cancel the transfer
     let instruction = InstructionBuilder::cancel_authority_transfer(&payer_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Verify the transfer was cancelled
-    let protocol_state: ProtocolState = ctx.get_account_data(protocol_pda).await.unwrap();
+    let protocol_state: ProtocolState = app.get_account_data(protocol_pda).await.unwrap();
     assert_eq!(protocol_state.pending_authority, None);
     assert_eq!(protocol_state.authority_transfer_initiated_at, None);
 }
 
 #[tokio::test]
 async fn test_cancel_authority_transfer_fails_no_pending() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Try to cancel without any pending transfer
     let instruction = InstructionBuilder::cancel_authority_transfer(&payer_pubkey);
 
-    let result = ctx
+    let result = app
         .process_instruction(to_sdk_instruction(instruction))
         .await;
     assert!(result.is_err());
@@ -187,14 +187,14 @@ async fn test_cancel_authority_transfer_fails_no_pending() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_success() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -202,10 +202,10 @@ async fn test_accept_authority_transfer_success() {
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -214,12 +214,12 @@ async fn test_accept_authority_transfer_success() {
     // Initiate authority transfer
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Fast-forward time by more than the delay period
-    ctx.warp_forward_seconds(AUTHORITY_TRANSFER_DELAY + 1000)
+    app.warp_forward_seconds(AUTHORITY_TRANSFER_DELAY + 1000)
         .await;
 
     // Accept the transfer
@@ -228,16 +228,16 @@ async fn test_accept_authority_transfer_success() {
         &[to_sdk_instruction(instruction)],
         Some(&new_authority.pubkey()),
     );
-    transaction.sign(&[&new_authority], ctx.context.last_blockhash);
+    transaction.sign(&[&new_authority], app.context.last_blockhash);
 
-    ctx.context
+    app.context
         .banks_client
         .process_transaction(transaction)
         .await
         .unwrap();
 
     // Verify the transfer was completed
-    let protocol_state: ProtocolState = ctx.get_account_data(protocol_pda).await.unwrap();
+    let protocol_state: ProtocolState = app.get_account_data(protocol_pda).await.unwrap();
     assert_eq!(protocol_state.authority, new_authority_pubkey);
     assert_eq!(protocol_state.pending_authority, None);
     assert_eq!(protocol_state.authority_transfer_initiated_at, None);
@@ -245,14 +245,14 @@ async fn test_accept_authority_transfer_success() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_delay_not_met() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -260,10 +260,10 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -272,7 +272,7 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
     // Initiate authority transfer
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -282,9 +282,9 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
         &[to_sdk_instruction(instruction)],
         Some(&new_authority.pubkey()),
     );
-    transaction.sign(&[&new_authority], ctx.context.last_blockhash);
+    transaction.sign(&[&new_authority], app.context.last_blockhash);
 
-    let result = ctx
+    let result = app
         .context
         .banks_client
         .process_transaction(transaction)
@@ -300,8 +300,8 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_wrong_signer() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let wrong_signer = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
@@ -309,7 +309,7 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -317,10 +317,10 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
     let fund_instruction = transfer(&payer_pubkey, &wrong_signer_pubkey, 1_000_000);
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -329,12 +329,12 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
     // Initiate authority transfer
     let instruction =
         InstructionBuilder::initiate_authority_transfer(&payer_pubkey, &new_authority_pubkey);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
     // Fast-forward time
-    ctx.warp_forward_seconds(AUTHORITY_TRANSFER_DELAY + 100)
+    app.warp_forward_seconds(AUTHORITY_TRANSFER_DELAY + 100)
         .await;
 
     // Try to accept with wrong signer
@@ -343,9 +343,9 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
         &[to_sdk_instruction(instruction)],
         Some(&wrong_signer.pubkey()),
     );
-    transaction.sign(&[&wrong_signer], ctx.context.last_blockhash);
+    transaction.sign(&[&wrong_signer], app.context.last_blockhash);
 
-    let result = ctx
+    let result = app
         .context
         .banks_client
         .process_transaction(transaction)
@@ -361,14 +361,14 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_no_pending() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
 
     // Initialize protocol first
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -376,10 +376,10 @@ async fn test_accept_authority_transfer_fails_no_pending() {
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -391,9 +391,9 @@ async fn test_accept_authority_transfer_fails_no_pending() {
         &[to_sdk_instruction(instruction)],
         Some(&new_authority.pubkey()),
     );
-    transaction.sign(&[&new_authority], ctx.context.last_blockhash);
+    transaction.sign(&[&new_authority], app.context.last_blockhash);
 
-    let result = ctx
+    let result = app
         .context
         .banks_client
         .process_transaction(transaction)

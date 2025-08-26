@@ -1,5 +1,5 @@
 use anchor_lang::{prelude::Pubkey, solana_program::system_instruction::transfer};
-use feels_test_utils::{to_sdk_instruction, TestContext};
+use feels_test_utils::{to_sdk_instruction, TestApp};
 use solana_sdk::signature::Signer;
 
 use crate::{
@@ -10,12 +10,12 @@ use crate::{
 
 #[tokio::test]
 async fn test_update_protocol_success() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
 
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
 
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -27,11 +27,11 @@ async fn test_update_protocol_success() {
         Some(false),
     );
 
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
-    let protocol_state: ProtocolState = ctx.get_account_data(protocol_pda).await.unwrap();
+    let protocol_state: ProtocolState = app.get_account_data(protocol_pda).await.unwrap();
     assert_eq!(protocol_state.default_protocol_fee_rate, 2500);
     assert_eq!(protocol_state.max_pool_fee_rate, 7000);
     assert!(protocol_state.paused);
@@ -40,12 +40,12 @@ async fn test_update_protocol_success() {
 
 #[tokio::test]
 async fn test_update_protocol_fails_invalid_authority() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
 
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -61,10 +61,10 @@ async fn test_update_protocol_fails_invalid_authority() {
     );
     let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
         &[to_sdk_instruction(fund_instruction)],
-        Some(&ctx.context.payer.pubkey()),
+        Some(&app.context.payer.pubkey()),
     );
-    fund_transaction.sign(&[&ctx.context.payer], ctx.context.last_blockhash);
-    ctx.context
+    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
+    app.context
         .banks_client
         .process_transaction(fund_transaction)
         .await
@@ -84,9 +84,9 @@ async fn test_update_protocol_fails_invalid_authority() {
         Some(&fake_authority.pubkey()),
     );
 
-    transaction.sign(&[&fake_authority], ctx.context.last_blockhash);
+    transaction.sign(&[&fake_authority], app.context.last_blockhash);
 
-    let result = ctx
+    let result = app
         .context
         .banks_client
         .process_transaction(transaction)
@@ -102,12 +102,12 @@ async fn test_update_protocol_fails_invalid_authority() {
 
 #[tokio::test]
 async fn test_update_protocol_fails_invalid_fees() {
-    let mut ctx = TestContext::new_with_program(crate::id(), PROGRAM_PATH).await;
-    let payer_pubkey = ctx.payer_pubkey();
+    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
 
-    ctx.process_instruction(to_sdk_instruction(instruction))
+    app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
 
@@ -119,7 +119,7 @@ async fn test_update_protocol_fails_invalid_fees() {
         Some(false),
     );
 
-    let result = ctx
+    let result = app
         .process_instruction(to_sdk_instruction(instruction))
         .await;
     assert!(result.is_err());
