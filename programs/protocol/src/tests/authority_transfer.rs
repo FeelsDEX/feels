@@ -69,16 +69,8 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
         &Pubkey::from(new_authority.pubkey().to_bytes()),
     );
 
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&fake_authority.pubkey()),
-    );
-    transaction.sign(&[&fake_authority], app.context.last_blockhash);
-
     let result = app
-        .context
-        .banks_client
-        .process_transaction(transaction)
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &fake_authority)
         .await;
     assert!(result.is_err());
     let anchor_error_code: u32 = ProtocolError::InvalidAuthority.into();
@@ -224,15 +216,7 @@ async fn test_accept_authority_transfer_success() {
 
     // Accept the transfer
     let instruction = InstructionBuilder::accept_authority_transfer(&new_authority_pubkey);
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&new_authority.pubkey()),
-    );
-    transaction.sign(&[&new_authority], app.context.last_blockhash);
-
-    app.context
-        .banks_client
-        .process_transaction(transaction)
+    app.process_instruction_as_signer(to_sdk_instruction(instruction), &new_authority)
         .await
         .unwrap();
 
@@ -278,17 +262,10 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
 
     // Try to accept immediately (without waiting for delay)
     let instruction = InstructionBuilder::accept_authority_transfer(&new_authority_pubkey);
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&new_authority.pubkey()),
-    );
-    transaction.sign(&[&new_authority], app.context.last_blockhash);
-
     let result = app
-        .context
-        .banks_client
-        .process_transaction(transaction)
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &new_authority)
         .await;
+
     assert!(result.is_err());
     let anchor_error_code: u32 = ProtocolError::AuthorityTransferDelayNotMet.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);
@@ -339,17 +316,10 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
 
     // Try to accept with wrong signer
     let instruction = InstructionBuilder::accept_authority_transfer(&wrong_signer_pubkey);
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&wrong_signer.pubkey()),
-    );
-    transaction.sign(&[&wrong_signer], app.context.last_blockhash);
-
     let result = app
-        .context
-        .banks_client
-        .process_transaction(transaction)
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &wrong_signer)
         .await;
+
     assert!(result.is_err());
     let anchor_error_code: u32 = ProtocolError::NotPendingAuthority.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);
@@ -387,17 +357,10 @@ async fn test_accept_authority_transfer_fails_no_pending() {
 
     // Try to accept without any pending transfer
     let instruction = InstructionBuilder::accept_authority_transfer(&new_authority_pubkey);
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&new_authority.pubkey()),
-    );
-    transaction.sign(&[&new_authority], app.context.last_blockhash);
-
     let result = app
-        .context
-        .banks_client
-        .process_transaction(transaction)
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &new_authority)
         .await;
+
     assert!(result.is_err());
     let anchor_error_code: u32 = ProtocolError::NoPendingAuthorityTransfer.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);

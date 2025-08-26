@@ -79,18 +79,10 @@ async fn test_update_protocol_fails_invalid_authority() {
         Some(false),
     );
 
-    let mut transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(instruction)],
-        Some(&fake_authority.pubkey()),
-    );
-
-    transaction.sign(&[&fake_authority], app.context.last_blockhash);
-
     let result = app
-        .context
-        .banks_client
-        .process_transaction(transaction)
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &fake_authority)
         .await;
+
     assert!(result.is_err());
     let anchor_error_code: u32 = ProtocolError::InvalidAuthority.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);

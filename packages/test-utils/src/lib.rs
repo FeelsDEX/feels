@@ -105,6 +105,19 @@ impl TestApp {
             .await
     }
 
+    pub async fn process_instruction_as_signer(
+        &mut self,
+        instruction: SdkInstruction,
+        signer: &solana_sdk::signer::keypair::Keypair,
+    ) -> std::result::Result<(), BanksClientError> {
+        let mut transaction = Transaction::new_with_payer(&[instruction], Some(&signer.pubkey()));
+        transaction.sign(&[signer], self.context.last_blockhash);
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
+    }
+
     pub async fn get_account_data<T: anchor_lang::AccountDeserialize>(
         &mut self,
         address: Pubkey,

@@ -126,10 +126,8 @@ pub fn accept_authority_transfer(ctx: Context<AcceptAuthorityTransfer>) -> Resul
         ProtocolError::NotPendingAuthority
     );
 
-    // Ensure the delay period has passed
-    let initiated_at = protocol_state
-        .authority_transfer_initiated_at
-        .ok_or(ProtocolError::NoPendingAuthorityTransfer)?;
+    // This should never fail if `pending_authority` is `Some`, which we've already checked.
+    let initiated_at = protocol_state.authority_transfer_initiated_at.unwrap();
     let current_time = clock.unix_timestamp;
     require!(
         current_time >= initiated_at + AUTHORITY_TRANSFER_DELAY,
