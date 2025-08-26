@@ -2,21 +2,17 @@ use anchor_lang::prelude::*;
 use solana_address::Address;
 use solana_program_test::*;
 use solana_sdk::{
-    hash::Hash,
     instruction::{AccountMeta, Instruction as SdkInstruction},
-    signature::Keypair,
     signer::Signer,
     transaction::Transaction,
 };
 use std::fs;
 
-pub struct TestContext {
-    pub banks_client: BanksClient,
-    pub payer: Keypair,
-    pub recent_blockhash: Hash,
+pub struct TestApp {
+    pub context: ProgramTestContext,
 }
 
-impl TestContext {
+impl TestApp {
     /// Create a new test context with a program loaded from the specified path
     pub async fn new_with_program(program_id: Pubkey, program_path: &str) -> Self {
         let program_id = Address::new_from_array(program_id.to_bytes());
@@ -35,12 +31,8 @@ impl TestContext {
             },
         );
 
-        let (banks_client, payer, recent_blockhash) = program_test.start().await;
-        Self {
-            banks_client,
-            payer,
-            recent_blockhash,
-        }
+        let context = program_test.start_with_context().await;
+        Self { context }
     }
 
     /// Create a new test context with multiple programs
@@ -64,27 +56,19 @@ impl TestContext {
             );
         }
 
-        let (banks_client, payer, recent_blockhash) = program_test.start().await;
-        Self {
-            banks_client,
-            payer,
-            recent_blockhash,
-        }
+        let context = program_test.start_with_context().await;
+        Self { context }
     }
 
     /// Create a basic test context without any programs (for testing with deployed programs)
     pub async fn new_basic() -> Self {
         let program_test = ProgramTest::default();
-        let (banks_client, payer, recent_blockhash) = program_test.start().await;
-        Self {
-            banks_client,
-            payer,
-            recent_blockhash,
-        }
+        let context = program_test.start_with_context().await;
+        Self { context }
     }
 
     pub fn payer_pubkey(&self) -> Pubkey {
-        Pubkey::new_from_array(self.payer.pubkey().to_bytes())
+        Pubkey::new_from_array(self.context.payer.pubkey().to_bytes())
     }
 
     pub async fn process_instruction(
@@ -93,12 +77,15 @@ impl TestContext {
     ) -> std::result::Result<(), BanksClientError> {
         let transaction = Transaction::new_signed_with_payer(
             &[instruction],
-            Some(&self.payer.pubkey()),
-            &[&self.payer],
-            self.recent_blockhash,
+            Some(&self.context.payer.pubkey()),
+            &[&self.context.payer],
+            self.context.last_blockhash,
         );
 
-        self.banks_client.process_transaction(transaction).await
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
     }
 
     pub async fn process_instructions(
@@ -107,12 +94,28 @@ impl TestContext {
     ) -> std::result::Result<(), BanksClientError> {
         let transaction = Transaction::new_signed_with_payer(
             &instructions,
-            Some(&self.payer.pubkey()),
-            &[&self.payer],
-            self.recent_blockhash,
+            Some(&self.context.payer.pubkey()),
+            &[&self.context.payer],
+            self.context.last_blockhash,
         );
 
-        self.banks_client.process_transaction(transaction).await
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
+    }
+
+    pub async fn process_instruction_as_signer(
+        &mut self,
+        instruction: SdkInstruction,
+        signer: &solana_sdk::signer::keypair::Keypair,
+    ) -> std::result::Result<(), BanksClientError> {
+        let mut transaction = Transaction::new_with_payer(&[instruction], Some(&signer.pubkey()));
+        transaction.sign(&[signer], self.context.last_blockhash);
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
     }
 
     pub async fn get_account_data<T: anchor_lang::AccountDeserialize>(
@@ -121,6 +124,7 @@ impl TestContext {
     ) -> Result<T> {
         let address = Address::new_from_array(address.to_bytes());
         let account = self
+            .context
             .banks_client
             .get_account(address)
             .await
@@ -131,7 +135,31 @@ impl TestContext {
 
     pub async fn get_account(&mut self, address: Pubkey) -> Option<solana_sdk::account::Account> {
         let address = Address::new_from_array(address.to_bytes());
-        self.banks_client.get_account(address).await.unwrap()
+        self.context
+            .banks_client
+            .get_account(address)
+            .await
+            .unwrap()
+    }
+
+    pub async fn warp_forward_seconds(&mut self, seconds: i64) {
+        // Get the current clock
+        let mut clock: solana_clock::Clock = self.context.banks_client.get_sysvar().await.unwrap();
+
+        // Advance the timestamp
+        clock.unix_timestamp += seconds;
+
+        // Set the updated clock back
+        self.context.set_sysvar(&clock);
+
+        // Also advance by at least one slot to ensure block progression
+        let current_slot = self.context.banks_client.get_root_slot().await.unwrap();
+        self.context.warp_to_slot(current_slot + 1).unwrap();
+    }
+
+    /// Warp to a specific slot
+    pub async fn warp_to_slot(&mut self, slot: u64) {
+        self.context.warp_to_slot(slot).unwrap();
     }
 }
 

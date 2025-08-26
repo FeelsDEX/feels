@@ -1811,6 +1811,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "feels-test-utils",
+ "solana-sdk",
  "tokio",
 ]
 
@@ -1820,6 +1821,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "solana-address",
+ "solana-clock 3.0.0",
  "solana-program-test",
  "solana-sdk",
 ]

@@ -25,4 +25,32 @@ pub mod feels_protocol {
     ) -> Result<()> {
         instructions::initialize_protocol(ctx, default_protocol_fee_rate, max_pool_fee_rate)
     }
+
+    pub fn update_protocol(
+        ctx: Context<UpdateProtocol>,
+        new_default_protocol_fee_rate: Option<u16>,
+        new_max_pool_fee_rate: Option<u16>,
+        new_paused: Option<bool>,
+        new_pool_creation_allowed: Option<bool>,
+    ) -> Result<()> {
+        instructions::update_protocol(
+            ctx,
+            new_default_protocol_fee_rate,
+            new_max_pool_fee_rate,
+            new_paused,
+            new_pool_creation_allowed,
+        )
+    }
+
+    pub fn initiate_authority_transfer(ctx: Context<InitiateAuthorityTransfer>) -> Result<()> {
+        instructions::initiate_authority_transfer(ctx)
+    }
+
+    pub fn cancel_authority_transfer(ctx: Context<CancelAuthorityTransfer>) -> Result<()> {
+        instructions::cancel_authority_transfer(ctx)
+    }
+
+    pub fn accept_authority_transfer(ctx: Context<AcceptAuthorityTransfer>) -> Result<()> {
+        instructions::accept_authority_transfer(ctx)
+    }
 }
