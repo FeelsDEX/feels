@@ -1,0 +1,12 @@
+[package]
+name        = "feels-test-utils"
+version     = { workspace = true }
+edition     = { workspace = true }
+authors     = { workspace = true }
+description = "Helpers for feels anchor testing"
+
+[dependencies]
+anchor-lang         = { workspace = true }
+solana-program-test = { workspace = true }
+solana-sdk          = { workspace = true }
+solana-address      = { workspace = true }
