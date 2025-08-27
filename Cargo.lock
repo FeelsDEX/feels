@@ -1827,6 +1827,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "feels-token-wrapper"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "feels-protocol",
+ "feels-test-utils",
+ "solana-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

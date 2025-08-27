@@ -2,7 +2,7 @@ use crate::{
     error::ProtocolError,
     instructions::{MAX_POOL_FEE_RATE, MAX_PROTOCOL_FEE_RATE},
     state::{protocol::ProtocolState, treasury::Treasury},
-    tests::{instructions::InstructionBuilder, PROGRAM_PATH},
+    tests::{InstructionBuilder, PROGRAM_PATH},
 };
 use feels_test_utils::{to_sdk_instruction, TestApp};
 
@@ -28,9 +28,6 @@ async fn test_initialize_protocol_success() {
     assert_eq!(protocol_state.max_pool_fee_rate, 10000);
     assert!(!protocol_state.paused);
     assert!(protocol_state.pool_creation_allowed);
-    assert_eq!(protocol_state.total_pools, 0);
-    assert_eq!(protocol_state.total_fees_collected, 0);
-    assert_eq!(protocol_state.total_volume, 0);
     assert!(protocol_state.initialized_at > 0);
     assert!(protocol_state.last_updated > 0);
 

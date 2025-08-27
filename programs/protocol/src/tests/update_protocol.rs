@@ -5,7 +5,7 @@ use solana_sdk::signature::Signer;
 use crate::{
     error::ProtocolError,
     state::protocol::ProtocolState,
-    tests::{instructions::InstructionBuilder, PROGRAM_PATH},
+    tests::{InstructionBuilder, PROGRAM_PATH},
 };
 
 #[tokio::test]
