@@ -1,5 +1,5 @@
 use crate::{
-    state::FeelsSOLWrapper,
+    state::FeelsSolController,
     tests::{InstructionBuilder, PROGRAM_PATH},
 };
 use anchor_spl::token_interface::Mint;
@@ -8,7 +8,7 @@ use feels_test_utils::{to_sdk_instruction, TestApp};
 const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
 
 #[tokio::test]
-async fn test_initialize_protocol_success() {
+async fn test_initialize_feelssol_controller_success() {
     let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
@@ -22,7 +22,7 @@ async fn test_initialize_protocol_success() {
         .await
         .unwrap();
 
-    let feels_sol: FeelsSOLWrapper = app.get_account_data(feelssol_pda).await.unwrap();
+    let feels_sol: FeelsSolController = app.get_account_data(feelssol_pda).await.unwrap();
     let feels_mint: Mint = app.get_account_data(feels_mint_pda).await.unwrap();
 
     // State assertions

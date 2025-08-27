@@ -1,6 +1,6 @@
 pub mod initialize;
 
-const PROGRAM_PATH: &str = "../../target/deploy/feels_token_wrapper.so";
+const PROGRAM_PATH: &str = "../../target/deploy/feelssol_controller.so";
 
 use anchor_lang::{prelude::*, system_program, InstructionData};
 use anchor_spl::token_2022::spl_token_2022;

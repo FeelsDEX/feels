@@ -1827,7 +1827,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "feels-token-wrapper"
+name = "feelssol-controller"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
