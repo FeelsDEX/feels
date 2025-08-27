@@ -29,7 +29,7 @@ pub struct Initialize<'info> {
     /// CHECK: Protocol authority (governance/control)
     pub authority: UncheckedAccount<'info>,
 
-    /// Account that pays (operational wallet)  
+    /// Account that pays (operational wallet)
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -66,9 +66,6 @@ pub fn initialize_protocol(
     protocol_state.max_pool_fee_rate = max_pool_fee_rate;
     protocol_state.paused = false;
     protocol_state.pool_creation_allowed = true;
-    protocol_state.total_pools = 0;
-    protocol_state.total_fees_collected = 0;
-    protocol_state.total_volume = 0;
     protocol_state.initialized_at = clock.unix_timestamp;
     protocol_state.last_updated = clock.unix_timestamp;
     protocol_state.pending_authority = None;

@@ -6,7 +6,7 @@ use crate::{
     error::ProtocolError,
     instructions::AUTHORITY_TRANSFER_DELAY,
     state::protocol::ProtocolState,
-    tests::{instructions::InstructionBuilder, PROGRAM_PATH},
+    tests::{InstructionBuilder, PROGRAM_PATH},
 };
 
 #[tokio::test]
