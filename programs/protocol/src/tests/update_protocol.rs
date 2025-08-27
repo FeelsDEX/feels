@@ -59,14 +59,7 @@ async fn test_update_protocol_fails_invalid_authority() {
         &fake_authority_pubkey,
         1_000_000, // 0.001 SOL for transaction fees
     );
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 

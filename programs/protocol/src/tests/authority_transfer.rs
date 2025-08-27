@@ -52,14 +52,7 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
 
     // Fund the fake authority
     let fund_instruction = transfer(&payer_pubkey, &fake_authority_pubkey, 1_000_000);
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 
@@ -192,14 +185,7 @@ async fn test_accept_authority_transfer_success() {
 
     // Fund the new authority
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 
@@ -242,14 +228,7 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
 
     // Fund the new authority
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 
@@ -292,14 +271,7 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
 
     // Fund the wrong signer
     let fund_instruction = transfer(&payer_pubkey, &wrong_signer_pubkey, 1_000_000);
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 
@@ -344,14 +316,7 @@ async fn test_accept_authority_transfer_fails_no_pending() {
 
     // Fund the new authority
     let fund_instruction = transfer(&payer_pubkey, &new_authority_pubkey, 1_000_000);
-    let mut fund_transaction = solana_sdk::transaction::Transaction::new_with_payer(
-        &[to_sdk_instruction(fund_instruction)],
-        Some(&app.context.payer.pubkey()),
-    );
-    fund_transaction.sign(&[&app.context.payer], app.context.last_blockhash);
-    app.context
-        .banks_client
-        .process_transaction(fund_transaction)
+    app.process_instruction(to_sdk_instruction(fund_instruction))
         .await
         .unwrap();
 
