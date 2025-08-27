@@ -76,7 +76,6 @@ pub fn initialize_protocol(
     treasury.total_collected = 0;
     treasury.total_withdrawn = 0;
     treasury.last_withdrawal = 0;
-    treasury.current_epoch_withdrawn = 0;
 
     emit!(ProtocolInitialized {
         authority: protocol_state.authority,
