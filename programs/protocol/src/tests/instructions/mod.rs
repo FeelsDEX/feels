@@ -23,6 +23,7 @@ impl InstructionBuilder {
             protocol_state: protocol_pda,
             treasury: treasury_pda,
             authority: *payer,
+            payer: *payer,
             system_program: system_program::ID,
         };
 

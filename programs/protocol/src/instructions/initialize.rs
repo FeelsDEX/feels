@@ -10,7 +10,7 @@ use anchor_lang::prelude::*;
 pub struct Initialize<'info> {
     #[account(
         init,
-        payer = authority,
+        payer = payer,
         space = ProtocolState::SIZE,
         seeds = [b"protocol"],
         bump
@@ -19,15 +19,19 @@ pub struct Initialize<'info> {
 
     #[account(
         init,
-        payer = authority,
+        payer = payer,
         space = Treasury::SIZE,
         seeds = [b"treasury"],
         bump
     )]
     pub treasury: Account<'info, Treasury>,
 
+    /// CHECK: Protocol authority (governance/control)
+    pub authority: UncheckedAccount<'info>,
+
+    /// Account that pays (operational wallet)  
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub payer: Signer<'info>,
 
     pub system_program: Program<'info, System>,
 }
@@ -76,7 +80,6 @@ pub fn initialize_protocol(
     treasury.total_collected = 0;
     treasury.total_withdrawn = 0;
     treasury.last_withdrawal = 0;
-    treasury.current_epoch_withdrawn = 0;
 
     emit!(ProtocolInitialized {
         authority: protocol_state.authority,

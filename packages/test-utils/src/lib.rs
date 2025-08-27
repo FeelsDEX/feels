@@ -13,7 +13,7 @@ pub struct TestApp {
 }
 
 impl TestApp {
-    /// Create a new test context with a program loaded from the specified path
+    /// Create a new test app with a program loaded from the specified path
     pub async fn new_with_program(program_id: Pubkey, program_path: &str) -> Self {
         let program_id = Address::new_from_array(program_id.to_bytes());
         let program_data = fs::read(program_path)
@@ -35,7 +35,7 @@ impl TestApp {
         Self { context }
     }
 
-    /// Create a new test context with multiple programs
+    /// Create a new test app with multiple programs
     pub async fn new_with_programs(programs: Vec<(Pubkey, &str)>) -> Self {
         let mut program_test = ProgramTest::default();
 
@@ -60,7 +60,7 @@ impl TestApp {
         Self { context }
     }
 
-    /// Create a basic test context without any programs (for testing with deployed programs)
+    /// Create a basic test app without any programs (for testing with deployed programs)
     pub async fn new_basic() -> Self {
         let program_test = ProgramTest::default();
         let context = program_test.start_with_context().await;

@@ -40,7 +40,6 @@ async fn test_initialize_protocol_success() {
     assert_eq!(treasury.total_collected, 0);
     assert_eq!(treasury.total_withdrawn, 0);
     assert_eq!(treasury.last_withdrawal, 0);
-    assert_eq!(treasury.current_epoch_withdrawn, 0);
 }
 
 #[tokio::test]
