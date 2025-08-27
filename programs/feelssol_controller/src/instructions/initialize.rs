@@ -1,19 +1,19 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{token_2022::Token2022, token_interface::Mint};
 
-use crate::state::FeelsSOLWrapper;
+use crate::state::FeelsSolController;
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    /// FeelsSOL wrapper account
+    /// FeelsSOL controller account
     #[account(
         init,
         payer = payer,
-        space = FeelsSOLWrapper::SIZE,
+        space = FeelsSolController::SIZE,
         seeds = [b"feelssol"],
         bump
     )]
-    pub feelssol: Account<'info, FeelsSOLWrapper>,
+    pub feelssol: Account<'info, FeelsSolController>,
 
     /// FeelsSOL Token-2022 mint
     #[account(

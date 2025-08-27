@@ -1,13 +1,13 @@
 [package]
-name        = "feels-token-wrapper"
-description = "Wrapper of FeelsSOL token"
+name        = "feelssol-controller"
+description = "Controller for feelsSOL token"
 version     = { workspace = true }
 authors     = { workspace = true }
 edition     = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name       = "feels_token_wrapper"
+name       = "feelssol_controller"
 
 [features]
 default        = []

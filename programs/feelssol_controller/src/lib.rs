@@ -11,13 +11,13 @@ mod tests;
 use instructions::*;
 
 // TODO: Update when we have the real ID
-declare_id!("Fee1sTokenWrapper111111111111111111111111111");
+declare_id!("Fee1sSo1Contro11er11111111111111111111111111");
 
 #[program]
-pub mod feels_token_wrapper {
+pub mod feelssol_controller {
     use super::*;
 
-    /// Initialize the FeelsSOL token wrapper
+    /// Initialize the FeelsSOL token controller
     pub fn initialize(
         ctx: Context<Initialize>,
         underlying_mint: Pubkey,
