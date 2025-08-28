@@ -1827,6 +1827,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "feels-token-factory"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "feels-protocol",
+ "feels-test-utils",
+ "solana-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "feelssol-controller"
 version = "0.1.0"
 dependencies = [

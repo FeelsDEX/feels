@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[account]
+#[derive(InitSpace)]
 pub struct ProtocolState {
     pub authority: Pubkey, // 32 - Who can modify the protocol state and withdraw
     pub treasury: Pubkey,  // 32 - Reference to the treasury account
@@ -12,8 +13,5 @@ pub struct ProtocolState {
     pub last_updated: i64, // 8 - Timestamp when the protocol was last updated
     pub pending_authority: Option<Pubkey>, // 33 (1 + 32) - Authority pending approval for transfer
     pub authority_transfer_initiated_at: Option<i64>, // 9 (1 + 8) - Timestamp when authority transfer was initiated
-}
-
-impl ProtocolState {
-    pub const SIZE: usize = 8 + 32 + 32 + 2 + 2 + 1 + 1 + 8 + 8 + 33 + 9;
+    pub _reserved: [u8; 64],                          // 64 - Reserved for future use
 }

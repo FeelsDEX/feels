@@ -9,7 +9,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = FeelsSolController::SIZE,
+        space = 8 + FeelsSolController::INIT_SPACE,
         seeds = [b"feelssol"],
         bump
     )]
