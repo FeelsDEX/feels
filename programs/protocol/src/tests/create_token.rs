@@ -52,8 +52,6 @@ async fn test_create_token_via_factory_success() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Test parameters
     let ticker = "TEST".to_string();
@@ -63,9 +61,8 @@ async fn test_create_token_via_factory_success() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, recipient_token_account, token_metadata_account) =
+    let (instruction, recipient_token_account, token_pda, token_metadata_account) =
         InstructionBuilder::create_token(
-            &token_mint_pubkey,
             &recipient_pubkey,
             &payer_pubkey,
             ticker.clone(),
@@ -76,13 +73,9 @@ async fn test_create_token_via_factory_success() {
         );
 
     // Process the instruction
-    app.process_instruction_with_multiple_signers(
-        to_sdk_instruction(instruction),
-        &app.context.payer.insecure_clone(),
-        &[&token_mint],
-    )
-    .await
-    .unwrap();
+    app.process_instruction(to_sdk_instruction(instruction))
+        .await
+        .unwrap();
 
     // Verify results using the returned PDAs
     let factory: TokenFactory = app.get_account_data(factory_pda).await.unwrap();
@@ -92,10 +85,10 @@ async fn test_create_token_via_factory_success() {
     assert_eq!(metadata.ticker, ticker);
     assert_eq!(metadata.name, name);
     assert_eq!(metadata.symbol, symbol);
-    assert_eq!(metadata.mint, token_mint_pubkey);
+    assert_eq!(metadata.mint, token_pda);
 
     // Verify token mint and recipient account
-    let mint_account = app.get_account(token_mint_pubkey).await.unwrap();
+    let mint_account = app.get_account(token_pda).await.unwrap();
     let mint_data = spl_token_2022::state::Mint::unpack(&mint_account.data).unwrap();
     assert_eq!(mint_data.decimals, decimals);
     assert_eq!(mint_data.supply, initial_supply);
@@ -106,7 +99,7 @@ async fn test_create_token_via_factory_success() {
             .unwrap()
             .base;
     assert_eq!(token_account_data.amount, initial_supply);
-    assert_eq!(token_account_data.mint, token_mint_pubkey);
+    assert_eq!(token_account_data.mint, token_pda);
     assert_eq!(token_account_data.owner, recipient_pubkey);
 }
 
@@ -116,8 +109,6 @@ async fn test_create_token_via_factory_fail_unauthorized() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Test parameters
     let ticker = "TEST".to_string();
@@ -130,8 +121,7 @@ async fn test_create_token_via_factory_fail_unauthorized() {
     let fake_authority_pubkey = Pubkey::from(fake_authority.pubkey().to_bytes());
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &fake_authority_pubkey,
         ticker.clone(),
@@ -149,11 +139,7 @@ async fn test_create_token_via_factory_fail_unauthorized() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &fake_authority,
-            &[&token_mint],
-        )
+        .process_instruction_as_signer(to_sdk_instruction(instruction), &fake_authority)
         .await;
 
     let anchor_error_code: u32 = ProtocolError::InvalidAuthority.into();
@@ -170,9 +156,6 @@ async fn test_create_token_via_factory_fail_reuse_mint() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
-
     // Test parameters
     let ticker = "TEST".to_string();
     let name = "Test Token".to_string();
@@ -181,8 +164,7 @@ async fn test_create_token_via_factory_fail_reuse_mint() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -192,26 +174,17 @@ async fn test_create_token_via_factory_fail_reuse_mint() {
         initial_supply,
     );
 
-    // Process the instruction
     // Process the first instruction
-    app.process_instruction_with_multiple_signers(
-        to_sdk_instruction(instruction.clone()),
-        &app.context.payer.insecure_clone(),
-        &[&token_mint],
-    )
-    .await
-    .unwrap();
+    app.process_instruction(to_sdk_instruction(instruction.clone()))
+        .await
+        .unwrap();
 
     // IMPORTANT: Advance the blockchain to get a new blockhash and be able to rerun the TX
     app.warp_forward_seconds(10).await;
 
-    app.process_instruction_with_multiple_signers(
-        to_sdk_instruction(instruction),
-        &app.context.payer.insecure_clone(),
-        &[&token_mint],
-    )
-    .await
-    .unwrap_err();
+    app.process_instruction(to_sdk_instruction(instruction))
+        .await
+        .unwrap_err();
 }
 
 #[tokio::test]
@@ -220,8 +193,6 @@ async fn test_create_token_via_factory_fail_invalid_token_format() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "".to_string();
@@ -231,8 +202,7 @@ async fn test_create_token_via_factory_fail_invalid_token_format() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -244,11 +214,7 @@ async fn test_create_token_via_factory_fail_invalid_token_format() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::TickerIsEmpty.into();
@@ -265,8 +231,6 @@ async fn test_create_token_via_factory_fail_ticker_not_alphanumeric() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Ticker not alphanumeric
     let ticker = "!!!".to_string();
@@ -276,8 +240,7 @@ async fn test_create_token_via_factory_fail_ticker_not_alphanumeric() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -289,11 +252,7 @@ async fn test_create_token_via_factory_fail_ticker_not_alphanumeric() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::TickerNotAlphanumeric.into();
@@ -310,8 +269,6 @@ async fn test_create_token_via_factory_fail_ticker_too_long() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     let ticker = "AAAAAAAAAAAAAAAAAA".to_string(); // 17 chars, max is 12
     let name = "Test Token".to_string();
@@ -320,8 +277,7 @@ async fn test_create_token_via_factory_fail_ticker_too_long() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -333,17 +289,15 @@ async fn test_create_token_via_factory_fail_ticker_too_long() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
-        .await
-        .unwrap_err();
+        .process_instruction(to_sdk_instruction(instruction))
+        .await;
 
     let anchor_error_code: u32 = TokenFactoryError::TickerTooLong.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);
-    assert!(result.to_string().contains(&anchor_hex_error_code));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[tokio::test]
@@ -352,8 +306,6 @@ async fn test_create_token_via_factory_fail_name_empty() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "Ticker".to_string();
@@ -363,8 +315,7 @@ async fn test_create_token_via_factory_fail_name_empty() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -376,11 +327,7 @@ async fn test_create_token_via_factory_fail_name_empty() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::NameIsEmpty.into();
@@ -397,8 +344,6 @@ async fn test_create_token_via_factory_fail_name_too_long() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "Ticker".to_string();
@@ -408,8 +353,7 @@ async fn test_create_token_via_factory_fail_name_too_long() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -421,11 +365,7 @@ async fn test_create_token_via_factory_fail_name_too_long() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::NameTooLong.into();
@@ -442,8 +382,6 @@ async fn test_create_token_via_factory_fail_symbol_empty() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "Ticker".to_string();
@@ -453,8 +391,7 @@ async fn test_create_token_via_factory_fail_symbol_empty() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -466,11 +403,7 @@ async fn test_create_token_via_factory_fail_symbol_empty() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::SymbolIsEmpty.into();
@@ -487,8 +420,6 @@ async fn test_create_token_via_factory_fail_symbol_too_long() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "Ticker".to_string();
@@ -498,8 +429,7 @@ async fn test_create_token_via_factory_fail_symbol_too_long() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -511,11 +441,7 @@ async fn test_create_token_via_factory_fail_symbol_too_long() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::SymbolTooLong.into();
@@ -532,8 +458,6 @@ async fn test_create_token_via_factory_fail_invalid_decimals() {
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
-    let token_mint = solana_sdk::signer::keypair::Keypair::new();
-    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
     // Empty ticker
     let ticker = "Ticker".to_string();
@@ -543,8 +467,7 @@ async fn test_create_token_via_factory_fail_invalid_decimals() {
     let initial_supply = 1_000_000u64;
 
     // Create token instruction - PDAs calculated internally
-    let (instruction, _, _) = InstructionBuilder::create_token(
-        &token_mint_pubkey,
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
         &recipient_pubkey,
         &payer_pubkey,
         ticker.clone(),
@@ -556,11 +479,7 @@ async fn test_create_token_via_factory_fail_invalid_decimals() {
 
     // Process the instruction
     let result = app
-        .process_instruction_with_multiple_signers(
-            to_sdk_instruction(instruction),
-            &app.context.payer.insecure_clone(),
-            &[&token_mint],
-        )
+        .process_instruction(to_sdk_instruction(instruction))
         .await;
 
     let anchor_error_code: u32 = TokenFactoryError::DecimalsTooLarge.into();

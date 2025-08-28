@@ -32,9 +32,17 @@ pub struct CreateToken<'info> {
     )]
     pub factory: Account<'info, TokenFactory>,
 
-    /// New token mint that will be created
-    #[account(mut)]
-    pub token_mint: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [
+            b"token",
+            ticker.as_bytes()
+        ],
+        bump,
+        seeds::program = token_factory_program
+    )]
+    /// CHECK: This PDA will be validated and created by the token factory program
+    pub token_mint: UncheckedAccount<'info>,
 
     /// Token metadata account - will be created by token factory
     /// CHECK: PDA will be validated by token factory program

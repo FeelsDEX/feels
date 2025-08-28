@@ -31,6 +31,11 @@ pub struct CreateToken<'info> {
         mint::authority = factory,
         mint::freeze_authority = factory,
         mint::token_program = token_program,
+        seeds = [
+            b"token",
+            ticker.as_bytes()
+        ],
+        bump
     )]
     pub token_mint: InterfaceAccount<'info, Mint>,
 
@@ -41,7 +46,7 @@ pub struct CreateToken<'info> {
         space = 8 + TokenMetadata::INIT_SPACE,
         seeds = [
             b"metadata",
-            token_mint.key().as_ref()
+            ticker.as_bytes()
         ],
         bump
     )]
