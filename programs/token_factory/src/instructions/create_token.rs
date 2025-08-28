@@ -9,10 +9,8 @@ use crate::{
     error::TokenFactoryError,
     events::TokenCreated,
     state::{factory::TokenFactory, metadata::TokenMetadata},
-    token_validate::validate_ticker_format,
+    token_validate::validate_token,
 };
-
-const TOKEN_MAX_DECIMALS: u8 = 18;
 
 #[derive(Accounts)]
 #[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
@@ -93,16 +91,7 @@ pub fn create_token(
     );
 
     // Validate ticker against restrictions and format requirements
-    validate_ticker_format(&ticker)?;
-
-    require!(
-        decimals <= TOKEN_MAX_DECIMALS,
-        TokenFactoryError::DecimalsTooLarge
-    );
-
-    require!(!name.is_empty(), TokenFactoryError::TokenNameIsEmpty);
-
-    require!(!symbol.is_empty(), TokenFactoryError::TokenSymbolIsEmpty);
+    validate_token(&ticker, &name, &symbol, decimals)?;
 
     // Initialize token metadata
     let token_metadata = &mut ctx.accounts.token_metadata;

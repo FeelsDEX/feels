@@ -7,6 +7,11 @@ use anchor_lang::prelude::*;
 
 use crate::error::TokenFactoryError;
 
+const MAX_DECIMALS: u8 = 18;
+const MAX_TICKER_LENGTH: usize = 12;
+const MAX_NAME_LENGTH: usize = 32;
+const MAX_SYMBOL_LENGTH: usize = 12;
+
 /// List of restricted token tickers that cannot be used for token creation
 ///
 /// This includes:
@@ -92,6 +97,11 @@ pub fn validate_ticker_format(ticker: &str) -> Result<()> {
         return Err(error!(TokenFactoryError::TickerIsEmpty));
     }
 
+    require!(
+        ticker.len() <= MAX_TICKER_LENGTH,
+        TokenFactoryError::TickerTooLong
+    );
+
     // Check characters - only alphanumeric allowed
     if !ticker.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err(error!(TokenFactoryError::TickerNotAlphanumeric));
@@ -99,6 +109,33 @@ pub fn validate_ticker_format(ticker: &str) -> Result<()> {
 
     // Check restrictions
     validate_ticker_not_restricted(ticker)?;
+
+    Ok(())
+}
+
+/// Validate token creation parameters
+pub fn validate_token(ticker: &str, name: &str, symbol: &str, decimals: u8) -> Result<()> {
+    // Validate ticker
+    validate_ticker_format(ticker)?;
+
+    require!(
+        decimals <= MAX_DECIMALS,
+        TokenFactoryError::DecimalsTooLarge
+    );
+
+    require!(!name.is_empty(), TokenFactoryError::NameIsEmpty);
+
+    require!(!symbol.is_empty(), TokenFactoryError::SymbolIsEmpty);
+
+    require!(
+        name.len() <= MAX_NAME_LENGTH,
+        TokenFactoryError::NameTooLong
+    );
+
+    require!(
+        symbol.len() <= MAX_SYMBOL_LENGTH,
+        TokenFactoryError::SymbolTooLong
+    );
 
     Ok(())
 }
@@ -145,6 +182,9 @@ fn test_ticker_validation() {
 
     // Test invalid length
     assert!(validate_ticker_format("").is_err());
+
+    // Test too long
+    assert!(validate_ticker_format("AAAAAAAAAAAAAAAAAAAAAAAAA").is_err());
 
     // Test invalid characters
     assert!(validate_ticker_format("MY-TOKEN").is_err());

@@ -156,6 +156,7 @@ impl InstructionBuilder {
         let factory_program_id = feels_token_factory::id();
 
         // Calculate PDAs using seeds
+        let (protocol_pda, _) = Pubkey::find_program_address(&[PROTOCOL_PDA_SEED], &program_id);
         let (factory_pda, _) =
             Pubkey::find_program_address(&[FACTORY_PDA_SEED], &factory_program_id);
 
@@ -172,12 +173,13 @@ impl InstructionBuilder {
             );
 
         let accounts = crate::accounts::CreateToken {
+            protocol: protocol_pda,
             factory: factory_pda,
             token_mint: *token_mint,
             token_metadata: token_metadata_pda,
             recipient_token_account,
             recipient: *recipient,
-            payer: *payer,
+            authority: *payer,
             token_factory_program: factory_program_id,
             token_program: anchor_spl::token_2022::ID,
             associated_token_program: anchor_spl::associated_token::ID,

@@ -8,11 +8,17 @@ pub enum TokenFactoryError {
     #[msg("Ticker is empty")]
     TickerIsEmpty,
     #[msg("Token name is empty")]
-    TokenNameIsEmpty,
+    NameIsEmpty,
     #[msg("Token symbol is empty")]
-    TokenSymbolIsEmpty,
+    SymbolIsEmpty,
     #[msg("Ticker is not alphanumeric")]
     TickerNotAlphanumeric,
+    #[msg("Ticker is too long")]
+    TickerTooLong,
+    #[msg("Token name is too long")]
+    NameTooLong,
+    #[msg("Token symbol is too long")]
+    SymbolTooLong,
     #[msg("Decimals value is too large")]
     DecimalsTooLarge,
     #[msg("Only feels protocol can access this operation")]

@@ -11,10 +11,19 @@ use feels_token_factory::{
     state::factory::TokenFactory,
 };
 
+use crate::{error::ProtocolError, state::protocol::ProtocolState};
+
 #[derive(Accounts)]
 #[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
 pub struct CreateToken<'info> {
-    /// The token factory account
+    #[account(
+        mut,
+        seeds = [b"protocol"],
+        bump,
+        has_one = authority @ ProtocolError::InvalidAuthority
+    )]
+    pub protocol: Account<'info, ProtocolState>,
+
     #[account(
         mut,
         seeds = [b"factory"],
@@ -41,9 +50,9 @@ pub struct CreateToken<'info> {
     /// CHECK: Can be any account
     pub recipient: UncheckedAccount<'info>,
 
-    /// Payer for accounts
+    /// Payer and authority for accounts
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub authority: Signer<'info>,
 
     /// Token factory program
     pub token_factory_program: Program<'info, FeelsTokenFactory>,
@@ -78,7 +87,7 @@ pub fn create_token_via_factory(
         token_metadata: ctx.accounts.token_metadata.to_account_info(),
         recipient_token_account: ctx.accounts.recipient_token_account.to_account_info(),
         recipient: ctx.accounts.recipient.to_account_info(),
-        payer: ctx.accounts.payer.to_account_info(),
+        payer: ctx.accounts.authority.to_account_info(),
         token_program: ctx.accounts.token_program.to_account_info(),
         associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
