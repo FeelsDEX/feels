@@ -1,7 +1,5 @@
-use crate::{
-    state::factory::TokenFactory,
-    tests::{InstructionBuilder, PROGRAM_PATH},
-};
+use crate::{state::factory::TokenFactory, tests::PROGRAM_PATH, InstructionBuilder};
+
 use feels_test_utils::{to_sdk_instruction, TestApp};
 
 #[tokio::test]
@@ -20,5 +18,5 @@ async fn test_initialize_feels_token_factory_success() {
 
     // State assertions
     assert_eq!(factory.feels_protocol, feels_protocol::ID);
-    assert_eq!(factory.total_tokens, 0);
+    assert_eq!(factory.tokens_created, 0);
 }

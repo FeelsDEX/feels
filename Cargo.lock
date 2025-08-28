@@ -1811,6 +1811,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "feels-test-utils",
+ "feels-token-factory",
  "solana-sdk",
  "tokio",
 ]

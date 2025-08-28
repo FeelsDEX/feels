@@ -128,6 +128,9 @@ pub fn create_token(
         mint_to(cpi_ctx, initial_supply)?;
     }
 
+    // Increase the number of tokens created
+    ctx.accounts.factory.tokens_created += 1;
+
     emit!(TokenCreated {
         mint: ctx.accounts.token_mint.key(),
         ticker: ctx.accounts.token_metadata.ticker.clone(),

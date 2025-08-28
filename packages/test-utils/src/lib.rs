@@ -118,6 +118,23 @@ impl TestApp {
             .await
     }
 
+    pub async fn process_instruction_with_multiple_signers(
+        &mut self,
+        instruction: SdkInstruction,
+        payer: &solana_sdk::signer::keypair::Keypair,
+        signers: &[&solana_sdk::signer::keypair::Keypair],
+    ) -> std::result::Result<(), BanksClientError> {
+        let mut all_signers = vec![payer]; // Start with payer
+        all_signers.extend(signers); // Add additional signers
+
+        let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+        transaction.sign(&all_signers, self.context.last_blockhash);
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
+    }
+
     pub async fn get_account_data<T: anchor_lang::AccountDeserialize>(
         &mut self,
         address: Pubkey,

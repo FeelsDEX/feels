@@ -18,10 +18,12 @@ no-log-ix-name = []
 idl-build      = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = { workspace = true }
-anchor-spl  = { workspace = true }
+anchor-lang         = { workspace = true }
+anchor-spl          = { workspace = true }
+feels-token-factory = { path = "../token_factory", features = ["cpi"] }
 
 [dev-dependencies]
-feels-test-utils = { workspace = true }
-solana-sdk       = { workspace = true }
-tokio            = { workspace = true }
+feels-test-utils    = { workspace = true }
+solana-sdk          = { workspace = true }
+tokio               = { workspace = true }
+feels-token-factory = { path = "../token_factory", features = ["test-utils"] }

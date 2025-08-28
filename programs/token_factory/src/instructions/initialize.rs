@@ -23,7 +23,7 @@ pub struct Initialize<'info> {
 
 pub fn initialize_token_factory(ctx: Context<Initialize>, feels_protocol: Pubkey) -> Result<()> {
     let token_factory = &mut ctx.accounts.token_factory;
-    token_factory.total_tokens = 0;
+    token_factory.tokens_created = 0;
     token_factory.feels_protocol = feels_protocol;
 
     emit!(TokenFactoryInitialized { feels_protocol });
