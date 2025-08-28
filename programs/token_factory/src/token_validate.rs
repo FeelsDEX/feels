@@ -98,6 +98,11 @@ pub fn validate_ticker_format(ticker: &str) -> Result<()> {
     }
 
     require!(
+        ticker == ticker.to_uppercase(),
+        TokenFactoryError::TickerNotUppercase
+    );
+
+    require!(
         ticker.len() <= MAX_TICKER_LENGTH,
         TokenFactoryError::TickerTooLong
     );

@@ -301,14 +301,51 @@ async fn test_create_token_via_factory_fail_ticker_too_long() {
 }
 
 #[tokio::test]
+async fn test_create_token_via_factory_fail_ticker_not_uppercase() {
+    let (mut app, _, _, _) = deploy_protocol_and_factory().await;
+    let payer_pubkey = app.payer_pubkey();
+    let recipient = solana_sdk::signer::keypair::Keypair::new();
+    let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
+
+    let ticker = "TiCkEr".to_string();
+    let name = "Test Token".to_string();
+    let symbol = "TST".to_string();
+    let decimals = 9u8;
+    let initial_supply = 1_000_000u64;
+
+    // Create token instruction - PDAs calculated internally
+    let (instruction, _, _, _) = InstructionBuilder::create_token(
+        &recipient_pubkey,
+        &payer_pubkey,
+        ticker.clone(),
+        name.clone(),
+        symbol.clone(),
+        decimals,
+        initial_supply,
+    );
+
+    // Process the instruction
+    let result = app
+        .process_instruction(to_sdk_instruction(instruction))
+        .await;
+
+    let anchor_error_code: u32 = TokenFactoryError::TickerNotUppercase.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
+}
+
+#[tokio::test]
 async fn test_create_token_via_factory_fail_name_empty() {
     let (mut app, _, _, _) = deploy_protocol_and_factory().await;
     let payer_pubkey = app.payer_pubkey();
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
 
-    // Empty ticker
-    let ticker = "Ticker".to_string();
+    let ticker = "TEST".to_string();
+    // Empty name
     let name = "".to_string();
     let symbol = "TST".to_string();
     let decimals = 9u8;
@@ -345,8 +382,7 @@ async fn test_create_token_via_factory_fail_name_too_long() {
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
 
-    // Empty ticker
-    let ticker = "Ticker".to_string();
+    let ticker = "TEST".to_string();
     let name = "A".repeat(40); // 40 chars, max is 32
     let symbol = "TST".to_string();
     let decimals = 9u8;
@@ -383,8 +419,7 @@ async fn test_create_token_via_factory_fail_symbol_empty() {
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
 
-    // Empty ticker
-    let ticker = "Ticker".to_string();
+    let ticker = "TEST".to_string();
     let name = "Token Name".to_string();
     let symbol = "".to_string();
     let decimals = 9u8;
@@ -421,8 +456,7 @@ async fn test_create_token_via_factory_fail_symbol_too_long() {
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
 
-    // Empty ticker
-    let ticker = "Ticker".to_string();
+    let ticker = "TEST".to_string();
     let name = "Token Name".to_string();
     let symbol = "A".repeat(40); // 40 chars, max is 12
     let decimals = 9u8;
@@ -459,8 +493,7 @@ async fn test_create_token_via_factory_fail_invalid_decimals() {
     let recipient = solana_sdk::signer::keypair::Keypair::new();
     let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
 
-    // Empty ticker
-    let ticker = "Ticker".to_string();
+    let ticker = "TEST".to_string();
     let name = "Test Token".to_string();
     let symbol = "TST".to_string();
     let decimals = 20u8; // Max is 18

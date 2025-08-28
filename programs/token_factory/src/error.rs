@@ -15,6 +15,8 @@ pub enum TokenFactoryError {
     TickerNotAlphanumeric,
     #[msg("Ticker is too long")]
     TickerTooLong,
+    #[msg("Ticker must be uppercase")]
+    TickerNotUppercase,
     #[msg("Token name is too long")]
     NameTooLong,
     #[msg("Token symbol is too long")]
