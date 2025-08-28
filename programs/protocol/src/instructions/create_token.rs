@@ -97,7 +97,7 @@ pub fn create_token_via_factory(
 
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
-    // Make the CPI call to your token factory
+    // Make the CPI call to the token factory
     token_factory_create_token(cpi_ctx, ticker, name, symbol, decimals, initial_supply)?;
 
     Ok(())
