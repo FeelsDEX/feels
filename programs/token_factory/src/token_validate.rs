@@ -71,7 +71,7 @@ pub fn is_ticker_restricted(ticker: &str) -> bool {
 ///
 /// # Returns
 /// * `Ok(())` if the ticker is allowed
-/// * `Err(PoolError::RestrictedTicker)` if the ticker is restricted
+/// * `Err(TokenFactoryError::TickerIsRestricted)` if the ticker is restricted
 pub fn validate_ticker_not_restricted(ticker: &str) -> Result<()> {
     if is_ticker_restricted(ticker) {
         return Err(error!(TokenFactoryError::TickerIsRestricted));
@@ -90,7 +90,7 @@ pub fn validate_ticker_not_restricted(ticker: &str) -> Result<()> {
 ///
 /// # Returns
 /// * `Ok(())` if the ticker is valid
-/// * `Err(PoolError)` with appropriate error if validation fails
+/// * `Err(TokenFactoryError)` with appropriate error if validation fails
 pub fn validate_ticker_format(ticker: &str) -> Result<()> {
     // Check length
     if ticker.is_empty() {

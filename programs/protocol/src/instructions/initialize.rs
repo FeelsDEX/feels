@@ -20,7 +20,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 +Treasury::INIT_SPACE,
+        space = 8 + Treasury::INIT_SPACE,
         seeds = [b"treasury"],
         bump
     )]

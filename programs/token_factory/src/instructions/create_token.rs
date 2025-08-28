@@ -99,6 +99,7 @@ pub fn create_token(
     token_metadata.name = name.clone();
     token_metadata.symbol = symbol.clone();
     token_metadata.mint = ctx.accounts.token_mint.key();
+    token_metadata.authority = ctx.accounts.factory.key();
     token_metadata.created_at = Clock::get()?.unix_timestamp;
 
     // Mint initial supply to recipient if requested
