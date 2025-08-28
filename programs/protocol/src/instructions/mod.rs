@@ -1,8 +1,10 @@
 pub mod authority_transfer;
+pub mod create_token;
 pub mod initialize;
 pub mod update_protocol;
 
 pub use authority_transfer::*;
+pub use create_token::*;
 pub use initialize::*;
 pub use update_protocol::*;
 

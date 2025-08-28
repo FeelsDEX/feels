@@ -53,4 +53,15 @@ pub mod feels_protocol {
     pub fn accept_authority_transfer(ctx: Context<AcceptAuthorityTransfer>) -> Result<()> {
         instructions::accept_authority_transfer(ctx)
     }
+
+    pub fn create_token(
+        ctx: Context<CreateToken>,
+        ticker: String,
+        name: String,
+        symbol: String,
+        decimals: u8,
+        initial_supply: u64,
+    ) -> Result<()> {
+        instructions::create_token_via_factory(ctx, ticker, name, symbol, decimals, initial_supply)
+    }
 }

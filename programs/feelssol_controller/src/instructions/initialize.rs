@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{token_2022::Token2022, token_interface::Mint};
 
-use crate::state::FeelsSolController;
+use crate::{events::FeelsSolInitialized, state::FeelsSolController};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -9,7 +9,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = FeelsSolController::SIZE,
+        space = 8 + FeelsSolController::INIT_SPACE,
         seeds = [b"feelssol"],
         bump
     )]
@@ -48,5 +48,11 @@ pub fn initialize_feelssol(
     feelssol.yield_accumulator = 0;
     feelssol.last_update_slot = 0;
     feelssol.feels_protocol = feels_protocol;
+
+    emit!(FeelsSolInitialized {
+        underlying_mint,
+        feels_protocol,
+    });
+
     Ok(())
 }

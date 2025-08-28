@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[account]
+#[derive(InitSpace)]
 pub struct FeelsSolController {
     pub underlying_mint: Pubkey, // 32 - LST being wrapped (e.g. JitoSOL)
     pub total_wrapped: u128,     // 16 - Total LST wrapped
@@ -8,8 +9,5 @@ pub struct FeelsSolController {
     pub yield_accumulator: u128, // 16 - Accumulated staking yield
     pub last_update_slot: u64,   // 8 - Last yield update
     pub feels_protocol: Pubkey,  // 32 - Feels protocol authority
-}
-
-impl FeelsSolController {
-    pub const SIZE: usize = 8 + 32 + 16 + 16 + 16 + 8 + 32;
+    pub _reserved: [u8; 64],     // 64 - Reserved for future use
 }

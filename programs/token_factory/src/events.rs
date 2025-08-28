@@ -1,0 +1,16 @@
+use anchor_lang::prelude::*;
+
+#[event]
+pub struct TokenFactoryInitialized {
+    pub feels_protocol: Pubkey,
+}
+
+#[event]
+pub struct TokenCreated {
+    pub mint: Pubkey,
+    pub ticker: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub initial_supply: u64,
+}

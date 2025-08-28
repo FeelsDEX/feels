@@ -11,7 +11,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = ProtocolState::SIZE,
+        space = 8 + ProtocolState::INIT_SPACE,
         seeds = [b"protocol"],
         bump
     )]
@@ -20,7 +20,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = Treasury::SIZE,
+        space = 8 + Treasury::INIT_SPACE,
         seeds = [b"treasury"],
         bump
     )]
