@@ -1,7 +1,6 @@
+use crate::{events::FeelsSolInitialized, state::FeelsSolController};
 use anchor_lang::prelude::*;
 use anchor_spl::{token_2022::Token2022, token_interface::Mint};
-
-use crate::{events::FeelsSolInitialized, state::FeelsSolController};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -15,7 +14,7 @@ pub struct Initialize<'info> {
     )]
     pub feelssol: Account<'info, FeelsSolController>,
 
-    /// FeelsSOL Token-2022 mint
+    /// FeelsSOL Token-2022 mint (vanity address - passed as signer)
     #[account(
         init,
         payer = payer,
@@ -23,14 +22,14 @@ pub struct Initialize<'info> {
         mint::authority = feelssol,
         mint::freeze_authority = feelssol,
         mint::token_program = token_program,
-        seeds = [b"feels_mint"],  // Add seeds for deterministic derivation
-        bump
+        signer
     )]
     pub feels_mint: InterfaceAccount<'info, Mint>,
 
     /// Account that pays (operational wallet)
     #[account(mut)]
     pub payer: Signer<'info>,
+
     pub token_program: Program<'info, Token2022>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,

@@ -1,7 +1,10 @@
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_2022::{mint_to, MintTo, Token2022},
+    token_2022::{
+        mint_to, set_authority, spl_token_2022::instruction::AuthorityType, MintTo, SetAuthority,
+        Token2022,
+    },
     token_interface::{Mint, TokenAccount},
 };
 
@@ -116,6 +119,20 @@ pub fn create_token(
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
 
         mint_to(cpi_ctx, initial_supply)?;
+
+        // Put mint authority to None to avoid further minting
+        let set_authority_accounts = SetAuthority {
+            account_or_mint: ctx.accounts.token_mint.to_account_info(),
+            current_authority: ctx.accounts.factory.to_account_info(),
+        };
+
+        let set_authority_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            set_authority_accounts,
+            signer_seeds,
+        );
+
+        set_authority(set_authority_ctx, AuthorityType::MintTokens, None)?;
     }
 
     // Increase the number of tokens created
