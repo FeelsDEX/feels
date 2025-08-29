@@ -1,481 +1,416 @@
-/// Core pool state account implementing concentrated liquidity with Uniswap V3-style mechanics.
-/// Stores price, liquidity, fee data, and tick bitmap for efficient position management.
-/// Contains data structures and state mutation methods including PDA derivation,
-/// bitmap operations, and fee growth updates. Designed with 512 bytes of reserved space
-/// for future Phase 2/3 upgrades.
+/// Unified Pool state for the Feels Protocol
+/// All features integrated directly without phase separation
 use anchor_lang::prelude::*;
-use crate::state::PoolError;
-use crate::constant::{TICK_ARRAY_SIZE, RATE_BITS, DURATION_BITS, LEVERAGE_BITS};
+use crate::state::{FeelsProtocolError, duration::Duration};
+use crate::state::reentrancy::ReentrancyStatus;
+use crate::state::leverage::{LeverageParameters, RiskProfile, LeverageStatistics};
+use crate::state::fee::DynamicFeeConfig;
+use crate::state::metrics_volume::VolumeTracker;
+use crate::state::tick::Tick3D;
+use crate::utils::U256Wrapper;
 
 // ============================================================================
-// Phase 2+ Types (Three-Dimensional System)
+// Unified Pool Structure
 // ============================================================================
 
-/// Duration types for Phase 2+ three-dimensional system
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
-pub enum Duration {
-    Flash = 0,      // 1 block
-    Swap = 1,       // Immediate (spot)
-    Weekly = 2,     // 7 days
-    Monthly = 3,    // 28 days
-    Quarterly = 4,  // 90 days
-    Annual = 5,     // 365 days
-}
-
-impl Duration {
-    pub const COUNT: usize = 6;
-    
-    pub fn to_blocks(&self) -> u64 {
-        match self {
-            Duration::Flash => 1,
-            Duration::Swap => 0,
-            Duration::Weekly => 7 * 24 * 60 * 5,     // 5 blocks/min
-            Duration::Monthly => 28 * 24 * 60 * 5,
-            Duration::Quarterly => 90 * 24 * 60 * 5,
-            Duration::Annual => 365 * 24 * 60 * 5,
-        }
-    }
-}
-
-/// Three-dimensional tick structure for Phase 2+
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
-pub struct Tick3D {
-    pub rate_tick: i32,
-    pub duration_tick: i16,
-    pub leverage_tick: i16,
-}
-
-impl Tick3D {
-    /// Encode 3D tick into single i32 for efficient storage
-    pub fn encode(&self) -> Result<i32> {
-        // Add overflow checks for bit shifting operations
-        // Validate that values fit within their allocated bit ranges
-        
-        // Rate uses primary bits (highest precision needed)
-        if self.rate_tick.abs() >= (1 << RATE_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        let rate_masked = self.rate_tick & ((1 << RATE_BITS) - 1);
-        
-        // Duration uses 6 bits (supports Duration enum)
-        if self.duration_tick.abs() >= (1 << DURATION_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        let duration_shifted = (self.duration_tick as i32)
-            .checked_shl(RATE_BITS as u32)
-            .ok_or(PoolError::MathOverflow)?;
-        
-        // Leverage uses 6 bits (64 discrete levels of continuous leverage)
-        if self.leverage_tick.abs() >= (1 << LEVERAGE_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        let leverage_shifted = (self.leverage_tick as i32)
-            .checked_shl((RATE_BITS + DURATION_BITS) as u32)
-            .ok_or(PoolError::MathOverflow)?;
-        
-        // Combine with overflow protection
-        let result = rate_masked | duration_shifted | leverage_shifted;
-        Ok(result)
-    }
-    
-    /// Decode i32 back into 3D tick structure with validation
-    pub fn decode(encoded: i32) -> Result<Self> {
-        let rate_tick = encoded & ((1 << RATE_BITS) - 1);
-        let duration_tick = ((encoded >> RATE_BITS) & ((1 << DURATION_BITS) - 1)) as i16;
-        let leverage_tick = ((encoded >> (RATE_BITS + DURATION_BITS)) & ((1 << LEVERAGE_BITS) - 1)) as i16;
-        
-        // Validate decoded values are within expected ranges
-        if rate_tick.abs() >= (1 << RATE_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        
-        if duration_tick.abs() >= (1 << DURATION_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        
-        if leverage_tick.abs() >= (1 << LEVERAGE_BITS) {
-            return Err(PoolError::InvalidTickRange.into());
-        }
-        
-        Ok(Self { rate_tick, duration_tick, leverage_tick })
-    }
-}
-
-// ============================================================================
-// Phase 1 Core Structures
-// ============================================================================
-
-/// Core Pool account for concentrated liquidity AMM (Phase 1)
-/// Matches specification exactly with proper u256 handling
+/// Unified Pool account with all features integrated
 #[account(zero_copy)]
 #[repr(C, packed)]
 pub struct Pool {
-    // Version control
-    pub version: u8,                    // Set to 1 for Phase 1
-    pub _padding: [u8; 7],              // Explicit padding for alignment
+    pub _discriminator: [u8; 8], // Account discriminator
     
-    // Token configuration
-    pub token_a_mint: Pubkey,           // Any token mint
-    pub token_b_mint: Pubkey,           // Always FeelsSOL mint
-    pub token_a_vault: Pubkey,          // Token A vault PDA
-    pub token_b_vault: Pubkey,          // FeelsSOL vault PDA
+    // ========== Core Token Configuration ==========
+    pub token_a_mint: Pubkey,      // Any token mint
+    pub token_b_mint: Pubkey,      // Always FeelsSOL mint
+    pub token_a_vault: Pubkey,     // Token A vault PDA
+    pub token_b_vault: Pubkey,     // FeelsSOL vault PDA
     
-    // Fee configuration
-    pub fee_rate: u16,                  // Fee tier in basis points (1, 5, 30, 100)
-    pub protocol_fee_rate: u16,         // Protocol's share of fees
+    // ========== Fee Configuration ==========
+    pub fee_config: Pubkey,        // Reference to FeeConfig account
+    pub fee_rate: u16,             // Current fee rate (basis points)
+    pub protocol_fee_rate: u16,    // Protocol fee share (basis points)
+    pub liquidity_fee_rate: u16,   // LP fee share
+    pub _fee_padding: [u8; 2],     // Alignment
     
-    // Price and liquidity state
-    pub current_tick: i32,              // Current price tick
-    pub current_sqrt_price: u128,       // Square root of price (Q64.96)
-    pub liquidity: u128,                // Total active liquidity
+    // ========== Rate and Liquidity State ==========
+    pub current_tick: i32,         // Current rate tick
+    pub current_sqrt_rate: u128,   // Square root of rate (Q64.96)
+    pub liquidity: u128,           // Total active liquidity
     
-    // Tick bitmap for efficient searching (1024-bit bitmap)
-    pub tick_array_bitmap: [u64; 16],   
-    pub tick_spacing: i16,              // Minimum tick spacing
-    pub _padding2: [u8; 6],             // Explicit padding for alignment
+    // ========== Tick Management ==========
+    pub tick_array_bitmap: [u64; 16], // 1024-bit bitmap for tick arrays
+    pub tick_spacing: i16,            // Minimum tick spacing
+    pub _tick_padding: [u8; 6],       // Alignment
     
-    // Fee tracking (using [u64; 4] to represent u256)
-    pub fee_growth_global_0: [u64; 4],  // Cumulative fees (token 0)
-    pub fee_growth_global_1: [u64; 4],  // Cumulative fees (token 1) 
-    pub protocol_fees_0: u64,           // Uncollected protocol fees
-    pub protocol_fees_1: u64,           // Uncollected protocol fees
+    // ========== Fee Tracking ==========
+    pub fee_growth_global_a: [u64; 4], // Cumulative fees token A (u256)
+    pub fee_growth_global_b: [u64; 4], // Cumulative fees token B (u256)
+    pub protocol_fees_a: u64,          // Uncollected protocol fees A
+    pub protocol_fees_b: u64,          // Uncollected protocol fees B
     
-    // Pool metadata
-    pub authority: Pubkey,              // Pool authority
-    pub creation_timestamp: i64,        // Creation time
-    pub last_update_slot: u64,          // Last update slot
+    // ========== Pool Metadata ==========
+    pub authority: Pubkey,         // Pool authority
+    pub creation_timestamp: i64,   // Creation time
+    pub last_update_slot: u64,     // Last update slot
     
-    // Statistics
-    pub total_volume_0: u128,           // Cumulative volume
-    pub total_volume_1: u128,           // Cumulative volume
+    // ========== Statistics ==========
+    pub total_volume_a: u128,      // Cumulative volume token A
+    pub total_volume_b: u128,      // Cumulative volume token B
     
-    // Future upgrade space
-    pub _reserved: [u8; 512],           // Reserved for Phase 2+
+    // ========== Security Features ==========
+    pub reentrancy_status: u8,     // Reentrancy protection state
+    pub _security_padding: [u8; 7], // Alignment
+    
+    // ========== Oracle Integration ==========
+    pub oracle: Pubkey,            // Oracle account (Pubkey::default() if none)
+    
+    // ========== Leverage System ==========
+    pub leverage_params: LeverageParameters,
+    pub leverage_stats: LeverageStatistics,
+    
+    // ========== Dynamic Fees ==========
+    pub dynamic_fee_config: DynamicFeeConfig,
+    
+    // ========== Volume Tracking ==========
+    pub volume_tracker: VolumeTracker,
+    
+    // ========== Position Vault ==========
+    pub position_vault: Pubkey,    // Position vault (Pubkey::default() if none)
+    
+    // ========== Redenomination ==========
+    pub last_redenomination: i64,
+    pub redenomination_threshold: u64,
+    
+    // ========== Hook Integration ==========
+    pub hook_registry: Pubkey,     // Hook registry account (Pubkey::default() if none)
+    pub valence_session: Pubkey,   // Valence hook session (Pubkey::default() if none)
+    
+    // ========== Reserved Space ==========
+    pub _reserved: [u8; 224],      // Reserved for future use (reduced by 32 for hook_registry)
+    
+    // TODO: When implementing zero-copy optimization, most of these fields
+    // would move to compressed accounts. The Pool would store only:
+    // - Essential hot state (current_tick, liquidity, sqrt_rate)
+    // - References to compressed account trees
+    // - Frequently accessed configuration
 }
 
 impl Pool {
-    // Size constants for each section of the Pool struct
-    const DISCRIMINATOR_SIZE: usize = 8;
-    const VERSION_SIZE: usize = 1 + 7;  // version + padding
-    const TOKEN_CONFIG_SIZE: usize = 32 * 4;  // 4 pubkeys (token_a_mint, token_b_mint, token_a_vault, token_b_vault)
-    const FEE_RATES_SIZE: usize = 2 + 2;  // fee_rate + protocol_fee_rate
-    const PRICE_LIQUIDITY_SIZE: usize = 4 + 16 + 16;  // current_tick + current_sqrt_price + liquidity
-    const TICK_BITMAP_SIZE: usize = 128 + 2 + 6;  // tick_array_bitmap + tick_spacing + padding
-    const FEE_TRACKING_SIZE: usize = 32 + 32 + 8 + 8;  // fee_growth_global_0 + fee_growth_global_1 + protocol_fees
-    const METADATA_SIZE: usize = 32 + 8 + 8;  // authority + creation_timestamp + last_update_slot
-    const STATISTICS_SIZE: usize = 16 + 16;  // total_volume_0 + total_volume_1
-    const RESERVED_SIZE: usize = 512;  // reserved for future upgrades
+    pub const SIZE: usize = 8 +    // discriminator
+        32 * 4 +                   // token configuration (4 pubkeys)
+        32 + 2 + 2 + 2 + 2 +      // fee configuration
+        4 + 16 + 16 +             // rate and liquidity
+        128 + 2 + 6 +             // tick management
+        32 + 32 + 8 + 8 +         // fee tracking
+        32 + 8 + 8 +              // metadata
+        16 + 16 +                 // statistics
+        1 + 7 +                   // security
+        32 +                      // oracle
+        32 + 32 +                 // leverage (params + stats sizes)
+        64 +                      // dynamic fees
+        64 +                      // volume tracker
+        32 +                      // position vault
+        8 + 8 +                   // redenomination
+        32 + 32 +                 // hook_registry + valence
+        224;                      // reserved
     
-    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
-        Self::VERSION_SIZE +
-        Self::TOKEN_CONFIG_SIZE +
-        Self::FEE_RATES_SIZE +
-        Self::PRICE_LIQUIDITY_SIZE +
-        Self::TICK_BITMAP_SIZE +
-        Self::FEE_TRACKING_SIZE +
-        Self::METADATA_SIZE +
-        Self::STATISTICS_SIZE +
-        Self::RESERVED_SIZE;  // Total: 979 bytes
-        
-    // ------------------------------------------------------------------------
-    // PDA Derivation
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // Core Pool Functions
+    // ========================================================================
     
-    /// Calculate the pool's seeds for PDA derivation
+    /// Get pool seeds for PDA derivation
     pub fn seeds(token_a: &Pubkey, token_b: &Pubkey, fee_rate: u16) -> Vec<Vec<u8>> {
-        // Use canonical ordering to ensure consistency
-        let (token_0, token_1) = crate::utils::CanonicalSeeds::sort_token_mints(token_a, token_b);
+        let (token_a_sorted, token_b_sorted) = if token_a < token_b {
+            (token_a, token_b)
+        } else {
+            (token_b, token_a)
+        };
+        
         vec![
             b"pool".to_vec(),
-            token_0.to_bytes().to_vec(),
-            token_1.to_bytes().to_vec(),
+            token_a_sorted.to_bytes().to_vec(),
+            token_b_sorted.to_bytes().to_vec(),
             fee_rate.to_le_bytes().to_vec(),
         ]
     }
     
-    /// Calculate the pool's seeds for PDA derivation with bump
-    pub fn seeds_with_bump(token_a: &Pubkey, token_b: &Pubkey, fee_rate: u16, bump: u8) -> Vec<Vec<u8>> {
-        // Delegate to the canonical implementation
-        crate::utils::CanonicalSeeds::get_pool_seeds(token_a, token_b, fee_rate, bump)
+    /// Verify pool authority
+    pub fn verify_authority(&self, signer: &Pubkey) -> Result<()> {
+        require!(
+            self.authority == *signer,
+            FeelsProtocolError::UnauthorizedPoolAuthority
+        );
+        Ok(())
     }
     
-    // ------------------------------------------------------------------------
-    // State Mutations
-    // ------------------------------------------------------------------------
-    
-    /// Update the tick array bitmap when initializing a new tick array
-    pub fn set_tick_array_initialized(&mut self, start_tick: i32) {
-        let tick_array_index = start_tick / TICK_ARRAY_SIZE as i32;
-        let word_index = (tick_array_index / 64) as usize;
-        let bit_index = (tick_array_index % 64) as u32;
-
-        if word_index < 16 {
-            self.tick_array_bitmap[word_index] |= 1u64 << bit_index;
-        }
+    /// Get vault PDAs for this pool
+    pub fn get_vault_pdas(&self, program_id: &Pubkey) -> (Pubkey, u8, Pubkey, u8) {
+        let (vault_a, bump_a) = Pubkey::find_program_address(
+            &[b"token_vault", self.key().as_ref(), self.token_a_mint.as_ref()],
+            program_id,
+        );
+        
+        let (vault_b, bump_b) = Pubkey::find_program_address(
+            &[b"token_vault", self.key().as_ref(), self.token_b_mint.as_ref()],
+            program_id,
+        );
+        
+        (vault_a, bump_a, vault_b, bump_b)
     }
     
-    /// Update global fee growth using production-grade big integer arithmetic
-    /// 
-    /// This is a critical operation for concentrated liquidity fee distribution.
-    /// Uses the new robust U256 implementation for overflow-safe calculations.
-    pub fn update_fee_growth(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
-        if self.liquidity == 0 {
-            return Ok(()); // No liquidity to distribute fees to
-        }
-
-        // Calculate fee growth using the new high-precision implementation
-        let fee_growth_delta = crate::utils::calculate_fee_growth_delta(fee_amount, self.liquidity)?;
-
+    /// Calculate current 3D tick position
+    pub fn get_current_tick_3d(&self) -> Result<Tick3D> {
+        Ok(Tick3D::new(
+            self.current_tick,
+            Duration::Swap.to_tick(),
+            0, // Default 1x leverage
+        )?)
+    }
+    
+    // ========================================================================
+    // Security Functions
+    // ========================================================================
+    
+    /// Get reentrancy status
+    pub fn get_reentrancy_status(&self) -> Result<ReentrancyStatus> {
+        ReentrancyStatus::try_from(self.reentrancy_status)
+            .map_err(|_| FeelsProtocolError::InvalidValue.into())
+    }
+    
+    /// Set reentrancy status
+    pub fn set_reentrancy_status(&mut self, status: ReentrancyStatus) -> Result<()> {
+        self.reentrancy_status = status as u8;
+        Ok(())
+    }
+    
+    // ========================================================================
+    // Feature Checks
+    // ========================================================================
+    
+    /// Check if oracle is configured
+    pub fn has_oracle(&self) -> bool {
+        self.oracle != Pubkey::default()
+    }
+    
+    /// Check if position vault is configured
+    pub fn has_position_vault(&self) -> bool {
+        self.position_vault != Pubkey::default()
+    }
+    
+    /// Check if valence session is active
+    pub fn has_valence_session(&self) -> bool {
+        self.valence_session != Pubkey::default()
+    }
+    
+    /// Check if hook registry is configured
+    pub fn has_hook_registry(&self) -> bool {
+        self.hook_registry != Pubkey::default()
+    }
+    
+    /// Get maximum allowed leverage
+    pub fn get_max_leverage(&self) -> Result<u64> {
+        Ok(self.leverage_params.max_leverage)
+    }
+    
+    // ========================================================================
+    // Fee Management
+    // ========================================================================
+    
+    /// Accumulate protocol fees
+    pub fn accumulate_protocol_fees(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
         if is_token_a {
-            // Use FeeGrowthMath to handle fee growth addition
-            self.fee_growth_global_0 = crate::utils::FeeGrowthMath::add_fee_growth(
-                self.fee_growth_global_0,
-                fee_growth_delta
-            )?;
+            self.protocol_fees_a = self.protocol_fees_a
+                .checked_add(fee_amount)
+                .ok_or(FeelsProtocolError::MathOverflow)?;
         } else {
-            // Use FeeGrowthMath to handle fee growth addition
-            self.fee_growth_global_1 = crate::utils::FeeGrowthMath::add_fee_growth(
-                self.fee_growth_global_1,
-                fee_growth_delta
-            )?;
+            self.protocol_fees_b = self.protocol_fees_b
+                .checked_add(fee_amount)
+                .ok_or(FeelsProtocolError::MathOverflow)?;
+        }
+        Ok(())
+    }
+    
+    /// Accumulate fee growth
+    pub fn accumulate_fee_growth(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
+        if self.liquidity == 0 {
+            return Ok(());
+        }
+        
+        let fee_growth = U256Wrapper::from_u64(fee_amount)
+            .checked_mul(U256Wrapper::from_u64(1u64 << 32))?
+            .checked_div(U256Wrapper::from_u128(self.liquidity))?;
+        
+        if is_token_a {
+            let current = U256Wrapper::from_u64_array(self.fee_growth_global_a);
+            let new = current.checked_add(fee_growth)?;
+            self.fee_growth_global_a = new.to_u64_array();
+        } else {
+            let current = U256Wrapper::from_u64_array(self.fee_growth_global_b);
+            let new = current.checked_add(fee_growth)?;
+            self.fee_growth_global_b = new.to_u64_array();
         }
         
         Ok(())
     }
     
-    /// Update protocol fees after a swap
-    pub fn accumulate_protocol_fees(&mut self, protocol_fee: u64, zero_for_one: bool) -> Result<()> {
-        if zero_for_one {
-            self.protocol_fees_0 = self.protocol_fees_0
-                .checked_add(protocol_fee)
-                .ok_or(PoolError::MathOverflow)?;
-        } else {
-            self.protocol_fees_1 = self.protocol_fees_1
-                .checked_add(protocol_fee)
-                .ok_or(PoolError::MathOverflow)?;
+    // ========================================================================
+    // Leverage Statistics
+    // ========================================================================
+    
+    /// Update leverage statistics when adding liquidity
+    pub fn update_leverage_stats_add(
+        &mut self,
+        liquidity: u128,
+        leverage: u64,
+        effective_liquidity: u128,
+    ) -> Result<()> {
+        self.leverage_stats.total_base_liquidity = self.leverage_stats
+            .total_base_liquidity
+            .checked_add(liquidity)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+            
+        self.leverage_stats.total_leveraged_liquidity = self.leverage_stats
+            .total_leveraged_liquidity
+            .checked_add(effective_liquidity)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+        
+        if leverage > RiskProfile::LEVERAGE_SCALE {
+            self.leverage_stats.leveraged_position_count = self.leverage_stats
+                .leveraged_position_count
+                .checked_add(1)
+                .ok_or(FeelsProtocolError::MathOverflow)?;
         }
+        
+        self.leverage_stats.last_update = Clock::get()?.unix_timestamp;
         Ok(())
     }
     
-    // ------------------------------------------------------------------------
-    // State Queries
-    // ------------------------------------------------------------------------
+    /// Update leverage statistics when removing liquidity
+    pub fn update_leverage_stats_remove(
+        &mut self,
+        liquidity: u128,
+        leverage: u64,
+        effective_liquidity: u128,
+    ) -> Result<()> {
+        self.leverage_stats.total_base_liquidity = self.leverage_stats
+            .total_base_liquidity
+            .checked_sub(liquidity)
+            .ok_or(FeelsProtocolError::MathUnderflow)?;
+            
+        self.leverage_stats.total_leveraged_liquidity = self.leverage_stats
+            .total_leveraged_liquidity
+            .checked_sub(effective_liquidity)
+            .ok_or(FeelsProtocolError::MathUnderflow)?;
+        
+        if leverage > RiskProfile::LEVERAGE_SCALE && 
+           self.leverage_stats.leveraged_position_count > 0 {
+            self.leverage_stats.leveraged_position_count -= 1;
+        }
+        
+        self.leverage_stats.last_update = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
     
-    /// Check if a tick array is initialized
-    pub fn is_tick_array_initialized(&self, start_tick: i32) -> bool {
-        let tick_array_index = start_tick / TICK_ARRAY_SIZE as i32;
-        let word_index = (tick_array_index / 64) as usize;
-        let bit_index = (tick_array_index % 64) as u32;
-
-        if word_index >= 16 {
+    // ========================================================================
+    // Volume Tracking
+    // ========================================================================
+    
+    /// Update trading volume
+    pub fn update_volume(&mut self, amount_a: u64, amount_b: u64) -> Result<()> {
+        self.total_volume_a = self.total_volume_a
+            .checked_add(amount_a as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+            
+        self.total_volume_b = self.total_volume_b
+            .checked_add(amount_b as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+            
+        let current_timestamp = Clock::get()?.unix_timestamp;
+        self.volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
+        
+        Ok(())
+    }
+    
+    // ========================================================================
+    // Bitmap Operations
+    // ========================================================================
+    
+    /// Check if a tick has liquidity
+    pub fn is_tick_initialized(&self, tick: i32) -> bool {
+        let word_pos = (tick / 64) as usize;
+        let bit_pos = (tick % 64) as u8;
+        
+        if word_pos >= 16 {
             return false;
         }
-
-        (self.tick_array_bitmap[word_index] & (1u64 << bit_index)) != 0
-    }
-}
-
-// ============================================================================
-// FeelsSOL Wrapper
-// ============================================================================
-
-/// FeelsSOL wrapper for universal base pair
-#[account]
-pub struct FeelsSOL {
-    pub underlying_mint: Pubkey,        // JitoSOL or other LST
-    pub feels_mint: Pubkey,             // FeelsSOL Token-2022 mint
-    pub total_wrapped: u128,            // Total LST wrapped
-    pub virtual_reserves: u128,         // Virtual balance for AMM
-    pub yield_accumulator: u128,        // Accumulated staking yield
-    pub last_update_slot: u64,          // Last yield update
-    pub authority: Pubkey,              // Protocol authority
-}
-
-impl FeelsSOL {
-    pub const SIZE: usize = 8 + // discriminator
-        32 * 3 + // underlying_mint, feels_mint, authority
-        16 * 3 + // wrapped, reserves, yield
-        8; // last_update_slot
-}
-
-// ============================================================================
-// Emergency Controls
-// ============================================================================
-
-/// Circuit breaker status for emergency controls
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
-pub struct CircuitBreakerStatus {
-    pub swaps_paused: bool,
-    pub deposits_paused: bool,
-    pub withdrawals_paused: bool,
-    pub fee_collection_paused: bool,
-    pub guardian: Option<Pubkey>,
-    pub pause_expiry: Option<i64>,
-}
-
-// ============================================================================
-// Oracle Infrastructure
-// ============================================================================
-
-/// Simple observation buffer for TWAP calculations (Phase 1)
-#[account]
-pub struct ObservationState {
-    pub pool: Pubkey,
-    pub observations: [Observation; 100],   // Fixed size for Phase 1
-    pub observation_index: u16,             // Current position in ring buffer
-    pub cardinality: u16,                   // Active observations
-    pub last_update_timestamp: i64,
-}
-
-impl ObservationState {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // pool
-        (8 + 16 + 16 + 1) * 100 + // observations array
-        2 + 2 + 8; // index, cardinality, timestamp
-}
-
-#[derive(Default, Clone, Copy, AnchorSerialize, AnchorDeserialize)]
-pub struct Observation {
-    pub timestamp: i64,
-    pub sqrt_price_x96: u128,
-    pub cumulative_tick: i128,
-    pub initialized: bool,
-}
-
-// ============================================================================
-// Transient Update System
-// ============================================================================
-
-/// Maximum number of tick updates per batch for gas optimization
-pub const MAX_TICK_UPDATES: usize = 20;
-
-/// Transient tick updates for gas optimization (Phase 1)
-/// Fixed-size array prevents dynamic allocation issues and provides predictable rent costs
-#[account(zero_copy)]
-#[repr(C, packed)]
-pub struct TransientTickUpdates {
-    pub pool: Pubkey,
-    pub slot: u64,
-    pub updates: [TickUpdate; MAX_TICK_UPDATES],
-    pub update_count: u8,          // Number of active updates (0-20)
-    pub finalized: u8,             // 0 = false, 1 = true
-    pub created_at: i64,           // Timestamp for cleanup management
-    pub gas_budget_remaining: u32, // For rate limiting
-    pub _reserved: [u8; 64],       // Future extensibility
-}
-
-impl TransientTickUpdates {
-    pub const SIZE: usize = 8 + // discriminator
-        32 + // pool
-        8 +  // slot
-        (32 + 4 + 16 + 32 + 32 + 8 + 1) * MAX_TICK_UPDATES + // updates array
-        1 +  // update_count
-        1 +  // finalized
-        8 +  // created_at
-        4 +  // gas_budget_remaining
-        64;  // _reserved
-        // Total: ~2,500 bytes - well under account limits
-    
-    /// Initialize a new TransientTickUpdates account
-    pub fn initialize(&mut self, pool: Pubkey, slot: u64, timestamp: i64) {
-        self.pool = pool;
-        self.slot = slot;
-        self.update_count = 0;
-        self.finalized = 0;
-        self.created_at = timestamp;
-        self.gas_budget_remaining = 100_000; // Conservative gas budget
-        self._reserved = [0u8; 64];
         
-        // Initialize all updates to default
-        self.updates = core::array::from_fn(|_| TickUpdate::default());
+        (self.tick_array_bitmap[word_pos] & (1u64 << bit_pos)) != 0
     }
     
-    /// Add a tick update to the batch (if space available)
-    pub fn add_update(&mut self, update: TickUpdate) -> Result<()> {
-        require!(
-            self.finalized == 0,
-            crate::state::PoolError::InvalidOperation
-        );
+    /// Set tick initialization state
+    pub fn set_tick_initialized(&mut self, tick: i32, initialized: bool) -> Result<()> {
+        let word_pos = (tick / 64) as usize;
+        let bit_pos = (tick % 64) as u8;
         
-        require!(
-            (self.update_count as usize) < MAX_TICK_UPDATES,
-            crate::state::PoolError::TransientUpdatesFull
-        );
+        require!(word_pos < 16, FeelsProtocolError::InvalidTick);
         
-        self.updates[self.update_count as usize] = update;
-        self.update_count += 1;
-        
-        Ok(())
-    }
-    
-    /// Remove an update from the batch (compact array)
-    pub fn remove_update(&mut self, index: u8) -> Result<()> {
-        require!(
-            index < self.update_count,
-            crate::state::PoolError::InvalidTickIndex
-        );
-        
-        // Shift remaining updates down
-        for i in (index as usize)..((self.update_count - 1) as usize) {
-            self.updates[i] = self.updates[i + 1];
+        if initialized {
+            self.tick_array_bitmap[word_pos] |= 1u64 << bit_pos;
+        } else {
+            self.tick_array_bitmap[word_pos] &= !(1u64 << bit_pos);
         }
         
-        // Clear the last update and decrement count
-        self.updates[(self.update_count - 1) as usize] = TickUpdate::default();
-        self.update_count -= 1;
-        
         Ok(())
-    }
-    
-    /// Mark all updates as finalized
-    pub fn finalize(&mut self) {
-        self.finalized = 1;
-    }
-    
-    /// Check if the batch is full
-    pub fn is_full(&self) -> bool {
-        (self.update_count as usize) >= MAX_TICK_UPDATES
-    }
-    
-    /// Check if the batch is empty
-    pub fn is_empty(&self) -> bool {
-        self.update_count == 0
-    }
-    
-    /// Get active updates slice
-    pub fn get_active_updates(&self) -> &[TickUpdate] {
-        &self.updates[0..(self.update_count as usize)]
-    }
-    
-    /// Clear all updates and reset for reuse
-    pub fn reset(&mut self, new_slot: u64, timestamp: i64) {
-        self.slot = new_slot;
-        self.update_count = 0;
-        self.finalized = 0;
-        self.created_at = timestamp;
-        self.gas_budget_remaining = 100_000;
-        
-        // Clear all updates
-        self.updates = core::array::from_fn(|_| TickUpdate::default());
-    }
-    
-    /// Check if updates should be cleaned up (older than threshold)
-    pub fn should_cleanup(&self, current_timestamp: i64, max_age_seconds: i64) -> bool {
-        (current_timestamp - self.created_at) > max_age_seconds
     }
 }
 
-#[zero_copy]
-#[derive(Default)]
-#[repr(C, packed)]
-pub struct TickUpdate {
-    pub tick_array_pubkey: Pubkey,
-    pub tick_index: i32,
-    pub liquidity_net_delta: i128,
-    pub fee_growth_outside_0: [u64; 4],
-    pub fee_growth_outside_1: [u64; 4],
-    pub slot: u64,              // When update was generated
-    pub priority: u8,           // Urgency hint for keepers
-    pub _padding: [u8; 7],      // Explicit padding for alignment
+// ============================================================================
+// Account Key Extension
+// ============================================================================
+
+impl AsRef<[u8]> for Pool {
+    fn as_ref(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const Pool as *const u8,
+                std::mem::size_of::<Pool>(),
+            )
+        }
+    }
+}
+
+impl AccountSerialize for Pool {
+    fn try_serialize<W: std::io::Write>(&self, writer: &mut W) -> Result<()> {
+        writer.write_all(self.as_ref())?;
+        Ok(())
+    }
+}
+
+impl AccountDeserialize for Pool {
+    fn try_deserialize(buf: &mut &[u8]) -> Result<Self> {
+        let pool: &Pool = bytemuck::try_from_bytes(buf)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        Ok(*pool)
+    }
+    
+    fn try_deserialize_unchecked(buf: &mut &[u8]) -> Result<Self> {
+        Self::try_deserialize(buf)
+    }
+}
+
+impl anchor_lang::Owner for Pool {
+    fn owner() -> Pubkey {
+        crate::ID
+    }
+}
+
+/// Helper trait for Pool key operations
+pub trait PoolKey {
+    fn key(&self) -> Pubkey;
+}
+
+impl<'info> PoolKey for AccountLoader<'info, Pool> {
+    fn key(&self) -> Pubkey {
+        AccountLoader::key(self)
+    }
 }

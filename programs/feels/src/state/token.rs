@@ -1,7 +1,6 @@
 /// Token metadata and state structures for the Feels Protocol token creation system.
 /// Defines TokenMetadata account structure for storing ticker, name, symbol, and creation info
 /// for tokens created through the platform's token factory with ticker validation.
-
 use anchor_lang::prelude::*;
 
 // ============================================================================
@@ -13,22 +12,22 @@ use anchor_lang::prelude::*;
 pub struct TokenMetadata {
     /// Token ticker (e.g., "FEELS") - validated against restrictions
     pub ticker: String,
-    
+
     /// Full token name (e.g., "Feel Something")
     pub name: String,
-    
+
     /// Token symbol (usually same as ticker)
     pub symbol: String,
-    
+
     /// Token mint account
     pub mint: Pubkey,
-    
+
     /// Create authority (original creator)
     pub authority: Pubkey,
-    
+
     /// Create timestamp
     pub created_at: i64,
-    
+
     /// Reserved space for future fields
     pub _reserved: [u8; 64],
 }
@@ -40,6 +39,38 @@ impl TokenMetadata {
         4 + 32 + // symbol (max 12 chars + length)
         32 + // mint
         32 + // authority
+        8 + // created_at
+        64; // reserved
+}
+
+// ============================================================================
+// FeelsSOL Wrapper
+// ============================================================================
+
+/// FeelsSOL wrapper account for the protocol's native token
+#[account]
+pub struct FeelsSOL {
+    /// The Feels mint this wrapper controls
+    pub feels_mint: Pubkey,
+    
+    /// Authority that can update the wrapper
+    pub authority: Pubkey,
+    
+    /// Total supply of wrapped FeelsSOL
+    pub total_supply: u64,
+    
+    /// Creation timestamp
+    pub created_at: i64,
+    
+    /// Reserved for future use
+    pub _reserved: [u8; 64],
+}
+
+impl FeelsSOL {
+    pub const SIZE: usize = 8 + // discriminator
+        32 + // feels_mint
+        32 + // authority
+        8 + // total_supply
         8 + // created_at
         64; // reserved
 }

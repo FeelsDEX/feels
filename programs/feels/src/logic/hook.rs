@@ -1,358 +1,390 @@
-/// Executes external hook programs that extend pool functionality without core modifications.
-/// Manages pre/post operation hooks with proper sandboxing and compute unit limits.
-/// Enables features like MEV protection, custom fees, and advanced trading strategies
-/// while maintaining security through permission checks and execution boundaries.
+/// Hook execution logic for extensible pool behaviors and external program integration.
+/// Manages hook registry operations, CPI calls to registered hooks, and async message queues.
+/// Supports validation, pre/post execution stages with different permission levels for security.
+/// Gas-optimized implementation minimizes overhead when no hooks are registered.
 
 use anchor_lang::prelude::*;
-use crate::state::{HookRegistry, HookType, HookContext, HookOperation, HookPermission, PoolError};
+use crate::state::{
+    HookRegistry, HookConfig, HookContext, HookMessage, HookMessageQueue,
+    EventData, MessageData, HookPermission, FeelsProtocolError,
+};
+
+// Re-export hook constants for convenience
+pub use crate::state::{
+    EVENT_POOL_INITIALIZED, EVENT_RATE_UPDATED, EVENT_LIQUIDITY_CHANGED,
+    EVENT_FEES_COLLECTED, EVENT_TICK_CROSSED, EVENT_TICK_ACTIVATED,
+    EVENT_TICK_DEACTIVATED, EVENT_POSITION_OPENED, EVENT_POSITION_MODIFIED,
+    EVENT_POSITION_CLOSED, EVENT_SWAP_EXECUTED, EVENT_ORDER_CREATED,
+    EVENT_ORDER_FILLED, EVENT_ORDER_MODIFIED, EVENT_REDENOMINATION,
+    STAGE_VALIDATE, STAGE_PRE_EXECUTE, STAGE_POST_EXECUTE, STAGE_ASYNC,
+};
 
 // ============================================================================
-// Hook Parameter Structures
-// ============================================================================
-
-/// Parameters for creating swap hook context
-pub struct SwapHookParams {
-    pub pool: Pubkey,
-    pub user: Pubkey,
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub token_in: Pubkey,
-    pub token_out: Pubkey,
-    pub price_before: u128,
-    pub price_after: u128,
-}
-
-/// Parameters for creating liquidity hook context
-pub struct LiquidityHookParams {
-    pub pool: Pubkey,
-    pub user: Pubkey,
-    pub liquidity_amount: u128,
-    pub amount_0: u64,
-    pub amount_1: u64,
-    pub tick_lower: i32,
-    pub tick_upper: i32,
-    pub is_add: bool,
-}
-
-// ============================================================================
-// Hook Executor Implementation
+// Hook Executor - Gas Optimized
 // ============================================================================
 
 pub struct HookExecutor;
 
 impl HookExecutor {
-    /// Execute pre-operation hooks
-    pub fn execute_pre_hooks(
-        registry: &HookRegistry,
-        hook_type: HookType,
+    /// Main entry point - executes hooks if present
+    #[inline(always)]
+    pub fn execute(
+        registry: Option<&Account<HookRegistry>>,
+        event: u32,
+        stage: u8,
         context: &HookContext,
+        message_queue: Option<&mut Account<HookMessageQueue>>,
         remaining_accounts: &[AccountInfo],
     ) -> Result<()> {
-        // Get active hooks
-        let hooks = registry.get_active_hooks(hook_type);
+        // Early exit if no registry
+        let registry = match registry {
+            Some(r) if r.hooks_enabled => r,
+            _ => return Ok(()),
+        };
         
-        // Execute each hook
-        for (index, hook) in hooks.iter().enumerate() {
-            // TODO: Validate compute units (requires newer Solana version)
-            // let compute_budget = anchor_lang::solana_program::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
-            //     hook.max_compute_units,
-            // );
+        // Handle async stage separately (no CPI)
+        if stage == STAGE_ASYNC {
+            return Self::handle_async_stage(registry, message_queue, context);
+        }
+        
+        // Get relevant hooks
+        let hooks = registry.get_hooks_for(event, stage);
+        if hooks.is_empty() {
+            return Ok(());
+        }
+        
+        // Execute based on stage
+        match stage {
+            STAGE_VALIDATE => Self::execute_validation(hooks, context, remaining_accounts),
+            STAGE_PRE_EXECUTE => Self::execute_pre(hooks, context, remaining_accounts),
+            STAGE_POST_EXECUTE => Self::execute_post(hooks, context, remaining_accounts),
+            _ => Ok(()),
+        }
+    }
+    
+    #[inline]
+    fn execute_validation(
+        hooks: Vec<&HookConfig>,
+        context: &HookContext,
+        accounts: &[AccountInfo],
+    ) -> Result<()> {
+        let mut account_offset = 0;
+        
+        for hook in hooks {
+            let permission = hook.permission_level();
             
-            // Prepare hook CPI
-            let result = execute_single_hook(
-                hook,
-                context,
-                &remaining_accounts[index..],
-            );
-            
-            // Handle hook result based on permission
-            match result {
-                Ok(_) => {}
-                Err(_e) => {
-                    match hook.permission {
-                        HookPermission::Halt => {
-                            return Err(PoolError::InvalidOperation.into());
-                        }
-                        _ => {
-                            // Continue with other hooks
-                        }
-                    }
+            // Only Halt permission can actually abort in validation
+            if permission == HookPermission::Halt {
+                let result = Self::invoke_hook(
+                    hook,
+                    context,
+                    &accounts[account_offset..],
+                );
+                
+                if result.is_err() {
+                    return Err(FeelsProtocolError::HookValidationFailed.into());
                 }
             }
+            
+            // Move offset for next hook's accounts
+            account_offset += Self::get_hook_account_count(hook);
         }
-        
         Ok(())
     }
     
-    /// Execute post-operation hooks
-    pub fn execute_post_hooks(
-        registry: &HookRegistry,
-        hook_type: HookType,
+    #[inline]
+    fn execute_pre(
+        hooks: Vec<&HookConfig>,
         context: &HookContext,
-        remaining_accounts: &[AccountInfo],
+        accounts: &[AccountInfo],
     ) -> Result<()> {
-        // Post hooks cannot halt operations, only observe/modify state
-        let hooks = registry.get_active_hooks(hook_type);
+        let mut account_offset = 0;
         
-        for (index, hook) in hooks.iter().enumerate() {
-            let result = execute_single_hook(
-                hook,
-                context,
-                &remaining_accounts[index..],
-            );
+        for hook in hooks {
+            let permission = hook.permission_level();
             
-            if result.is_err() {
-                // Post hooks failures are non-critical
+            if permission >= HookPermission::Modify {
+                Self::invoke_hook(hook, context, &accounts[account_offset..])?;
             }
+            
+            account_offset += Self::get_hook_account_count(hook);
         }
-        
         Ok(())
     }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Validate accounts before passing to hooks
-/// Ensures hooks can only access authorized accounts
-pub fn validate_hook_accounts(accounts: &[AccountInfo]) -> Result<()> {
-    use crate::state::PoolError;
     
-    for account in accounts {
-        // Ensure account is not a system-owned account
-        if account.owner == &anchor_lang::solana_program::system_program::ID {
-            // Allow system accounts but they should be read-only
-            require!(!account.is_writable, PoolError::Unauthorized);
-        }
-        
-        // Additional validation can be added here:
-        // - Check against a whitelist of allowed programs
-        // - Verify account ownership matches expected programs
-        // - Ensure critical accounts like vaults are not passed
-    }
-    
-    Ok(())
-}
-
-/// Execute a single hook via CPI
-fn execute_single_hook(
-    hook: &crate::state::HookConfig,
-    context: &HookContext,
-    accounts: &[AccountInfo],
-) -> Result<()> {
-    // Validate accounts before passing to hooks
-    validate_hook_accounts(accounts)?;
-    
-    // Enforce compute unit limits for hook execution
-    // Note: Compute budget instructions would need to be handled at transaction level
-    // For now, we track the limits for monitoring and potential future enforcement
-    let _compute_unit_limit = if hook.max_compute_units > 0 { hook.max_compute_units } else { 100_000 };
-    
-    // Serialize hook context
-    let data = context.try_to_vec()?;
-    
-    // Create instruction for hook
-    let hook_instruction = anchor_lang::solana_program::instruction::Instruction {
-        program_id: hook.program_id,
-        accounts: accounts.iter().map(|acc| AccountMeta {
-            pubkey: *acc.key,
-            is_signer: acc.is_signer,
-            is_writable: acc.is_writable,
-        }).collect(),
-        data,
-    };
-    
-    // Execute hook with tracked compute limit (enforcement at transaction level)
-    // TODO: Add actual compute budget enforcement when available
-    
-    // Execute the hook
-    anchor_lang::solana_program::program::invoke(
-        &hook_instruction,
-        accounts,
-    )?;
-    
-    Ok(())
-}
-
-/// Helper to create hook context for swap operations
-pub fn create_swap_hook_context(params: &SwapHookParams) -> HookContext {
-    HookContext {
-        pool: params.pool,
-        user: params.user,
-        operation: HookOperation::Swap {
-            amount_in: params.amount_in,
-            amount_out: params.amount_out,
-            token_in: params.token_in,
-            token_out: params.token_out,
-            price_before: params.price_before,
-            price_after: params.price_after,
-        },
-        // Already using unwrap_or_default() to handle Clock::get() errors gracefully
-        timestamp: Clock::get().unwrap_or_default().unix_timestamp,
-    }
-}
-
-/// Helper to create hook context for liquidity operations
-pub fn create_liquidity_hook_context(params: &LiquidityHookParams) -> HookContext {
-    let operation = if params.is_add {
-        HookOperation::AddLiquidity {
-            liquidity_amount: params.liquidity_amount,
-            amount_0: params.amount_0,
-            amount_1: params.amount_1,
-            tick_lower: params.tick_lower,
-            tick_upper: params.tick_upper,
-        }
-    } else {
-        HookOperation::RemoveLiquidity {
-            liquidity_amount: params.liquidity_amount,
-            amount_0: params.amount_0,
-            amount_1: params.amount_1,
-            tick_lower: params.tick_lower,
-            tick_upper: params.tick_upper,
-        }
-    };
-    
-    HookContext {
-        pool: params.pool,
-        user: params.user,
-        operation,
-        // Already using unwrap_or_default() to handle Clock::get() errors gracefully
-        timestamp: Clock::get().unwrap_or_default().unix_timestamp,
-    }
-}
-
-/// Integration point for swap instruction
-pub fn execute_swap_hooks<'info>(
-    registry: Option<&Account<'info, HookRegistry>>,
-    pool: Pubkey,
-    user: Pubkey,
-    pre_hook_state: (u64, u128), // (amount_in, price_before)
-    post_hook_state: (u64, u128, Pubkey, Pubkey), // (amount_out, price_after, token_in, token_out)
-    remaining_accounts: &[AccountInfo<'info>],
-) -> Result<()> {
-    if let Some(reg) = registry {
-        if reg.hooks_enabled {
-            // Create pre-swap context
-            let pre_params = SwapHookParams {
-                pool,
-                user,
-                amount_in: pre_hook_state.0,
-                amount_out: 0, // amount_out not known yet
-                token_in: post_hook_state.2,
-                token_out: post_hook_state.3,
-                price_before: pre_hook_state.1,
-                price_after: pre_hook_state.1, // price_after same as before for pre-hook
-            };
-            let pre_context = create_swap_hook_context(&pre_params);
-            
-            // Execute pre-swap hooks
-            HookExecutor::execute_pre_hooks(
-                reg,
-                HookType::PreSwap,
-                &pre_context,
-                remaining_accounts,
-            )?;
-            
-            // Create post-swap context
-            let post_params = SwapHookParams {
-                pool,
-                user,
-                amount_in: pre_hook_state.0,
-                amount_out: post_hook_state.0,
-                token_in: post_hook_state.2,
-                token_out: post_hook_state.3,
-                price_before: pre_hook_state.1,
-                price_after: post_hook_state.1,
-            };
-            let post_context = create_swap_hook_context(&post_params);
-            
-            // Execute post-swap hooks
-            HookExecutor::execute_post_hooks(
-                reg,
-                HookType::PostSwap,
-                &post_context,
-                remaining_accounts,
-            )?;
-        }
-    }
-    
-    Ok(())
-}
-
-// ============================================================================
-// Alternative Hook Execution Phases (Future Implementation)
-// ============================================================================
-
-/// Hook execution phases (alternative implementation)
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HookPhase {
-    BeforeSwap,
-    AfterSwap,
-    BeforeLiquidity,
-    AfterLiquidity,
-}
-
-/// Simple hook execution utility for future phases
-pub struct SimpleHookExecutor;
-
-impl SimpleHookExecutor {
-    /// Execute registered hooks for a given phase (future implementation)
-    pub fn execute_hooks(
+    #[inline]
+    fn execute_post(
+        hooks: Vec<&HookConfig>,
         context: &HookContext,
-        _hook_accounts: &[AccountInfo],
+        accounts: &[AccountInfo],
     ) -> Result<()> {
-        // For Phase 1, hooks are not yet implemented
-        // This provides the interface for future hook execution
+        let mut account_offset = 0;
         
-        match context.operation {
-            HookOperation::Swap { .. } => {
-                // Future: Execute swap hooks (MEV protection, etc.)
-                Ok(())
-            }
-            HookOperation::AddLiquidity { .. } | HookOperation::RemoveLiquidity { .. } => {
-                // Future: Execute liquidity hooks (validation, etc.)
-                Ok(())
-            }
+        for hook in hooks {
+            // Post hooks can't halt, so we ignore errors
+            let _ = Self::invoke_hook(hook, context, &accounts[account_offset..]);
+            account_offset += Self::get_hook_account_count(hook);
         }
+        Ok(())
     }
     
-    /// Validate hook permissions (future implementation)
-    pub fn validate_hook_permissions(
-        _hook_program: &Pubkey,
-        _pool: &Pubkey,
+    #[inline]
+    fn handle_async_stage(
+        registry: &Account<HookRegistry>,
+        message_queue: Option<&mut Account<HookMessageQueue>>,
+        context: &HookContext,
     ) -> Result<()> {
-        // For Phase 1, all hooks are disabled for security
-        // Future phases will implement granular permission system
-        Err(PoolError::InvalidOperation.into())
-    }
-}
-
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_hook_context_serialization() {
-        let params = SwapHookParams {
-            pool: Pubkey::new_unique(),
-            user: Pubkey::new_unique(),
-            amount_in: 1000,
-            amount_out: 950,
-            token_in: Pubkey::new_unique(),
-            token_out: Pubkey::new_unique(),
-            price_before: 1_000_000,
-            price_after: 1_050_000,
+        // Only process if queue is enabled and present
+        let queue = match (registry.message_queue_enabled, message_queue) {
+            (true, Some(q)) => q,
+            _ => return Ok(()),
         };
-        let context = create_swap_hook_context(&params);
         
-        // Test serialization
-        let serialized = context.try_to_vec().unwrap();
-        assert!(!serialized.is_empty());
+        // Don't push if queue is full
+        if queue.is_full() {
+            return Ok(());
+        }
+        
+        // Convert context to message
+        let message = Self::context_to_message(context)?;
+        queue.push(message)?;
+        
+        Ok(())
     }
+    
+    fn invoke_hook(
+        hook: &HookConfig,
+        context: &HookContext,
+        accounts: &[AccountInfo],
+    ) -> Result<()> {
+        // Serialize context
+        let data = context.try_to_vec()?;
+        
+        // Build instruction
+        let instruction = solana_program::instruction::Instruction {
+            program_id: hook.program_id,
+            accounts: accounts
+                .iter()
+                .map(|acc| AccountMeta {
+                    pubkey: *acc.key,
+                    is_signer: acc.is_signer,
+                    is_writable: acc.is_writable,
+                })
+                .collect(),
+            data,
+        };
+        
+        // Execute CPI
+        solana_program::program::invoke(&instruction, accounts)?;
+        
+        Ok(())
+    }
+    
+    fn context_to_message(context: &HookContext) -> Result<HookMessage> {
+        let data = match &context.event_data {
+            EventData::PriceUpdate { old_sqrt_price, new_sqrt_price } => {
+                MessageData::PriceUpdate {
+                    old_price: (*old_sqrt_price >> 64) as u64,
+                    new_price: (*new_sqrt_price >> 64) as u64,
+                }
+            },
+            EventData::LiquidityChange { position_id, liquidity_delta, .. } => {
+                MessageData::LiquidityChange {
+                    position_id: position_id.to_bytes(),
+                    delta: *liquidity_delta as i64,
+                }
+            },
+            EventData::TickCross { from_tick, to_tick, .. } => {
+                MessageData::TickCross {
+                    from: *from_tick,
+                    to: *to_tick,
+                }
+            },
+            EventData::Swap { amount_in, fee_amount, .. } => {
+                MessageData::SwapExecuted {
+                    volume: *amount_in,
+                    fee: *fee_amount,
+                }
+            },
+        };
+        
+        Ok(HookMessage {
+            event_type: context.event.trailing_zeros() as u16,
+            pool: context.pool,
+            timestamp: context.timestamp,
+            slot: context.slot,
+            data,
+        })
+    }
+    
+    fn get_hook_account_count(_hook: &HookConfig) -> usize {
+        // In practice, each hook would declare how many accounts it needs
+        // TODO: For now, assume a fixed number
+        4
+    }
+}
+
+// ============================================================================
+// Context Builders
+// ============================================================================
+
+pub struct HookContextBuilder;
+
+impl HookContextBuilder {
+    pub fn price_update(
+        pool: Pubkey,
+        user: Pubkey,
+        old_sqrt_price: u128,
+        new_sqrt_price: u128,
+    ) -> HookContext {
+        HookContext {
+            pool,
+            user,
+            event: EVENT_RATE_UPDATED,
+            stage: 0, // Set by caller
+            event_data: EventData::PriceUpdate {
+                old_sqrt_price,
+                new_sqrt_price,
+            },
+            timestamp: Clock::get().unwrap_or_default().unix_timestamp,
+            slot: Clock::get().unwrap_or_default().slot,
+        }
+    }
+    
+    pub fn liquidity_change(
+        pool: Pubkey,
+        user: Pubkey,
+        position_id: Pubkey,
+        liquidity_delta: i128,
+        amount_0: u64,
+        amount_1: u64,
+        tick_lower: i32,
+        tick_upper: i32,
+    ) -> HookContext {
+        HookContext {
+            pool,
+            user,
+            event: EVENT_LIQUIDITY_CHANGED,
+            stage: 0,
+            event_data: EventData::LiquidityChange {
+                position_id,
+                liquidity_delta,
+                amount_0,
+                amount_1,
+                tick_lower,
+                tick_upper,
+            },
+            timestamp: Clock::get().unwrap_or_default().unix_timestamp,
+            slot: Clock::get().unwrap_or_default().slot,
+        }
+    }
+    
+    pub fn tick_cross(
+        pool: Pubkey,
+        user: Pubkey,
+        from_tick: i32,
+        to_tick: i32,
+        liquidity_net: i128,
+    ) -> HookContext {
+        HookContext {
+            pool,
+            user,
+            event: EVENT_TICK_CROSSED,
+            stage: 0,
+            event_data: EventData::TickCross {
+                from_tick,
+                to_tick,
+                liquidity_net,
+            },
+            timestamp: Clock::get().unwrap_or_default().unix_timestamp,
+            slot: Clock::get().unwrap_or_default().slot,
+        }
+    }
+    
+    pub fn swap(
+        pool: Pubkey,
+        user: Pubkey,
+        amount_in: u64,
+        amount_out: u64,
+        token_in: Pubkey,
+        token_out: Pubkey,
+        fee_amount: u64,
+    ) -> HookContext {
+        HookContext {
+            pool,
+            user,
+            event: EVENT_SWAP_EXECUTED,
+            stage: 0,
+            event_data: EventData::Swap {
+                amount_in,
+                amount_out,
+                token_in,
+                token_out,
+                fee_amount,
+            },
+            timestamp: Clock::get().unwrap_or_default().unix_timestamp,
+            slot: Clock::get().unwrap_or_default().slot,
+        }
+    }
+}
+
+// ============================================================================
+// Integration Helpers
+// ============================================================================
+
+/// Macro for easy hook execution in instructions
+#[macro_export]
+macro_rules! execute_hooks {
+    ($registry:expr, $queue:expr, $event:expr, $context:expr, $remaining:expr) => {{
+        use crate::logic::hook::{HookExecutor, STAGE_VALIDATE, STAGE_PRE_EXECUTE};
+        
+        // Validation stage
+        HookExecutor::execute(
+            $registry,
+            $event,
+            STAGE_VALIDATE,
+            &$context,
+            None,
+            $remaining,
+        )?;
+        
+        // Pre-execution stage
+        HookExecutor::execute(
+            $registry,
+            $event,
+            STAGE_PRE_EXECUTE,
+            &$context,
+            None,
+            $remaining,
+        )?;
+        
+        // Note: POST_EXECUTE and ASYNC stages called after operation
+    }};
+}
+
+#[macro_export]
+macro_rules! execute_post_hooks {
+    ($registry:expr, $queue:expr, $event:expr, $context:expr, $remaining:expr) => {{
+        use crate::logic::hook::{HookExecutor, STAGE_POST_EXECUTE, STAGE_ASYNC};
+        
+        // Post-execution stage
+        HookExecutor::execute(
+            $registry,
+            $event,
+            STAGE_POST_EXECUTE,
+            &$context,
+            None,
+            $remaining,
+        )?;
+        
+        // Async stage (if queue provided)
+        HookExecutor::execute(
+            $registry,
+            $event,
+            STAGE_ASYNC,
+            &$context,
+            $queue,
+            $remaining,
+        )?;
+    }};
 }

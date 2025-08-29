@@ -2,10 +2,11 @@
 /// Defines TickArray and TickArrayRouter accounts with their size calculations and
 /// basic state query methods. Business logic for tick operations is in logic/tick.rs.
 /// Zero-copy design optimizes gas usage for high-frequency operations.
-use anchor_lang::prelude::*;
-use crate::state::Pool;
-use crate::constant::{TICK_ARRAY_SIZE, MAX_ROUTER_ARRAYS};
+/// Also includes 3D tick encoding for the unified order model.
 
+use anchor_lang::prelude::*;
+use crate::constant::{MAX_ROUTER_ARRAYS, TICK_ARRAY_SIZE};
+use crate::state::Pool;
 
 // ============================================================================
 // Tick Data Structures
@@ -17,16 +18,16 @@ use crate::constant::{TICK_ARRAY_SIZE, MAX_ROUTER_ARRAYS};
 #[repr(C, packed)]
 pub struct Tick {
     // Liquidity tracking
-    pub liquidity_net: i128,            // Net liquidity change when crossed
-    pub liquidity_gross: u128,          // Total liquidity referencing this tick
+    pub liquidity_net: i128,   // Net liquidity change when crossed
+    pub liquidity_gross: u128, // Total liquidity referencing this tick
 
     // Fee tracking (outside the tick) - using 0/1 naming
     pub fee_growth_outside_0: [u64; 4], // Fee growth outside (token 0) - u256 as 4 u64s
     pub fee_growth_outside_1: [u64; 4], // Fee growth outside (token 1) - u256 as 4 u64s
 
     // Tick metadata
-    pub initialized: u8,                // Whether this tick is initialized (0 = false, 1 = true)
-    pub _padding: [u8; 7],              // Explicit padding for 8-byte alignment
+    pub initialized: u8, // Whether this tick is initialized (0 = false, 1 = true)
+    pub _padding: [u8; 7], // Explicit padding for 8-byte alignment
 }
 
 impl Tick {
@@ -35,6 +36,12 @@ impl Tick {
 
 /// Tick array account containing multiple ticks for efficiency
 /// Uses zero_copy for optimal Solana performance
+///
+/// TODO: Future optimization - implement compressed tick storage:
+/// - Store only active tick range in account (e.g., current_tick ± 1000)
+/// - Archive inactive ticks to merkle tree with proof-based access
+/// - Lazy load tick data as price moves through ranges
+/// - This would reduce account size from ~10KB to ~1KB per array
 #[account(zero_copy)]
 #[repr(C, packed)]
 pub struct TickArray {
@@ -50,29 +57,29 @@ impl TickArray {
     const POOL_SIZE: usize = 32;
     const START_TICK_INDEX_SIZE: usize = 4;
     const INITIALIZED_TICK_COUNT_SIZE: usize = 1;
-    
+
     // Individual Tick struct size breakdown
-    const TICK_LIQUIDITY_NET_SIZE: usize = 16;  // i128
-    const TICK_LIQUIDITY_GROSS_SIZE: usize = 16;  // u128
-    const TICK_FEE_GROWTH_OUTSIDE_0_SIZE: usize = 32;  // [u64; 4]
-    const TICK_FEE_GROWTH_OUTSIDE_1_SIZE: usize = 32;  // [u64; 4]
-    const TICK_INITIALIZED_SIZE: usize = 1;  // u8
-    const TICK_PADDING_SIZE: usize = 7;  // [u8; 7]
-    
-    const SINGLE_TICK_SIZE: usize = Self::TICK_LIQUIDITY_NET_SIZE +
-        Self::TICK_LIQUIDITY_GROSS_SIZE +
-        Self::TICK_FEE_GROWTH_OUTSIDE_0_SIZE +
-        Self::TICK_FEE_GROWTH_OUTSIDE_1_SIZE +
-        Self::TICK_INITIALIZED_SIZE +
-        Self::TICK_PADDING_SIZE;  // Total: 104 bytes per tick
-    
-    const TICKS_ARRAY_SIZE: usize = Self::SINGLE_TICK_SIZE * TICK_ARRAY_SIZE;  // 104 * 32 = 3328 bytes
-    
-    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
-        Self::POOL_SIZE +
-        Self::START_TICK_INDEX_SIZE +
-        Self::TICKS_ARRAY_SIZE +
-        Self::INITIALIZED_TICK_COUNT_SIZE;  // Total: 3373 bytes
+    const TICK_LIQUIDITY_NET_SIZE: usize = 16; // i128
+    const TICK_LIQUIDITY_GROSS_SIZE: usize = 16; // u128
+    const TICK_FEE_GROWTH_OUTSIDE_0_SIZE: usize = 32; // [u64; 4]
+    const TICK_FEE_GROWTH_OUTSIDE_1_SIZE: usize = 32; // [u64; 4]
+    const TICK_INITIALIZED_SIZE: usize = 1; // u8
+    const TICK_PADDING_SIZE: usize = 7; // [u8; 7]
+
+    const SINGLE_TICK_SIZE: usize = Self::TICK_LIQUIDITY_NET_SIZE
+        + Self::TICK_LIQUIDITY_GROSS_SIZE
+        + Self::TICK_FEE_GROWTH_OUTSIDE_0_SIZE
+        + Self::TICK_FEE_GROWTH_OUTSIDE_1_SIZE
+        + Self::TICK_INITIALIZED_SIZE
+        + Self::TICK_PADDING_SIZE; // Total: 104 bytes per tick
+
+    const TICKS_ARRAY_SIZE: usize = Self::SINGLE_TICK_SIZE * TICK_ARRAY_SIZE; // 104 * 32 = 3328 bytes
+
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
+        + Self::POOL_SIZE
+        + Self::START_TICK_INDEX_SIZE
+        + Self::TICKS_ARRAY_SIZE
+        + Self::INITIALIZED_TICK_COUNT_SIZE; // Total: 3373 bytes
 }
 // ============================================================================
 // Tick Array Router System
@@ -85,22 +92,22 @@ impl TickArray {
 pub struct TickArrayRouter {
     /// The pool this router is associated with
     pub pool: Pubkey,
-    
+
     /// Pre-registered tick array accounts (up to 8 for Valence compatibility)
     pub tick_arrays: [Pubkey; MAX_ROUTER_ARRAYS],
-    
+
     /// Start tick index for each array (i32::MIN indicates unused slot)
     pub start_indices: [i32; MAX_ROUTER_ARRAYS],
-    
+
     /// Bitmap indicating which slots are active
     pub active_bitmap: u8,
-    
+
     /// Last update slot for cache invalidation
     pub last_update_slot: u64,
-    
+
     /// Authority who can update the router
     pub authority: Pubkey,
-    
+
     /// Reserved for future use
     pub _reserved: [u8; 64],
 }
@@ -109,27 +116,28 @@ impl TickArrayRouter {
     // Size constants for each section of the TickArrayRouter struct
     const DISCRIMINATOR_SIZE: usize = 8;
     const POOL_SIZE: usize = 32;
-    const TICK_ARRAYS_SIZE: usize = 32 * MAX_ROUTER_ARRAYS;  // 32 * 8 = 256 bytes
-    const START_INDICES_SIZE: usize = 4 * MAX_ROUTER_ARRAYS;  // 4 * 8 = 32 bytes
+    const TICK_ARRAYS_SIZE: usize = 32 * MAX_ROUTER_ARRAYS; // 32 * 8 = 256 bytes
+    const START_INDICES_SIZE: usize = 4 * MAX_ROUTER_ARRAYS; // 4 * 8 = 32 bytes
     const ACTIVE_BITMAP_SIZE: usize = 1;
     const LAST_UPDATE_SLOT_SIZE: usize = 8;
     const AUTHORITY_SIZE: usize = 32;
     const RESERVED_SIZE: usize = 64;
-    
-    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
-        Self::POOL_SIZE +
-        Self::TICK_ARRAYS_SIZE +
-        Self::START_INDICES_SIZE +
-        Self::ACTIVE_BITMAP_SIZE +
-        Self::LAST_UPDATE_SLOT_SIZE +
-        Self::AUTHORITY_SIZE +
-        Self::RESERVED_SIZE;  // Total: 433 bytes
-    
+
+    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
+        + Self::POOL_SIZE
+        + Self::TICK_ARRAYS_SIZE
+        + Self::START_INDICES_SIZE
+        + Self::ACTIVE_BITMAP_SIZE
+        + Self::LAST_UPDATE_SLOT_SIZE
+        + Self::AUTHORITY_SIZE
+        + Self::RESERVED_SIZE; // Total: 433 bytes
+
     /// Check if a tick array is registered in this router
     pub fn contains_array(&self, start_tick: i32) -> Option<usize> {
-        (0..MAX_ROUTER_ARRAYS).find(|&i| self.is_slot_active(i) && self.start_indices[i] == start_tick)
+        (0..MAX_ROUTER_ARRAYS)
+            .find(|&i| self.is_slot_active(i) && self.start_indices[i] == start_tick)
     }
-    
+
     /// Check if a slot is active
     pub fn is_slot_active(&self, index: usize) -> bool {
         if index >= MAX_ROUTER_ARRAYS {
@@ -144,13 +152,13 @@ impl TickArrayRouter {
 pub struct RouterConfig {
     /// Number of arrays to pre-load around current price
     pub arrays_around_current: u8,
-    
+
     /// Update frequency in slots
     pub update_frequency: u64,
-    
+
     /// Whether to auto-update on significant price moves
     pub auto_update_enabled: bool,
-    
+
     /// Price move threshold for auto-update (in ticks)
     pub price_move_threshold: i32,
 }
@@ -180,13 +188,13 @@ pub struct InitializeRouter<'info> {
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
-    
+
     #[account(mut)]
     pub pool: AccountLoader<'info, Pool>,
-    
+
     #[account(mut)]
     pub authority: Signer<'info>,
-    
+
     pub system_program: Program<'info, System>,
 }
 
@@ -198,10 +206,81 @@ pub struct UpdateRouter<'info> {
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
-    
+
     pub pool: AccountLoader<'info, Pool>,
-    
+
     pub authority: Signer<'info>,
 }
 
-// RouterUpdatedEvent is now imported from logic::event
+// ============================================================================
+// 3D Tick Encoding for Unified Order Model
+// ============================================================================
+
+/// 3D tick representation for the unified order model
+/// Encodes position across three dimensions: rate, duration, and leverage
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
+pub struct Tick3D {
+    /// Rate dimension - price/interest rate tick
+    pub rate_tick: i32,
+    
+    /// Duration dimension - time commitment tick
+    pub duration_tick: i16,
+    
+    /// Leverage dimension - risk level tick
+    pub leverage_tick: i16,
+}
+
+impl Tick3D {
+    // Bit allocation for encoding
+    pub const RATE_BITS: u8 = 20;      // Primary dimension
+    pub const DURATION_BITS: u8 = 6;   // Supports Duration enum values
+    pub const LEVERAGE_BITS: u8 = 6;   // 64 discrete leverage levels
+    
+    /// Encode 3D tick into single i32
+    pub fn encode(&self) -> i32 {
+        // Rate uses primary bits (highest precision needed)
+        let rate_masked = self.rate_tick & ((1 << Self::RATE_BITS) - 1);
+        
+        // Duration uses middle bits
+        let duration_shifted = ((self.duration_tick as i32) & ((1 << Self::DURATION_BITS) - 1)) << Self::RATE_BITS;
+        
+        // Leverage uses high bits
+        let leverage_shifted = ((self.leverage_tick as i32) & ((1 << Self::LEVERAGE_BITS) - 1)) << (Self::RATE_BITS + Self::DURATION_BITS);
+        
+        rate_masked | duration_shifted | leverage_shifted
+    }
+    
+    /// Decode i32 into 3D tick components
+    pub fn decode(encoded: i32) -> Self {
+        let rate_tick = encoded & ((1 << Self::RATE_BITS) - 1);
+        let duration_tick = ((encoded >> Self::RATE_BITS) & ((1 << Self::DURATION_BITS) - 1)) as i16;
+        let leverage_tick = ((encoded >> (Self::RATE_BITS + Self::DURATION_BITS)) & ((1 << Self::LEVERAGE_BITS) - 1)) as i16;
+        
+        Self {
+            rate_tick,
+            duration_tick,
+            leverage_tick,
+        }
+    }
+    
+    /// Calculate distance between two 3D ticks
+    pub fn distance(&self, other: &Tick3D) -> u64 {
+        let rate_diff = (self.rate_tick - other.rate_tick).abs() as u64;
+        let duration_diff = (self.duration_tick - other.duration_tick).abs() as u64;
+        let leverage_diff = (self.leverage_tick - other.leverage_tick).abs() as u64;
+        
+        // Simple Manhattan distance for now
+        // Could use weighted distance based on dimension importance
+        rate_diff + duration_diff * 100 + leverage_diff * 50
+    }
+    
+    /// Check if this tick is within a 3D range
+    pub fn in_range(&self, lower: &Tick3D, upper: &Tick3D) -> bool {
+        self.rate_tick >= lower.rate_tick && 
+        self.rate_tick <= upper.rate_tick &&
+        self.duration_tick >= lower.duration_tick &&
+        self.duration_tick <= upper.duration_tick &&
+        self.leverage_tick >= lower.leverage_tick &&
+        self.leverage_tick <= upper.leverage_tick
+    }
+}

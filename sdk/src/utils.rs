@@ -3,18 +3,12 @@ use spl_associated_token_account::get_associated_token_address_with_program_id;
 
 /// Derive the protocol state PDA
 pub fn derive_protocol_state(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"protocol"],
-        program_id,
-    )
+    Pubkey::find_program_address(&[b"protocol"], program_id)
 }
 
 /// Derive the FeelsSOL state PDA
 pub fn derive_feelssol_state(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[b"feelssol"],
-        program_id,
-    )
+    Pubkey::find_program_address(&[b"feelssol"], program_id)
 }
 
 /// Derive a pool PDA
@@ -37,33 +31,14 @@ pub fn derive_pool(
 }
 
 /// Derive a vault PDA for a pool
-pub fn derive_vault(
-    pool: &Pubkey,
-    token_mint: &Pubkey,
-    program_id: &Pubkey,
-) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            b"vault",
-            pool.as_ref(),
-            token_mint.as_ref(),
-        ],
-        program_id,
-    )
+pub fn derive_vault(pool: &Pubkey, token_mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"vault", pool.as_ref(), token_mint.as_ref()], program_id)
 }
 
 /// Derive a position PDA
-pub fn derive_position(
-    pool: &Pubkey,
-    position_mint: &Pubkey,
-    program_id: &Pubkey,
-) -> (Pubkey, u8) {
+pub fn derive_position(pool: &Pubkey, position_mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[
-            b"position",
-            pool.as_ref(),
-            position_mint.as_ref(),
-        ],
+        &[b"position", pool.as_ref(), position_mint.as_ref()],
         program_id,
     )
 }
@@ -76,25 +51,14 @@ pub fn derive_tick_array(
 ) -> (Pubkey, u8) {
     let tick_bytes = start_tick_index.to_le_bytes();
     Pubkey::find_program_address(
-        &[
-            b"tick_array",
-            pool.as_ref(),
-            tick_bytes.as_ref(),
-        ],
+        &[b"tick_array", pool.as_ref(), tick_bytes.as_ref()],
         program_id,
     )
 }
 
 /// Get the associated token account for Token-2022
-pub fn get_token_2022_account(
-    wallet: &Pubkey,
-    mint: &Pubkey,
-) -> Pubkey {
-    get_associated_token_address_with_program_id(
-        wallet,
-        mint,
-        &spl_token_2022::ID,
-    )
+pub fn get_token_2022_account(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
+    get_associated_token_address_with_program_id(wallet, mint, &spl_token_2022::ID)
 }
 
 /// Calculate the start tick index for a tick array

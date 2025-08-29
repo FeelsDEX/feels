@@ -1,10 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{
-    instruction::Instruction,
-    pubkey::Pubkey,
-    system_program,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
 
 /// Build instruction to create a new token using Token-2022
 #[allow(clippy::too_many_arguments)]
@@ -30,7 +26,7 @@ pub fn create_token(
         system_program: system_program::ID,
         rent: solana_sdk::sysvar::rent::ID,
     };
-    
+
     let data = feels::instruction::CreateToken {
         ticker,
         name,
@@ -38,7 +34,7 @@ pub fn create_token(
         decimals,
         initial_supply,
     };
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),

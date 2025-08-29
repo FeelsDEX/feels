@@ -1,11 +1,12 @@
 /// Business logic layer for pool operations including fee calculations, validations,
 /// and complex tick search algorithms. Handles complex operations like fee configuration,
 /// swap fee calculations, and bitmap-based tick array navigation.
+/// Delegates fee operations to FeeManager for centralized fee logic.
 
 use anchor_lang::prelude::*;
-use crate::state::{Pool, PoolError};
+use crate::state::{Pool, FeelsProtocolError};
 use crate::utils::TICK_ARRAY_SIZE;
-use crate::utils::{FeeMath, FeeBreakdown, FeeConfig};
+use crate::utils::{FeeBreakdown, FeeConfig, FeeMath};
 
 // ============================================================================
 // Core Implementation
@@ -13,26 +14,22 @@ use crate::utils::{FeeMath, FeeBreakdown, FeeConfig};
 
 /// Business logic operations for Pool management
 impl Pool {
-
     // ------------------------------------------------------------------------
     // Pool Validation
     // ------------------------------------------------------------------------
 
-    /// Validate that this pool conforms to Phase 1 requirements
-    pub fn validate_phase1(&self) -> Result<()> {
-        // Ensure we have a valid version
-        require!(self.version == 1, PoolError::InvalidVersion);
-
+    /// Validate pool configuration
+    pub fn validate(&self) -> Result<()> {
         // Ensure tick spacing is valid
         require!(
             matches!(self.tick_spacing, 1 | 10 | 60 | 200),
-            PoolError::InvalidTickSpacing
+            FeelsProtocolError::InvalidTickSpacing
         );
 
         // Ensure fee rate is valid
         require!(
             matches!(self.fee_rate, 1 | 5 | 30 | 100),
-            PoolError::InvalidFeeRate
+            FeelsProtocolError::InvalidFeeRate
         );
 
         Ok(())
@@ -44,65 +41,91 @@ impl Pool {
     }
 
     // ------------------------------------------------------------------------
-    // Fee Calculations
+    // Fee Calculations - Delegates to FeeManager
     // ------------------------------------------------------------------------
 
     /// Calculate complete fee breakdown for a swap amount
-    /// This is the single source of truth for all fee calculations in the pool
+    /// Delegates to FeeManager for centralized fee logic
     pub fn calculate_swap_fees(&self, amount_in: u64) -> Result<FeeBreakdown> {
-        FeeMath::calculate_swap_fees(amount_in, self.fee_rate, self.protocol_fee_rate)
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::calculate_swap_fees(self, amount_in)
+    }
+
+    /// Calculate dynamic swap fees based on market conditions (Phase 2)
+    /// Delegates to FeeManager for centralized fee logic
+    pub fn calculate_dynamic_swap_fees(
+        &self,
+        amount_in: u64,
+        volatility_bps: u64,
+        volume_24h: u128,
+    ) -> Result<FeeBreakdown> {
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::calculate_dynamic_swap_fees(self, amount_in, volatility_bps, volume_24h)
+    }
+
+    /// Calculate swap fees with leverage adjustments for Phase 2
+    /// Delegates to FeeManager for centralized fee logic
+    pub fn calculate_swap_fees_with_leverage(
+        &self,
+        amount_in: u64,
+        average_leverage: u64,
+    ) -> Result<FeeBreakdown> {
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::calculate_swap_fees_with_leverage(self, amount_in, average_leverage)
     }
 
     /// Calculate just the total fee amount (used in swap calculations)
     pub fn calculate_total_fee(&self, amount_in: u64) -> Result<u64> {
-        FeeMath::calculate_total_fee(amount_in, self.fee_rate)
+        let fee_breakdown = self.calculate_swap_fees(amount_in)?;
+        Ok(fee_breakdown.total_fee)
     }
 
     /// Validate that this pool's fee configuration is consistent and valid
     pub fn validate_fee_configuration(&self) -> Result<()> {
-        FeeConfig::validate_pool_fees(self.fee_rate, self.protocol_fee_rate, self.tick_spacing)
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::validate_fee_configuration(self)
     }
 
     // ------------------------------------------------------------------------
-    // Fee Management and Updates
+    // Fee Management and Updates - Delegates to FeeManager
     // ------------------------------------------------------------------------
 
-    /// Update protocol fees after a swap (delegates to state method)
-    pub fn accumulate_protocol_fees_from_breakdown(&mut self, fee_breakdown: &FeeBreakdown, zero_for_one: bool) -> Result<()> {
-        self.accumulate_protocol_fees(fee_breakdown.protocol_fee, zero_for_one)
+    /// Update protocol fees after a swap
+    pub fn accumulate_protocol_fees_from_breakdown(
+        &mut self,
+        fee_breakdown: &FeeBreakdown,
+        zero_for_one: bool,
+    ) -> Result<()> {
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::accumulate_protocol_fees(self, fee_breakdown, zero_for_one)
     }
 
     /// Get the amount after deducting fees
     pub fn calculate_amount_after_fee(&self, amount_in: u64) -> Result<u64> {
-        let total_fee = self.calculate_total_fee(amount_in)?;
-        amount_in.checked_sub(total_fee).ok_or(PoolError::ArithmeticUnderflow.into())
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::calculate_amount_after_fee(self, amount_in)
     }
 
     /// Initialize fee configuration for a new pool
     pub fn initialize_fees(&mut self, fee_rate: u16) -> Result<()> {
-        let (validated_fee_rate, protocol_fee_rate, tick_spacing) = FeeConfig::create_for_pool(fee_rate)?;
-        
-        self.fee_rate = validated_fee_rate;
-        self.protocol_fee_rate = protocol_fee_rate;
-        self.tick_spacing = tick_spacing;
-        
-        Ok(())
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::initialize_fees(self, fee_rate)
     }
 
     /// Get effective fee rate (for future dynamic fee implementation)
     pub fn get_effective_fee_rate(&self) -> Result<u16> {
-        // Phase 1: Return base fee rate
-        // Phase 2+: Implement dynamic adjustments based on volume/volatility
-        FeeMath::calculate_effective_fee_rate(self.fee_rate, self.total_volume_0, 0)
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::get_effective_fee_rate(self)
     }
 
     // ------------------------------------------------------------------------
     // Global Fee Growth
     // ------------------------------------------------------------------------
 
-    /// Update global fee growth (delegates to state method)
+    /// Update global fee growth
     pub fn update_fee_growth_from_fees(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
-        self.update_fee_growth(fee_amount, is_token_a)
+        use crate::logic::fee_manager::FeeManager;
+        FeeManager::update_fee_growth(self, fee_amount, is_token_a)
     }
 
     // ------------------------------------------------------------------------
@@ -118,15 +141,15 @@ impl Pool {
     ) -> Option<i32> {
         let mut current_word = (start_array_index / 64) as usize;
         let mut bit_pos = (start_array_index % 64) as u8;
-        
+
         // Ensure we're within valid bounds
         if current_word >= 16 {
             return None;
         }
-        
+
         loop {
             let word = self.tick_array_bitmap[current_word];
-            
+
             // Create mask to search only relevant bits
             let mask = if search_direction {
                 // Search upward: mask out bits below current position
@@ -143,9 +166,9 @@ impl Pool {
                     (1u64 << (bit_pos + 1)) - 1
                 }
             };
-            
+
             let masked_word = word & mask;
-            
+
             // Check if there are any set bits in the masked word
             if masked_word != 0 {
                 let next_bit = if search_direction {
@@ -155,16 +178,16 @@ impl Pool {
                     // Find the highest set bit (leftmost)
                     63 - masked_word.leading_zeros() as u8
                 };
-                
+
                 // Calculate the array index
                 let array_index = (current_word * 64 + next_bit as usize) as i32;
-                
+
                 // Convert to tick index
                 let tick_index = array_index * TICK_ARRAY_SIZE as i32;
-                
+
                 return Some(tick_index);
             }
-            
+
             // Move to next word
             if search_direction {
                 if current_word >= 15 {
@@ -180,7 +203,7 @@ impl Pool {
                 bit_pos = 63;
             }
         }
-        
+
         None
     }
 
@@ -190,17 +213,17 @@ impl Pool {
         // Calculate which array and position within array
         let array_index = tick / TICK_ARRAY_SIZE as i32;
         let _tick_offset = (tick % TICK_ARRAY_SIZE as i32) as usize;
-        
+
         // Check if array is initialized first
         if !self.is_tick_array_initialized(array_index * TICK_ARRAY_SIZE as i32) {
             return false;
         }
-        
-        // For now, assume individual ticks need to be checked from actual TickArray account
+
+        // TODO: For now, assume individual ticks need to be checked from actual TickArray account
         // This would require loading the account, which is beyond scope of this bitmap search
         // In practice, callers should use this for array-level checks and then load specific arrays
         // to check individual tick initialization
-        
+
         // Return true if array is initialized (conservative check)
         // Real implementation would load TickArray and check ticks[tick_offset].initialized
         true
@@ -208,29 +231,29 @@ impl Pool {
 
     /// Find the next initialized tick by searching tick arrays
     /// Returns the tick index and whether it's initialized
-    pub fn find_next_initialized_tick(
-        &self,
-        tick: i32,
-        search_direction: bool,
-    ) -> Option<i32> {
+    pub fn find_next_initialized_tick(&self, tick: i32, search_direction: bool) -> Option<i32> {
         // Calculate which array contains the starting tick
         let start_array_index = tick / TICK_ARRAY_SIZE as i32;
-        
+
         // Search for initialized arrays starting from current position
         let mut current_array_index = start_array_index;
-        
+
         loop {
             // Check if this array is initialized
             let array_start_tick = current_array_index * TICK_ARRAY_SIZE as i32;
-            
+
             if self.is_tick_array_initialized(array_start_tick) {
                 // Search within the tick array for actually initialized ticks
                 // Calculate starting position within the array
                 let array_end_tick = array_start_tick + TICK_ARRAY_SIZE as i32 - 1;
-                
+
                 if search_direction {
                     // Search forward from the given tick
-                    let start_tick_in_array = if tick >= array_start_tick { tick } else { array_start_tick };
+                    let start_tick_in_array = if tick >= array_start_tick {
+                        tick
+                    } else {
+                        array_start_tick
+                    };
                     for i in start_tick_in_array..=array_end_tick {
                         if self.is_tick_initialized(i) {
                             return Some(i);
@@ -238,7 +261,11 @@ impl Pool {
                     }
                 } else {
                     // Search backward from the given tick
-                    let end_tick_in_array = if tick <= array_end_tick { tick } else { array_end_tick };
+                    let end_tick_in_array = if tick <= array_end_tick {
+                        tick
+                    } else {
+                        array_end_tick
+                    };
                     for i in (array_start_tick..=end_tick_in_array).rev() {
                         if self.is_tick_initialized(i) {
                             return Some(i);
@@ -247,7 +274,7 @@ impl Pool {
                 }
                 // No initialized ticks found in this array, continue to next array
             }
-            
+
             // Use bitmap search to find next initialized array
             match self.find_next_initialized_tick_array(current_array_index, search_direction) {
                 Some(next_array_start_tick) => {

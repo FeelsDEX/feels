@@ -1,16 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{
-    instruction::Instruction,
-    pubkey::Pubkey,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
 /// Build instruction to execute a swap
 #[allow(clippy::too_many_arguments)]
 pub fn swap_execute(
     program_id: &Pubkey,
     pool: &Pubkey,
-    oracle_state: &Pubkey,
     user: &Pubkey,
     user_token_a: &Pubkey,
     user_token_b: &Pubkey,
@@ -19,26 +15,28 @@ pub fn swap_execute(
     amount_in: u64,
     amount_out_minimum: u64,
     sqrt_price_limit: u128,
-    is_token_0_to_1: bool,
+    is_token_a_to_b: bool,
 ) -> Instruction {
-    let accounts = feels::accounts::Swap {
+    let accounts = feels::accounts::ExecuteOrder {
         pool: *pool,
-        oracle_state: *oracle_state,
         user: *user,
         user_token_a: *user_token_a,
         user_token_b: *user_token_b,
         pool_token_a: *pool_token_a,
         pool_token_b: *pool_token_b,
         token_program: spl_token_2022::ID,
+        hook_registry: None,
+        hook_message_queue: None,
     };
-    
-    let data = feels::instruction::SwapExecute {
+
+    let data = feels::instruction::OrderExecute {
         amount_in,
         amount_out_minimum,
         sqrt_price_limit,
-        is_token_0_to_1,
+        is_token_a_to_b,
+        duration: None,
     };
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),
@@ -82,14 +80,14 @@ pub fn execute_routed_swap(
         pool_2_token_out: *pool_2_token_out,
         token_program: spl_token_2022::ID,
     };
-    
+
     let data = feels::instruction::ExecuteRoutedSwap {
         amount_in,
         amount_out_minimum,
         sqrt_price_limit_1,
         sqrt_price_limit_2,
     };
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),
@@ -105,16 +103,14 @@ pub fn get_swap_tick_arrays(
     sqrt_price_limit: u128,
     zero_for_one: bool,
 ) -> Instruction {
-    let accounts = feels::accounts::GetSwapTickArrays {
-        pool: *pool,
-    };
-    
-    let data = feels::instruction::GetSwapTickArrays {
+    let accounts = feels::accounts::GetOrderTickArrays { pool: *pool };
+
+    let data = feels::instruction::GetOrderTickArrays {
         amount_in,
         sqrt_price_limit,
         zero_for_one,
     };
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),

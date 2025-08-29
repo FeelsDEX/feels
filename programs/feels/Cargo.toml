@@ -34,8 +34,14 @@ spl-token = { workspace = true }
 spl-token-2022 = { workspace = true }
 spl-token-metadata-interface = { workspace = true }
 spl-associated-token-account = { workspace = true }
-spl-math = { version = "0.3.0" }
+# spl-math = { version = "0.3.0" } # Commented out due to global allocator conflict
 ruint = { version = "1.12.0", default-features = false }
+fixed = { version = "1.28", default-features = false, features = ["serde"] }
+
+# Phase 2: Valence integration for atomic backrunning
+# Note: Commented out until Valence is properly published
+# valence-kernel = { git = "https://github.com/timewave-computer/valence-solana", branch = "main", features = ["no-entrypoint"] }
+# valence-sdk = { git = "https://github.com/timewave-computer/valence-solana", branch = "main" }
 
 [dev-dependencies]
 getrandom = { version = "0.2.16", features = ["custom"] }

@@ -12,7 +12,7 @@ use crate::{
     config::SdkConfig,
     errors::{SdkError, SdkResult},
     instructions,
-    types::{CreatePoolResult, AddLiquidityResult, SwapResult, PoolInfo, PositionInfo},
+    types::{AddLiquidityResult, CreatePoolResult, PoolInfo, PositionInfo, SwapResult},
 };
 
 /// Main SDK client for interacting with the Feels Protocol
@@ -29,14 +29,14 @@ impl FeelsClient {
             config.rpc_url.clone(),
             CommitmentConfig::confirmed(),
         ));
-        
+
         Self {
             rpc_client,
             program_id: config.program_id,
             payer: config.payer,
         }
     }
-    
+
     /// Initialize the protocol
     pub async fn initialize_protocol(
         &self,
@@ -50,10 +50,10 @@ impl FeelsClient {
             authority,
             treasury,
         );
-        
+
         self.send_transaction(&[ix]).await
     }
-    
+
     /// Initialize FeelsSOL
     pub async fn initialize_feelssol(
         &self,
@@ -69,10 +69,10 @@ impl FeelsClient {
             authority,
             underlying_mint,
         );
-        
+
         self.send_transaction(&[ix]).await
     }
-    
+
     /// Create a new pool
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pool(
@@ -101,9 +101,9 @@ impl FeelsClient {
             fee_rate,
             initial_sqrt_price,
         );
-        
+
         let signature = self.send_transaction(&[ix]).await?;
-        
+
         Ok(CreatePoolResult {
             pool_pubkey: *pool,
             vault_a: *token_a_vault,
@@ -111,7 +111,7 @@ impl FeelsClient {
             signature,
         })
     }
-    
+
     /// Add liquidity to a pool
     #[allow(clippy::too_many_arguments)]
     pub async fn add_liquidity(
@@ -126,6 +126,7 @@ impl FeelsClient {
         tick_array_lower: &Pubkey,
         tick_array_upper: &Pubkey,
         liquidity_amount: u128,
+        leverage: Option<u64>,
         amount_0_max: u64,
         amount_1_max: u64,
         payer: &Pubkey,
@@ -142,13 +143,14 @@ impl FeelsClient {
             tick_array_lower,
             tick_array_upper,
             liquidity_amount,
+            leverage,
             amount_0_max,
             amount_1_max,
             payer,
         );
-        
+
         let signature = self.send_transaction(&[ix]).await?;
-        
+
         Ok(AddLiquidityResult {
             position_pubkey: *tick_position_metadata,
             position_mint: Pubkey::default(), // In production, get from position metadata
@@ -158,13 +160,13 @@ impl FeelsClient {
             signature,
         })
     }
-    
+
     /// Execute a swap
     #[allow(clippy::too_many_arguments)]
     pub async fn swap(
         &self,
         pool: &Pubkey,
-        oracle_state: &Pubkey,
+        _oracle_state: &Pubkey, // No longer used - oracle accessed via remaining_accounts
         user: &Pubkey,
         user_token_a: &Pubkey,
         user_token_b: &Pubkey,
@@ -178,7 +180,6 @@ impl FeelsClient {
         let ix = instructions::swap_execute(
             &self.program_id,
             pool,
-            oracle_state,
             user,
             user_token_a,
             user_token_b,
@@ -189,24 +190,25 @@ impl FeelsClient {
             sqrt_price_limit,
             is_token_0_to_1,
         );
-        
+
         let signature = self.send_transaction(&[ix]).await?;
-        
+
         Ok(SwapResult {
             amount_in,
-            amount_out: 0, // In production, get from transaction logs
-            fee_amount: 0, // In production, get from transaction logs
+            amount_out: 0,  // In production, get from transaction logs
+            fee_amount: 0,  // In production, get from transaction logs
             price_after: 0, // In production, get from transaction logs
             signature,
         })
     }
-    
+
     /// Get pool information
     pub async fn get_pool_info(&self, pool_address: &Pubkey) -> SdkResult<PoolInfo> {
-        let _account = self.rpc_client
+        let _account = self
+            .rpc_client
             .get_account(pool_address)
             .map_err(|e| SdkError::RpcError(e.to_string()))?;
-        
+
         // In production, deserialize the pool account data
         Ok(PoolInfo {
             pubkey: *pool_address,
@@ -222,13 +224,14 @@ impl FeelsClient {
             tick_spacing: 0,
         })
     }
-    
+
     /// Get position information
     pub async fn get_position_info(&self, position_address: &Pubkey) -> SdkResult<PositionInfo> {
-        let _account = self.rpc_client
+        let _account = self
+            .rpc_client
             .get_account(position_address)
             .map_err(|e| SdkError::RpcError(e.to_string()))?;
-        
+
         // In production, deserialize the position account data
         Ok(PositionInfo {
             pubkey: *position_address,
@@ -244,23 +247,24 @@ impl FeelsClient {
             tokens_owed_1: 0,
         })
     }
-    
+
     /// Send a transaction
     async fn send_transaction(
         &self,
         instructions: &[solana_sdk::instruction::Instruction],
     ) -> SdkResult<Signature> {
-        let recent_blockhash = self.rpc_client
+        let recent_blockhash = self
+            .rpc_client
             .get_latest_blockhash()
             .map_err(|e| SdkError::RpcError(e.to_string()))?;
-        
+
         let transaction = Transaction::new_signed_with_payer(
             instructions,
             Some(&self.payer.pubkey()),
             &[&*self.payer],
             recent_blockhash,
         );
-        
+
         self.rpc_client
             .send_and_confirm_transaction(&transaction)
             .map_err(|e| SdkError::TransactionFailed(e.to_string()))

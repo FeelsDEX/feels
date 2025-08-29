@@ -1,75 +1,127 @@
-/// Manages external hook programs that can execute custom logic during pool operations.
-/// Enables composability by allowing approved programs to run before/after swaps and
-/// liquidity operations. Foundation for advanced features like MEV protection, dynamic
-/// fees, and custom pool behaviors. Hooks are permissioned to ensure security.
+/// Hook system definitions for extensible pool behavior in Phase 2.
+/// Defines event types, execution stages, and hook registry structures that allow
+/// external programs to observe and react to pool operations. Uses bitmask patterns
+/// for efficient event filtering and supports hook permission levels for security.
 
 use anchor_lang::prelude::*;
-use crate::state::PoolError;
-use crate::constant::MAX_HOOKS_PER_TYPE;
-use crate::logic::event::{HookRegistryInitializedEvent, HookRegisteredEvent, HooksEmergencyPausedEvent};
-use solana_program::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
+use crate::constant::MAX_HOOKS_PER_POOL;
 
 // ============================================================================
-// Type Definitions
+// Event and Stage Definitions (Bitmasks for Gas Efficiency)
 // ============================================================================
 
-/// Hook types supported by the protocol
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HookType {
-    PreSwap,
-    PostSwap,
-    PreAddLiquidity,
-    PostAddLiquidity,
-    PreRemoveLiquidity,
-    PostRemoveLiquidity,
-}
+// Lifecycle events as bit flags (up to 32 events)
+pub const EVENT_POOL_INITIALIZED: u32 = 1 << 0;
+pub const EVENT_RATE_UPDATED: u32 = 1 << 1;
+pub const EVENT_LIQUIDITY_CHANGED: u32 = 1 << 2;
+pub const EVENT_FEES_COLLECTED: u32 = 1 << 3;
+pub const EVENT_TICK_CROSSED: u32 = 1 << 4;
+pub const EVENT_TICK_ACTIVATED: u32 = 1 << 5;
+pub const EVENT_TICK_DEACTIVATED: u32 = 1 << 6;
+pub const EVENT_POSITION_OPENED: u32 = 1 << 7;
+pub const EVENT_POSITION_MODIFIED: u32 = 1 << 8;
+pub const EVENT_POSITION_CLOSED: u32 = 1 << 9;
+pub const EVENT_SWAP_EXECUTED: u32 = 1 << 10;
+pub const EVENT_ORDER_CREATED: u32 = 1 << 11;
+pub const EVENT_ORDER_FILLED: u32 = 1 << 12;
+pub const EVENT_ORDER_MODIFIED: u32 = 1 << 13;
+pub const EVENT_REDENOMINATION: u32 = 1 << 14;
 
-/// Hook permission levels
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HookPermission {
-    /// Hook can only read state
-    ReadOnly,
-    /// Hook can modify non-critical state
-    Modify,
-    /// Hook can halt operations (circuit breaker)
-    Halt,
-}
+// Type alias for backwards compatibility
+pub const EVENT_PRICE_UPDATED: u32 = EVENT_RATE_UPDATED;
 
-/// Individual hook configuration
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
+// Hook execution stages as bit flags (up to 8 stages)
+pub const STAGE_VALIDATE: u8 = 1 << 0;      // Can abort operation
+pub const STAGE_PRE_EXECUTE: u8 = 1 << 1;   // Can modify parameters
+pub const STAGE_POST_EXECUTE: u8 = 1 << 2;  // Can observe results
+pub const STAGE_ASYNC: u8 = 1 << 3;         // Creates message for off-chain
+
+// ============================================================================
+// Hook Configuration
+// ============================================================================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
 pub struct HookConfig {
     /// Hook program address
     pub program_id: Pubkey,
-    /// Permission level
-    pub permission: HookPermission,
+    
+    /// Bitmask of events this hook subscribes to
+    pub event_mask: u32,
+    
+    /// Bitmask of stages this hook executes in
+    pub stage_mask: u8,
+    
+    /// Permission level (0=Disabled, 1=ReadOnly, 2=Modify, 3=Halt)
+    pub permission: u8,
+    
     /// Whether hook is currently active
     pub enabled: bool,
-    /// Maximum compute units allowed
+    
+    /// Maximum compute units allowed for this hook
     pub max_compute_units: u32,
-    /// Number of times this hook has been called
+    
+    /// Statistics for monitoring
     pub call_count: u64,
-    /// Last error timestamp (0 if no errors)
-    pub last_error_timestamp: i64,
+    pub last_execution_slot: u64,
 }
 
-impl Default for HookConfig {
-    fn default() -> Self {
-        Self {
-            program_id: Pubkey::default(),
-            permission: HookPermission::ReadOnly,
-            enabled: false,
-            max_compute_units: 100_000,
-            call_count: 0,
-            last_error_timestamp: 0,
+impl HookConfig {
+    pub const SIZE: usize = 32 + 4 + 1 + 1 + 1 + 4 + 8 + 8;
+    
+    #[inline(always)]
+    pub fn subscribes_to(&self, event: u32, stage: u8) -> bool {
+        self.enabled && 
+        (self.event_mask & event) != 0 && 
+        (self.stage_mask & stage) != 0
+    }
+    
+    pub fn permission_level(&self) -> HookPermission {
+        match self.permission {
+            0 => HookPermission::Disabled,
+            1 => HookPermission::ReadOnly,
+            2 => HookPermission::Modify,
+            3 => HookPermission::Halt,
+            _ => HookPermission::Disabled,
         }
     }
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HookType {
+    /// Price feed and oracle hooks
+    PriceFeed = 0,
+    /// Liquidity management hooks  
+    Liquidity = 1,
+    /// Arbitrage and MEV hooks
+    Arbitrage = 2,
+    /// Custom validation hooks
+    Validation = 3,
+    /// Before swap execution
+    BeforeSwap = 4,
+    /// After swap execution
+    AfterSwap = 5,
+    /// Before liquidity add
+    BeforeAdd = 6,
+    /// After liquidity add
+    AfterAdd = 7,
+    /// Before liquidity remove
+    BeforeRemove = 8,
+    /// After liquidity remove
+    AfterRemove = 9,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum HookPermission {
+    Disabled = 0,
+    ReadOnly = 1,    // Can only observe
+    Modify = 2,      // Can modify non-critical state
+    Halt = 3,        // Can abort operations
+}
+
 // ============================================================================
-// Hook Registry Structure
+// Hook Registry (Per Pool)
 // ============================================================================
 
-/// Hook registry for a pool
 #[account]
 pub struct HookRegistry {
     /// Pool this registry belongs to
@@ -78,356 +130,192 @@ pub struct HookRegistry {
     /// Authority who can modify hooks
     pub authority: Pubkey,
     
-    /// Pre-swap hooks
-    pub pre_swap_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
+    /// Fixed array of hook configurations
+    pub hooks: [HookConfig; MAX_HOOKS_PER_POOL],
     
-    /// Post-swap hooks
-    pub post_swap_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
+    /// Number of active hooks
+    pub hook_count: u8,
     
-    /// Pre-add liquidity hooks
-    pub pre_add_liquidity_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
-    
-    /// Post-add liquidity hooks
-    pub post_add_liquidity_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
-    
-    /// Pre-remove liquidity hooks
-    pub pre_remove_liquidity_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
-    
-    /// Post-remove liquidity hooks
-    pub post_remove_liquidity_hooks: [HookConfig; MAX_HOOKS_PER_TYPE],
-    
-    /// Global hook enable/disable
+    /// Global enable/disable flag
     pub hooks_enabled: bool,
     
-    /// Emergency pause authority (can disable all hooks)
+    /// Whether to write messages to queue
+    pub message_queue_enabled: bool,
+    
+    /// Emergency pause authority
     pub emergency_authority: Option<Pubkey>,
     
     /// Last update timestamp
     pub last_update_timestamp: i64,
     
-    /// Reserved for future use
-    pub _reserved: [u8; 128],
-}
-
-impl Default for HookRegistry {
-    fn default() -> Self {
-        Self {
-            pool: Pubkey::default(),
-            authority: Pubkey::default(),
-            pre_swap_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            post_swap_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            pre_add_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            post_add_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            pre_remove_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            post_remove_liquidity_hooks: [HookConfig::default(); MAX_HOOKS_PER_TYPE],
-            hooks_enabled: true,
-            emergency_authority: None,
-            last_update_timestamp: 0,
-            _reserved: [0; 128],
-        }
-    }
+    /// Reserved for future upgrades
+    pub _reserved: [u8; 64],
 }
 
 impl HookRegistry {
-    // Size breakdown for clarity and maintainability
-    const DISCRIMINATOR_SIZE: usize = 8;
-    const AUTHORITY_SIZE: usize = 32 + 32;  // pool + authority
-    const HOOK_CONFIG_SIZE: usize = 32 + 1 + 1 + 4 + 8 + 8;  // Single HookConfig size
-    const ALL_HOOKS_SIZE: usize = Self::HOOK_CONFIG_SIZE * MAX_HOOKS_PER_TYPE * 6;  // 6 hook arrays
-    const FLAGS_SIZE: usize = 1 + 33;  // hooks_enabled + emergency_authority (Option<Pubkey>)
-    const METADATA_SIZE: usize = 8;  // last_update_timestamp
-    const RESERVED_SIZE: usize = 128;  // reserved for future upgrades
+    pub const SIZE: usize = 8 + 32 + 32 + (HookConfig::SIZE * MAX_HOOKS_PER_POOL) 
+        + 1 + 1 + 1 + 33 + 8 + 64;
     
-    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE +
-        Self::AUTHORITY_SIZE +
-        Self::ALL_HOOKS_SIZE +
-        Self::FLAGS_SIZE +
-        Self::METADATA_SIZE +
-        Self::RESERVED_SIZE;  // Total size depends on MAX_HOOKS_PER_TYPE
-    
-    /// Get hooks for a specific type
-    pub fn get_hooks(&self, hook_type: HookType) -> &[HookConfig; MAX_HOOKS_PER_TYPE] {
-        match hook_type {
-            HookType::PreSwap => &self.pre_swap_hooks,
-            HookType::PostSwap => &self.post_swap_hooks,
-            HookType::PreAddLiquidity => &self.pre_add_liquidity_hooks,
-            HookType::PostAddLiquidity => &self.post_add_liquidity_hooks,
-            HookType::PreRemoveLiquidity => &self.pre_remove_liquidity_hooks,
-            HookType::PostRemoveLiquidity => &self.post_remove_liquidity_hooks,
+    /// Get hooks for a specific event and stage (gas-optimized)
+    #[inline(always)]
+    pub fn get_hooks_for(&self, event: u32, stage: u8) -> Vec<&HookConfig> {
+        if !self.hooks_enabled {
+            return Vec::new();
         }
+        
+        self.hooks[..self.hook_count as usize]
+            .iter()
+            .filter(|h| h.subscribes_to(event, stage))
+            .collect()
     }
     
-    /// Get mutable hooks for a specific type
-    pub fn get_hooks_mut(&mut self, hook_type: HookType) -> &mut [HookConfig; MAX_HOOKS_PER_TYPE] {
-        match hook_type {
-            HookType::PreSwap => &mut self.pre_swap_hooks,
-            HookType::PostSwap => &mut self.post_swap_hooks,
-            HookType::PreAddLiquidity => &mut self.pre_add_liquidity_hooks,
-            HookType::PostAddLiquidity => &mut self.post_add_liquidity_hooks,
-            HookType::PreRemoveLiquidity => &mut self.pre_remove_liquidity_hooks,
-            HookType::PostRemoveLiquidity => &mut self.post_remove_liquidity_hooks,
-        }
-    }
-    
-    /// Register a new hook
     pub fn register_hook(
         &mut self,
-        hook_type: HookType,
         program_id: Pubkey,
+        event_mask: u32,
+        stage_mask: u8,
         permission: HookPermission,
     ) -> Result<usize> {
-        let hooks = self.get_hooks_mut(hook_type);
+        use crate::state::FeelsProtocolError;
         
-        // Find first available slot
-        for (index, hook) in hooks.iter_mut().enumerate() {
-            if hook.program_id == Pubkey::default() {
-                *hook = HookConfig {
-                    program_id,
-                    permission,
-                    enabled: true,
-                    max_compute_units: 100_000,
-                    call_count: 0,
-                    last_error_timestamp: 0,
-                };
-                return Ok(index);
-            }
-        }
+        require!(
+            self.hook_count < MAX_HOOKS_PER_POOL as u8,
+            FeelsProtocolError::HookRegistryFull
+        );
         
-        // Return more descriptive error for full hook registry
-        Err(PoolError::HookRegistryFull.into())
-    }
-    
-    /// Unregister a hook
-    pub fn unregister_hook(
-        &mut self,
-        hook_type: HookType,
-        program_id: Pubkey,
-    ) -> Result<()> {
-        let hooks = self.get_hooks_mut(hook_type);
+        let index = self.hook_count as usize;
+        self.hooks[index] = HookConfig {
+            program_id,
+            event_mask,
+            stage_mask,
+            permission: permission as u8,
+            enabled: true,
+            max_compute_units: 100_000,
+            call_count: 0,
+            last_execution_slot: 0,
+        };
+        self.hook_count += 1;
         
-        for hook in hooks.iter_mut() {
-            if hook.program_id == program_id {
-                *hook = HookConfig::default();
-                return Ok(());
-            }
-        }
-        
-        Err(PoolError::InvalidOperation.into())
-    }
-    
-    /// Get active hooks for execution
-    pub fn get_active_hooks(&self, hook_type: HookType) -> Vec<&HookConfig> {
-        if !self.hooks_enabled {
-            return vec![];
-        }
-        
-        self.get_hooks(hook_type)
-            .iter()
-            .filter(|h| h.enabled && h.program_id != Pubkey::default())
-            .collect()
+        Ok(index)
     }
 }
 
-/// Hook execution context passed to hooks
+// ============================================================================
+// Hook Execution Context
+// ============================================================================
+
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct HookContext {
     /// Pool being operated on
     pub pool: Pubkey,
+    
     /// User performing the operation
     pub user: Pubkey,
-    /// Operation type
-    pub operation: HookOperation,
+    
+    /// Current event being processed
+    pub event: u32,
+    
+    /// Execution stage
+    pub stage: u8,
+    
+    /// Event-specific data
+    pub event_data: EventData,
+    
     /// Timestamp
     pub timestamp: i64,
+    
+    /// Slot for ordering
+    pub slot: u64,
 }
 
-/// Operation details for hooks
 #[derive(AnchorSerialize, AnchorDeserialize)]
-pub enum HookOperation {
+pub enum EventData {
+    PriceUpdate {
+        old_sqrt_price: u128,
+        new_sqrt_price: u128,
+    },
+    LiquidityChange {
+        position_id: Pubkey,
+        liquidity_delta: i128,
+        amount_0: u64,
+        amount_1: u64,
+        tick_lower: i32,
+        tick_upper: i32,
+    },
+    TickCross {
+        from_tick: i32,
+        to_tick: i32,
+        liquidity_net: i128,
+    },
     Swap {
         amount_in: u64,
         amount_out: u64,
         token_in: Pubkey,
         token_out: Pubkey,
-        price_before: u128,
-        price_after: u128,
-    },
-    AddLiquidity {
-        liquidity_amount: u128,
-        amount_0: u64,
-        amount_1: u64,
-        tick_lower: i32,
-        tick_upper: i32,
-    },
-    RemoveLiquidity {
-        liquidity_amount: u128,
-        amount_0: u64,
-        amount_1: u64,
-        tick_lower: i32,
-        tick_upper: i32,
+        fee_amount: u64,
     },
 }
 
 // ============================================================================
-// Handler Functions
+// Message Queue for Async Processing
 // ============================================================================
 
-/// Initialize hook registry for a pool
-pub fn initialize_hook_registry(
-    ctx: Context<InitializeHookRegistry>,
-) -> Result<()> {
-    let registry = &mut ctx.accounts.registry;
-    let clock = Clock::get()?;
-    
-    // Initialize with default values
-    registry.pool = ctx.accounts.pool.key();
-    registry.authority = ctx.accounts.authority.key();
-    registry.emergency_authority = Some(ctx.accounts.authority.key());
-    registry.last_update_timestamp = clock.unix_timestamp;
-    registry.hooks_enabled = true;
-    registry.pre_swap_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.post_swap_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.pre_add_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.post_add_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.pre_remove_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
-    registry.post_remove_liquidity_hooks = core::array::from_fn(|_| HookConfig::default());
-    
-    emit!(HookRegistryInitializedEvent {
-        pool: ctx.accounts.pool.key(),
-        registry: ctx.accounts.registry.key(),
-        authority: ctx.accounts.authority.key(),
-        timestamp: clock.unix_timestamp,
-    });
-    
-    Ok(())
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct HookMessage {
+    pub event_type: u16,
+    pub pool: Pubkey,
+    pub timestamp: i64,
+    pub slot: u64,
+    pub data: MessageData,
 }
 
-/// Register a new hook
-pub fn register_hook(
-    ctx: Context<RegisterHook>,
-    hook_type: HookType,
-    permission: HookPermission,
-) -> Result<()> {
-    let registry = &mut ctx.accounts.registry;
-    let clock = Clock::get()?;
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub enum MessageData {
+    PriceUpdate { old_price: u64, new_price: u64 },
+    LiquidityChange { position_id: [u8; 32], delta: i64 },
+    TickCross { from: i32, to: i32 },
+    SwapExecuted { volume: u64, fee: u64 },
+    Generic { data: [u8; 32] },
+}
+
+#[account]
+pub struct HookMessageQueue {
+    /// Pool this queue belongs to
+    pub pool: Pubkey,
     
-    // Validate authority
-    require!(
-        ctx.accounts.authority.key() == registry.authority,
-        PoolError::InvalidAuthority
-    );
+    /// Ring buffer of messages
+    pub messages: [HookMessage; 32],
     
-    // Additional validation for critical permissions
-    if permission == HookPermission::Halt {
-        // Halt permission requires emergency authority or protocol-level authority
-        let emergency_authorized = registry.emergency_authority
-            .map(|emergency_auth| emergency_auth == ctx.accounts.authority.key())
-            .unwrap_or(false);
+    /// Ring buffer indices
+    pub head: u8,
+    pub tail: u8,
+    
+    /// Total messages written (for off-chain tracking)
+    pub sequence: u64,
+    
+    /// Last acknowledged sequence by off-chain processor
+    pub ack_sequence: u64,
+    
+    /// Reserved space
+    pub _reserved: [u8; 64],
+}
+
+impl HookMessageQueue {
+    pub const SIZE: usize = 8 + 32 + (88 * 32) + 1 + 1 + 8 + 8 + 64;
+    
+    pub fn push(&mut self, message: HookMessage) -> Result<()> {
+        use crate::state::FeelsProtocolError;
         
-        require!(
-            emergency_authorized,
-            PoolError::UnauthorizedGuardian
-        );
+        let next_head = (self.head.wrapping_add(1)) % 32;
+        require!(next_head != self.tail, FeelsProtocolError::MessageQueueFull);
+        
+        self.messages[self.head as usize] = message;
+        self.head = next_head;
+        self.sequence = self.sequence.saturating_add(1);
+        Ok(())
     }
     
-    // Register the hook
-    let index = registry.register_hook(
-        hook_type,
-        ctx.accounts.hook_program.key(),
-        permission,
-    )?;
-    
-    registry.last_update_timestamp = clock.unix_timestamp;
-    
-    emit!(HookRegisteredEvent {
-        pool: registry.pool,
-        hook_program: ctx.accounts.hook_program.key(),
-        hook_type,
-        permission,
-        index: index as u8,
-        timestamp: clock.unix_timestamp,
-    });
-    
-    Ok(())
+    pub fn is_full(&self) -> bool {
+        ((self.head.wrapping_add(1)) % 32) == self.tail
+    }
 }
-
-/// Emergency pause all hooks
-pub fn emergency_pause_hooks(
-    ctx: Context<EmergencyPauseHooks>,
-) -> Result<()> {
-    let registry = &mut ctx.accounts.registry;
-    
-    // Validate emergency authority
-    require!(
-        Some(ctx.accounts.authority.key()) == registry.emergency_authority,
-        PoolError::InvalidAuthority
-    );
-    
-    registry.hooks_enabled = false;
-    
-    emit!(HooksEmergencyPausedEvent {
-        pool: registry.pool,
-        authority: ctx.accounts.authority.key(),
-        timestamp: Clock::get()?.unix_timestamp,
-    });
-    
-    Ok(())
-}
-
-// ============================================================================
-// Account Structures
-// ============================================================================
-
-#[derive(Accounts)]
-pub struct InitializeHookRegistry<'info> {
-    #[account(
-        init,
-        payer = authority,
-        space = HookRegistry::SIZE,
-        seeds = [b"hook_registry", pool.key().as_ref()],
-        bump
-    )]
-    pub registry: Account<'info, HookRegistry>,
-    
-    pub pool: AccountLoader<'info, crate::state::Pool>,
-    
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct RegisterHook<'info> {
-    #[account(
-        mut,
-        seeds = [b"hook_registry", registry.pool.as_ref()],
-        bump
-    )]
-    pub registry: Account<'info, HookRegistry>,
-    
-    pub authority: Signer<'info>,
-    
-    /// Hook program to register - must be a valid program account
-    #[account(
-        constraint = hook_program.executable @ PoolError::InvalidHookProgram,
-        constraint = hook_program.owner == &bpf_loader::id() || 
-                     hook_program.owner == &bpf_loader_deprecated::id() ||
-                     hook_program.owner == &bpf_loader_upgradeable::id() @ PoolError::InvalidHookProgram
-    )]
-    pub hook_program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct EmergencyPauseHooks<'info> {
-    #[account(
-        mut,
-        seeds = [b"hook_registry", registry.pool.as_ref()],
-        bump
-    )]
-    pub registry: Account<'info, HookRegistry>,
-    
-    pub authority: Signer<'info>,
-}
-
-// Hook events are now imported from logic::event

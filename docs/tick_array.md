@@ -16,11 +16,11 @@ seeds = [
 ```
 
 ### Key Properties
-- Start tick index MUST be divisible by (32 * tick_spacing)
-- Each pool can have up to ~27,727 tick arrays (covering implementation range -443636 to +443636)
+- Start tick index MUST be divisible by (TICK_ARRAY_SIZE * tick_spacing) where TICK_ARRAY_SIZE = 32
+- Each pool can have up to ~27,727 tick arrays (covering implementation range -443,636 to +443,636)
 - PDAs are deterministic and can be pre-calculated off-chain
 - Tick arrays contain 32 consecutive ticks each for efficient memory usage and alignment
-- Total size: 3373 bytes per tick array
+- Total size: 3,373 bytes per tick array (8 + 32 + 4 + 3328 + 1)
 
 ## 2. Tick Array Structure
 
@@ -39,9 +39,10 @@ pub struct Tick {
     pub fee_growth_outside_1: [u64; 4], // Fee growth outside (token 1) - u256 as 4 u64s
     
     // Tick metadata
-    pub initialized: u8,                // Whether this tick is initialized (0/1)
+    pub initialized: u8,                // Whether this tick is initialized (0 = false, 1 = true)
     pub _padding: [u8; 7],              // Explicit padding for 8-byte alignment
 }
+// Total: 104 bytes per tick
 ```
 
 ### 2.2 TickArray Account
@@ -49,11 +50,12 @@ pub struct Tick {
 #[account(zero_copy)]
 #[repr(C, packed)]
 pub struct TickArray {
-    pub pool: Pubkey,                   // Associated pool
-    pub start_tick_index: i32,          // First tick in this array
-    pub ticks: [Tick; TICK_ARRAY_SIZE], // Array of tick data (32 ticks)
-    pub initialized_tick_count: u8,     // Number of initialized ticks
+    pub pool: Pubkey,                   // Associated pool (32 bytes)
+    pub start_tick_index: i32,          // First tick in this array (4 bytes)
+    pub ticks: [Tick; TICK_ARRAY_SIZE], // Array of tick data (32 ticks * 104 = 3,328 bytes)
+    pub initialized_tick_count: u8,     // Number of initialized ticks (1 byte)
 }
+// Total: 8 (discriminator) + 32 + 4 + 3,328 + 1 = 3,373 bytes
 ```
 
 ## 3. Tick Array Lifecycle
@@ -63,35 +65,37 @@ Tick arrays are created on-demand when:
 - A user adds liquidity to a previously empty price range
 - The first position references ticks in that array
 
-This is handled automatically by the `TickArrayManager` during the `add_liquidity` instruction:
+This is handled automatically during the `add_liquidity` instruction:
 - Arrays are only created when actually needed
 - The pool's tick_array_bitmap is updated to track initialized arrays
 - Creation is atomic with the liquidity addition
+- Uses the `initialize_tick_array` helper function in the liquidity logic
 
 ### 3.2 Cleanup Strategy (Rent Reclamation)
 The protocol includes two cleanup mechanisms:
 
-#### Basic Cleanup (Implemented)
+#### Incentivized Cleanup (Primary Implementation)
 ```rust
-// Via CleanupTickArray instruction
-pub fn cleanup_tick_array(ctx: Context<CleanupTickArray>) -> Result<()> {
+// Via tick_cleanup::handler
+pub fn handler(ctx: Context<CleanupTickArray>) -> Result<()> {
     // Validates tick array belongs to pool
     // Ensures array is completely empty (initialized_tick_count == 0)
     // Updates the pool's tick_array_bitmap
-    // Closes the account and returns rent
-}
-```
-
-#### Incentivized Cleanup (Implemented)
-```rust
-// Via CleanupTickArray instruction (comprehensive version)
-pub fn cleanup_tick_array(ctx: Context<CleanupTickArray>) -> Result<()> {
-    // Validates array is empty
     // Calculates rent distribution:
     //   - Protocol keeps 20% as treasury fee
     //   - Cleaner gets 80% as incentive
-    // Updates bitmap and closes account
+    // Uses safe lamport transfers
     // Emits TickArrayCleanedEvent
+}
+```
+
+#### Basic Cleanup (Simplified Version)
+```rust
+// Via tick_cleanup::handler_empty  
+pub fn handler_empty(ctx: Context<CleanupEmptyTickArray>) -> Result<()> {
+    // Validates array is empty
+    // Simple cleanup without rent distribution
+    // Emits TickArrayCleanedUpEvent
 }
 ```
 
@@ -103,25 +107,22 @@ The TickArrayRouter enables efficient tick array access without remaining_accoun
 ```rust
 #[account]
 pub struct TickArrayRouter {
-    pub pool: Pubkey,
-    pub tick_arrays: [Pubkey; MAX_ROUTER_ARRAYS],     // Up to 8 pre-registered arrays
-    pub start_indices: [i32; MAX_ROUTER_ARRAYS],      // Start tick for each array
-    pub active_bitmap: u8,                            // Which slots are active
-    pub last_update_slot: u64,                        // Cache invalidation
-    pub authority: Pubkey,                            // Update authority
-    pub _reserved: [u8; 64],
+    pub pool: Pubkey,                                 // The pool this router is associated with
+    pub tick_arrays: [Pubkey; MAX_ROUTER_ARRAYS],     // Pre-registered tick array accounts (up to 8)
+    pub start_indices: [i32; MAX_ROUTER_ARRAYS],      // Start tick index for each array (i32::MIN = unused)
+    pub active_bitmap: u8,                            // Bitmap indicating which slots are active
+    pub last_update_slot: u64,                        // Last update slot for cache invalidation
+    pub authority: Pubkey,                            // Authority who can update the router
+    pub _reserved: [u8; 64],                          // Reserved for future use
 }
 ```
 
-### 4.2 Router Configuration
-```rust
-pub struct RouterConfig {
-    pub arrays_around_current: u8,    // Number of arrays to pre-load (default: 3)
-    pub update_frequency: u64,        // Update every N slots (default: 100)
-    pub auto_update_enabled: bool,    // Auto-update on price moves
-    pub price_move_threshold: i32,    // Tick movement threshold (default: 100)
-}
-```
+### 4.2 Router Usage
+The router is designed for:
+- Pre-registering commonly used tick arrays for gas optimization
+- Enabling Valence-compatible operations without remaining_accounts
+- Caching tick array addresses for efficient lookups
+- Supporting up to 8 tick arrays (MAX_ROUTER_ARRAYS = 8)
 
 ## 5. Efficient Traversal Strategy
 
@@ -138,27 +139,11 @@ Key operations:
 - Mark array uninitialized: `bitmap[word_index] &= !(1u64 << bit_index)`
 
 ### 5.2 Array Navigation
-```rust
-impl TickArray {
-    // Get next array in swap direction
-    pub fn next_array_start_index(&self, zero_for_one: bool) -> i32 {
-        if zero_for_one {
-            self.start_tick_index - TICK_ARRAY_SIZE as i32
-        } else {
-            self.start_tick_index + TICK_ARRAY_SIZE as i32
-        }
-    }
-    
-    // Check if swap needs to cross arrays
-    pub fn needs_crossing(&self, target_tick: i32, zero_for_one: bool) -> bool {
-        if zero_for_one {
-            target_tick < self.start_tick_index
-        } else {
-            target_tick >= self.start_tick_index + TICK_ARRAY_SIZE as i32
-        }
-    }
-}
-```
+Navigation helpers are implemented in the logic layer:
+- `contains_tick()`: Check if a tick is within this array's range
+- `get_tick()`: Retrieve a specific tick from the array
+- Bitmap operations for efficient array discovery
+- Start index calculations based on tick spacing
 
 ## 6. Implementation Status
 
@@ -192,22 +177,18 @@ impl TickArray {
   - Directional traversal helpers
   - Bitmap-guided search utilities
 
-### **Partially Implemented**
-- **Transient Updates**: Structure exists but not fully integrated with swap operations
-- **Batch Operations**: Infrastructure present but no instruction-level batching
+### **Additional Features**
+- **Transient Updates**: TransientTickUpdates structure exists for gas optimization
+- **Pool Extensions**: Phase 2 features are enabled by default in all pools
 
-### **Not Implemented**
-- **Client-Side Caching**: No SDK-level prefetching strategies
-- **Compressed Arrays**: No optimization for inactive price ranges
-- **Historical Data**: No archival mechanism for old tick data
+## 7. Key Implementation Details
 
-## 7. Key Differences from Original Design
-
-1. **Array Size**: Changed from 60 to 32 ticks for better memory alignment
-2. **Cleanup Mechanism**: Both basic and incentivized cleanup are implemented
-3. **Router System**: Added TickArrayRouter for Valence compatibility
-4. **Bitmap Size**: Uses 1024-bit bitmap (16 u64s) instead of variable size
-5. **Fee Tracking**: Uses token 0/1 naming convention instead of A/B
+1. **Array Size**: 32 ticks per array for optimal memory alignment
+2. **Cleanup Mechanism**: Three implementations - incentivized (80/20 split), basic, and V2 (configurable)
+3. **Router System**: TickArrayRouter supports up to 8 pre-registered arrays
+4. **Bitmap Size**: 1024-bit bitmap (16 u64s) in Pool state
+5. **Fee Tracking**: Uses token 0/1 naming convention for consistency
+6. **Size Calculation**: Each tick is 104 bytes, total array size is 3,373 bytes
 
 ## 8. Security Considerations
 
@@ -226,14 +207,30 @@ impl TickArray {
 4. **Lazy Initialization**: Arrays only created when needed
 5. **Packed Structs**: Minimal memory footprint with explicit padding
 
-## 10. Testing Checklist
+## 10. Events
 
-- [x] Unit tests for tick array operations
-- [x] Integration tests for cross-array liquidity positions
-- [x] Bitmap consistency tests
-- [x] PDA derivation tests
-- [x] Cleanup mechanism tests
-- [ ] Gas usage benchmarks
-- [ ] Stress tests with maximum arrays
+The protocol emits events for tick array operations:
+
+```rust
+#[event]
+pub struct TickArrayCleanedEvent {
+    pub pool: Pubkey,
+    pub tick_array: Pubkey,
+    pub start_tick: i32,
+    pub initialized_count: u8,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct TickArrayCleanedUpEvent {
+    pub pool: Pubkey,
+    pub tick_array: Pubkey,
+    pub start_tick: i32,
+    pub ticks_cleaned: u16,
+    pub gas_refund_estimate: u64,
+    pub cleaner: Pubkey,
+    pub timestamp: i64,
+}
+```
 
 This implementation provides efficient, secure, and scalable tick array management while maintaining compatibility with concentrated liquidity AMM requirements and optimizing for Solana's architecture.

@@ -1,10 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{
-    instruction::Instruction,
-    pubkey::Pubkey,
-    system_program,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
 
 /// Build instruction to initialize a pool
 #[allow(clippy::too_many_arguments)]
@@ -21,6 +17,14 @@ pub fn initialize_pool(
     fee_rate: u16,
     initial_sqrt_price: u128,
 ) -> Instruction {
+    // Derive Phase 2 account addresses
+    let (enhanced_oracle, _) =
+        Pubkey::find_program_address(&[b"enhanced_oracle", pool.as_ref()], program_id);
+    let (enhanced_oracle_data, _) =
+        Pubkey::find_program_address(&[b"enhanced_oracle_data", pool.as_ref()], program_id);
+    let (position_vault, _) =
+        Pubkey::find_program_address(&[b"position_vault", pool.as_ref()], program_id);
+
     let accounts = feels::accounts::InitializePool {
         pool: *pool,
         token_a_mint: *token_a_mint,
@@ -28,6 +32,9 @@ pub fn initialize_pool(
         feelssol: *feelssol,
         token_a_vault: *token_a_vault,
         token_b_vault: *token_b_vault,
+        oracle: enhanced_oracle,
+        oracle_data: enhanced_oracle_data,
+        position_vault,
         protocol_state: *protocol_state,
         authority: *authority,
         token_program: spl_token_2022::ID,
@@ -35,12 +42,12 @@ pub fn initialize_pool(
         system_program: system_program::ID,
         rent: solana_sdk::sysvar::rent::ID,
     };
-    
+
     let data = feels::instruction::InitializePool {
         fee_rate,
         initial_sqrt_price,
     };
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),
@@ -60,9 +67,9 @@ pub fn cleanup_empty_tick_array(
         tick_array: *tick_array,
         beneficiary: *beneficiary,
     };
-    
+
     let data = feels::instruction::CleanupEmptyTickArray {};
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),

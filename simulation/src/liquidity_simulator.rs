@@ -165,7 +165,7 @@ impl<'a> LiquiditySimulator<'a> {
         &mut self,
         position: &LiquidityPosition,
     ) -> Result<(u64, u64)> {
-        // For now, return dummy values
+        // TODO: For now, return dummy values
         // In production, this would collect actual fees
         Ok((0, 0))
     }

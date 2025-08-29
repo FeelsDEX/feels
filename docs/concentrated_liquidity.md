@@ -9,14 +9,14 @@ This document provides documentation for the concentrated liquidity swap algorit
 ### 1. Price Representation
 
 The protocol uses **square root price** representation for efficiency:
-- **Format**: Q96 fixed-point for external APIs (Uniswap V3 compatible)
-- **Internal**: Q64 fixed-point for calculations (Orca Whirlpools compatible)
-- **Formula**: `sqrt_price_x96 = sqrt(token1_amount / token0_amount) * 2^96`
+- **Format**: Q64.96 fixed-point (96 fractional bits) for Uniswap V3 compatibility
+- **Internal Conversions**: Some calculations use Q64 for efficiency while maintaining precision
+- **Formula**: `sqrt_price_x96 = sqrt(token_b_amount / token_a_amount) * 2^96`
 - **Benefits**: Avoids expensive division operations during swaps
 
 ```rust
-// Example: FeelsSOL/FEELS at $2000
-// price = 2000 FEELS/FeelsSOL
+// Example: Token A/Token B at price 2000
+// price = 2000 Token B per Token A
 // sqrt_price_x96 = sqrt(2000) * 2^96 ≈ 3.54e30
 ```
 
@@ -25,19 +25,15 @@ The protocol uses **square root price** representation for efficiency:
 Ticks represent discrete price points:
 - **Tick spacing**: Varies by fee tier (1, 10, 60, 200)
 - **Price formula**: `price = 1.0001^tick`
-- **Implementation Range**: -443636 to +443636 (practical limits)
-- **Theoretical Range**: -887272 to +887272
+- **Implementation Range**: -443,636 to +443,636 (enforced bounds)
+- **Constants**: MIN_SQRT_PRICE_X96 = 4,295,048,017, MAX_SQRT_PRICE_X96 = 79,226,673,521,066,979,257,578,248,243
 
 ```rust
-// Tick to price conversion
-fn tick_to_price(tick: i32) -> f64 {
-    1.0001_f64.powi(tick)
-}
+// Get sqrt price from tick (actual implementation)
+TickMath::get_sqrt_ratio_at_tick(tick: i32) -> Result<u128>
 
-// Price to tick conversion (logarithmic)
-fn price_to_tick(price: f64) -> i32 {
-    (price.ln() / 1.0001_f64.ln()).floor() as i32
-}
+// Get tick from sqrt price (actual implementation)  
+TickMath::get_tick_at_sqrt_ratio(sqrt_price_x96: u128) -> Result<i32>
 ```
 
 ### 3. Liquidity Depth
@@ -48,52 +44,53 @@ Liquidity is distributed across price ranges:
 
 ## Swap Algorithm Deep Dive
 
-### Phase 1: Initialization
+### Step 1: Initialization
 
 ```rust
-fn execute_concentrated_liquidity_swap(
+fn execute_concentrated_liquidity_swap<'info>(
     swap_state: &mut SwapState,
     pool: &mut Pool,
     sqrt_price_limit: u128,
-    zero_for_one: bool,  // true = token0 -> token1
-    remaining_accounts: &[AccountInfo],
+    zero_for_one: bool,  // true = token_a -> token_b
+    remaining_accounts: &'info [AccountInfo<'info>],
 ) -> Result<u64>
 ```
 
 **Key Parameters:**
 - `swap_state`: Tracks remaining input, current price, and active liquidity
 - `sqrt_price_limit`: Maximum price movement allowed (slippage protection)
-- `zero_for_one`: Swap direction indicator
+- `zero_for_one`: Swap direction indicator (true = sell token A for token B)
 
-### Phase 2: Main Swap Loop
+### Step 2: Main Swap Loop
 
 The algorithm iterates through price ranges until:
 1. All input is consumed, OR
 2. Price limit is reached
 
 ```rust
-while swap_state.amount_remaining > 0 && swap_state.sqrt_price != sqrt_price_limit {
+while should_continue_swap(swap_state, sqrt_price_limit_adjusted) {
     // Step 1: Compute swap within current tick range
-    let step = compute_swap_step(...)?;
+    let step = compute_swap_step(
+        swap_state.sqrt_price,
+        sqrt_price_limit_adjusted,
+        swap_state.liquidity,
+        swap_state.amount_remaining,
+        pool.fee_rate,
+        zero_for_one,
+    )?;
     
     // Step 2: Update state
-    swap_state.sqrt_price = step.sqrt_price_next;
-    swap_state.amount_remaining -= step.amount_in;
-    swap_state.amount_calculated += step.amount_out;
+    apply_swap_step(swap_state, &step)?;
     
     // Step 3: Update global fee growth
-    if swap_state.liquidity > 0 {
-        update_fee_growth(pool, step.fee_amount, swap_state.liquidity)?;
-    }
+    update_fee_growth(pool, swap_state.liquidity, step.fee_amount, zero_for_one)?;
     
-    // Step 4: Cross tick if necessary
-    if step.sqrt_price_next == step.sqrt_price_target {
-        cross_tick(pool, swap_state, step.tick_next, zero_for_one)?;
-    }
+    // Step 4: Handle tick crossing if we hit a boundary
+    handle_tick_crossing(pool, swap_state, &step, zero_for_one, remaining_accounts)?;
 }
 ```
 
-### Phase 3: Swap Step Calculation
+### Step 3: Swap Step Calculation
 
 Each step computes the swap within a single tick range:
 
@@ -116,40 +113,44 @@ fn compute_swap_step(
 
 **Mathematical Formulas:**
 
-For token0 -> token1 swaps (zero_for_one = true):
+For token A -> token B swaps (zero_for_one = true):
 ```
-Δx = L * (1/√P_new - 1/√P_current)  // Amount token0 in
-Δy = L * (√P_new - √P_current)      // Amount token1 out
-```
-
-For token1 -> token0 swaps (zero_for_one = false):
-```
-Δx = L * (1/√P_current - 1/√P_new)  // Amount token0 out
-Δy = L * (√P_current - √P_new)      // Amount token1 in
+Δx = L * (1/√P_new - 1/√P_current)  // Amount token A in
+Δy = L * (√P_new - √P_current)      // Amount token B out
 ```
 
-**Note**: External API uses Q96 fixed-point arithmetic (2^96 scaling), while internal calculations use Q64 (2^64 scaling) for efficiency on Solana.
+For token B -> token A swaps (zero_for_one = false):
+```
+Δx = L * (1/√P_current - 1/√P_new)  // Amount token A out
+Δy = L * (√P_current - √P_new)      // Amount token B in
+```
 
-### Phase 4: Tick Crossing
+**Implementation Details**:
+- Uses `ConcentratedLiquidityMath::get_next_sqrt_price_from_input` for exact input swaps
+- Internally uses helper functions from `utils::math_amm` for amount calculations
+- All calculations use checked arithmetic to prevent overflows
+
+### Step 4: Tick Crossing
 
 When price moves across tick boundaries:
 
 ```rust
-fn cross_tick(
+fn cross_tick<'info>(
     pool: &mut Pool,
     swap_state: &mut SwapState,
     tick_index: i32,
     zero_for_one: bool,
+    remaining_accounts: &'info [AccountInfo<'info>],
 ) -> Result<()>
 ```
 
 **Process:**
-1. **Load tick data** from tick array account
-2. **Update active liquidity**: Add/subtract `liquidity_net`
-3. **Update tick state**: Mark as initialized if needed
-4. **Track fee growth**: Record fees earned outside tick
+1. **Validate tick array accounts** - Check program ownership and data length
+2. **Find the correct tick array** containing the target tick
+3. **Update active liquidity**: Add/subtract `liquidity_net` based on direction
+4. **Sync all pool state immediately** to maintain consistency
 
-### Phase 5: Fee Handling
+### Step 5: Fee Handling
 
 Fees are handled in multiple layers:
 
@@ -165,7 +166,8 @@ Fees are handled in multiple layers:
 
 3. **Fee growth tracking**: For liquidity providers
    ```rust
-   fee_growth_delta = (fee_amount << 128) / liquidity
+   fee_growth_delta = FeeGrowthMath::fee_to_fee_growth(fee_amount, liquidity)
+   // Uses 256-bit integers represented as [u64; 4] arrays
    ```
 
 ## Gas Optimizations
@@ -189,14 +191,14 @@ Fees are handled in multiple layers:
 
 ### 1. Price Bounds
 ```rust
-const MIN_SQRT_PRICE_X96: u128 = 18447090763469684736;  // sqrt(1.0001^-443636) * 2^96
-const MAX_SQRT_PRICE_X96: u128 = 340_275_971_719_517_849_884_101_479_037_289_023_427;  // sqrt(1.0001^443636) * 2^96
+const MIN_SQRT_PRICE_X96: u128 = 4_295_048_017;  // sqrt(1.0001^-443636) * 2^96
+const MAX_SQRT_PRICE_X96: u128 = 79_226_673_521_066_979_257_578_248_243;  // sqrt(1.0001^443636) * 2^96
 ```
 
 ### 2. Overflow Protection
 - All arithmetic uses native Rust checked operations (checked_add, checked_sub, etc.)
-- U256/U512 from ruint library for large number operations
-- Fee growth tracked in Q128.128 format using 256-bit integers
+- Custom 256-bit math for fee growth calculations using [u64; 4] arrays
+- Fee growth tracked with 128 bits of precision for accurate distribution
 
 ### 3. Slippage Protection
 - User specifies `sqrt_price_limit`
@@ -206,34 +208,34 @@ const MAX_SQRT_PRICE_X96: u128 = 340_275_971_719_517_849_884_101_479_037_289_023
 ## Example: Complete Swap Flow
 
 ```rust
-// User wants to swap 1000 FEELS for FeelsSOL
-// Current price: 2000 FEELS/FeelsSOL (sqrt_price ≈ 8.26e20)
+// User wants to swap 1000 token A for token B
+// Current price: 2000 token B per token A
 
 // 1. Initialize swap state
 let mut swap_state = SwapState {
-    amount_remaining: 1000_000_000,  // 1000 FEELS (6 decimals)
+    amount_remaining: 1_000_000_000,  // 1000 tokens (6 decimals)
     amount_calculated: 0,
-    sqrt_price: 3_543_191_142_285_914_205_922_034_323_338_780,  // sqrt(2000) * 2^96
-    tick: 69081,  // Current tick
+    sqrt_price: pool.current_sqrt_price,
+    tick: pool.current_tick,
     fee_amount: 0,
-    liquidity: 50_000_000_000_000u128,  // Active liquidity
+    liquidity: pool.liquidity,
 };
 
-// 2. Calculate fee (0.3%)
-let fee = 1000_000_000 * 30 / 10000;  // 3,000,000 = 3 FEELS
-swap_state.amount_remaining = 997_000_000;  // After fee
+// 2. Calculate fee breakdown
+let fee_breakdown = pool.calculate_swap_fees(amount_in)?;
+swap_state.amount_remaining = amount_in - fee_breakdown.total_fee;
 
-// 3. Compute swap step
-// Price moves slightly due to liquidity depth
-// Output: ~0.498 FeelsSOL
+// 3. Execute concentrated liquidity swap
+let amount_out = execute_concentrated_liquidity_swap(
+    &mut swap_state,
+    &mut pool,
+    sqrt_price_limit,
+    zero_for_one,
+    remaining_accounts,
+)?;
 
-// 4. Update pool state
-pool.current_sqrt_price = 3_541_000_000_000_000_000_000_000_000_000_000;  // New price after swap
-pool.current_tick = 69060;
-
-// 5. Transfer tokens
-// User sends: 1000 FEELS
-// User receives: 0.498 FeelsSOL
+// 4. Pool state is automatically updated during swap execution
+// 5. Transfers handled via CPI with proper authority seeds
 ```
 
 ## Common Pitfalls and Solutions
@@ -272,11 +274,42 @@ pool.current_tick = 69060;
    - Compare single vs multi-hop swaps
    - Profile tick array loading
 
-## Future Optimizations (Phase 2+)
+## Cross-Token Routing
 
-1. **Dynamic fees**: Adjust based on volatility
-2. **MEV protection**: Just-in-time liquidity defenses  
-3. **Oracle integration**: TWAP for price feeds
-4. **Cross-program composability**: Flash swaps
+The protocol implements a hub-and-spoke model where all pools pair with FeelsSOL:
+
+### SwapRoute Types
+- **Direct**: One token is FeelsSOL (single hop)
+- **TwoHop**: Neither token is FeelsSOL (route through FeelsSOL)
+
+### Route Execution
+```rust
+pub fn execute_routed_swap_handler(
+    ctx: Context<ExecuteRoutedSwap>,
+    amount_in: u64,
+    amount_out_minimum: u64,
+    sqrt_price_limit_1: u128,
+    sqrt_price_limit_2: Option<u128>,
+) -> Result<u64>
+```
+
+Two-hop swaps execute sequentially:
+1. Token A → FeelsSOL (first pool)
+2. FeelsSOL → Token B (second pool)
+
+## Oracle Integration
+
+The protocol maintains price observations for TWAP calculations:
+- **ObservationState**: Stores up to 128 observations in a circular buffer (Phase 1)
+- **EnhancedOracle**: Stores up to 1024 observations with volatility tracking (Phase 2)
+- **Cumulative tick tracking**: Enables time-weighted average price calculations
+- **Update frequency**: Every swap updates the oracle
+
+## Phase 2 Features (Always Enabled)
+
+1. **Enhanced Oracle**: Extended observation storage and volatility tracking
+2. **Position Vault**: Automated liquidity management
+3. **Dynamic Fees**: Configurable fee adjustments based on market conditions
+4. **Volume Tracking**: Per-pool volume statistics
 
 This algorithm forms the core of the Feels Protocol's efficiency and capital optimization, enabling traders to access deep liquidity with minimal slippage while providing LPs with concentrated exposure to their desired price ranges.

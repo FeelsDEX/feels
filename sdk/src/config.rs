@@ -6,19 +6,19 @@ use std::{str::FromStr, sync::Arc};
 pub struct SdkConfig {
     /// RPC endpoint URL
     pub rpc_url: String,
-    
+
     /// WebSocket URL for subscriptions
     pub ws_url: Option<String>,
-    
+
     /// Feels program ID
     pub program_id: Pubkey,
-    
+
     /// Transaction commitment level
     pub commitment: solana_sdk::commitment_config::CommitmentLevel,
-    
+
     /// Request timeout in seconds
     pub timeout: u64,
-    
+
     /// Payer keypair for transactions
     pub payer: Arc<Keypair>,
 }
@@ -34,7 +34,7 @@ impl SdkConfig {
             payer: Arc::new(payer),
         }
     }
-    
+
     pub fn devnet(payer: Keypair) -> Self {
         Self {
             rpc_url: "https://api.devnet.solana.com".to_string(),
@@ -45,7 +45,7 @@ impl SdkConfig {
             payer: Arc::new(payer),
         }
     }
-    
+
     pub fn mainnet(payer: Keypair) -> Self {
         Self {
             rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
@@ -56,12 +56,12 @@ impl SdkConfig {
             payer: Arc::new(payer),
         }
     }
-    
+
     pub fn with_rpc_url(mut self, url: String) -> Self {
         self.rpc_url = url;
         self
     }
-    
+
     pub fn with_program_id(mut self, program_id: Pubkey) -> Self {
         self.program_id = program_id;
         self

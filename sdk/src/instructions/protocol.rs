@@ -1,10 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{
-    instruction::Instruction,
-    pubkey::Pubkey,
-    system_program,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
 
 /// Build instruction to initialize the protocol
 pub fn initialize_protocol(
@@ -19,9 +15,9 @@ pub fn initialize_protocol(
         treasury: *treasury,
         system_program: system_program::ID,
     };
-    
+
     let data = feels::instruction::InitializeFeels {};
-    
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),
@@ -45,11 +41,9 @@ pub fn initialize_feelssol(
         system_program: system_program::ID,
         rent: solana_sdk::sysvar::rent::ID,
     };
-    
-    let data = feels::instruction::InitializeFeelssol {
-        underlying_mint,
-    };
-    
+
+    let data = feels::instruction::InitializeFeelssol { underlying_mint };
+
     Instruction {
         program_id: *program_id,
         accounts: accounts.to_account_metas(None),

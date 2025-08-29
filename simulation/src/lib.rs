@@ -1,14 +1,13 @@
 /// Simulation framework for testing the Feels Protocol
-/// 
+///
 /// Provides utilities for:
 /// - Creating test environments
 /// - Generating test accounts
 /// - Simulating protocol operations
 /// - Testing complex scenarios
-/// 
+///
 /// Note: This is a minimal implementation due to edition2024 dependency issues.
 /// Full simulation capabilities will be restored when toolchain is updated.
-
 use anchor_lang::prelude::*;
 use solana_sdk::pubkey::Pubkey;
 
@@ -17,7 +16,7 @@ use solana_sdk::pubkey::Pubkey;
 pub enum SimulationError {
     #[error("Simulation not implemented: {0}")]
     NotImplemented(String),
-    
+
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
 }
@@ -50,7 +49,7 @@ impl FeelsSimulation {
     pub fn new(config: SimulationConfig) -> Self {
         Self { config }
     }
-    
+
     pub fn run_basic_test(&self) -> SimulationResult<()> {
         println!("Feels Protocol Simulation");
         println!("Program ID: {}", self.config.program_id);
