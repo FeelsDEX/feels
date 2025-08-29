@@ -96,10 +96,15 @@ pub fn validate_ticker_format(ticker: &str) -> Result<()> {
     if ticker.is_empty() {
         return Err(error!(TokenFactoryError::TickerIsEmpty));
     }
-
     require!(
         ticker.len() <= MAX_TICKER_LENGTH,
         TokenFactoryError::TickerTooLong
+    );
+
+    // Check ticker is uppercase
+    require!(
+        ticker == ticker.to_uppercase(),
+        TokenFactoryError::TickerNotUppercase
     );
 
     // Check characters - only alphanumeric allowed
