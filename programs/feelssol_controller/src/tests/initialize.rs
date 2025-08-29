@@ -5,27 +5,23 @@ use crate::{
 use anchor_lang::prelude::Pubkey;
 use anchor_spl::token_interface::Mint;
 use feels_test_utils::{to_sdk_instruction, TestApp};
-use solana_sdk::signer::Signer;
+use solana_sdk::signer::{SeedDerivable, Signer};
 
 const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
-// Example secret key that gives a Pubkey that starts with `fee1`.
+// Example secret key that gives a Pubkey that starts with `Fee1s`.
 const FEELS_PRIVATE_KEY: [u8; 32] = [
-    173, 242, 88, 79, 86, 15, 167, 224, 211, 34, 196, 239, 85, 249, 117, 35, 95, 153, 145, 178,
-    209, 92, 54, 144, 124, 118, 221, 73, 100, 141, 228, 193,
+    175, 231, 9, 4, 171, 54, 207, 154, 207, 24, 149, 237, 50, 226, 208, 61, 57, 155, 22, 83, 47,
+    86, 18, 123, 18, 154, 127, 87, 224, 112, 101, 180,
 ];
 
 #[tokio::test]
 async fn test_initialize_feelssol_controller_success() {
     let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
-    let secret_key: [u8; 32] = FEELS_PRIVATE_KEY[0..32].try_into().unwrap();
-    let token_mint = solana_sdk::signer::keypair::Keypair::new_from_array(secret_key);
+    let token_mint = solana_sdk::signature::Keypair::from_seed(&FEELS_PRIVATE_KEY).unwrap();
     let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
-    assert_eq!(
-        token_mint_pubkey.to_string()[0..4].to_string(),
-        "fee1".to_string()
-    );
+    assert!(token_mint_pubkey.to_string().starts_with("Fee1s"));
 
     let (instruction, feelssol_pda) = InstructionBuilder::initialize(
         &payer_pubkey,
