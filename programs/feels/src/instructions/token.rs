@@ -49,36 +49,32 @@ pub fn create_token(
     );
 
     // Initialize token metadata
-    let token = &mut ctx.accounts.token;
+    let token_metadata = &mut ctx.accounts.token_metadata;
     let clock = Clock::get()?;
 
-    token.mint = ctx.accounts.mint.key();
-    token.authority = ctx.accounts.authority.key();
-    token.ticker = ticker.clone();
-    token.name = name.clone();
-    token.symbol = symbol.clone();
-    token.decimals = decimals;
-    token.total_supply = initial_supply;
-    token.is_paused = false;
-    token.freeze_authority = ctx.accounts.authority.key();
-    token.created_at = clock.unix_timestamp;
-    token.last_updated_at = clock.unix_timestamp;
+    token_metadata.mint = ctx.accounts.token_mint.key();
+    token_metadata.authority = ctx.accounts.authority.key();
+    token_metadata.ticker = ticker.clone();
+    token_metadata.name = name.clone();
+    token_metadata.symbol = symbol.clone();
+    // decimals is stored on mint, not metadata
+    // total_supply is stored on mint, not metadata
+    // is_paused would be managed by freeze authority on mint
+    // freeze_authority is stored on mint, not metadata
+    token_metadata.created_at = clock.unix_timestamp;
+    // Only created_at is tracked in metadata
 
-    // Initialize metadata fields
-    token.description = "".to_string(); // Can be updated later
-    token.image_uri = "".to_string();   // Can be updated later
-    token.website_uri = "".to_string(); // Can be updated later
+    // Additional metadata fields can be added later if needed
 
-    // Initialize supply tracking
-    token.circulating_supply = initial_supply;
-    token.burned_supply = 0;
+    // Supply tracking is managed by the mint
+    // Burn tracking would be managed separately
 
     // Mint initial supply to authority
     if initial_supply > 0 {
         let mint_accounts = MintTo {
-            mint: ctx.accounts.mint.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
             to: ctx.accounts.authority_token_account.to_account_info(),
-            authority: ctx.accounts.mint_authority.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
         };
         
         let mint_ctx = CpiContext::new(
@@ -91,18 +87,17 @@ pub fn create_token(
 
     // Emit token creation event
     emit!(TokenCreated {
-        mint: ctx.accounts.mint.key(),
+        mint: ctx.accounts.token_mint.key(),
         authority: ctx.accounts.authority.key(),
         ticker: ticker.clone(),
         name: name.clone(),
         symbol: symbol.clone(),
         decimals,
         initial_supply,
-        timestamp: clock.unix_timestamp,
     });
 
     msg!("Token created successfully");
-    msg!("Mint: {}", ctx.accounts.mint.key());
+    msg!("Mint: {}", ctx.accounts.token_mint.key());
     msg!("Ticker: {}", ticker);
     msg!("Name: {}", name);
     msg!("Symbol: {}", symbol);

@@ -5,7 +5,6 @@
 
 use anchor_lang::prelude::*;
 use crate::state::{Oracle, OracleData};
-use crate::state::metrics_price::PriceObservation;
 use crate::state::{Pool, FeelsProtocolError};
 
 // ============================================================================
@@ -22,7 +21,7 @@ pub fn handler(
     
     let clock = Clock::get()?;
     let current_timestamp = clock.unix_timestamp;
-    let current_slot = clock.slot;
+    let _current_slot = clock.slot;
     
     // Get current pool price and tick
     let current_sqrt_price = pool.current_sqrt_rate;

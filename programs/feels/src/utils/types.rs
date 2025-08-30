@@ -122,7 +122,7 @@ impl U256Wrapper {
     }
 
     pub fn from_u64_array(array: [u64; 4]) -> Self {
-        U256Wrapper(U256(array))
+        U256Wrapper(U256::from_limbs(array))
     }
 
     pub fn checked_add(&self, other: U256Wrapper) -> Option<U256Wrapper> {
@@ -138,7 +138,15 @@ impl U256Wrapper {
     }
 
     pub fn as_u64_array(&self) -> [u64; 4] {
-        self.0.0
+        let bytes: [u8; 32] = self.0.to_le_bytes();
+        let mut limbs = [0u64; 4];
+        for i in 0..4 {
+            limbs[i] = u64::from_le_bytes([
+                bytes[i * 8], bytes[i * 8 + 1], bytes[i * 8 + 2], bytes[i * 8 + 3],
+                bytes[i * 8 + 4], bytes[i * 8 + 5], bytes[i * 8 + 6], bytes[i * 8 + 7],
+            ]);
+        }
+        limbs
     }
 }
 

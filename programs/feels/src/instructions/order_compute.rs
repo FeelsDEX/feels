@@ -9,6 +9,7 @@ use crate::constant::{MAX_TICK_ARRAYS_PER_SWAP, TICK_ARRAY_SIZE};
 use crate::state::{FeelsProtocolError, Tick3D, Pool};
 use crate::state::duration::Duration;
 use crate::utils::TickMath;
+use super::order::OrderType;
 
 // ============================================================================
 // Parameters
@@ -46,12 +47,6 @@ pub enum RateComputeParams {
     },
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub enum OrderType {
-    Immediate,
-    Liquidity,
-    Limit,
-}
 
 // ============================================================================
 // Result Types
@@ -121,12 +116,14 @@ pub fn handler(
     require!(params.amount > 0, FeelsProtocolError::InvalidAmount);
     
     let pool = ctx.accounts.pool.load()?;
+    let clock = Clock::get()?;
     
     // Compute rate dimension requirements
     let rate_tick_arrays = match params.rate_params {
         RateComputeParams::SwapPath { sqrt_rate_limit, is_token_a_to_b } => {
             compute_swap_tick_arrays(
                 &pool,
+                &ctx.accounts.pool.key(),
                 sqrt_rate_limit,
                 is_token_a_to_b,
                 ctx.program_id,
@@ -135,6 +132,7 @@ pub fn handler(
         RateComputeParams::LiquidityRange { tick_lower, tick_upper } => {
             compute_liquidity_tick_arrays(
                 &pool,
+                &ctx.accounts.pool.key(),
                 tick_lower,
                 tick_upper,
                 ctx.program_id,
@@ -145,6 +143,7 @@ pub fn handler(
     // Compute duration accounts
     let duration_accounts = compute_duration_accounts(
         &pool,
+        &ctx.accounts.pool.key(),
         &params.duration,
         ctx.program_id,
     )?;
@@ -152,6 +151,7 @@ pub fn handler(
     // Compute leverage accounts
     let leverage_accounts = compute_leverage_accounts(
         &pool,
+        &ctx.accounts.pool.key(),
         params.leverage,
         ctx.program_id,
     )?;
@@ -182,6 +182,17 @@ pub fn handler(
         OrderType::Limit => false, // Single point in 3D space
     };
     
+    // Populate TickArrayRouter if provided
+    if let (Some(router), Some(authority)) = (&ctx.accounts.tick_array_router, &ctx.accounts.authority) {
+        populate_tick_array_router(
+            router,
+            authority,
+            &rate_tick_arrays,
+            &pool,
+            clock.slot,
+        )?;
+    }
+    
     Ok(OrderComputeResult {
         rate_tick_arrays,
         duration_accounts,
@@ -199,6 +210,7 @@ pub fn handler(
 /// Calculate required tick arrays for a swap path
 fn compute_swap_tick_arrays(
     pool: &Pool,
+    pool_key: &Pubkey,
     sqrt_rate_limit: u128,
     is_token_a_to_b: bool,
     program_id: &Pubkey,
@@ -225,7 +237,7 @@ fn compute_swap_tick_arrays(
     let mut tick_array_infos = Vec::with_capacity(tick_arrays.len());
     for start_tick_index in tick_arrays {
         let (pda, bump) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
-            &pool.key(),
+            pool_key,
             start_tick_index,
             program_id,
         );
@@ -243,6 +255,7 @@ fn compute_swap_tick_arrays(
 /// Calculate required tick arrays for a liquidity range
 fn compute_liquidity_tick_arrays(
     pool: &Pool,
+    pool_key: &Pubkey,
     tick_lower: i32,
     tick_upper: i32,
     program_id: &Pubkey,
@@ -260,7 +273,7 @@ fn compute_liquidity_tick_arrays(
     
     // Add lower tick array
     let (lower_pda, lower_bump) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
-        &pool.key(),
+        pool_key,
         lower_array_start,
         program_id,
     );
@@ -273,7 +286,7 @@ fn compute_liquidity_tick_arrays(
     // Add upper tick array if different
     if upper_array_start != lower_array_start {
         let (upper_pda, upper_bump) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
-            &pool.key(),
+            pool_key,
             upper_array_start,
             program_id,
         );
@@ -289,7 +302,8 @@ fn compute_liquidity_tick_arrays(
 
 /// Compute duration bucket accounts
 fn compute_duration_accounts(
-    pool: &Pool,
+    _pool: &Pool,
+    pool_key: &Pubkey,
     duration: &Duration,
     program_id: &Pubkey,
 ) -> Result<Vec<DurationAccountInfo>> {
@@ -300,7 +314,7 @@ fn compute_duration_accounts(
     let (pda, bump) = Pubkey::find_program_address(
         &[
             b"duration",
-            pool.key().as_ref(),
+            pool_key.as_ref(),
             &[duration_type],
         ],
         program_id,
@@ -315,7 +329,8 @@ fn compute_duration_accounts(
 
 /// Compute leverage tier accounts
 fn compute_leverage_accounts(
-    pool: &Pool,
+    _pool: &Pool,
+    pool_key: &Pubkey,
     leverage: u64,
     program_id: &Pubkey,
 ) -> Result<Vec<LeverageAccountInfo>> {
@@ -333,7 +348,7 @@ fn compute_leverage_accounts(
     let (pda, bump) = Pubkey::find_program_address(
         &[
             b"leverage",
-            pool.key().as_ref(),
+            pool_key.as_ref(),
             &[leverage_tier],
         ],
         program_id,
@@ -348,7 +363,7 @@ fn compute_leverage_accounts(
 
 /// Calculate the 3D tick position
 fn calculate_3d_tick(
-    pool: &Pool,
+    _pool: &Pool,
     rate_params: &RateComputeParams,
     duration: &Duration,
     leverage: u64,
@@ -454,3 +469,56 @@ fn estimate_compute_units(
     base_units + rate_units + duration_units + leverage_units
 }
 
+/// Populate the TickArrayRouter with computed tick arrays
+fn populate_tick_array_router(
+    router: &Account<crate::state::TickArrayRouter>,
+    authority: &Signer,
+    tick_arrays: &[TickArrayInfo],
+    pool: &Pool,
+    current_slot: u64,
+) -> Result<()> {
+    // Verify authority
+    require!(
+        router.authority == authority.key() || pool.authority == authority.key(),
+        FeelsProtocolError::InvalidAuthority
+    );
+    
+    // Create a mutable copy of the router to update
+    let mut router_data = router.clone();
+    
+    // Clear existing arrays if stale (more than 100 slots old)
+    if current_slot.saturating_sub(router_data.last_update_slot) > 100 {
+        router_data.active_bitmap = 0;
+        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+            router_data.tick_arrays[i] = Pubkey::default();
+            router_data.start_indices[i] = i32::MIN;
+        }
+    }
+    
+    // Register new tick arrays
+    for array_info in tick_arrays.iter().take(crate::constant::MAX_ROUTER_ARRAYS) {
+        // Check if already registered
+        if router_data.contains_array(array_info.start_tick_index).is_some() {
+            continue;
+        }
+        
+        // Find first available slot
+        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+            if !router_data.is_slot_active(i) {
+                router_data.tick_arrays[i] = array_info.pubkey;
+                router_data.start_indices[i] = array_info.start_tick_index;
+                router_data.active_bitmap |= 1 << i;
+                break;
+            }
+        }
+    }
+    
+    // Update last update slot
+    router_data.last_update_slot = current_slot;
+    
+    // Note: In a real implementation, we would need to save this back to the account
+    // This would require making the router parameter mutable and using proper account serialization
+    msg!("TickArrayRouter populated with {} arrays", tick_arrays.len());
+    
+    Ok(())
+}

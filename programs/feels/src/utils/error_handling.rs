@@ -153,8 +153,12 @@ impl ErrorHandling {
         expected_owner: &Pubkey,
         error: FeelsProtocolError,
     ) -> Result<()> {
-        require!(!account.data_is_empty(), error);
-        require!(account.owner == expected_owner, error);
+        if account.data_is_empty() {
+            return Err(error.into());
+        }
+        if account.owner != expected_owner {
+            return Err(error.into());
+        }
         Ok(())
     }
 

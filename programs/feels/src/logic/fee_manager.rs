@@ -4,9 +4,8 @@
 /// easier to maintain and audit.
 
 use anchor_lang::prelude::*;
-use crate::state::{Pool, FeeConfig, FeelsProtocolError, DynamicFeeConfig, VolatilityTracker, LendingMetrics, RiskProfile};
+use crate::state::{Pool, FeeConfig, FeelsProtocolError, RiskProfile};
 use crate::utils::{BASIS_POINTS_DENOMINATOR, FeeBreakdown, mul_div_u64, sqrt_u64};
-use crate::logic::volatility_manager::VolatilityManager;
 
 // ============================================================================
 // Fee Types and Context
@@ -27,11 +26,9 @@ pub struct FeeContext<'a> {
     pub fee_type: FeeType,
     pub amount: u64,
     pub fee_config: &'a Account<'a, FeeConfig>,
-    pub dynamic_config: &'a DynamicFeeConfig,
     pub volatility_tracker: Option<&'a AccountInfo<'a>>,
     pub lending_metrics: Option<&'a AccountInfo<'a>>,
     pub position_data: Option<PositionFeeData>, // For position-specific fees
-    pub pool: Option<&'a Pool>, // Optional pool reference for pool-specific calculations
     pub volatility_bps: Option<u64>, // Pre-calculated volatility if available
     pub volume_24h: Option<u128>, // Pre-calculated 24h volume if available
 }
@@ -63,23 +60,20 @@ impl FeeManager {
     
     /// Calculate swap fee with enhanced volatility
     fn calculate_swap_fee(context: FeeContext) -> Result<FeeBreakdown> {
-        let mut fee_rate = context.fee_config.base_rate;
+        // Get fee rate from FeeConfig (base or dynamic)
+        let mut fee_rate = context.fee_config.get_fee_rate(
+            context.volatility_bps,
+            context.volume_24h
+        );
         
-        // Apply dynamic adjustments if available
-        if let (Some(vol), Some(volume)) = (context.volatility_bps, context.volume_24h) {
-            if vol > 0 || volume > 0 {
-                fee_rate = Self::calculate_dynamic_fee_rate(
-                    context.dynamic_config,
-                    vol,
-                    volume,
-                )?;
-            }
-        } else if let Some(_volatility_tracker_info) = context.volatility_tracker {
+        // Apply volatility tracker adjustments if available but no direct volatility data
+        if context.volatility_bps.is_none() && context.volatility_tracker.is_some() {
             // Fallback: In production, would deserialize the account and calculate multiplier
             // TODO: For now, apply a simple 10% increase as placeholder
+            let dynamic_config = &context.fee_config.dynamic_config;
             fee_rate = ((fee_rate as u64 * 11000) / 10000)
-                .min(context.dynamic_config.max_fee as u64)
-                .max(context.dynamic_config.min_fee as u64) as u16;
+                .min(dynamic_config.max_fee as u64)
+                .max(dynamic_config.min_fee as u64) as u16;
         }
         
         // Apply position-specific adjustments
@@ -105,8 +99,16 @@ impl FeeManager {
             // TODO: For now, we skip the adjustment
         }
         
-        // Calculate fees
-        Self::calculate_fee_breakdown(context.amount, fee_rate, context.fee_config.protocol_share)
+        // Calculate fees using FeeConfig
+        let total_fee = mul_div_u64(context.amount, fee_rate as u64, BASIS_POINTS_DENOMINATOR)?;
+        let protocol_fee = context.fee_config.calculate_protocol_fee(total_fee);
+        let liquidity_fee = context.fee_config.calculate_lp_fee(total_fee);
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            liquidity_fee,
+            protocol_fee,
+        })
     }
     
     /// Calculate flash loan fee
@@ -123,14 +125,32 @@ impl FeeManager {
             base_fee
         };
         
-        Self::calculate_fee_breakdown(context.amount, fee_rate, 5000) // 50% protocol share
+        // Calculate fees - flash loans have 50% protocol share
+        let total_fee = mul_div_u64(context.amount, fee_rate as u64, BASIS_POINTS_DENOMINATOR)?;
+        let protocol_fee = total_fee / 2; // 50% protocol share
+        let liquidity_fee = total_fee - protocol_fee;
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            liquidity_fee,
+            protocol_fee,
+        })
     }
     
     /// Calculate lending fee
     fn calculate_lending_fee(context: FeeContext) -> Result<FeeBreakdown> {
         // Lending fees based on utilization (simplified)
         let base_fee = 20; // 0.2% base
-        Self::calculate_fee_breakdown(context.amount, base_fee, 2000) // 20% protocol share
+        
+        let total_fee = mul_div_u64(context.amount, base_fee as u64, BASIS_POINTS_DENOMINATOR)?;
+        let protocol_fee = total_fee / 5; // 20% protocol share
+        let liquidity_fee = total_fee - protocol_fee;
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            liquidity_fee,
+            protocol_fee,
+        })
     }
     
     /// Calculate leverage fee
@@ -145,14 +165,32 @@ impl FeeManager {
             base_fee
         };
         
-        Self::calculate_fee_breakdown(context.amount, fee_rate, context.fee_config.protocol_share)
+        // Calculate fees using FeeConfig
+        let total_fee = mul_div_u64(context.amount, fee_rate as u64, BASIS_POINTS_DENOMINATOR)?;
+        let protocol_fee = context.fee_config.calculate_protocol_fee(total_fee);
+        let liquidity_fee = context.fee_config.calculate_lp_fee(total_fee);
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            liquidity_fee,
+            protocol_fee,
+        })
     }
     
     /// Calculate liquidation fee
     fn calculate_liquidation_fee(context: FeeContext) -> Result<FeeBreakdown> {
         // Liquidation fees are higher to incentivize liquidators
         let fee_rate = 500; // 5%
-        Self::calculate_fee_breakdown(context.amount, fee_rate, 1000) // 10% protocol share
+        
+        let total_fee = mul_div_u64(context.amount, fee_rate as u64, BASIS_POINTS_DENOMINATOR)?;
+        let protocol_fee = total_fee / 10; // 10% protocol share
+        let liquidity_fee = total_fee - protocol_fee;
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            liquidity_fee,
+            protocol_fee,
+        })
     }
     
     /// Helper to calculate fee breakdown
@@ -168,7 +206,7 @@ impl FeeManager {
         );
         require!(
             protocol_share <= BASIS_POINTS_DENOMINATOR as u16,
-            FeelsProtocolError::InvalidProtocolFeeRate
+            FeelsProtocolError::InvalidFeeRate
         );
         
         // Calculate total fee
@@ -206,6 +244,7 @@ impl FeeManager {
             total_fee,
             lp_fee,
             protocol_fee,
+            liquidity_fee: lp_fee,
         })
     }
     
@@ -228,7 +267,7 @@ impl FeeManager {
         );
         require!(
             fee_config.protocol_share <= BASIS_POINTS_DENOMINATOR as u16,
-            FeelsProtocolError::InvalidProtocolFeeRate
+            FeelsProtocolError::InvalidFeeRate
         );
 
         // Calculate total fee
@@ -267,6 +306,7 @@ impl FeeManager {
             total_fee,
             lp_fee,
             protocol_fee,
+            liquidity_fee: lp_fee,
         })
     }
 
@@ -279,29 +319,26 @@ impl FeeManager {
         fee_amount: u64,
         is_token_a: bool,
     ) -> Result<()> {
-        pool.update_fee_growth(fee_amount, is_token_a)
+        pool.accumulate_fee_growth(fee_amount, is_token_a)
     }
 
     // ============================================================================
-    // Convenience Methods (backwards compatibility)
+    // Helper Methods
     // ============================================================================
 
     /// Build a FeeContext with all necessary parameters
-    /// Note: dynamic_config must be provided externally to avoid lifetime issues
     pub fn build_fee_context<'a>(
         fee_type: FeeType,
         amount: u64,
         fee_config: &'a Account<'a, FeeConfig>,
-        dynamic_config: &'a DynamicFeeConfig,
-        pool: Option<&'a Pool>,
-        remaining_accounts: &[AccountInfo<'a>],
+        _remaining_accounts: &'a [AccountInfo<'a>],
         position_data: Option<PositionFeeData>,
         volatility_bps: Option<u64>,
         volume_24h: Option<u128>,
     ) -> FeeContext<'a> {
         // Parse volatility tracker and flash loan TWAV from remaining_accounts if available
-        let (volatility_tracker, lending_metrics) = if remaining_accounts.len() >= 2 {
-            (Some(&remaining_accounts[0]), Some(&remaining_accounts[1]))
+        let (volatility_tracker, lending_metrics) = if _remaining_accounts.len() >= 2 {
+            (Some(&_remaining_accounts[0]), Some(&_remaining_accounts[1]))
         } else {
             (None, None)
         };
@@ -310,72 +347,26 @@ impl FeeManager {
             fee_type,
             amount,
             fee_config,
-            dynamic_config,
             volatility_tracker,
             lending_metrics,
             position_data,
-            pool,
             volatility_bps,
             volume_24h,
         }
-    }
-    
-    /// Calculate complete fee breakdown for a swap amount
-    /// This method is provided for backwards compatibility
-    pub fn calculate_swap_fees(
-        pool: &Pool,
-        amount_in: u64,
-        remaining_accounts: &[AccountInfo],
-    ) -> Result<FeeBreakdown> {
-        // For backwards compatibility, use the base fee calculation
-        // In production, this would parse volatility data from remaining_accounts
-        Self::calculate_fee_breakdown(amount_in, pool.fee_rate, pool.protocol_fee_rate)
     }
 
     // ============================================================================
     // Dynamic Fee Calculations
     // ============================================================================
 
-    /// Calculate dynamic fee rate based on market conditions
-    fn calculate_dynamic_fee_rate(
-        config: &DynamicFeeConfig,
-        volatility_bps: u64,
-        volume_24h: u128,
-    ) -> Result<u16> {
-        let mut fee_rate = config.base_fee as u64;
-
-        // Adjust for volatility
-        if volatility_bps > 0 {
-            // fee_adjustment = volatility_bps * coefficient / 10000
-            let volatility_adjustment = volatility_bps
-                .saturating_mul(config.volatility_coefficient as u64)
-                .saturating_div(10_000);
-            
-            fee_rate = fee_rate.saturating_add(volatility_adjustment);
-        }
-
-        // Apply volume discount if above threshold
-        if volume_24h > config.volume_discount_threshold {
-            // 10% discount for high volume
-            fee_rate = fee_rate.saturating_mul(90).saturating_div(100);
-        }
-
-        // Clamp to configured bounds
-        let final_fee = fee_rate
-            .max(config.min_fee as u64)
-            .min(config.max_fee as u64);
-
-        Ok(final_fee as u16)
-    }
-
     /// Calculate effective fee rate for a pool
-    /// This considers base rate and any dynamic adjustments
-    pub fn get_effective_fee_rate(pool: &Pool) -> Result<u16> {
-        // Phase 1: Return base fee rate
-        // Phase 2+: Would implement dynamic adjustments based on volume/volatility
-        // Phase 2: Would implement dynamic adjustments based on volume/volatility
-        // For now, return base rate
-        Ok(pool.fee_rate)
+    /// This method requires the FeeConfig account to be provided
+    pub fn get_effective_fee_rate(
+        fee_config: &FeeConfig,
+        volatility_bps: Option<u64>,
+        volume_24h: Option<u128>,
+    ) -> Result<u16> {
+        Ok(fee_config.get_fee_rate(volatility_bps, volume_24h))
     }
 
     // ============================================================================
@@ -403,34 +394,23 @@ impl FeeManager {
     // Fee Validation and Configuration
     // ============================================================================
 
-    /// Validate fee configuration for a pool
-    pub fn validate_fee_configuration(pool: &Pool) -> Result<()> {
-        use crate::utils::FeeMath;
-        FeeMath::validate_fee_rate(pool.fee_rate)?;
-        FeeMath::validate_protocol_fee_rate(pool.protocol_fee_rate)?;
+    /// Validate fee configuration
+    pub fn validate_fee_configuration(fee_config: &FeeConfig) -> Result<()> {
+        require!(
+            fee_config.base_rate <= 10000,
+            FeelsProtocolError::InvalidFeeRate
+        );
+        require!(
+            fee_config.protocol_share <= 10000,
+            FeelsProtocolError::InvalidProtocolFeeRate
+        );
         Ok(())
     }
 
-    /// Initialize fee configuration for a new pool
-    pub fn initialize_fees(
-        pool: &mut Pool,
-        fee_rate: u16,
-    ) -> Result<()> {
-        use crate::state::FeeConfig;
-        let (validated_fee_rate, protocol_fee_rate, tick_spacing) =
-            FeeConfig::create_for_pool(fee_rate)?;
-
-        pool.fee_rate = validated_fee_rate;
-        pool.protocol_fee_rate = protocol_fee_rate;
-        pool.tick_spacing = tick_spacing;
-
-        Ok(())
-    }
-
-    /// Update dynamic fee configuration (Phase 2)
+    /// Update dynamic fee configuration
     pub fn update_dynamic_fee_config(
-        pool: &mut Pool,
-        config: DynamicFeeConfig,
+        fee_config: &mut FeeConfig,
+        config: crate::state::fee::DynamicFeeConfig,
     ) -> Result<()> {
         // Validate configuration
         require!(
@@ -442,8 +422,9 @@ impl FeeManager {
             FeelsProtocolError::InvalidFeeRate
         );
 
-        // Update dynamic fee config directly on pool
-        pool.dynamic_fee_config = config;
+        // Update dynamic fee config on FeeConfig account
+        fee_config.dynamic_config = config;
+        fee_config.last_update = Clock::get()?.unix_timestamp;
 
         Ok(())
     }
@@ -519,110 +500,74 @@ impl FeeManager {
 
     /// Calculate the amount after deducting fees
     pub fn calculate_amount_after_fee(
-        pool: &Pool,
+        fee_config: &FeeConfig,
         amount_in: u64,
     ) -> Result<u64> {
-        let fee_breakdown = Self::calculate_fee_breakdown(amount_in, pool.fee_rate, pool.protocol_fee_rate)?;
+        let fee_rate = fee_config.base_rate;
+        let total_fee = mul_div_u64(amount_in, fee_rate as u64, BASIS_POINTS_DENOMINATOR)?;
         amount_in
-            .checked_sub(fee_breakdown.total_fee)
+            .checked_sub(total_fee)
             .ok_or(FeelsProtocolError::ArithmeticUnderflow.into())
     }
 
     /// Get the appropriate fee calculation method based on pool state
-    /// This method creates a proper FeeContext and uses the generic calculate_fee
+    /// This is a convenience method that calculates fees without full context
     pub fn get_fee_breakdown(
-        pool: &Pool,
+        _pool: &Pool,
         amount_in: u64,
         volatility_bps: Option<u64>,
         volume_24h: Option<u128>,
         average_leverage: Option<u64>,
-        duration: Option<crate::state::duration::Duration>,
+        _duration: Option<crate::state::duration::Duration>,
         fee_config: &Account<FeeConfig>,
     ) -> Result<FeeBreakdown> {
-        // Build position data if leverage or duration is specified
-        let position_data = if average_leverage.is_some() || duration.is_some() {
-            Some(PositionFeeData {
-                leverage: average_leverage.unwrap_or(RiskProfile::LEVERAGE_SCALE),
-                duration,
-            })
-        } else {
-            None
-        };
+        // Calculate base fee rate
+        let base_rate = fee_config.base_rate as u64;
         
-        // Get dynamic config directly from pool
-        let dynamic_config = &pool.dynamic_fee_config;
+        // Apply position multipliers if applicable
+        let mut multiplier = 10000u64; // 100% base
         
-        // Build context
-        let context = FeeContext {
-            fee_type: FeeType::Swap,
-            amount: amount_in,
-            fee_config,
-            dynamic_config,
-            volatility_tracker: None,
-            lending_metrics: None,
-            position_data,
-            pool: Some(pool),
-            volatility_bps,
-            volume_24h,
-        };
-        
-        // Use the generic calculate_fee method
-        Self::calculate_fee(context)
-    }
-    
-    /// Calculate dynamic swap fees (deprecated - use calculate_fee with proper context)
-    #[deprecated(since = "2.0.0", note = "Use calculate_fee with proper FeeContext instead")]
-    #[allow(dead_code)]
-    pub fn calculate_dynamic_swap_fees(
-        pool: &Pool,
-        amount_in: u64,
-        volatility_bps: u64,
-        volume_24h: u128,
-    ) -> Result<FeeBreakdown> {
-        // For backwards compatibility, get dynamic config from pool
-        let dynamic_config = pool.dynamic_fee_config;
-        
-        let fee_rate = Self::calculate_dynamic_fee_rate(&dynamic_config, volatility_bps, volume_24h)?;
-        Self::calculate_fee_breakdown(amount_in, fee_rate, pool.protocol_fee_rate)
-    }
-    
-    /// Calculate swap fees with leverage (deprecated - use calculate_fee with proper context)
-    #[deprecated(since = "2.0.0", note = "Use calculate_fee with proper FeeContext instead")]
-    #[allow(dead_code)]
-    pub fn calculate_swap_fees_with_leverage(
-        pool: &Pool,
-        amount_in: u64,
-        average_leverage: u64,
-    ) -> Result<FeeBreakdown> {
-        // Base fee calculation
-        let mut fee_breakdown = Self::calculate_fee_breakdown(amount_in, pool.fee_rate, pool.protocol_fee_rate)?;
-
-        // Apply leverage multiplier if leverage > 1x
-        if average_leverage > RiskProfile::LEVERAGE_SCALE {
-            // Calculate fee multiplier: sqrt(leverage) for gradual increase
-            let fee_multiplier = sqrt_u64(average_leverage);
-
-            // Apply multiplier to fees
-            fee_breakdown.lp_fee = fee_breakdown
-                .lp_fee
-                .checked_mul(fee_multiplier)
-                .ok_or(FeelsProtocolError::MathOverflow)?
-                .checked_div(1_000)
-                .ok_or(FeelsProtocolError::MathOverflow)?;
-
-            fee_breakdown.protocol_fee = fee_breakdown
-                .protocol_fee
-                .checked_mul(fee_multiplier)
-                .ok_or(FeelsProtocolError::MathOverflow)?
-                .checked_div(1_000)
-                .ok_or(FeelsProtocolError::MathOverflow)?;
-
-            fee_breakdown.total_fee = fee_breakdown
-                .lp_fee
-                .checked_add(fee_breakdown.protocol_fee)
-                .ok_or(FeelsProtocolError::MathOverflow)?;
+        if let Some(leverage) = average_leverage {
+            if leverage > RiskProfile::LEVERAGE_SCALE {
+                // Add 10% for each 1x of leverage above 1x
+                let leverage_multiplier = 10000 + ((leverage - RiskProfile::LEVERAGE_SCALE) * 1000 / RiskProfile::LEVERAGE_SCALE);
+                multiplier = multiplier.saturating_mul(leverage_multiplier) / 10000;
+            }
         }
-
-        Ok(fee_breakdown)
+        
+        // Apply volatility adjustment
+        if let Some(vol_bps) = volatility_bps {
+            if vol_bps > 500 {
+                // High volatility: increase fee by 50%
+                multiplier = multiplier.saturating_mul(15000) / 10000;
+            } else if vol_bps > 300 {
+                // Medium volatility: increase fee by 20%
+                multiplier = multiplier.saturating_mul(12000) / 10000;
+            }
+        }
+        
+        // Apply volume discount
+        if let Some(vol_24h) = volume_24h {
+            if vol_24h > 10_000_000_000_000 { // > $10M
+                // High volume: 10% discount
+                multiplier = multiplier.saturating_mul(9000) / 10000;
+            }
+        }
+        
+        // Calculate final fee rate
+        let fee_rate = base_rate.saturating_mul(multiplier) / 10000;
+        let fee_rate = fee_rate.clamp(1, 10000); // 0.01% to 100%
+        
+        // Calculate fee amounts
+        let total_fee = amount_in.saturating_mul(fee_rate) / 10000;
+        let protocol_fee = total_fee.saturating_mul(fee_config.protocol_share as u64) / 10000;
+        let lp_fee = total_fee.saturating_sub(protocol_fee);
+        
+        Ok(FeeBreakdown {
+            total_fee,
+            lp_fee,
+            protocol_fee,
+            liquidity_fee: lp_fee,
+        })
     }
 }

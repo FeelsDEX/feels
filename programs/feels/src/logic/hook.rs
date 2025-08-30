@@ -4,8 +4,9 @@
 /// Gas-optimized implementation minimizes overhead when no hooks are registered.
 
 use anchor_lang::prelude::*;
+use std::collections::BTreeMap;
 use crate::state::{
-    HookRegistry, HookConfig, HookContext, HookMessage, HookMessageQueue,
+    HookRegistry, HookConfig, HookMessage, HookMessageQueue,
     EventData, MessageData, HookPermission, FeelsProtocolError,
 };
 
@@ -18,6 +19,62 @@ pub use crate::state::{
     EVENT_ORDER_FILLED, EVENT_ORDER_MODIFIED, EVENT_REDENOMINATION,
     STAGE_VALIDATE, STAGE_PRE_EXECUTE, STAGE_POST_EXECUTE, STAGE_ASYNC,
 };
+
+// Import the state HookContext for serialization
+use crate::state::{HookContext as StateHookContext};
+
+/// Extended hook context for internal use
+#[derive(Clone, Debug)]
+pub struct HookContext {
+    pub pool: Pubkey,
+    pub user: Pubkey,
+    pub event: u32,
+    pub stage: u8,
+    pub event_data: EventData,
+    pub timestamp: i64,
+    pub slot: u64,
+    pub data: BTreeMap<String, String>,
+}
+
+impl HookContext {
+    /// Convert to state HookContext for serialization
+    pub fn to_state_context(&self) -> StateHookContext {
+        StateHookContext {
+            pool: self.pool,
+            user: self.user,
+            event: self.event,
+            stage: self.stage,
+            event_data: self.event_data.clone(),
+            timestamp: self.timestamp,
+            slot: self.slot,
+        }
+    }
+}
+
+// Add AnchorSerialize/Deserialize implementation for HookContext
+impl AnchorSerialize for HookContext {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Serialize as StateHookContext for CPI
+        self.to_state_context().serialize(writer)
+    }
+}
+
+impl AnchorDeserialize for HookContext {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        // Deserialize from StateHookContext
+        let state_context = StateHookContext::deserialize_reader(reader)?;
+        Ok(Self {
+            pool: state_context.pool,
+            user: state_context.user,
+            event: state_context.event,
+            stage: state_context.stage,
+            event_data: state_context.event_data,
+            timestamp: state_context.timestamp,
+            slot: state_context.slot,
+            data: BTreeMap::new(),
+        })
+    }
+}
 
 // ============================================================================
 // Hook Executor - Gas Optimized
@@ -157,8 +214,8 @@ impl HookExecutor {
         context: &HookContext,
         accounts: &[AccountInfo],
     ) -> Result<()> {
-        // Serialize context
-        let data = context.try_to_vec()?;
+        // Serialize context (using state context for CPI)
+        let data = context.to_state_context().try_to_vec()?;
         
         // Build instruction
         let instruction = solana_program::instruction::Instruction {
@@ -231,6 +288,25 @@ impl HookExecutor {
 pub struct HookContextBuilder;
 
 impl HookContextBuilder {
+    pub fn base(
+        pool: Pubkey,
+        user: Pubkey,
+    ) -> HookContext {
+        HookContext {
+            pool,
+            user,
+            event: 0,
+            stage: 0,
+            event_data: EventData::PriceUpdate { 
+                old_sqrt_price: 0, 
+                new_sqrt_price: 0 
+            },
+            timestamp: Clock::get().unwrap_or_default().unix_timestamp,
+            slot: Clock::get().unwrap_or_default().slot,
+            data: BTreeMap::new(),
+        }
+    }
+    
     pub fn price_update(
         pool: Pubkey,
         user: Pubkey,
@@ -248,6 +324,7 @@ impl HookContextBuilder {
             },
             timestamp: Clock::get().unwrap_or_default().unix_timestamp,
             slot: Clock::get().unwrap_or_default().slot,
+            data: BTreeMap::new(),
         }
     }
     
@@ -276,6 +353,7 @@ impl HookContextBuilder {
             },
             timestamp: Clock::get().unwrap_or_default().unix_timestamp,
             slot: Clock::get().unwrap_or_default().slot,
+            data: BTreeMap::new(),
         }
     }
     
@@ -298,6 +376,7 @@ impl HookContextBuilder {
             },
             timestamp: Clock::get().unwrap_or_default().unix_timestamp,
             slot: Clock::get().unwrap_or_default().slot,
+            data: BTreeMap::new(),
         }
     }
     
@@ -324,6 +403,7 @@ impl HookContextBuilder {
             },
             timestamp: Clock::get().unwrap_or_default().unix_timestamp,
             slot: Clock::get().unwrap_or_default().slot,
+            data: BTreeMap::new(),
         }
     }
 }

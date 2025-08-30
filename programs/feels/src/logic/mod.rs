@@ -26,9 +26,7 @@ pub use event::*;
 pub use fee_manager::*;
 pub use hook::*;
 pub use order::*;
-pub use pool::*;
 pub use tick::*;
-pub use tick_position::*;
 pub use volatility_manager::*;
 
 // Export order components explicitly

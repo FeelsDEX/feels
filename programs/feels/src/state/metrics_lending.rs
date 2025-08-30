@@ -243,7 +243,7 @@ impl LendingMetrics {
     pub fn record_flash_loan(
         &mut self,
         volume: u64,
-        current_slot: u64,
+        _current_slot: u64,
         current_time: i64,
     ) -> Result<()> {
         // Check minimum update interval
@@ -259,7 +259,7 @@ impl LendingMetrics {
             .checked_add(1)
             .ok_or(FeelsProtocolError::MathOverflow)?;
         
-        // Update recent metrics (simplified - in production would use time-weighted buffer)
+        // Update recent metrics (simplified - TODO: in production would use time-weighted buffer)
         self.flash_volume_5m = self.exponential_average_u64(self.flash_volume_5m, volume, 1);
         self.flash_volume_1h = self.exponential_average_u64(self.flash_volume_1h, volume, 12);
         self.flash_count_5m = (self.flash_count_5m + 1).min(100);
@@ -364,5 +364,16 @@ impl LendingMetrics {
         self.lending_stress_score < 5000 && // Below 50% stress
         self.utilization_rate < 9500 && // Below 95% utilization
         !self.flash_burst_detected
+    }
+    
+    /// Check if pool has high activity
+    pub fn is_high_activity(&self) -> bool {
+        // High activity if:
+        // - High utilization rate (> 70%)
+        // - High flash loan volume
+        // - High stress score
+        self.utilization_rate > 7000 ||
+        self.flash_volume_1h > self.total_supplied.saturating_div(240) as u64 || // Estimate 24h from 1h > 10% of supply
+        self.lending_stress_score > 7500 // > 75% stress
     }
 }

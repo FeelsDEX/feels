@@ -14,7 +14,7 @@ pub mod logic;
 pub mod state;
 pub mod utils;
 
-// Import logic modules - used in instruction handlers
+// Import logic modules
 use logic::tick::TickManager;
 
 // Import all state types explicitly
@@ -37,11 +37,23 @@ use state::{
     TickPositionMetadata,
     PositionVault,
     // Leverage types
-    ProtectionCurve,
     // Metrics types
     Oracle,
     OracleData,
 };
+
+// Re-export instruction types for SDK
+pub use instructions::{
+    OrderParams, 
+    OrderResult, 
+    OrderType, 
+    RateParams,
+    OrderComputeParams,
+    RateComputeParams,
+};
+
+// Re-export Duration from state
+pub use state::duration::Duration;
 
 // Import instruction contexts
 
@@ -81,7 +93,6 @@ pub struct InitializeFeels<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(underlying_mint: Pubkey)]
 pub struct InitializeFeelsSOL<'info> {
     /// FeelsSOL wrapper account
     #[account(
@@ -102,6 +113,20 @@ pub struct InitializeFeelsSOL<'info> {
         mint::freeze_authority = feelssol,
     )]
     pub feels_mint: InterfaceAccount<'info, Mint>,
+    
+    /// Underlying token mint
+    pub underlying_mint: InterfaceAccount<'info, Mint>,
+    
+    /// Vault to hold underlying tokens
+    #[account(
+        init,
+        payer = authority,
+        token::mint = underlying_mint,
+        token::authority = feelssol,
+        seeds = [b"feelssol_vault", underlying_mint.key().as_ref()],
+        bump
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     /// Protocol authority
     #[account(mut)]
@@ -550,113 +575,8 @@ pub struct CleanupTickArray<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[derive(Accounts)]
-pub struct ExecuteOrder<'info> {
-    /// Pool account
-    #[account(mut)]
-    pub pool: AccountLoader<'info, Pool>,
-
-    /// Fee configuration for this pool
-    #[account(
-        seeds = [
-            b"fee_config",
-            pool.key().as_ref()
-        ],
-        bump
-    )]
-    pub fee_config: Account<'info, FeeConfig>,
-
-    // Note: Oracle accounts passed via remaining_accounts for flexibility
-
-    /// User account
-    #[account(mut)]
-    pub user: Signer<'info>,
-
-    /// User's token A account
-    #[account(mut)]
-    pub user_token_a: InterfaceAccount<'info, TokenAccount>,
-
-    /// User's token B account
-    #[account(mut)]
-    pub user_token_b: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool's token A vault
-    #[account(mut)]
-    pub pool_token_a: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool's token B vault
-    #[account(mut)]
-    pub pool_token_b: InterfaceAccount<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token2022>,
-    
-    // Optional hook accounts
-    /// Hook registry for this pool
-    #[account(
-        seeds = [b"hook_registry", pool.key().as_ref()],
-        bump,
-    )]
-    pub hook_registry: Option<Account<'info, HookRegistry>>,
-    
-    /// Hook message queue
-    #[account(
-        mut,
-        seeds = [b"hook_messages", pool.key().as_ref()],
-        bump,
-    )]
-    pub hook_message_queue: Option<Account<'info, HookMessageQueue>>,
-}
-
-
-#[derive(Accounts)]
-pub struct ExecuteRoutedSwap<'info> {
-    /// First pool (Token A / FeelsSOL or Token A / Token B if direct)
-    #[account(mut)]
-    pub pool_1: AccountLoader<'info, Pool>,
-
-    /// Second pool (FeelsSOL / Token B) - only used for two-hop swaps
-    #[account(mut)]
-    pub pool_2: AccountLoader<'info, Pool>,
-
-    /// FeelsSOL wrapper for routing validation
-    pub feelssol: Account<'info, FeelsSOL>,
-
-    /// Input token mint
-    pub token_in_mint: InterfaceAccount<'info, Mint>,
-
-    /// Output token mint
-    pub token_out_mint: InterfaceAccount<'info, Mint>,
-
-    /// User executing the swap
-    #[account(mut)]
-    pub user: Signer<'info>,
-
-    /// User's input token account
-    #[account(mut)]
-    pub user_token_in: InterfaceAccount<'info, TokenAccount>,
-
-    /// User's output token account
-    #[account(mut)]
-    pub user_token_out: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool 1's input token vault
-    #[account(mut)]
-    pub pool_1_token_in: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool 1's output token vault
-    #[account(mut)]
-    pub pool_1_token_out: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool 2's input token vault (for two-hop swaps)
-    #[account(mut)]
-    pub pool_2_token_in: InterfaceAccount<'info, TokenAccount>,
-
-    /// Pool 2's output token vault (for two-hop swaps)
-    #[account(mut)]
-    pub pool_2_token_out: InterfaceAccount<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token2022>,
-}
+// Legacy ExecuteOrder and ExecuteRoutedSwap contexts removed
+// Use the unified Order context with appropriate OrderType
 
 // Type alias for backwards compatibility
 pub type RemoveLiquidity<'info> = ClosePosition<'info>;
@@ -785,10 +705,102 @@ pub struct ClosePosition<'info> {
     pub hook_message_queue: Option<Account<'info, HookMessageQueue>>,
 }
 
+// Legacy GetOrderTickArrays removed - use OrderCompute context
+
+// ============================================================================
+// Hook Management Contexts
+// ============================================================================
+
 #[derive(Accounts)]
-pub struct GetOrderTickArrays<'info> {
-    /// Pool to analyze for tick arrays
+pub struct RegisterHook<'info> {
+    /// Pool to register hook for
     pub pool: AccountLoader<'info, Pool>,
+    
+    /// Hook registry
+    #[account(
+        mut,
+        seeds = [b"hook_registry", pool.key().as_ref()],
+        bump
+    )]
+    pub hook_registry: Account<'info, HookRegistry>,
+    
+    /// Hook program
+    /// CHECK: Validated in handler
+    pub hook_program: UncheckedAccount<'info>,
+    
+    /// Authority
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct UnregisterHook<'info> {
+    /// Pool to unregister hook from
+    pub pool: AccountLoader<'info, Pool>,
+    
+    /// Hook registry
+    #[account(
+        mut,
+        seeds = [b"hook_registry", pool.key().as_ref()],
+        bump
+    )]
+    pub hook_registry: Account<'info, HookRegistry>,
+    
+    /// Authority
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeHookRegistry<'info> {
+    /// Pool to initialize registry for
+    pub pool: AccountLoader<'info, Pool>,
+    
+    /// Hook registry
+    #[account(
+        init,
+        payer = authority,
+        space = HookRegistry::SIZE,
+        seeds = [b"hook_registry", pool.key().as_ref()],
+        bump
+    )]
+    pub hook_registry: Account<'info, HookRegistry>,
+    
+    /// Authority
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ToggleHooks<'info> {
+    /// Pool to toggle hooks for
+    pub pool: AccountLoader<'info, Pool>,
+    
+    /// Hook registry
+    #[account(
+        mut,
+        seeds = [b"hook_registry", pool.key().as_ref()],
+        bump
+    )]
+    pub hook_registry: Account<'info, HookRegistry>,
+    
+    /// Authority
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct BatchCleanupTickArrays<'info> {
+    /// Pool containing the tick arrays
+    #[account(mut)]
+    pub pool: AccountLoader<'info, Pool>,
+    
+    /// Cleaner receiving rent
+    #[account(mut)]
+    pub cleaner: Signer<'info>,
+    
+    /// Protocol fee recipient (optional)
+    /// CHECK: Validated in handler
+    pub protocol_fee_recipient: Option<UncheckedAccount<'info>>,
 }
 
 // ============================================================================
@@ -801,6 +813,13 @@ pub struct Order<'info> {
     /// Pool account
     #[account(mut)]
     pub pool: AccountLoader<'info, Pool>,
+    
+    /// Fee configuration account
+    #[account(
+        seeds = [b"fee_config", pool.key().as_ref()],
+        bump
+    )]
+    pub fee_config: Account<'info, FeeConfig>,
     
     /// User executing the order
     #[account(mut)]
@@ -829,6 +848,13 @@ pub struct Order<'info> {
     pub system_program: Program<'info, System>,
     
     // Optional accounts
+    /// Tick array router for efficient tick access
+    #[account(
+        seeds = [b"router", pool.key().as_ref()],
+        bump,
+    )]
+    pub tick_array_router: Option<Account<'info, TickArrayRouter>>,
+    
     /// Hook registry
     #[account(
         seeds = [b"hook_registry", pool.key().as_ref()],
@@ -850,6 +876,17 @@ pub struct Order<'info> {
 pub struct OrderCompute<'info> {
     /// Pool to analyze
     pub pool: AccountLoader<'info, Pool>,
+    
+    /// Optional: TickArrayRouter to populate with computed arrays
+    #[account(
+        mut,
+        seeds = [b"router", pool.key().as_ref()],
+        bump,
+    )]
+    pub tick_array_router: Option<Account<'info, TickArrayRouter>>,
+    
+    /// Authority for router updates (required if router provided)
+    pub authority: Option<Signer<'info>>,
 }
 
 /// Context for modifying 3D orders
@@ -985,6 +1022,13 @@ pub struct UpdateDynamicFees<'info> {
         constraint = authority.key() == pool.load()?.authority @ FeelsProtocolError::Unauthorized
     )]
     pub authority: Signer<'info>,
+    
+    #[account(
+        mut,
+        seeds = [b"fee_config", pool.key().as_ref()],
+        bump
+    )]
+    pub fee_config: Account<'info, FeeConfig>,
 }
 
 #[derive(Accounts)]
@@ -1042,7 +1086,7 @@ pub struct ExecuteRedenomination<'info> {
 
     /// Oracle data account
     #[account(
-        constraint = oracle_data.load()?.oracle == oracle.key() @ FeelsProtocolError::InvalidOracle
+        constraint = oracle_data.key() == oracle.data_account @ FeelsProtocolError::InvalidOracle
     )]
     pub oracle_data: AccountLoader<'info, OracleData>,
 
@@ -1090,8 +1134,12 @@ pub struct EnableLeverageParams {
     pub max_leverage: u64,
     /// Initial leverage ceiling (usually lower than max)
     pub initial_ceiling: u64,
-    /// Protection curve type
-    pub protection_curve: ProtectionCurve,
+    /// Protection curve type (0 = Linear, 1 = Exponential, 2 = Piecewise)
+    pub protection_curve_type: u8,
+    /// Protection curve data (decay_rate for exponential, unused for linear)
+    pub protection_curve_decay_rate: u64,
+    /// Protection curve points for piecewise (8 points of [leverage, protection])
+    pub protection_curve_points: [[u64; 2]; 8],
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -1109,6 +1157,18 @@ pub struct UpdateDynamicFeesParams {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct RegisterHookParams {
+    /// Hook type to register
+    pub hook_type: HookType,
+    /// Hook permission level
+    pub permission: HookPermission,
+    /// Events this hook is interested in
+    pub event_mask: u32,
+    /// Stages this hook runs in (validation and/or execution)
+    pub stage_mask: u32,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct RegisterValenceHookParams {
     /// Hook type to register
     pub hook_type: HookType,
@@ -1122,6 +1182,32 @@ pub struct RedenominationParams {
     pub redenomination_factor: u64,
 }
 
+/// Feels Protocol - Unified 3D Order System
+/// 
+/// All trading and liquidity operations are unified under a single 3D order model
+/// that combines rate, duration, and leverage dimensions. This ensures consistent
+/// execution paths for fees, hooks, and risk management.
+/// 
+/// # Core Trading Instructions
+/// 
+/// - `order`: Universal entry point for ALL trading operations
+///   - OrderType::Immediate for swaps (spot and leveraged)
+///   - OrderType::Liquidity for adding/removing liquidity  
+///   - OrderType::Limit for limit orders
+/// 
+/// - `order_compute`: Pre-compute required accounts for complex orders
+/// - `order_modify`: Modify existing orders (leverage, duration, etc.)
+/// - `redenominate`: Handle leveraged position redenomination
+/// 
+/// # Why Unified?
+/// 
+/// The unified order system ensures:
+/// 1. Consistent fee calculation across all operations
+/// 2. Proper hook execution for all trade types
+/// 3. Unified risk management and leverage handling
+/// 4. Simplified client integration
+/// 5. Better composability for complex operations
+/// 
 #[program]
 pub mod feels {
     use super::*;
@@ -1132,8 +1218,8 @@ pub mod feels {
 
     pub fn initialize_feelssol(
         ctx: Context<InitializeFeelsSOL>,
-        underlying_mint: Pubkey,
     ) -> Result<()> {
+        let underlying_mint = ctx.accounts.underlying_mint.key();
         instructions::pool::initialize_feelssol(ctx, underlying_mint)
     }
 
@@ -1158,8 +1244,19 @@ pub mod feels {
         instructions::pool::initialize_pool(ctx, fee_rate, initial_sqrt_rate, base_rate, protocol_share)
     }
 
-    // Position management is now handled through 3D order system
-    // Use order with OrderType::Liquidity for adding/removing liquidity
+    // ========================================================================
+    // UNIFIED TRADING OPERATIONS
+    // ========================================================================
+    // ALL trading operations (swaps, liquidity, limits) go through the
+    // unified 3D order system. Legacy swap/liquidity instructions have been
+    // removed to ensure consistent execution paths.
+    //
+    // Examples:
+    // - Swap: order(...) with OrderType::Immediate, Duration::Swap
+    // - Add Liquidity: order(...) with OrderType::Liquidity, Duration::Medium
+    // - Leveraged Swap: order(...) with leverage > 1x
+    // - Limit Order: order(...) with OrderType::Limit
+    // ========================================================================
 
     pub fn collect_fees(
         ctx: Context<CollectFees>,
@@ -1184,53 +1281,12 @@ pub mod feels {
         instructions::cleanup::cleanup_tick_array(ctx, params)
     }
 
-    pub fn order_execute<'info>(
-        ctx: Context<'_, '_, 'info, 'info, ExecuteOrder<'info>>,
-        amount_in: u64,
-        amount_out_minimum: u64,
-        sqrt_rate_limit: u128,
-        is_token_a_to_b: bool,
-        duration: Option<state::duration::Duration>,
-    ) -> Result<u64> {
-        instructions::order::handler(
-            ctx,
-            amount_in,
-            amount_out_minimum,
-            sqrt_rate_limit,
-            is_token_a_to_b,
-            duration,
-        )
-    }
-    
+    // Legacy swap instructions removed - use the unified order system:
+    // - For swaps: order(...) with OrderType::Immediate
+    // - For liquidity: order(...) with OrderType::Liquidity
+    // - For limit orders: order(...) with OrderType::Limit
 
-    pub fn execute_routed_swap<'info>(
-        ctx: Context<'_, '_, 'info, 'info, ExecuteRoutedSwap<'info>>,
-        amount_in: u64,
-        amount_out_minimum: u64,
-        sqrt_rate_limit_1: u128,
-        sqrt_rate_limit_2: Option<u128>,
-    ) -> Result<u64> {
-        instructions::order::handler(
-            ctx,
-            amount_in,
-            amount_out_minimum,
-            sqrt_rate_limit_1,
-            sqrt_rate_limit_2,
-        )
-    }
-
-    pub fn get_order_tick_arrays(
-        ctx: Context<GetOrderTickArrays>,
-        amount_in: u64,
-        sqrt_rate_limit: u128,
-        zero_for_one: bool,
-    ) -> Result<instructions::order_compute::Tick3DArrayInfo> {
-        instructions::order_compute::handler(ctx, instructions::order_compute::OrderComputeParams {
-            amount_in,
-            sqrt_rate_limit,
-            is_token_a_to_b: zero_for_one,
-        })
-    }
+    // Use order_compute instead for getting tick arrays
     
     // ========================================================================
     // 3D Order System Instructions
@@ -1253,8 +1309,8 @@ pub mod feels {
     }
     
     /// Modify an existing 3D order
-    pub fn order_modify(
-        ctx: Context<OrderModify>,
+    pub fn order_modify<'info>(
+        ctx: Context<'_, '_, 'info, 'info, OrderModify<'info>>,
         params: instructions::order_modify::OrderModifyParams,
     ) -> Result<()> {
         instructions::order_modify::handler(ctx, params)
@@ -1271,7 +1327,7 @@ pub mod feels {
     pub fn cleanup_empty_tick_array(ctx: Context<CleanupEmptyTickArray>) -> Result<()> {
         // Load tick array to validate it's empty
         let tick_array = ctx.accounts.tick_array.load()?;
-        let pool = ctx.accounts.pool.load_mut()?;
+        let mut pool = ctx.accounts.pool.load_mut()?;
         
         // Validate tick array belongs to pool and is empty
         require!(
@@ -1300,16 +1356,7 @@ pub mod feels {
         ctx: Context<CleanupTickArrayV2>,
         params: instructions::cleanup::CleanupTickArrayParams,
     ) -> Result<()> {
-        // This is the same as cleanup_tick_array but with explicit params
-        // Convert the V2 context to match the handler's expectations
-        let handler_ctx = Context {
-            program_id: ctx.program_id,
-            accounts: &ctx.accounts,
-            remaining_accounts: ctx.remaining_accounts,
-            bumps: ctx.bumps,
-        };
-        
-        instructions::cleanup::cleanup_tick_array(handler_ctx, params)
+        instructions::cleanup::cleanup_tick_array_v2(ctx, params)
     }
 
     // ========================================================================
@@ -1363,6 +1410,10 @@ pub mod feels {
             HookType::AfterAdd => 0b00001000,
             HookType::BeforeRemove => 0b00010000,
             HookType::AfterRemove => 0b00100000,
+            HookType::PriceFeed => 0b01000000,
+            HookType::Liquidity => 0b10000000,
+            HookType::Arbitrage => 0b10000001,
+            HookType::Validation => 0b11111111, // All events for validation hooks
         };
         
         // Stage mask: both validation (1) and execution (2) stages

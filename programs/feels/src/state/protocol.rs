@@ -34,11 +34,20 @@ pub struct ProtocolState {
     /// Total protocol fees collected in SOL
     pub total_fees_collected: u64,
 
+    /// Total volume in USD (scaled by 1e6)
+    pub total_volume_usd: u64,
+
+    /// Total fees collected in USD (scaled by 1e6) 
+    pub total_fees_collected_usd: u64,
+
+    /// Total liquidity in USD (scaled by 1e6)
+    pub total_liquidity_usd: u64,
+
     /// Initialization timestamp
     pub initialized_at: i64,
 
     /// Reserved space for future upgrades
-    pub _reserved: [u8; 128],
+    pub _reserved: [u8; 104],
 }
 
 // ============================================================================
@@ -51,9 +60,9 @@ impl ProtocolState {
     const AUTHORITY_SIZE: usize = 32 + 32; // authority + treasury
     const FEE_CONFIG_SIZE: usize = 2 + 2; // default_protocol_fee_rate + max_pool_fee_rate
     const FLAGS_SIZE: usize = 1 + 1; // paused + pool_creation_allowed
-    const STATISTICS_SIZE: usize = 8 + 8; // total_pools + total_fees_collected
+    const STATISTICS_SIZE: usize = 8 + 8 + 8 + 8 + 8; // total_pools + total_fees_collected + USD fields
     const METADATA_SIZE: usize = 8; // initialized_at
-    const RESERVED_SIZE: usize = 128; // reserved for future upgrades
+    const RESERVED_SIZE: usize = 104; // reserved for future upgrades
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
         + Self::AUTHORITY_SIZE

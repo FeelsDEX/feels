@@ -4,6 +4,7 @@
 /// for efficient event filtering and supports hook permission levels for security.
 
 use anchor_lang::prelude::*;
+use borsh::{BorshSerialize, BorshDeserialize};
 use crate::constant::MAX_HOOKS_PER_POOL;
 
 // ============================================================================
@@ -110,12 +111,26 @@ pub enum HookType {
     AfterRemove = 9,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
 pub enum HookPermission {
     Disabled = 0,
     ReadOnly = 1,    // Can only observe
     Modify = 2,      // Can modify non-critical state
     Halt = 3,        // Can abort operations
+}
+
+impl TryFrom<u8> for HookPermission {
+    type Error = crate::state::FeelsProtocolError;
+
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(HookPermission::Disabled),
+            1 => Ok(HookPermission::ReadOnly),
+            2 => Ok(HookPermission::Modify),
+            3 => Ok(HookPermission::Halt),
+            _ => Err(crate::state::FeelsProtocolError::InvalidPermission),
+        }
+    }
 }
 
 // ============================================================================
@@ -228,7 +243,7 @@ pub struct HookContext {
     pub slot: u64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub enum EventData {
     PriceUpdate {
         old_sqrt_price: u128,

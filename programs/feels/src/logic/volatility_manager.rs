@@ -45,20 +45,21 @@ impl VolatilityManager {
     /// Calculate enhanced volatility using both price and flash loan volume signals
     pub fn calculate_enhanced_volatility(
         price_tracker: &VolatilityTracker,
-        flash_twav: &FlashLoanTWAV,
+        lending_metrics: &LendingMetrics,
         config: &DynamicFeeConfig,
     ) -> Result<u32> {
         // Get composite price volatility
         let price_volatility = price_tracker.get_composite_volatility();
         
         // Flash loan signal strength based on current activity
-        let flash_signal = if flash_twav.burst_detected {
-            20000 // 2x multiplier during bursts
+        let flash_signal = if lending_metrics.is_high_activity() {
+            20000 // 2x multiplier during high activity
         } else {
-            // Compare 5-minute volume to hourly average
-            let avg_5m_volume = flash_twav.volume_1h / 12;
-            if avg_5m_volume > 0 {
-                (flash_twav.volume_5m as u128 * 10000 / avg_5m_volume as u128)
+            // Compare recent flash loan volume to longer-term average
+            let recent_volume = lending_metrics.flash_volume_5m;
+            let avg_volume = lending_metrics.flash_volume_1h.saturating_div(12); // 5 min intervals in 1hr
+            if avg_volume > 0 {
+                (recent_volume as u128 * 10000 / avg_volume as u128)
                     .min(30000) as u32
             } else {
                 10000
@@ -66,7 +67,7 @@ impl VolatilityManager {
         };
         
         // Both trackers showing spikes = very high confidence
-        let correlation_bonus = if price_tracker.spike_detected && flash_twav.burst_detected {
+        let correlation_bonus = if price_tracker.spike_detected && lending_metrics.is_high_activity() {
             5000 // Additional 50% when both spike
         } else {
             0
@@ -129,7 +130,7 @@ impl VolatilityManager {
             
             let obs = &mut tracker.observations[tracker.observation_index as usize];
             obs.timestamp = current_timestamp;
-            obs.log_return_squared = log_return.pow(2).min(u32::MAX) as u32;
+            obs.log_return_squared = log_return.pow(2).min(u32::MAX as i32) as u32;
             obs.price = compress_price(current_price);
         }
         
@@ -266,9 +267,14 @@ fn calculate_log_return_fixed(previous_price: u128, current_price: u128) -> Resu
         return Err(FeelsProtocolError::ExtremePrice.into());
     }
     
-    // Calculate natural logarithm
-    let log_ratio = ratio.checked_ln()
-        .ok_or(FeelsProtocolError::LogarithmUndefined)?;
+    // Calculate natural logarithm using approximation
+    // For small x, ln(1+x) ≈ x - x²/2 + x³/3 - x⁴/4
+    let x = ratio - I64F64::from_num(1);
+    let x2 = x * x;
+    let x3 = x2 * x;
+    let x4 = x3 * x;
+    
+    let log_ratio = x - x2 / I64F64::from_num(2) + x3 / I64F64::from_num(3) - x4 / I64F64::from_num(4);
     
     // Convert to basis points (multiply by 10,000)
     let log_return_bps = (log_ratio * I64F64::from_num(10_000))
@@ -317,6 +323,7 @@ fn calculate_stability_score(tracker: &VolatilityTracker) -> u32 {
     base_score.saturating_sub(spike_penalty + vol_penalty + change_penalty)
 }
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "compute-budget")]
 pub fn benchmark_log_calculation() -> Result<u64> {
     use solana_program::compute_budget::get_compute_units;

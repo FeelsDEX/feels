@@ -194,7 +194,7 @@ impl TimeWeightedMetrics {
         average_value: u128,
         spike_threshold_multiplier: u64,
     ) -> bool {
-        current_value > average_value * spike_threshold_multiplier / 10000
+        current_value > average_value * spike_threshold_multiplier as u128 / 10000
     }
     
     /// Calculate acceleration (second derivative)
@@ -210,6 +210,10 @@ impl TimeWeightedMetrics {
         Ok((current_rate - previous_rate) / time_delta)
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {

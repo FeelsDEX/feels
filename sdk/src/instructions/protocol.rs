@@ -31,18 +31,26 @@ pub fn initialize_feelssol(
     feelssol: &Pubkey,
     feels_mint: &Pubkey,
     authority: &Pubkey,
-    underlying_mint: Pubkey,
+    underlying_mint: &Pubkey,
 ) -> Instruction {
+    // Derive vault address
+    let (vault, _) = Pubkey::find_program_address(
+        &[b"feelssol_vault", underlying_mint.as_ref()],
+        program_id,
+    );
+    
     let accounts = feels::accounts::InitializeFeelsSOL {
         feelssol: *feelssol,
         feels_mint: *feels_mint,
+        underlying_mint: *underlying_mint,
+        vault,
         authority: *authority,
         token_program: spl_token_2022::ID,
         system_program: system_program::ID,
         rent: solana_sdk::sysvar::rent::ID,
     };
 
-    let data = feels::instruction::InitializeFeelssol { underlying_mint };
+    let data = feels::instruction::InitializeFeelssol {};
 
     Instruction {
         program_id: *program_id,

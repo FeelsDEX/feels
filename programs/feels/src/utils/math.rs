@@ -736,6 +736,7 @@ pub mod amm {
         pub total_fee: u64,
         pub lp_fee: u64,
         pub protocol_fee: u64,
+        pub liquidity_fee: u64,  // Alias for lp_fee for compatibility
     }
 
     /// Fee growth tracking using Q128.128 fixed-point arithmetic
@@ -832,6 +833,7 @@ pub mod amm {
                 total_fee,
                 lp_fee,
                 protocol_fee,
+                liquidity_fee: lp_fee,  // Set liquidity_fee same as lp_fee
             })
         }
 

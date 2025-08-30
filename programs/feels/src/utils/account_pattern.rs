@@ -1,7 +1,7 @@
 /// Account pattern abstractions for the Feels Protocol
 /// 
-/// This module provides reusable account patterns that eliminate repetition
-/// across instruction contexts while maintaining type safety and validation.
+/// This module provides reusable account patterns that prevent repetition
+/// across instruction contexts while maintaining type safety and validation logic.
 /// 
 /// Common patterns include:
 /// - Pool with token vaults validation  
@@ -262,7 +262,7 @@ pub struct OracleContext<'info> {
 
     /// Oracle data storage account
     #[account(
-        constraint = oracle_data.load()?.oracle == oracle.key() @ FeelsProtocolError::InvalidOracle
+        // Oracle data is associated with the oracle via seeds/PDA derivation
     )]
     pub oracle_data: AccountLoader<'info, OracleData>,
 

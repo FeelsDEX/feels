@@ -16,7 +16,6 @@
 
 use anchor_lang::prelude::*;
 use crate::state::FeelsProtocolError;
-use crate::utils::TickMath;
 use fixed::types::I64F64;
 
 // ============================================================================
@@ -285,6 +284,22 @@ impl Oracle {
             0
         }
     }
+    
+    /// Get the current safe price (uses TWAP to prevent manipulation)
+    pub fn get_safe_price(&self) -> Result<u128> {
+        // If manipulation detected, use last valid price
+        if self.manipulation_detected {
+            return Ok(self.last_valid_price);
+        }
+        
+        // Otherwise use 5-minute TWAP as safe price
+        if self.twap_5min > 0 {
+            Ok(self.twap_5min)
+        } else {
+            // Fallback to last valid price
+            Ok(self.last_valid_price)
+        }
+    }
 }
 
 // ============================================================================
@@ -329,6 +344,7 @@ impl OracleData {
 
 /// Single price observation in the oracle
 #[zero_copy]
+#[repr(C, packed)]
 #[derive(Default)]
 pub struct PriceObservation {
     pub sqrt_price: u128,  // Q64.96 square root price
@@ -383,7 +399,7 @@ pub fn calculate_twap(
         return Ok(0);
     }
 
-    let mut weighted_sum: u256 = 0;
+    let mut weighted_sum: U256 = 0;
     let mut total_weight: u128 = 0;
     let window_start = current_time - window_seconds as i64;
     
@@ -397,12 +413,12 @@ pub fn calculate_twap(
         }
         
         let time_weight = (obs.timestamp - window_start) as u128;
-        weighted_sum += (obs.sqrt_price as u256) * (time_weight as u256);
+        weighted_sum += (obs.sqrt_price as U256) * (time_weight as U256);
         total_weight += time_weight;
     }
     
     if total_weight > 0 {
-        Ok((weighted_sum / total_weight as u256) as u128)
+        Ok((weighted_sum / total_weight as U256) as u128)
     } else {
         // Return the most recent price if no observations in window
         let latest_index = (current_index + MAX_OBSERVATIONS - 1) % MAX_OBSERVATIONS;
@@ -502,4 +518,4 @@ fn sqrt_approximation(x: I64F64) -> Result<I64F64> {
 }
 
 // For 256-bit arithmetic
-type u256 = u128; // Simplified for example, would use proper U256 in production
+type U256 = u128; // Simplified for example, would use proper U256 in production

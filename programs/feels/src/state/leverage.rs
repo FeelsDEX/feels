@@ -4,22 +4,26 @@
 /// from excessive losses during market stress while maintaining capital efficiency.
 
 use anchor_lang::prelude::*;
-use crate::state::FeelsProtocolError;
+use bytemuck::{Pod, Zeroable};
 
 // ============================================================================
 // Protection Curve Types
 // ============================================================================
 
-/// Protection curve types for continuous leverage system
-#[derive(Clone, Copy, Debug, Default, AnchorSerialize, AnchorDeserialize, PartialEq)]
-pub enum ProtectionCurve {
-    /// Linear protection: protection = 1 - (leverage - 1) / (max - 1)
-    #[default]
-    Linear,
-    /// Exponential protection: protection = e^(-k * (leverage - 1))
-    Exponential { decay_rate: u64 },
-    /// Custom breakpoints for fine-tuned control
-    Piecewise { points: [[u64; 2]; 8] }, // Fixed size array for zero-copy
+/// Protection curve type identifier
+#[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
+#[repr(C)]
+pub struct ProtectionCurveType {
+    pub curve_type: u8, // 0 = Linear, 1 = Exponential, 2 = Piecewise
+    pub _padding: [u8; 7],
+}
+
+/// Protection curve data (union-like structure for zero-copy)
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[repr(C)]
+pub struct ProtectionCurveData {
+    pub decay_rate: u64, // For exponential
+    pub points: [[u64; 2]; 8], // For piecewise
 }
 
 // ============================================================================
@@ -27,14 +31,17 @@ pub enum ProtectionCurve {
 // ============================================================================
 
 /// Leverage parameters for continuous leverage system
-#[derive(Default, Debug, Clone, AnchorSerialize, AnchorDeserialize)]
+#[derive(Default, Debug, Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
 pub struct LeverageParameters {
     /// Maximum leverage allowed in this pool (6 decimals, e.g., 3000000 = 3x)
     pub max_leverage: u64,
     /// Current dynamic ceiling based on market conditions
     pub current_ceiling: u64,
     /// Protection curve type
-    pub protection_curve: ProtectionCurve,
+    pub protection_curve_type: ProtectionCurveType,
+    /// Protection curve data
+    pub protection_curve_data: ProtectionCurveData,
     /// Last time ceiling was updated
     pub last_ceiling_update: u64,
     /// Padding for alignment
@@ -75,8 +82,8 @@ impl RiskProfile {
         )?;
 
         // Calculate protection factor based on curve
-        let protection = match params.protection_curve {
-            ProtectionCurve::Linear => {
+        let protection = match params.protection_curve_type.curve_type {
+            0 => { // Linear
                 // protection = 1 - (leverage - 1) / (max - 1)
                 let leverage_ratio = leverage.saturating_sub(Self::LEVERAGE_SCALE);
                 let max_ratio = params.max_leverage.saturating_sub(Self::LEVERAGE_SCALE);
@@ -88,18 +95,19 @@ impl RiskProfile {
                     )
                 }
             }
-            ProtectionCurve::Exponential { decay_rate } => {
+            1 => { // Exponential
                 // Simplified exponential approximation
                 // protection ≈ 1 / (1 + k * (leverage - 1))
                 let leverage_excess = leverage.saturating_sub(Self::LEVERAGE_SCALE);
+                let decay_rate = params.protection_curve_data.decay_rate;
                 let denominator = Self::LEVERAGE_SCALE
                     + (decay_rate.saturating_mul(leverage_excess) / Self::LEVERAGE_SCALE);
                 Self::PROTECTION_SCALE.saturating_mul(Self::LEVERAGE_SCALE) / denominator
             }
-            ProtectionCurve::Piecewise { points } => {
+            2 => { // Piecewise
                 // Find the right segment in the piecewise function
                 let mut protection = Self::PROTECTION_SCALE;
-                for [lev, prot] in points.iter() {
+                for [lev, prot] in params.protection_curve_data.points.iter() {
                     if leverage <= *lev {
                         protection = *prot;
                         break;
@@ -107,6 +115,7 @@ impl RiskProfile {
                 }
                 protection
             }
+            _ => Self::PROTECTION_SCALE, // Default to full protection
         };
 
         // Calculate fee multiplier: sqrt(leverage)
@@ -157,13 +166,11 @@ impl RiskProfile {
 // ============================================================================
 
 /// Pool-wide leverage statistics for risk monitoring
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[repr(C)]
 pub struct LeverageStatistics {
     /// Total value at each leverage tier
     pub total_value_by_tier: [u64; 4], // None, Low, Medium, High
-    
-    /// Number of positions at each tier
-    pub position_count_by_tier: [u32; 4],
     
     /// Average leverage across all positions (LEVERAGE_SCALE units)
     pub average_leverage: u64,
@@ -174,6 +181,24 @@ pub struct LeverageStatistics {
     /// Total margin locked
     pub total_margin_locked: u64,
     
+    /// Last update timestamp
+    pub last_update: i64,
+    
+    /// Total base liquidity (without leverage)
+    pub total_base_liquidity: u128,
+    
+    /// Total leveraged liquidity (with leverage applied)
+    pub total_leveraged_liquidity: u128,
+    
+    /// Number of positions at each tier
+    pub position_count_by_tier: [u32; 4],
+    
     /// Positions at risk of liquidation
     pub positions_at_risk: u32,
+    
+    /// Leveraged position count
+    pub leveraged_position_count: u32,
+    
+    /// Padding for alignment
+    pub _padding: u64,
 }

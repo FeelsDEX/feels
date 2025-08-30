@@ -60,7 +60,7 @@ impl FeelsClient {
         feelssol: &Pubkey,
         feels_mint: &Pubkey,
         authority: &Pubkey,
-        underlying_mint: Pubkey,
+        underlying_mint: &Pubkey,
     ) -> SdkResult<Signature> {
         let ix = instructions::initialize_feelssol(
             &self.program_id,
@@ -87,6 +87,8 @@ impl FeelsClient {
         authority: &Pubkey,
         fee_rate: u16,
         initial_sqrt_price: u128,
+        base_rate: u16,
+        protocol_share: u16,
     ) -> SdkResult<CreatePoolResult> {
         let ix = instructions::initialize_pool(
             &self.program_id,
@@ -100,6 +102,8 @@ impl FeelsClient {
             authority,
             fee_rate,
             initial_sqrt_price,
+            base_rate,
+            protocol_share,
         );
 
         let signature = self.send_transaction(&[ix]).await?;
@@ -117,42 +121,38 @@ impl FeelsClient {
     pub async fn add_liquidity(
         &self,
         pool: &Pubkey,
-        tick_position_metadata: &Pubkey,
         user: &Pubkey,
         user_token_0: &Pubkey,
         user_token_1: &Pubkey,
         pool_token_0: &Pubkey,
         pool_token_1: &Pubkey,
-        tick_array_lower: &Pubkey,
-        tick_array_upper: &Pubkey,
+        tick_lower: i32,
+        tick_upper: i32,
         liquidity_amount: u128,
         leverage: Option<u64>,
         amount_0_max: u64,
         amount_1_max: u64,
-        payer: &Pubkey,
     ) -> SdkResult<AddLiquidityResult> {
         let ix = instructions::add_liquidity(
             &self.program_id,
             pool,
-            tick_position_metadata,
             user,
             user_token_0,
             user_token_1,
             pool_token_0,
             pool_token_1,
-            tick_array_lower,
-            tick_array_upper,
+            tick_lower,
+            tick_upper,
             liquidity_amount,
             leverage,
             amount_0_max,
             amount_1_max,
-            payer,
         );
 
         let signature = self.send_transaction(&[ix]).await?;
 
         Ok(AddLiquidityResult {
-            position_pubkey: *tick_position_metadata,
+            position_pubkey: Pubkey::default(), // In unified system, positions tracked differently
             position_mint: Pubkey::default(), // In production, get from position metadata
             liquidity_amount,
             amount_0: amount_0_max, // In production, get actual amounts from logs

@@ -2,32 +2,27 @@ use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
 
-/// Build instruction to add liquidity to a pool
+/// Build instruction to add liquidity to a pool using the unified order system
 #[allow(clippy::too_many_arguments)]
 pub fn add_liquidity(
     program_id: &Pubkey,
     pool: &Pubkey,
-    tick_position_metadata: &Pubkey,
     user: &Pubkey,
     user_token_a: &Pubkey,
     user_token_b: &Pubkey,
     pool_token_a: &Pubkey,
     pool_token_b: &Pubkey,
-    tick_array_lower: &Pubkey,
-    tick_array_upper: &Pubkey,
+    tick_lower: i32,
+    tick_upper: i32,
     liquidity_amount: u128,
     leverage: Option<u64>,
-    amount_a_max: u64,
-    amount_b_max: u64,
-    payer: &Pubkey,
+    _amount_a_max: u64,
+    _amount_b_max: u64,
 ) -> Instruction {
-    let accounts = feels::accounts::AddLiquidity {
+    // Use the unified Order context
+    let accounts = feels::accounts::Order {
         pool: *pool,
-        tick_position_metadata: *tick_position_metadata,
-        tick_array_lower: *tick_array_lower,
-        tick_array_upper: *tick_array_upper,
         user: *user,
-        payer: *payer,
         user_token_a: *user_token_a,
         user_token_b: *user_token_b,
         pool_token_a: *pool_token_a,
@@ -38,12 +33,20 @@ pub fn add_liquidity(
         hook_message_queue: None,
     };
 
-    let data = feels::instruction::AddLiquidity {
-        liquidity_amount,
-        leverage,
-        amount_a_max,
-        amount_b_max,
+    // Use the unified order instruction with OrderType::Liquidity
+    let params = feels::OrderParams {
+        amount: liquidity_amount as u64, // Convert liquidity to amount
+        rate_params: feels::RateParams::RateRange {
+            tick_lower,
+            tick_upper,
+        },
+        duration: feels::Duration::Weekly, // Default to weekly duration
+        leverage: leverage.unwrap_or(1_000_000), // Default to 1x leverage
+        order_type: feels::OrderType::Liquidity,
+        limit_value: 0, // Not used for liquidity
     };
+
+    let data = feels::instruction::Order { params };
 
     Instruction {
         program_id: *program_id,
@@ -52,115 +55,50 @@ pub fn add_liquidity(
     }
 }
 
-/// Build instruction to remove liquidity from a pool
+/// Build instruction to remove liquidity from a pool using the unified order system
 #[allow(clippy::too_many_arguments)]
 pub fn remove_liquidity(
     program_id: &Pubkey,
     pool: &Pubkey,
-    position: &Pubkey,
-    position_owner: &Pubkey,
-    tick_array_lower: &Pubkey,
-    tick_array_upper: &Pubkey,
-    token_vault_0: &Pubkey,
-    token_vault_1: &Pubkey,
-    token_account_0: &Pubkey,
-    token_account_1: &Pubkey,
+    user: &Pubkey,
+    user_token_a: &Pubkey,
+    user_token_b: &Pubkey,
+    pool_token_a: &Pubkey,
+    pool_token_b: &Pubkey,
+    tick_lower: i32,
+    tick_upper: i32,
     liquidity_amount: u128,
-    amount_a_min: u64,
-    amount_b_min: u64,
+    _amount_a_min: u64,
+    _amount_b_min: u64,
 ) -> Instruction {
-    let accounts = feels::accounts::RemoveLiquidity {
+    // Use the unified Order context
+    let accounts = feels::accounts::Order {
         pool: *pool,
-        position: *position,
-        tick_array_lower: *tick_array_lower,
-        tick_array_upper: *tick_array_upper,
-        token_vault_a: *token_vault_0,
-        token_vault_b: *token_vault_1,
-        token_account_a: *token_account_0,
-        token_account_b: *token_account_1,
-        owner: *position_owner,
+        user: *user,
+        user_token_a: *user_token_a,
+        user_token_b: *user_token_b,
+        pool_token_a: *pool_token_a,
+        pool_token_b: *pool_token_b,
         token_program: spl_token_2022::ID,
+        system_program: system_program::ID,
         hook_registry: None,
         hook_message_queue: None,
     };
 
-    let data = feels::instruction::RemoveLiquidity {
-        liquidity_amount,
-        amount_a_min,
-        amount_b_min,
+    // Use the unified order instruction with OrderType::Liquidity and negative amount for removal
+    let params = feels::OrderParams {
+        amount: liquidity_amount as u64, // Amount to remove
+        rate_params: feels::RateParams::RateRange {
+            tick_lower,
+            tick_upper,
+        },
+        duration: feels::Duration::Swap, // Immediate removal
+        leverage: 1_000_000, // No leverage for removal
+        order_type: feels::OrderType::Liquidity,
+        limit_value: 0, // Use amount_a_min and amount_b_min separately if needed
     };
 
-    Instruction {
-        program_id: *program_id,
-        accounts: accounts.to_account_metas(None),
-        data: data.data(),
-    }
-}
-
-/// Build instruction to collect fees from a position
-#[allow(clippy::too_many_arguments)]
-pub fn collect_fees(
-    program_id: &Pubkey,
-    pool: &Pubkey,
-    position: &Pubkey,
-    position_owner: &Pubkey,
-    token_vault_0: &Pubkey,
-    token_vault_1: &Pubkey,
-    token_account_0: &Pubkey,
-    token_account_1: &Pubkey,
-    amount_a_requested: u64,
-    amount_b_requested: u64,
-) -> Instruction {
-    let accounts = feels::accounts::CollectFees {
-        pool: *pool,
-        position: *position,
-        token_vault_a: *token_vault_0,
-        token_vault_b: *token_vault_1,
-        token_account_a: *token_account_0,
-        token_account_b: *token_account_1,
-        owner: *position_owner,
-        token_program: spl_token_2022::ID,
-    };
-
-    let data = feels::instruction::CollectFees {
-        amount_a_requested,
-        amount_b_requested,
-    };
-
-    Instruction {
-        program_id: *program_id,
-        accounts: accounts.to_account_metas(None),
-        data: data.data(),
-    }
-}
-
-/// Build instruction to collect protocol fees
-#[allow(clippy::too_many_arguments)]
-pub fn collect_protocol_fees(
-    program_id: &Pubkey,
-    pool: &Pubkey,
-    authority: &Pubkey,
-    token_vault_0: &Pubkey,
-    token_vault_1: &Pubkey,
-    recipient_0: &Pubkey,
-    recipient_1: &Pubkey,
-    amount_a_requested: u64,
-    amount_b_requested: u64,
-) -> Instruction {
-    let accounts = feels::accounts::CollectProtocolFees {
-        pool: *pool,
-        token_vault_a: *token_vault_0,
-        token_vault_b: *token_vault_1,
-        recipient_a: *recipient_0,
-        recipient_b: *recipient_1,
-        authority: *authority,
-        token_program: spl_token_2022::ID,
-    };
-
-    let data = feels::instruction::CollectProtocolFees {
-        amount_a_requested,
-        amount_b_requested,
-    };
+    let data = feels::instruction::Order { params };
 
     Instruction {
         program_id: *program_id,

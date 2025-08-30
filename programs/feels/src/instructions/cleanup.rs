@@ -66,20 +66,20 @@ pub fn cleanup_tick_array(
     )?;
     
     // Update pool statistics
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    pool.last_update_slot = Clock::get()?.slot;
     
     // Emit cleanup event
     emit!(TickArrayCleanedEvent {
         pool: ctx.accounts.pool.key(),
         tick_array: ctx.accounts.tick_array.key(),
-        start_tick_index: tick_array.start_tick_index,
-        cleaner: ctx.accounts.cleaner.key(),
-        incentivized: params.incentivized,
+        start_tick: tick_array.start_tick_index,
+        initialized_count: 0,
         timestamp: Clock::get()?.unix_timestamp,
     });
     
     msg!("Tick array cleaned up successfully");
-    msg!("Start tick index: {}", tick_array.start_tick_index);
+    let start_tick_index = tick_array.start_tick_index;
+    msg!("Start tick index: {}", start_tick_index);
     msg!("Cleaner: {}", ctx.accounts.cleaner.key());
     msg!("Incentivized: {}", params.incentivized);
     
@@ -101,7 +101,7 @@ pub fn cleanup_tick_array_v2(
     validate_tick_array_cleanup(&tick_array, &ctx.accounts.pool.key())?;
     
     // Additional validations
-    if pool.hook_registry.is_some() {
+    if pool.hook_registry != Pubkey::default() {
         // Validate no hooks are referencing this array
         msg!("Verified no hook dependencies");
     }
@@ -114,7 +114,7 @@ pub fn cleanup_tick_array_v2(
     )?;
     
     // Update pool statistics with enhanced tracking
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    pool.last_update_slot = Clock::get()?.slot;
     
     // Calculate rent distribution
     let rent_lamports = ctx.accounts.tick_array.to_account_info().lamports();
@@ -128,16 +128,17 @@ pub fn cleanup_tick_array_v2(
     emit!(TickArrayCleanedEvent {
         pool: ctx.accounts.pool.key(),
         tick_array: ctx.accounts.tick_array.key(),
-        start_tick_index: tick_array.start_tick_index,
-        cleaner: ctx.accounts.cleaner.key(),
-        incentivized: params.incentivized,
+        start_tick: tick_array.start_tick_index,
+        initialized_count: 0,
         timestamp: Clock::get()?.unix_timestamp,
     });
     
     msg!("Tick array V2 cleanup completed");
-    msg!("Start tick index: {}", tick_array.start_tick_index);
+    let start_tick_index = tick_array.start_tick_index;
+    msg!("Start tick index: {}", start_tick_index);
     msg!("Rent distributed: {} lamports", cleaner_share);
-    msg!("Hook registry: {}", pool.hook_registry.is_some());
+    let has_hook_registry = pool.hook_registry != Pubkey::default();
+    msg!("Hook registry: {}", has_hook_registry);
     
     Ok(())
 }
@@ -150,7 +151,7 @@ pub fn batch_cleanup_tick_arrays(
 ) -> Result<()> {
     require!(
         tick_ranges.len() <= 10, // Limit to prevent excessive compute usage
-        FeelsProtocolError::TooManyTickArrays
+        FeelsProtocolError::InvalidTickArrayCount
     );
     
     let mut pool = ctx.accounts.pool.load_mut()?;
@@ -171,7 +172,7 @@ pub fn batch_cleanup_tick_arrays(
         );
         
         // Load and validate tick array
-        if let Ok(tick_array_data) = tick_array_info.try_borrow_data() {
+        if let Ok(_tick_array_data) = tick_array_info.try_borrow_data() {
             // In a production system, would properly deserialize and validate each tick array
             // TODO: TODO: For now, assume validation passes and update bitmap
             TickManager::update_tick_array_bitmap(&mut pool, start_tick, false)?;
@@ -179,10 +180,10 @@ pub fn batch_cleanup_tick_arrays(
         }
     }
     
-    require!(arrays_cleaned > 0, FeelsProtocolError::NoValidTickArrays);
+    require!(arrays_cleaned > 0, FeelsProtocolError::InvalidTickArray);
     
     // Update pool
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    pool.last_update_slot = Clock::get()?.slot;
     
     msg!("Batch cleanup completed");
     msg!("Arrays cleaned: {}", arrays_cleaned);

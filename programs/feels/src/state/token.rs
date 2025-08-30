@@ -50,17 +50,50 @@ impl TokenMetadata {
 /// FeelsSOL wrapper account for the protocol's native token
 #[account]
 pub struct FeelsSOL {
+    /// Underlying token mint that backs FeelsSOL
+    pub underlying_mint: Pubkey,
+    
     /// The Feels mint this wrapper controls
     pub feels_mint: Pubkey,
+    
+    /// Vault holding the underlying tokens
+    pub vault: Pubkey,
     
     /// Authority that can update the wrapper
     pub authority: Pubkey,
     
+    /// Exchange rate (9 decimals) - how many underlying tokens per FeelsSOL
+    pub exchange_rate: u64,
+    
     /// Total supply of wrapped FeelsSOL
     pub total_supply: u64,
     
+    /// Total underlying tokens in the vault
+    pub total_underlying: u64,
+    
+    /// Last time yield was updated
+    pub last_yield_update: i64,
+    
+    /// Cumulative yield earned (9 decimals)
+    pub cumulative_yield: u64,
+    
+    /// Yield rate per second (9 decimals)
+    pub yield_rate_per_second: u64,
+    
+    /// Whether the wrapper is paused
+    pub is_paused: bool,
+    
+    /// Whether deposits are paused
+    pub deposits_paused: bool,
+    
+    /// Whether withdrawals are paused
+    pub withdrawals_paused: bool,
+    
     /// Creation timestamp
     pub created_at: i64,
+    
+    /// Last update timestamp
+    pub last_updated_at: i64,
     
     /// Reserved for future use
     pub _reserved: [u8; 64],
@@ -68,9 +101,20 @@ pub struct FeelsSOL {
 
 impl FeelsSOL {
     pub const SIZE: usize = 8 + // discriminator
+        32 + // underlying_mint
         32 + // feels_mint
+        32 + // vault
         32 + // authority
+        8 + // exchange_rate
         8 + // total_supply
+        8 + // total_underlying
+        8 + // last_yield_update
+        8 + // cumulative_yield
+        8 + // yield_rate_per_second
+        1 + // is_paused
+        1 + // deposits_paused
+        1 + // withdrawals_paused
         8 + // created_at
+        8 + // last_updated_at
         64; // reserved
 }

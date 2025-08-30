@@ -6,7 +6,7 @@
 use anchor_lang::prelude::*;
 use crate::state::{Pool, FeelsProtocolError};
 use crate::utils::TICK_ARRAY_SIZE;
-use crate::utils::{FeeBreakdown, FeeConfig, FeeMath};
+use crate::utils::FeeBreakdown;
 
 // ============================================================================
 // Core Implementation
@@ -26,12 +26,8 @@ impl Pool {
             FeelsProtocolError::InvalidTickSpacing
         );
 
-        // Ensure fee rate is valid
-        require!(
-            matches!(self.fee_rate, 1 | 5 | 30 | 100),
-            FeelsProtocolError::InvalidFeeRate
-        );
-
+        // Fee validation is now done through FeeConfig account
+        
         Ok(())
     }
 
@@ -41,50 +37,12 @@ impl Pool {
     }
 
     // ------------------------------------------------------------------------
-    // Fee Calculations - Delegates to FeeManager
+    // Fee Calculations - Must use FeeConfig account
     // ------------------------------------------------------------------------
-
-    /// Calculate complete fee breakdown for a swap amount
-    /// Delegates to FeeManager for centralized fee logic
-    pub fn calculate_swap_fees(&self, amount_in: u64) -> Result<FeeBreakdown> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::calculate_swap_fees(self, amount_in)
-    }
-
-    /// Calculate dynamic swap fees based on market conditions (Phase 2)
-    /// Delegates to FeeManager for centralized fee logic
-    pub fn calculate_dynamic_swap_fees(
-        &self,
-        amount_in: u64,
-        volatility_bps: u64,
-        volume_24h: u128,
-    ) -> Result<FeeBreakdown> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::calculate_dynamic_swap_fees(self, amount_in, volatility_bps, volume_24h)
-    }
-
-    /// Calculate swap fees with leverage adjustments for Phase 2
-    /// Delegates to FeeManager for centralized fee logic
-    pub fn calculate_swap_fees_with_leverage(
-        &self,
-        amount_in: u64,
-        average_leverage: u64,
-    ) -> Result<FeeBreakdown> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::calculate_swap_fees_with_leverage(self, amount_in, average_leverage)
-    }
-
-    /// Calculate just the total fee amount (used in swap calculations)
-    pub fn calculate_total_fee(&self, amount_in: u64) -> Result<u64> {
-        let fee_breakdown = self.calculate_swap_fees(amount_in)?;
-        Ok(fee_breakdown.total_fee)
-    }
-
-    /// Validate that this pool's fee configuration is consistent and valid
-    pub fn validate_fee_configuration(&self) -> Result<()> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::validate_fee_configuration(self)
-    }
+    
+    // Note: All fee calculations have been moved to FeeManager and require
+    // the FeeConfig account to be passed. Direct pool fee calculations are
+    // no longer supported to ensure consistency.
 
     // ------------------------------------------------------------------------
     // Fee Management and Updates - Delegates to FeeManager
@@ -96,36 +54,7 @@ impl Pool {
         fee_breakdown: &FeeBreakdown,
         zero_for_one: bool,
     ) -> Result<()> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::accumulate_protocol_fees(self, fee_breakdown, zero_for_one)
-    }
-
-    /// Get the amount after deducting fees
-    pub fn calculate_amount_after_fee(&self, amount_in: u64) -> Result<u64> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::calculate_amount_after_fee(self, amount_in)
-    }
-
-    /// Initialize fee configuration for a new pool
-    pub fn initialize_fees(&mut self, fee_rate: u16) -> Result<()> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::initialize_fees(self, fee_rate)
-    }
-
-    /// Get effective fee rate (for future dynamic fee implementation)
-    pub fn get_effective_fee_rate(&self) -> Result<u16> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::get_effective_fee_rate(self)
-    }
-
-    // ------------------------------------------------------------------------
-    // Global Fee Growth
-    // ------------------------------------------------------------------------
-
-    /// Update global fee growth
-    pub fn update_fee_growth_from_fees(&mut self, fee_amount: u64, is_token_a: bool) -> Result<()> {
-        use crate::logic::fee_manager::FeeManager;
-        FeeManager::update_fee_growth(self, fee_amount, is_token_a)
+        self.accumulate_protocol_fees(fee_breakdown.protocol_fee, zero_for_one)
     }
 
     // ------------------------------------------------------------------------
@@ -207,9 +136,9 @@ impl Pool {
         None
     }
 
-    /// Check if a specific tick is initialized
+    /// Check if a specific tick is initialized (logic layer)
     /// Helper method to check individual tick initialization
-    pub fn is_tick_initialized(&self, tick: i32) -> bool {
+    pub fn check_tick_initialized(&self, tick: i32) -> bool {
         // Calculate which array and position within array
         let array_index = tick / TICK_ARRAY_SIZE as i32;
         let _tick_offset = (tick % TICK_ARRAY_SIZE as i32) as usize;

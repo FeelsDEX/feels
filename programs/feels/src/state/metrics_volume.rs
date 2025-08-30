@@ -2,13 +2,15 @@
 /// used in dynamic fee calculations and market analysis.
 
 use anchor_lang::prelude::*;
+use bytemuck::{Pod, Zeroable};
 
 // ============================================================================
 // Volume Tracker
 // ============================================================================
 
 /// Volume tracker for dynamic fee calculations
-#[derive(Clone, Copy, Debug, Default, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[repr(C)]
 pub struct VolumeTracker {
     /// 24-hour rolling volume for token a
     pub volume_24h_token_a: u128,
@@ -19,10 +21,10 @@ pub struct VolumeTracker {
     pub hourly_volumes_b: [u64; 24],
     /// Current hour index
     pub current_hour: u8,
+    /// Padding for alignment before i64
+    pub _padding1: [u8; 7],
     /// Last update timestamp
     pub last_update: i64,
-    /// Padding
-    pub _padding: [u8; 7],
 }
 
 impl VolumeTracker {

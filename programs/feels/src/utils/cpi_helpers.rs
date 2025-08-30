@@ -4,9 +4,9 @@
 /// Includes comprehensive error handling and validation for safe cross-program calls.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{transfer, Transfer};
+use anchor_spl::token_2022::Transfer;
 use crate::state::Pool;
-use crate::utils::CanonicalSeeds;
+use crate::utils::deterministic_seed::CanonicalSeeds;
 
 // ============================================================================
 // Unified Transfer Parameters
@@ -88,7 +88,8 @@ pub fn transfer_tokens_unified<'info>(params: TransferParams<'info>) -> Result<(
 
     if params.signer_seeds.is_empty() {
         let cpi_ctx = CpiContext::new(params.token_program, transfer_accounts);
-        transfer(cpi_ctx, params.amount)
+        #[allow(deprecated)]
+        anchor_spl::token_2022::transfer(cpi_ctx, params.amount)
     } else {
         // Convert Vec<Vec<u8>> to proper signer seeds format
         let signer_seeds: Vec<&[u8]> = params.signer_seeds.iter().map(|s| s.as_slice()).collect();
@@ -100,7 +101,8 @@ pub fn transfer_tokens_unified<'info>(params: TransferParams<'info>) -> Result<(
             transfer_accounts, 
             &signer_array
         );
-        transfer(cpi_ctx, params.amount)
+        #[allow(deprecated)]
+        anchor_spl::token_2022::transfer(cpi_ctx, params.amount)
     }
 }
 
@@ -130,7 +132,8 @@ pub fn transfer_tokens<'info>(
         CpiContext::new_with_signer(token_program, transfer_accounts, signer_seeds)
     };
 
-    transfer(cpi_ctx, amount)
+    #[allow(deprecated)]
+    anchor_spl::token_2022::transfer(cpi_ctx, amount)
 }
 
 /// Helper function to transfer tokens using CPI with signer seeds
@@ -538,25 +541,26 @@ pub fn execute_two_hop_swap<'info>(
 // ============================================================================
 
 /// Transfer tokens from user to vault
-pub fn transfer_tokens_to_vault(
-    from: AccountInfo,
-    to: AccountInfo,
-    authority: AccountInfo,
-    token_program: AccountInfo,
+pub fn transfer_tokens_to_vault<'a>(
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    token_program: AccountInfo<'a>,
     amount: u64,
 ) -> Result<()> {
     transfer_from_user_to_pool(from, to, authority, token_program, amount)
 }
 
 /// Transfer tokens from vault to user
-pub fn transfer_tokens_from_vault(
-    from: AccountInfo,
-    to: AccountInfo,
-    vault_authority: AccountInfo,
-    token_program: AccountInfo,
+pub fn transfer_tokens_from_vault<'a>(
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    vault_authority: AccountInfo<'a>,
+    token_program: AccountInfo<'a>,
     amount: u64,
     vault_seeds: &[&[u8]],
 ) -> Result<()> {
+    #[allow(deprecated)]
     let transfer_ix = spl_token_2022::instruction::transfer(
         token_program.key,
         from.key,

@@ -34,8 +34,8 @@ pub use pool::{initialize_protocol, initialize_feelssol, initialize_pool};
 pub use token::create_token;
 pub use fee::{collect_pool_fees, collect_protocol_fees, update_dynamic_fees};
 pub use cleanup::{cleanup_tick_array, CleanupTickArrayParams};
-pub use order::{handler as order_handler, OrderParams, OrderResult};
-pub use order_compute::{handler as order_compute_handler, OrderComputeParams, Tick3DArrayInfo};
+pub use order::{handler as order_handler, OrderParams, OrderResult, OrderType, RateParams};
+pub use order_compute::{handler as order_compute_handler, OrderComputeParams, Tick3DArrayInfo, RateComputeParams};
 pub use order_modify::{handler as order_modify_handler, OrderModifyParams};
 pub use order_redenominate::{handler as order_redenominate_handler, RedenominateParams, RedenominationResult};
 

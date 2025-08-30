@@ -35,15 +35,7 @@ pub fn initialize_protocol(ctx: Context<crate::InitializeFeels>) -> Result<()> {
     protocol_state.total_liquidity_usd = 0;
 
     // Set creation timestamp
-    protocol_state.created_at = clock.unix_timestamp;
-    protocol_state.last_updated_at = clock.unix_timestamp;
-
-    // Initialize protocol version
-    protocol_state.version = 1;
-
-    // Set emergency parameters
-    protocol_state.emergency_pause_authority = ctx.accounts.authority.key();
-    protocol_state.upgrade_authority = ctx.accounts.authority.key();
+    protocol_state.initialized_at = clock.unix_timestamp;
 
     msg!("Feels Protocol initialized successfully");
     msg!("Authority: {}", ctx.accounts.authority.key());
@@ -59,8 +51,18 @@ pub fn initialize_protocol(ctx: Context<crate::InitializeFeels>) -> Result<()> {
 
 /// Initialize the FeelsSOL wrapper token (universal base pair)
 pub fn initialize_feelssol(ctx: Context<crate::InitializeFeelsSOL>, underlying_mint: Pubkey) -> Result<()> {
-    let feelssol = &mut ctx.accounts.feelssol;
     let clock = Clock::get()?;
+    
+    // Get keys before mutable borrow
+    let feelssol_key = ctx.accounts.feelssol.key();
+    let feels_mint_key = ctx.accounts.feels_mint.key();
+    let vault_key = ctx.accounts.vault.key();
+    
+    let feelssol = &mut ctx.accounts.feelssol;
+    
+    // Note: The vault initialization would need to be done separately
+    // as we need the underlying mint account, not just its pubkey
+    // For now, we'll assume the vault is pre-initialized
 
     // Validate underlying mint is not the same as FeelsSOL mint
     require!(
@@ -99,19 +101,22 @@ pub fn initialize_feelssol(ctx: Context<crate::InitializeFeelsSOL>, underlying_m
     feelssol.created_at = clock.unix_timestamp;
     feelssol.last_updated_at = clock.unix_timestamp;
 
+    // Get exchange rate before emitting event
+    let exchange_rate = feelssol.exchange_rate;
+    
     // Emit event
     emit!(FeelsSOLInitialized {
-        feelssol: feelssol.key(),
+        feelssol: feelssol_key,
         underlying_mint,
-        feels_mint: ctx.accounts.feels_mint.key(),
-        vault: ctx.accounts.vault.key(),
-        initial_exchange_rate: feelssol.exchange_rate,
+        feels_mint: feels_mint_key,
+        vault: vault_key,
+        initial_exchange_rate: exchange_rate,
         timestamp: clock.unix_timestamp,
     });
 
     msg!("FeelsSOL wrapper initialized successfully");
     msg!("Underlying mint: {}", underlying_mint);
-    msg!("FeelsSOL mint: {}", ctx.accounts.feels_mint.key());
+    msg!("FeelsSOL mint: {}", feels_mint_key);
     msg!("Initial exchange rate: {}", feelssol.exchange_rate);
 
     Ok(())
@@ -133,8 +138,8 @@ pub fn initialize_pool(
     let clock = Clock::get()?;
 
     // Get token information for validation
-    let decimals_a = ctx.accounts.token_a_mint.decimals;
-    let decimals_b = ctx.accounts.token_b_mint.decimals;
+    let _decimals_a = ctx.accounts.token_a_mint.decimals;
+    let _decimals_b = ctx.accounts.token_b_mint.decimals;
 
     // Validate protocol state allows pool creation
     require!(
@@ -193,32 +198,45 @@ pub fn initialize_pool(
         (
             ctx.accounts.token_a_mint.key(),
             ctx.accounts.token_b_mint.key(),
-            ctx.accounts.token_vault_a.key(),
-            ctx.accounts.token_vault_b.key()
+            ctx.accounts.token_a_vault.key(),
+            ctx.accounts.token_b_vault.key()
         )
     } else {
         (
             ctx.accounts.token_b_mint.key(), 
             ctx.accounts.token_a_mint.key(),
-            ctx.accounts.token_vault_b.key(),
-            ctx.accounts.token_vault_a.key()
+            ctx.accounts.token_b_vault.key(),
+            ctx.accounts.token_a_vault.key()
         )
     };
 
     pool.token_a_mint = token_a;
     pool.token_b_mint = token_b;
-    pool.token_vault_a = vault_a;
-    pool.token_vault_b = vault_b;
+    pool.token_a_vault = vault_a;
+    pool.token_b_vault = vault_b;
 
     // Set fee configuration reference
     pool.fee_config = ctx.accounts.fee_config.key();
-
-    // Initialize pool parameters
-    pool.fee_rate = fee_rate;
-    pool.protocol_fee_rate = protocol_share;
-    pool.liquidity_fee_rate = fee_rate.saturating_sub(protocol_share);
-    pool._fee_padding = [0u8; 2];
-    pool.tick_spacing = crate::utils::TickMath::get_tick_spacing_for_fee_rate(fee_rate)?;
+    pool.fee_rate = fee_rate; // IMMUTABLE: Only for PDA derivation
+    pool._fee_padding = [0u8; 6];
+    
+    // Initialize FeeConfig account
+    let fee_config = &mut ctx.accounts.fee_config;
+    fee_config.initialize(
+        ctx.accounts.pool.key(),
+        fee_rate,
+        protocol_share,
+        match fee_rate {
+            0..=500 => 10,      // 0.05% fee -> 10 tick spacing
+            501..=3000 => 60,   // 0.3% fee -> 60 tick spacing  
+            3001..=10000 => 200, // 1% fee -> 200 tick spacing
+            _ => return Err(FeelsProtocolError::InvalidFeeRate.into()),
+        },
+        ctx.accounts.authority.key(),
+    )?;
+    
+    // Set tick spacing from FeeConfig
+    pool.tick_spacing = fee_config.tick_spacing;
 
     // Set initial price and tick
     pool.current_sqrt_rate = initial_sqrt_rate;
@@ -251,16 +269,16 @@ pub fn initialize_pool(
     // Initialize pool features
     pool.oracle = Pubkey::default();
     pool.position_vault = Pubkey::default();
-    pool.dynamic_fee_config = crate::state::DynamicFeeConfig::default();
     pool.leverage_params = crate::state::LeverageParameters {
         max_leverage: 10_000_000, // 10x max (6 decimals)
         current_ceiling: 10_000_000,
-        liquidation_threshold: 8_000_000, // 80% LTV
-        protection_curve: crate::state::ProtectionCurve::Linear,
-        enabled: false,
+        protection_curve_type: crate::state::ProtectionCurveType::default(), // Linear
+        protection_curve_data: crate::state::ProtectionCurveData::default(),
+        last_ceiling_update: 0,
+        _padding: [0; 8],
     };
     pool.leverage_stats = crate::state::LeverageStatistics::default();
-    pool.volume_tracker = crate::state::VolumeTracker::new();
+    pool.volume_tracker = crate::state::VolumeTracker::default();
     pool.hook_registry = Pubkey::default();
     pool.valence_session = Pubkey::default();
     
@@ -269,7 +287,9 @@ pub fn initialize_pool(
     pool.redenomination_threshold = 5_000_000; // 5% default
     
     // Initialize reserved space
-    pool._reserved = [0u8; 224];
+    pool._reserved = [0u8; 128];
+    pool._reserved2 = [0u8; 64];
+    pool._reserved3 = [0u8; 32];
 
     // Set creation metadata
     pool.creation_timestamp = clock.unix_timestamp;
@@ -279,14 +299,14 @@ pub fn initialize_pool(
     // Update protocol statistics
     let protocol_state = &mut ctx.accounts.protocol_state;
     protocol_state.total_pools = protocol_state.total_pools.saturating_add(1);
-    protocol_state.last_updated_at = clock.unix_timestamp;
 
     msg!("Pool initialized successfully");
     msg!("Token A: {}", token_a);
     msg!("Token B: {}", token_b);
     msg!("Fee rate: {} bps", fee_rate);
     msg!("Initial sqrt price: {}", initial_sqrt_rate);
-    msg!("Initial tick: {}", pool.current_tick);
+    let current_tick = pool.current_tick;
+    msg!("Initial tick: {}", current_tick);
 
     Ok(())
 }

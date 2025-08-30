@@ -16,6 +16,8 @@ pub fn initialize_pool(
     authority: &Pubkey,
     fee_rate: u16,
     initial_sqrt_price: u128,
+    base_rate: u16,
+    protocol_share: u16,
 ) -> Instruction {
     // Derive Phase 2 account addresses
     let (enhanced_oracle, _) =
@@ -24,9 +26,12 @@ pub fn initialize_pool(
         Pubkey::find_program_address(&[b"enhanced_oracle_data", pool.as_ref()], program_id);
     let (position_vault, _) =
         Pubkey::find_program_address(&[b"position_vault", pool.as_ref()], program_id);
+    let (fee_config, _) =
+        Pubkey::find_program_address(&[b"fee_config", pool.as_ref()], program_id);
 
     let accounts = feels::accounts::InitializePool {
         pool: *pool,
+        fee_config,
         token_a_mint: *token_a_mint,
         token_b_mint: *token_b_mint,
         feelssol: *feelssol,
@@ -45,7 +50,9 @@ pub fn initialize_pool(
 
     let data = feels::instruction::InitializePool {
         fee_rate,
-        initial_sqrt_price,
+        initial_sqrt_rate: initial_sqrt_price,
+        base_rate,
+        protocol_share,
     };
 
     Instruction {

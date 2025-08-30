@@ -4,17 +4,16 @@
 /// and Leverage (risk level). Includes secure execution with TWAP oracles and reentrancy protection.
 
 use anchor_lang::prelude::*;
-use crate::utils::VALID_FEE_TIERS;
-use crate::state::{FeelsProtocolError, Pool, TickArray};
-use crate::state::metrics_price::{Oracle, calculate_volatility_safe};
+use crate::state::{FeelsProtocolError, Pool, TickArray, TickArrayRouter};
+use crate::state::Oracle;
+use crate::state::metrics_price::calculate_volatility_safe;
 use crate::logic::ConcentratedLiquidityMath;
 use crate::logic::fee_manager::FeeManager;
 use crate::utils::{
-    TickMath, FeeBreakdown, FeeGrowthMath,
+    TickMath, FeeBreakdown,
     add_liquidity_delta, get_amount_0_delta, get_amount_1_delta, MIN_SQRT_RATE_X96,
 };
 use crate::state::{Tick3D, duration::Duration};
-use crate::logic::tick::TickManager;
 
 // ============================================================================
 // Type Definitions
@@ -293,33 +292,52 @@ pub struct SecureOrderManager;
 impl SecureOrderManager {
     /// Calculate swap fees using secure oracle TWAP
     pub fn calculate_swap_fees_safe(
-        pool: &Pool,
+        fee_config: &Account<FeeConfig>,
         amount_in: u64,
         oracle: Option<&Account<Oracle>>,
         oracle_data: Option<&AccountInfo>,
     ) -> Result<FeeBreakdown> {
-        // Base fee calculation
-        let mut fee_breakdown = FeeManager::calculate_swap_fees(pool, amount_in)?;
+        use crate::logic::fee_manager::{FeeManager, FeeContext, FeeType};
         
-        // If oracle is available and healthy, apply dynamic adjustments
-        if let (Some(oracle), Some(oracle_data_acc)) = (oracle, oracle_data) {
-            if oracle.is_healthy() {
-                // Apply volatility-based fee adjustments
+        // Get volatility from oracle if available
+        let volatility_bps = if let (Some(oracle), Some(oracle_data_acc)) = (oracle, oracle_data) {
+            let current_time = Clock::get()?.unix_timestamp;
+            if !oracle.is_stale(current_time) {
+                // Get volatility multiplier and convert to basis points
                 let volatility_multiplier = Self::get_volatility_multiplier_safe(
                     oracle,
                     oracle_data_acc,
                 )?;
-                
-                // Apply multiplier to fees
-                if volatility_multiplier != 10000 {
-                    fee_breakdown.liquidity_fee = ((fee_breakdown.liquidity_fee as u128 * volatility_multiplier as u128) / 10000) as u64;
-                    fee_breakdown.protocol_fee = ((fee_breakdown.protocol_fee as u128 * volatility_multiplier as u128) / 10000) as u64;
-                    fee_breakdown.total_fee = fee_breakdown.liquidity_fee + fee_breakdown.protocol_fee;
-                }
+                // Convert multiplier to basis points (10000 = 100%)
+                Some(((volatility_multiplier as u64).saturating_sub(10000)).saturating_mul(100).saturating_div(10000))
             } else {
-                // Oracle unhealthy - use conservative defaults
-                msg!("Oracle unhealthy, using default fees");
-                
+                // Oracle unhealthy - use high volatility assumption
+                msg!("Oracle unhealthy, assuming high volatility");
+                Some(600) // 6% volatility
+            }
+        } else {
+            None
+        };
+        
+        // Build fee context
+        let context = FeeContext {
+            fee_type: FeeType::Swap,
+            amount: amount_in,
+            fee_config,
+            volatility_tracker: None,
+            lending_metrics: None,
+            position_data: None,
+            volatility_bps,
+            volume_24h: None,
+        };
+        
+        // Calculate fees using FeeManager
+        let mut fee_breakdown = FeeManager::calculate_fee(context)?;
+        
+        // If oracle is unhealthy, apply safety multiplier
+        if let Some(oracle) = oracle {
+            let current_time = Clock::get()?.unix_timestamp;
+            if oracle.is_stale(current_time) {
                 // Apply safety multiplier during oracle issues
                 let safety_multiplier = 12000u128; // 1.2x fees when oracle is down
                 fee_breakdown.liquidity_fee = ((fee_breakdown.liquidity_fee as u128 * safety_multiplier) / 10000) as u64;
@@ -345,19 +363,22 @@ impl SecureOrderManager {
         // Calculate volatility from different time windows
         let vol_5min = calculate_volatility_safe(
             oracle_data_parsed,
-            oracle.last_update_timestamp,
+            oracle.observation_count,
+            oracle.ring_index,
             300,
         )?;
         
         let vol_30min = calculate_volatility_safe(
             oracle_data_parsed,
-            oracle.last_update_timestamp,
+            oracle.observation_count,
+            oracle.ring_index,
             1800,
         )?;
         
         let vol_1hr = calculate_volatility_safe(
             oracle_data_parsed,
-            oracle.last_update_timestamp,
+            oracle.observation_count,
+            oracle.ring_index,
             3600,
         )?;
         
@@ -429,7 +450,7 @@ pub enum OracleTwapWindow {
 
 /// Helper to safely get oracle from remaining accounts
 pub fn get_oracle_from_remaining<'info>(
-    remaining_accounts: &[AccountInfo<'info>],
+    remaining_accounts: &'info [AccountInfo<'info>],
     expected_oracle_key: &Pubkey,
 ) -> Option<Account<'info, Oracle>> {
     remaining_accounts
@@ -440,7 +461,7 @@ pub fn get_oracle_from_remaining<'info>(
 
 /// Helper to get oracle data account from remaining accounts
 pub fn get_oracle_data_from_remaining<'info>(
-    remaining_accounts: &[AccountInfo<'info>],
+    remaining_accounts: &'info [AccountInfo<'info>],
     expected_data_key: &Pubkey,
 ) -> Option<&'info AccountInfo<'info>> {
     remaining_accounts
@@ -448,66 +469,44 @@ pub fn get_oracle_data_from_remaining<'info>(
         .find(|acc| acc.key() == *expected_data_key)
 }
 
+/// Helper to get tick array from router or remaining accounts
+pub fn get_tick_array_from_router_or_remaining<'info>(
+    start_tick: i32,
+    tick_array_router: Option<&Account<'info, TickArrayRouter>>,
+    remaining_accounts: &'info [AccountInfo<'info>],
+    pool_key: &Pubkey,
+    program_id: &Pubkey,
+) -> Result<Option<&'info AccountInfo<'info>>> {
+    // First, try to get from router if available
+    if let Some(router) = tick_array_router {
+        if let Some(index) = router.contains_array(start_tick) {
+            if router.is_slot_active(index) {
+                let expected_key = router.tick_arrays[index];
+                // Find the account in remaining_accounts
+                return Ok(remaining_accounts
+                    .iter()
+                    .find(|acc| acc.key() == expected_key));
+            }
+        }
+    }
+    
+    // Fallback to computing the PDA and searching in remaining_accounts
+    let (expected_pda, _) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
+        pool_key,
+        start_tick,
+        program_id,
+    );
+    
+    Ok(remaining_accounts
+        .iter()
+        .find(|acc| acc.key() == expected_pda))
+}
+
 // ============================================================================
 // Order Manager Implementation
 // ============================================================================
 
 impl OrderManager {
-    /// Calculate fees for a swap using the FeeManager with security features
-    pub fn calculate_swap_fees(
-        pool: &Pool,
-        amount_in: u64,
-        remaining_accounts: &[AccountInfo],
-    ) -> Result<FeeBreakdown> {
-        if pool.is_phase2_enabled() {
-            // Try to get secure oracle for TWAP-based fees
-            if let Ok(Some(extensions)) = pool.get_phase2_extensions() {
-                if let Some(oracle_pubkey) = extensions.oracle {
-                    let oracle = get_oracle_from_remaining(remaining_accounts, &oracle_pubkey);
-                    let oracle_data = oracle.as_ref().and_then(|o| {
-                        get_oracle_data_from_remaining(remaining_accounts, &o.data_account)
-                    });
-                    
-                    if let (Some(oracle), Some(oracle_data)) = (oracle.as_ref(), oracle_data) {
-                        return SecureOrderManager::calculate_swap_fees_safe(
-                            pool,
-                            amount_in,
-                            Some(oracle),
-                            Some(oracle_data),
-                        );
-                    }
-                }
-            }
-            
-            // Fallback to volatility-based fees
-            let volatility_bps = Self::get_oracle_volatility(pool, remaining_accounts)?;
-            
-            // Get 24h volume from extensions
-            let volume_24h = if let Ok(Some(extensions)) = pool.get_phase2_extensions() {
-                extensions
-                    .volume_tracker
-                    .volume_24h_token_a
-                    .saturating_add(extensions.volume_tracker.volume_24h_token_b)
-            } else {
-                0
-            };
-            
-            // Calculate dynamic fees
-            if volatility_bps > 0 || volume_24h > 0 {
-                FeeManager::calculate_dynamic_swap_fees(pool, amount_in, volatility_bps, volume_24h)
-            } else {
-                // Fall back to leverage-adjusted fees
-                let average_leverage = Self::calculate_average_leverage(pool)?;
-                if average_leverage > crate::state::RiskProfile::LEVERAGE_SCALE {
-                    FeeManager::calculate_swap_fees_with_leverage(pool, amount_in, average_leverage)
-                } else {
-                    FeeManager::calculate_swap_fees(pool, amount_in)
-                }
-            }
-        } else {
-            FeeManager::calculate_swap_fees(pool, amount_in)
-        }
-    }
     
     /// Execute concentrated liquidity order
     pub fn execute_concentrated_liquidity_order<'info>(
@@ -516,6 +515,8 @@ impl OrderManager {
         sqrt_rate_limit: u128,
         zero_for_one: bool,
         remaining_accounts: &'info [AccountInfo<'info>],
+        tick_array_router: Option<&Account<'info, TickArrayRouter>>,
+        program_id: &Pubkey,
     ) -> Result<u64> {
         // Adjust rate limit to ensure it's within protocol bounds
         let sqrt_rate_limit_adjusted = Self::adjust_rate_limit(sqrt_rate_limit, zero_for_one);
@@ -539,7 +540,15 @@ impl OrderManager {
             Self::update_fee_growth(pool, order_state.liquidity, step.fee_amount, zero_for_one)?;
             
             // Handle tick crossing if we hit a boundary
-            Self::handle_tick_crossing(pool, order_state, &step, zero_for_one, remaining_accounts)?;
+            Self::handle_tick_crossing(
+                pool, 
+                order_state, 
+                &step, 
+                zero_for_one, 
+                remaining_accounts,
+                tick_array_router,
+                program_id,
+            )?;
         }
         
         Ok(order_state.amount_calculated)
@@ -582,11 +591,15 @@ impl OrderManager {
     /// Update global fee growth for liquidity providers
     fn update_fee_growth(
         pool: &mut Pool,
-        liquidity: u128,
+        _liquidity: u128,
         fee_amount: u64,
         zero_for_one: bool,
     ) -> Result<()> {
-        FeeManager::update_fee_growth(pool, fee_amount, zero_for_one)
+        // Update fee growth directly on pool
+        if pool.liquidity > 0 {
+            pool.accumulate_fee_growth(fee_amount, zero_for_one)?;
+        }
+        Ok(())
     }
     
     /// Handle tick crossing or update pool state if no crossing occurred
@@ -596,6 +609,8 @@ impl OrderManager {
         step: &OrderStep,
         zero_for_one: bool,
         remaining_accounts: &'info [AccountInfo<'info>],
+        tick_array_router: Option<&Account<'info, TickArrayRouter>>,
+        program_id: &Pubkey,
     ) -> Result<()> {
         if step.sqrt_rate_next == step.sqrt_rate_target {
             // We've hit a tick boundary - cross it
@@ -605,6 +620,8 @@ impl OrderManager {
                 step.tick_next,
                 zero_for_one,
                 remaining_accounts,
+                tick_array_router,
+                program_id,
             )?;
         } else {
             // No tick crossed - just sync pool state with order state
@@ -692,46 +709,82 @@ impl OrderManager {
         tick_index: i32,
         zero_for_one: bool,
         remaining_accounts: &'info [AccountInfo<'info>],
+        tick_array_router: Option<&Account<'info, TickArrayRouter>>,
+        program_id: &Pubkey,
     ) -> Result<()> {
-        // Find the tick array containing this tick
-        for account_info in remaining_accounts.iter() {
-            // Validate account is owned by the program
-            require!(
-                account_info.owner == &crate::ID,
-                FeelsProtocolError::InvalidAccountOwner
-            );
-            
-            // Validate account has expected data length for TickArray
-            require!(
-                account_info.data_len() == std::mem::size_of::<TickArray>() + 8,
-                FeelsProtocolError::InvalidTickArray
-            );
-            
-            if let Ok(tick_array) = AccountLoader::<TickArray>::try_from(account_info) {
-                let tick_array_data = tick_array.load()?;
-                
-                if tick_array_data.contains_tick(tick_index) {
-                    let tick = tick_array_data.get_tick(tick_index)?;
-                    
-                    // Calculate liquidity delta from crossing this tick
-                    let liquidity_delta = if zero_for_one {
-                        -tick.liquidity_net
-                    } else {
-                        tick.liquidity_net
-                    };
-                    
-                    // Update active liquidity in order state
-                    let new_liquidity = add_liquidity_delta(order_state.liquidity, liquidity_delta)?;
-                    order_state.liquidity = new_liquidity;
-                    
-                    // Immediately update pool state to maintain consistency
-                    pool.liquidity = new_liquidity;
-                    pool.current_tick = tick_index;
-                    pool.current_sqrt_rate = order_state.sqrt_rate;
-                    
-                    break;
-                }
-            }
+        // Get pool key for PDA derivation
+        // Note: Pool key should be passed from the context
+        // For now, we'll derive it from pool seeds
+        let (pool_key, _) = Pubkey::find_program_address(
+            &[
+                b"pool",
+                pool.token_a_mint.as_ref(),
+                pool.token_b_mint.as_ref(),
+                &pool.fee_rate.to_le_bytes(),
+            ],
+            program_id,
+        );
+        
+        // Calculate which tick array contains this tick
+        let tick_spacing = pool.tick_spacing as i32;
+        let ticks_per_array = crate::constant::TICK_ARRAY_SIZE as i32 * tick_spacing;
+        let array_index = tick_index.div_euclid(ticks_per_array);
+        let start_tick = array_index * ticks_per_array;
+        
+        // Try to get tick array from router first, then fallback to remaining_accounts
+        let tick_array_account = get_tick_array_from_router_or_remaining(
+            start_tick,
+            tick_array_router,
+            remaining_accounts,
+            pool_key,
+            program_id,
+        )?;
+        
+        let account_info = tick_array_account
+            .ok_or(FeelsProtocolError::TickArrayNotFound)?;
+        
+        // Validate account is owned by the program
+        require!(
+            account_info.owner == program_id,
+            FeelsProtocolError::InvalidAccountOwner
+        );
+        
+        // Try to deserialize as TickArray
+        let mut tick_array_data = account_info.try_borrow_mut_data()?;
+        let tick_array = unsafe {
+            &mut *(tick_array_data.as_mut_ptr() as *mut TickArray)
+        };
+        
+        // Get the tick from the array
+        let tick = tick_array.get_tick_mut(tick_index)?;
+        
+        // Update pool liquidity based on the tick's net liquidity
+        if zero_for_one {
+            order_state.liquidity = add_liquidity_delta(
+                order_state.liquidity,
+                -tick.liquidity_net,
+            )?;
+        } else {
+            order_state.liquidity = add_liquidity_delta(
+                order_state.liquidity,
+                tick.liquidity_net,
+            )?;
+        }
+        
+        // Update the tick's fee growth outside values
+        if tick.liquidity_net != 0 {
+            tick.update_fee_growth_outside(
+                pool.fee_growth_global_a,
+                pool.fee_growth_global_b,
+                !zero_for_one,
+            )?;
+        }
+        
+        // Move to the next tick
+        if zero_for_one {
+            order_state.tick = tick_index - 1;
+        } else {
+            order_state.tick = tick_index;
         }
         
         Ok(())
@@ -739,20 +792,20 @@ impl OrderManager {
     
     /// Get oracle volatility from remaining accounts
     fn get_oracle_volatility(pool: &Pool, remaining_accounts: &[AccountInfo]) -> Result<u64> {
-        if let Ok(Some(extensions)) = pool.get_phase2_extensions() {
-            if let Some(oracle_pubkey) = extensions.oracle {
-                // Try to find oracle in remaining accounts
-                if let Some(oracle_account) = remaining_accounts
-                    .iter()
-                    .find(|acc| acc.key() == oracle_pubkey)
-                {
-                    if let Ok(oracle_data) = oracle_account.try_borrow_data() {
-                        if oracle_data.len() >= 16 {
-                            // Read volatility_basis_points at offset 8 after discriminator
-                            return Ok(u64::from_le_bytes(
-                                oracle_data[8..16].try_into().unwrap_or([0u8; 8])
-                            ));
-                        }
+        // TODO: Phase 2 - implement get_phase2_extensions
+        if pool.has_oracle() {
+            let oracle_pubkey = pool.oracle;
+            // Try to find oracle in remaining accounts
+            if let Some(oracle_account) = remaining_accounts
+                .iter()
+                .find(|acc| acc.key() == oracle_pubkey)
+            {
+                if let Ok(oracle_data) = oracle_account.try_borrow_data() {
+                    if oracle_data.len() >= 16 {
+                        // Read volatility_basis_points at offset 8 after discriminator
+                        return Ok(u64::from_le_bytes(
+                            oracle_data[8..16].try_into().unwrap_or([0u8; 8])
+                        ));
                     }
                 }
             }
@@ -762,14 +815,8 @@ impl OrderManager {
     
     /// Calculate the average leverage of active liquidity
     fn calculate_average_leverage(pool: &Pool) -> Result<u64> {
-        // Get Phase 2 extensions
-        let extensions = match pool.get_phase2_extensions()? {
-            Some(ext) => ext,
-            None => return Ok(crate::state::RiskProfile::LEVERAGE_SCALE), // Default 1x
-        };
-        
-        // Check if leverage is enabled
-        if extensions.leverage_params.max_leverage == 0 {
+        // Check if leverage is enabled directly on pool
+        if pool.leverage_params.max_leverage == 0 {
             return Ok(crate::state::RiskProfile::LEVERAGE_SCALE); // Default 1x
         }
         
@@ -783,7 +830,7 @@ impl OrderManager {
         amount_in: u64,
         amount_out: u64,
         is_token_a_to_b: bool,
-        timestamp: i64,
+        _timestamp: i64,
     ) -> Result<()> {
         if is_token_a_to_b {
             pool.total_volume_a = pool.total_volume_a
@@ -804,9 +851,9 @@ impl OrderManager {
         // Update volume tracker for Phase 2 dynamic fees
         if pool.is_phase2_enabled() {
             if is_token_a_to_b {
-                pool.update_volume_tracker(amount_in, amount_out, timestamp)?;
+                pool.update_volume_tracker(amount_in, amount_out)?;
             } else {
-                pool.update_volume_tracker(amount_out, amount_in, timestamp)?;
+                pool.update_volume_tracker(amount_out, amount_in)?;
             }
         }
         
@@ -843,8 +890,9 @@ impl OrderManager3D {
         
         // Combine components
         rate_component
-            .checked_mul(duration_component)?
-            .checked_mul(leverage_component)?
+            .checked_mul(duration_component)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_mul(leverage_component)
             .ok_or(FeelsProtocolError::MathOverflow.into())
     }
     
@@ -875,25 +923,28 @@ impl OrderManager3D {
     /// Calculate liquidity distribution across dimensions
     pub fn distribute_liquidity_3d(
         total_liquidity: u128,
-        tick_3d: &Tick3D,
+        _tick_3d: &Tick3D,
         dimension_weights: &DimensionWeights,
     ) -> Result<Liquidity3D> {
         let total_weight = dimension_weights.total_weight();
         
         // Distribute based on weights
         let rate_liquidity = total_liquidity
-            .checked_mul(dimension_weights.rate_weight as u128)?
-            .checked_div(total_weight as u128)?
+            .checked_mul(dimension_weights.rate_weight as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(total_weight as u128)
             .ok_or(FeelsProtocolError::MathOverflow)?;
             
         let duration_liquidity = total_liquidity
-            .checked_mul(dimension_weights.duration_weight as u128)?
-            .checked_div(total_weight as u128)?
+            .checked_mul(dimension_weights.duration_weight as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(total_weight as u128)
             .ok_or(FeelsProtocolError::MathOverflow)?;
             
         let leverage_liquidity = total_liquidity
-            .checked_mul(dimension_weights.leverage_weight as u128)?
-            .checked_div(total_weight as u128)?
+            .checked_mul(dimension_weights.leverage_weight as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(total_weight as u128)
             .ok_or(FeelsProtocolError::MathOverflow)?;
         
         Ok(Liquidity3D {
@@ -909,7 +960,7 @@ impl OrderManager3D {
         pool: &Pool,
         amount_in: u64,
         tick_3d: &Tick3D,
-        order_type: OrderType,
+        _order_type: OrderType,
     ) -> Result<PriceImpact3D> {
         // Get current 3D position
         let current_tick_3d = get_current_3d_tick(pool)?;
@@ -919,8 +970,9 @@ impl OrderManager3D {
         
         // Base impact from amount and liquidity
         let liquidity_impact = (amount_in as u128)
-            .checked_mul(10000)?
-            .checked_div(pool.liquidity.max(1))?
+            .checked_mul(10000)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(pool.liquidity.max(1))
             .ok_or(FeelsProtocolError::MathOverflow)? as u64;
         
         // Adjust for 3D distance
@@ -944,13 +996,13 @@ impl OrderManager3D {
         tick_3d: &Tick3D,
         amount: u64,
         leverage: u64,
-        duration: Duration,
+        _duration: Duration,
     ) -> Result<()> {
         // Validate rate bounds
         require!(
             tick_3d.rate_tick >= crate::utils::MIN_TICK && 
             tick_3d.rate_tick <= crate::utils::MAX_TICK,
-            FeelsProtocolError::InvalidTick
+            FeelsProtocolError::InvalidTickRange
         );
         
         // Validate duration - all durations are allowed in the unified system

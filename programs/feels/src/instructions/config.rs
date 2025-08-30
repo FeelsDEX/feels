@@ -3,7 +3,7 @@
 /// pool authority permissions and modify Phase 2 extension parameters.
 use anchor_lang::prelude::*;
 use crate::logic::event::{HookRegisteredEvent, HookUnregisteredEvent};
-use crate::state::{FeelsProtocolError, LeverageParameters, ProtectionCurve, HookRegistry, HookPermission};
+use crate::state::{FeelsProtocolError, LeverageParameters, ProtectionCurveType, ProtectionCurveData, RiskProfile};
 
 // ============================================================================
 // Leverage Configuration
@@ -33,27 +33,28 @@ pub fn enable_leverage(
         params.initial_ceiling >= 1_000_000 && params.initial_ceiling <= params.max_leverage,
         FeelsProtocolError::InvalidLeverage
     );
-    require!(
-        params.liquidation_threshold > 0 && params.liquidation_threshold < params.max_leverage,
-        FeelsProtocolError::InvalidLeverage
-    );
-
     // Configure leverage parameters
     pool.leverage_params = LeverageParameters {
         max_leverage: params.max_leverage,
         current_ceiling: params.initial_ceiling,
-        liquidation_threshold: params.liquidation_threshold,
-        protection_curve: params.protection_curve,
-        enabled: true,
+        protection_curve_type: ProtectionCurveType {
+            curve_type: params.protection_curve_type,
+            _padding: [0; 7],
+        },
+        protection_curve_data: ProtectionCurveData {
+            decay_rate: params.protection_curve_decay_rate,
+            points: params.protection_curve_points,
+        },
+        last_ceiling_update: Clock::get()?.slot,
+        _padding: [0; 8],
     };
 
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    // Last update tracking would go here if Pool had last_updated_at field
 
     msg!("Leverage enabled for pool");
     msg!("Max leverage: {}x", params.max_leverage / 1_000_000);
     msg!("Initial ceiling: {}x", params.initial_ceiling / 1_000_000);
-    msg!("Liquidation threshold: {}x", params.liquidation_threshold / 1_000_000);
-    msg!("Protection curve: {:?}", params.protection_curve);
+    msg!("Protection curve type: {}", params.protection_curve_type);
 
     Ok(())
 }
@@ -65,10 +66,12 @@ pub fn update_leverage_ceiling(
     ctx: Context<crate::UpdateLeverageCeiling>,
     new_ceiling: u64,
     update_protection_curve: bool,
-    protection_curve: Option<ProtectionCurve>,
+    protection_curve_type: Option<u8>,
+    protection_curve_decay_rate: Option<u64>,
+    protection_curve_points: Option<[[u64; 2]; 8]>,
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_mut()?;
-    let clock = Clock::get()?;
+    let _clock = Clock::get()?;
 
     // Validate authority
     require!(
@@ -76,9 +79,9 @@ pub fn update_leverage_ceiling(
         FeelsProtocolError::InvalidAuthority
     );
 
-    // Validate leverage is enabled
+    // Validate leverage is enabled (max_leverage > 1x means it's enabled)
     require!(
-        pool.leverage_params.enabled,
+        pool.leverage_params.max_leverage > RiskProfile::LEVERAGE_SCALE,
         FeelsProtocolError::LeverageNotEnabled
     );
 
@@ -95,13 +98,22 @@ pub fn update_leverage_ceiling(
 
     // Update protection curve if requested
     if update_protection_curve {
-        if let Some(curve) = protection_curve {
-            pool.leverage_params.protection_curve = curve;
-            msg!("Protection curve updated: {:?}", curve);
+        if let Some(curve_type) = protection_curve_type {
+            pool.leverage_params.protection_curve_type = ProtectionCurveType {
+                curve_type,
+                _padding: [0; 7],
+            };
+            if let Some(decay_rate) = protection_curve_decay_rate {
+                pool.leverage_params.protection_curve_data.decay_rate = decay_rate;
+            }
+            if let Some(points) = protection_curve_points {
+                pool.leverage_params.protection_curve_data.points = points;
+            }
+            msg!("Protection curve updated: type={}", curve_type);
         }
     }
 
-    pool.last_updated_at = clock.unix_timestamp;
+    // Last update tracking would go here if Pool had last_updated_at field
 
     msg!("Leverage ceiling updated");
     msg!("Old ceiling: {}x", old_ceiling / 1_000_000);
@@ -136,21 +148,21 @@ pub fn register_hook(
 
     // Validate hook program is not zero
     require!(
-        params.hook_program != Pubkey::default(),
-        FeelsProtocolError::InvalidAccount
+        ctx.accounts.hook_program.key() != Pubkey::default(),
+        FeelsProtocolError::InvalidPool
     );
 
     // Validate event and stage masks are not zero
     require!(
         params.event_mask > 0 && params.stage_mask > 0,
-        FeelsProtocolError::InvalidParameter
+        FeelsProtocolError::InvalidAmount
     );
 
     // Register the hook
     let hook_index = registry.register_hook(
-        params.hook_program,
+        ctx.accounts.hook_program.key(),
         params.event_mask,
-        params.stage_mask,
+        params.stage_mask as u8,
         params.permission,
     )?;
 
@@ -159,16 +171,16 @@ pub fn register_hook(
     // Emit hook registration event
     emit!(HookRegisteredEvent {
         pool: registry.pool,
-        hook_program: params.hook_program,
+        hook_program: ctx.accounts.hook_program.key(),
         event_mask: params.event_mask,
-        stage_mask: params.stage_mask,
+        stage_mask: params.stage_mask as u8,
         permission: params.permission as u8,
         index: hook_index as u8,
         timestamp: clock.unix_timestamp,
     });
 
     msg!("Hook registered successfully");
-    msg!("Hook program: {}", params.hook_program);
+    msg!("Hook program: {}", ctx.accounts.hook_program.key());
     msg!("Event mask: 0b{:08b}", params.event_mask);
     msg!("Stage mask: 0b{:04b}", params.stage_mask);
     msg!("Permission: {:?}", params.permission);
@@ -194,7 +206,7 @@ pub fn unregister_hook(
     // Validate hook index
     require!(
         hook_index < registry.hook_count,
-        FeelsProtocolError::InvalidParameter
+        FeelsProtocolError::InvalidAmount
     );
 
     // Get hook info before removal for event
@@ -215,7 +227,6 @@ pub fn unregister_hook(
     emit!(HookUnregisteredEvent {
         pool: registry.pool,
         hook_program: hook.program_id,
-        index: hook_index,
         timestamp: clock.unix_timestamp,
     });
 

@@ -4,12 +4,12 @@
 /// Protection curves determine loss limits and losses cascade from highest to lowest leverage.
 use anchor_lang::prelude::*;
 use std::collections::BTreeMap;
-use crate::{execute_hooks, execute_post_hooks};
-use crate::logic::event::{RedenominationEvent};
+use crate::logic::event::RedenominationEvent;
 use crate::logic::hook::{HookContextBuilder, EVENT_REDENOMINATION};
-use crate::state::{FeelsProtocolError, RiskProfile, Tick3D, Pool};
-use crate::state::reentrancy::{ReentrancyGuard, ReentrancyStatus};
-use crate::logic::order::{SecureOrderManager, get_oracle_from_remaining};
+use crate::{execute_hooks, execute_post_hooks};
+use crate::state::{FeelsProtocolError, RiskProfile, Pool};
+use crate::state::reentrancy::ReentrancyStatus;
+use crate::logic::order::get_oracle_from_remaining;
 
 // ============================================================================
 // Parameters
@@ -44,7 +44,7 @@ pub fn handler<'info>(
     
     // 1.1 Only authorized redenomination triggers can call this
     require!(
-        ctx.accounts.authority.key() == ctx.accounts.pool.load()?.redenomination_authority ||
+        ctx.accounts.authority.key() == ctx.accounts.pool.load()?.authority /* redenomination_authority */ ||
         ctx.accounts.authority.key() == ctx.accounts.protocol.authority,
         FeelsProtocolError::UnauthorizedRedenomination
     );
@@ -59,7 +59,7 @@ pub fn handler<'info>(
     );
     
     // Check cooldown period (can't redenominate too frequently)
-    let last_redenomination = pool.last_redenomination_slot;
+    let last_redenomination = pool.last_redenomination as u64;
     let cooldown_slots = 7200; // ~1 hour at 2 slots/second
     require!(
         clock.slot >= last_redenomination.saturating_add(cooldown_slots),
@@ -72,12 +72,14 @@ pub fn handler<'info>(
         current_status == ReentrancyStatus::Unlocked,
         FeelsProtocolError::ReentrancyDetected
     );
-    pool.set_reentrancy_status(ReentrancyStatus::Locked)?
+    pool.set_reentrancy_status(ReentrancyStatus::Locked)?;
     
     // 1.4 Get secure oracle for validation
-    let oracle = pool.oracle.and_then(|oracle_pubkey| {
-        get_oracle_from_remaining(ctx.remaining_accounts, &oracle_pubkey)
-    });
+    let oracle = if pool.oracle != Pubkey::default() {
+        get_oracle_from_remaining(ctx.remaining_accounts, &pool.oracle)
+    } else {
+        None
+    };
     
     // 1.5 Validate market loss against oracle
     if let Some(oracle) = &oracle {
@@ -116,7 +118,8 @@ pub fn handler<'info>(
         }
         
         // Calculate risk profile for this leverage tier
-        let risk_profile = RiskProfile::from_leverage(*leverage, &pool)?;
+        let leverage_params = pool.leverage_params;
+        let risk_profile = RiskProfile::from_leverage(*leverage, &leverage_params)?;
         
         // Calculate total value at this leverage level
         let total_value_at_leverage: u128 = orders
@@ -171,10 +174,12 @@ pub fn handler<'info>(
     
     if !params.simulation_mode {
         // 4.1 Update pool state
-        pool.total_redenominated_value = pool.total_redenominated_value
-            .saturating_add(params.market_loss.saturating_sub(remaining_loss));
-        pool.last_redenomination_slot = clock.slot;
-        pool.redenomination_count += 1;
+        // TODO: Phase 3 - add total_redenominated_value field to Pool
+        // pool.total_redenominated_value = pool.total_redenominated_value
+        //     .saturating_add(params.market_loss.saturating_sub(remaining_loss));
+        pool.last_redenomination = clock.slot as i64;
+        // TODO: Phase 3 - add redenomination_count field to Pool
+        // pool.redenomination_count += 1;
         
         // 4.2 Apply to individual orders
         apply_redenomination_to_orders(
@@ -317,7 +322,7 @@ fn validate_market_loss(
 /// Get order distribution from pool
 fn get_order_distribution(
     pool: &Pool,
-    remaining_accounts: &[AccountInfo],
+    _remaining_accounts: &[AccountInfo],
 ) -> Result<Vec<OrderInfo>> {
     // Scan actual order accounts from remaining_accounts
     let mut orders = Vec::new();
@@ -341,9 +346,9 @@ fn get_order_distribution(
 
 /// Apply redenomination to actual orders
 fn apply_redenomination_to_orders(
-    pool: &mut Pool,
+    _pool: &mut Pool,
     details: &[RedenominationDetail],
-    remaining_accounts: &[AccountInfo],
+    _remaining_accounts: &[AccountInfo],
 ) -> Result<()> {
     // Update each order account based on redenomination details
     // TODO: Implement actual order account updates
@@ -364,7 +369,8 @@ fn apply_redenomination_to_orders(
 /// Recalculate pool liquidity after redenomination
 fn recalculate_pool_liquidity(pool: &mut Pool) -> Result<()> {
     // Liquidity adjustment based on leveraged position reductions
-    let redenomination_impact = pool.total_redenominated_value
+    // TODO: Phase 3 - use pool.total_redenominated_value when field is added
+    let redenomination_impact = 0u128 // placeholder for pool.total_redenominated_value
         .saturating_mul(100)
         .saturating_div(pool.liquidity.max(1));
     
@@ -428,7 +434,7 @@ fn build_redenomination_hook_context(
 // Types
 // ============================================================================
 
-#[derive(Debug)]
+#[derive(Debug, AnchorSerialize, AnchorDeserialize)]
 pub struct RedenominationResult {
     /// Total loss actually distributed
     pub total_loss_distributed: u128,
@@ -444,7 +450,7 @@ pub struct RedenominationResult {
     pub details: Option<Vec<RedenominationDetail>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
 pub struct RedenominationDetail {
     pub order_id: Pubkey,
     pub leverage: u64,
@@ -459,6 +465,7 @@ struct OrderInfo {
     pub order_id: Pubkey,
     pub leverage: u64,
     pub value: u64,
+    #[allow(dead_code)]
     pub owner: Pubkey,
 }
 
@@ -466,9 +473,9 @@ struct OrderInfo {
 impl Pool {
     pub fn get_redenomination_stats(&self) -> RedenominationStats {
         RedenominationStats {
-            total_redenominated: self.total_redenominated_value,
-            count: self.redenomination_count,
-            last_slot: self.last_redenomination_slot,
+            total_redenominated: 0u128, // TODO: Phase 3 - use self.total_redenominated_value
+            count: 0u32, // TODO: Phase 3 - use self.redenomination_count
+            last_slot: self.last_redenomination as u64,
         }
     }
 }
@@ -480,6 +487,7 @@ pub struct RedenominationStats {
 }
 
 // These fields would be added to Pool in production
+#[allow(dead_code)]
 trait PoolRedenomination {
     fn total_redenominated_value(&self) -> u128;
     fn last_redenomination_slot(&self) -> u64;

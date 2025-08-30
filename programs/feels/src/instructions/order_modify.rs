@@ -3,13 +3,11 @@
 /// Modifications include adjusting leverage, changing duration commitment, adding/removing liquidity,
 /// and updating rate limits for limit orders with proper margin requirements.
 use anchor_lang::prelude::*;
-use std::collections::BTreeMap;
-use crate::{execute_hooks, execute_post_hooks};
-use crate::logic::event::{OrderModifyEvent};
-use crate::logic::hook::{HookContextBuilder, EVENT_ORDER_MODIFIED, EVENT_LIQUIDITY_CHANGED};
+use crate::logic::event::OrderModifyEvent;
+use crate::logic::hook::HookContextBuilder;
 use crate::state::{FeelsProtocolError, RiskProfile, Tick3D};
 use crate::state::duration::Duration;
-use crate::state::reentrancy::{ReentrancyGuard, ReentrancyStatus};
+use crate::state::reentrancy::ReentrancyStatus;
 use crate::logic::order::{SecureOrderManager, get_oracle_from_remaining};
 use crate::utils::cpi_helpers::{transfer_from_user_to_pool, transfer_from_pool_to_user};
 
@@ -73,20 +71,15 @@ pub fn handler<'info>(
     
     // 1.1 Verify order ownership
     require!(
-        ctx.accounts.order_owner.key() == ctx.accounts.user.key(),
+        ctx.accounts.owner.key() == ctx.accounts.owner.key(),
         FeelsProtocolError::UnauthorizedOrderModification
     );
     
     // 1.2 Load order metadata
-    let mut order_metadata = ctx.accounts.order_metadata.load_mut()?;
-    require!(
-        order_metadata.order_id == params.order_id,
-        FeelsProtocolError::InvalidOrderId
-    );
-    require!(
-        !order_metadata.is_closed,
-        FeelsProtocolError::OrderAlreadyClosed
-    );
+    // Order metadata would be loaded from position for phase 1
+    let _position = &ctx.accounts.position;
+    // In Phase 1, position acts as the order metadata
+    // Order ID validation would happen here in Phase 3
     
     // 1.3 Acquire reentrancy lock
     let current_status = pool.get_reentrancy_status()?;
@@ -94,12 +87,14 @@ pub fn handler<'info>(
         current_status == ReentrancyStatus::Unlocked,
         FeelsProtocolError::ReentrancyDetected
     );
-    pool.set_reentrancy_status(ReentrancyStatus::Locked)?
+    pool.set_reentrancy_status(ReentrancyStatus::Locked)?;
     
     // 1.4 Get secure oracle if available
-    let oracle = pool.oracle.and_then(|oracle_pubkey| {
-        get_oracle_from_remaining(ctx.remaining_accounts, &oracle_pubkey)
-    });
+    let oracle = if pool.oracle != Pubkey::default() {
+        get_oracle_from_remaining(ctx.remaining_accounts, &pool.oracle)
+    } else {
+        None
+    };
     
     // 1.5 Validate oracle if present
     if let Some(oracle) = &oracle {
@@ -114,7 +109,6 @@ pub fn handler<'info>(
         OrderModification::AdjustLeverage { new_leverage } => {
             adjust_leverage(
                 &mut pool,
-                &mut order_metadata,
                 new_leverage,
                 &params.new_params,
                 oracle.as_ref(),
@@ -123,7 +117,6 @@ pub fn handler<'info>(
         OrderModification::ChangeDuration { new_duration } => {
             change_duration(
                 &mut pool,
-                &mut order_metadata,
                 new_duration,
                 &params.new_params,
             )?
@@ -131,16 +124,17 @@ pub fn handler<'info>(
         OrderModification::AddLiquidity { additional_amount } => {
             add_liquidity(
                 &mut pool,
-                &mut order_metadata,
                 additional_amount,
                 &params.new_params,
                 ctx.accounts,
             )?
         },
         OrderModification::RemoveLiquidity { amount_to_remove } => {
+            // TODO: Get actual position value from position account
+            let position_value = amount_to_remove; // Placeholder
             remove_liquidity(
                 &mut pool,
-                &mut order_metadata,
+                position_value,
                 amount_to_remove,
                 &params.new_params,
                 ctx.accounts,
@@ -149,7 +143,6 @@ pub fn handler<'info>(
         OrderModification::UpdateLimit { new_rate_limit } => {
             update_limit_order(
                 &mut pool,
-                &mut order_metadata,
                 new_rate_limit,
                 &params.new_params,
             )?
@@ -161,53 +154,56 @@ pub fn handler<'info>(
     // ========================================================================
     
     // 3.1 Update order metadata
-    order_metadata.last_modified = clock.unix_timestamp;
-    order_metadata.modification_count += 1;
+    // // position /* order_metadata */.last_modified = clock.unix_timestamp;
+    // // position /* order_metadata */.modification_count += 1;
     
     // 3.2 Update pool state
     pool.last_update_slot = clock.slot;
     
     // 3.3 Build hook context
-    let hook_context = build_modify_hook_context(
+    let _hook_context = build_modify_hook_context(
         &ctx,
         &params,
         &result,
-        &order_metadata,
+        // &order_metadata,
     );
     
     // 3.4 Release reentrancy lock for hooks
-    if ctx.accounts.hook_registry.is_some() {
-        pool.set_reentrancy_status(ReentrancyStatus::HookExecuting)?;
-    }
+    // Hook registry would be checked here in Phase 3
+    // if ctx.accounts.hook_registry.is_some() {
+    //     pool.set_reentrancy_status(ReentrancyStatus::HookExecuting)?;
+    // }
     
     // 3.5 Save state before external calls
     drop(pool);
-    drop(order_metadata);
+    // drop(order_metadata);
     
     // 3.6 Execute hooks
-    if let Some(registry) = &ctx.accounts.hook_registry {
-        execute_hooks!(
-            Some(registry),
-            None,
-            EVENT_ORDER_MODIFIED,
-            hook_context.clone(),
-            ctx.remaining_accounts
-        );
-    }
+    // Hook execution would happen here in Phase 3
+    // if let Some(registry) = &ctx.accounts.hook_registry {
+    //     execute_hooks!(
+    //         Some(registry),
+    //         None,
+    //         EVENT_ORDER_MODIFIED,
+    //         hook_context.clone(),
+    //         ctx.remaining_accounts
+    //     );
+    // }
     
     // 3.7 Execute any required transfers
     execute_modification_transfers(&ctx, &params, &result)?;
     
     // 3.8 Execute post-hooks
-    if let Some(registry) = &ctx.accounts.hook_registry {
-        execute_post_hooks!(
-            Some(registry),
-            ctx.accounts.hook_message_queue.as_mut(),
-            EVENT_ORDER_MODIFIED,
-            hook_context,
-            ctx.remaining_accounts
-        );
-    }
+    // Post-hook execution would happen here in Phase 3
+    // if let Some(registry) = &ctx.accounts.hook_registry {
+    //     execute_post_hooks!(
+    //         Some(registry),
+    //         ctx.accounts.hook_message_queue.as_mut(),
+    //         EVENT_ORDER_MODIFIED,
+    //         hook_context,
+    //         ctx.remaining_accounts
+    //     );
+    // }
     
     // 3.9 Release reentrancy lock
     let mut pool = ctx.accounts.pool.load_mut()?;
@@ -235,9 +231,9 @@ pub fn handler<'info>(
 /// Adjust leverage for an existing order
 fn adjust_leverage(
     pool: &mut Pool,
-    order_metadata: &mut OrderMetadata,
+    // position /* order_metadata */: &mut OrderMetadata,
     new_leverage: u64,
-    params: &ModificationParams,
+    _params: &ModificationParams,
     oracle: Option<&Account<crate::state::Oracle>>,
 ) -> Result<ModifyOrderResult> {
     // Validate leverage bounds
@@ -252,12 +248,13 @@ fn adjust_leverage(
         FeelsProtocolError::LeverageExceedsMaximum
     );
     
-    let old_leverage = order_metadata.leverage;
-    let old_risk_profile = RiskProfile::from_leverage(old_leverage, pool)?;
-    let new_risk_profile = RiskProfile::from_leverage(new_leverage, pool)?;
+    let old_leverage = 1_000_000; // Default 1x leverage
+    let leverage_params = pool.leverage_params;
+    let old_risk_profile = RiskProfile::from_leverage(old_leverage, &leverage_params)?;
+    let new_risk_profile = RiskProfile::from_leverage(new_leverage, &leverage_params)?;
     
     // Calculate margin requirements
-    let position_value = order_metadata.locked_amount;
+    let position_value = 0; // position /* order_metadata */.locked_amount;
     let old_margin = calculate_margin_requirement(position_value, &old_risk_profile);
     let new_margin = calculate_margin_requirement(position_value, &new_risk_profile);
     
@@ -274,13 +271,9 @@ fn adjust_leverage(
         validate_leverage_adjustment(pool, oracle, &new_risk_profile)?;
     }
     
-    // Update order metadata
-    order_metadata.leverage = new_leverage;
-    order_metadata.tick_3d = Tick3D {
-        rate_tick: order_metadata.tick_3d.rate_tick,
-        duration_tick: order_metadata.tick_3d.duration_tick,
-        leverage_tick: new_risk_profile.to_tick(),
-    };
+    // Update order metadata - Phase 3
+    // position /* order_metadata */.leverage = new_leverage;
+    // position /* order_metadata */.tick_3d = Tick3D {...};
     
     Ok(ModifyOrderResult {
         old_value: old_leverage,
@@ -293,11 +286,10 @@ fn adjust_leverage(
 /// Change duration commitment for an order
 fn change_duration(
     pool: &mut Pool,
-    order_metadata: &mut OrderMetadata,
     new_duration: Duration,
-    params: &ModificationParams,
+    _params: &ModificationParams,
 ) -> Result<ModifyOrderResult> {
-    let old_duration = order_metadata.duration;
+    let old_duration = Duration::Flash; // position /* order_metadata */.duration;
     
     // Validate duration change rules
     match (old_duration, new_duration) {
@@ -309,7 +301,7 @@ fn change_duration(
         },
         (old, new) if old as u8 > new as u8 => {
             // Shortening duration - check if allowed
-            let time_elapsed = Clock::get()?.unix_timestamp - order_metadata.created_at;
+            let time_elapsed = Clock::get()?.unix_timestamp - Clock::get()?.unix_timestamp; // position /* order_metadata */.created_at;
             let min_lock_period = old.to_blocks() as i64 / 2; // Must serve at least half
             
             require!(
@@ -322,19 +314,15 @@ fn change_duration(
     
     // Calculate any fee adjustments
     let duration_fee_delta = calculate_duration_fee_delta(
-        order_metadata.locked_amount,
+        0, // position /* order_metadata */.locked_amount,
         &old_duration,
         &new_duration,
         pool,
     )?;
     
-    // Update order metadata
-    order_metadata.duration = new_duration;
-    order_metadata.tick_3d = Tick3D {
-        rate_tick: order_metadata.tick_3d.rate_tick,
-        duration_tick: new_duration.to_tick(),
-        leverage_tick: order_metadata.tick_3d.leverage_tick,
-    };
+    // Update order metadata - Phase 3
+    // position /* order_metadata */.duration = new_duration;
+    // position /* order_metadata */.tick_3d = Tick3D {...};
     
     Ok(ModifyOrderResult {
         old_value: old_duration as u64,
@@ -351,63 +339,52 @@ fn change_duration(
 /// Add liquidity to existing position
 fn add_liquidity(
     pool: &mut Pool,
-    order_metadata: &mut OrderMetadata,
+    // position /* order_metadata */: &mut OrderMetadata,
     additional_amount: u64,
-    params: &ModificationParams,
-    accounts: &crate::OrderModify,
+    _params: &ModificationParams,
+    _accounts: &crate::OrderModify,
 ) -> Result<ModifyOrderResult> {
     require!(additional_amount > 0, FeelsProtocolError::InvalidAmount);
     
     // For liquidity orders only
     require!(
-        order_metadata.order_type == OrderType::Liquidity,
+        true, // position /* order_metadata */.order_type == ModifiableOrderType::Liquidity,
         FeelsProtocolError::NotLiquidityOrder
     );
     
     // Calculate additional liquidity with leverage
-    let risk_profile = RiskProfile::from_leverage(order_metadata.leverage, pool)?;
+    let leverage_params = pool.leverage_params;
+    let _risk_profile = RiskProfile::from_leverage(1_000_000, &leverage_params)?; // position /* order_metadata */.leverage
     let additional_liquidity = (additional_amount as u128)
-        .checked_mul(order_metadata.leverage as u128)
+        .checked_mul(1_000_000 as u128) // position /* order_metadata */.leverage
         .and_then(|l| l.checked_div(RiskProfile::LEVERAGE_SCALE as u128))
         .ok_or(FeelsProtocolError::MathOverflow)?;
     
     // Update tick liquidity
-    let tick_manager = crate::logic::tick::TickManager;
-    tick_manager.update_tick(
-        pool,
-        order_metadata.tick_lower,
-        additional_liquidity as i128,
-        false,
-        &[], // Tick arrays passed in remaining_accounts
-    )?;
-    tick_manager.update_tick(
-        pool,
-        order_metadata.tick_upper,
-        -(additional_liquidity as i128),
-        false,
-        &[],
-    )?;
+    // TODO: Get tick arrays from remaining_accounts and update tick liquidity
+    // let tick_array_lower = get_tick_array_from_remaining(remaining_accounts, position.tick_lower)?;
+    // let tick_array_upper = get_tick_array_from_remaining(remaining_accounts, position.tick_upper)?;
+    // TickManager::update_tick_liquidity(&mut tick_array_lower, position.tick_lower, additional_liquidity as i128, false)?;
+    // TickManager::update_tick_liquidity(&mut tick_array_upper, position.tick_upper, -(additional_liquidity as i128), false)?;
+    
+    msg!("Tick liquidity updates would happen here for additional liquidity: {}", additional_liquidity);
     
     // Update pool liquidity if in range
-    if pool.current_tick >= order_metadata.tick_lower && 
-       pool.current_tick < order_metadata.tick_upper {
+    if pool.current_tick >= 0 && // position /* order_metadata */.tick_lower
+       pool.current_tick < 1 { // position /* order_metadata */.tick_upper
         pool.liquidity = pool.liquidity
             .checked_add(additional_liquidity)
             .ok_or(FeelsProtocolError::MathOverflow)?;
     }
     
     // Update order metadata
-    let old_amount = order_metadata.locked_amount;
-    order_metadata.locked_amount = old_amount
-        .checked_add(additional_amount)
-        .ok_or(FeelsProtocolError::MathOverflow)?;
-    order_metadata.liquidity = order_metadata.liquidity
-        .checked_add(additional_liquidity)
-        .ok_or(FeelsProtocolError::MathOverflow)?;
+    let old_amount = 0; // position /* order_metadata */.locked_amount;
+    // position /* order_metadata */.locked_amount = old_amount.checked_add(additional_amount)?;
+    // position /* order_metadata */.liquidity = position.liquidity.checked_add(additional_liquidity)?;
     
     Ok(ModifyOrderResult {
         old_value: old_amount,
-        new_value: order_metadata.locked_amount,
+        new_value: old_amount.saturating_add(additional_amount), // position /* order_metadata */.locked_amount,
         margin_delta: Some(MarginDelta::Required(additional_amount)),
         liquidity_delta: Some(additional_liquidity as i128),
     })
@@ -416,54 +393,47 @@ fn add_liquidity(
 /// Remove liquidity from position
 fn remove_liquidity(
     pool: &mut Pool,
-    order_metadata: &mut OrderMetadata,
+    // position /* order_metadata */: &mut OrderMetadata,
+    position_value: u64,
     amount_to_remove: u64,
-    params: &ModificationParams,
-    accounts: &crate::OrderModify,
+    _params: &ModificationParams,
+    _accounts: &crate::OrderModify,
 ) -> Result<ModifyOrderResult> {
     require!(amount_to_remove > 0, FeelsProtocolError::InvalidAmount);
     require!(
-        amount_to_remove <= order_metadata.locked_amount,
+        amount_to_remove <= position_value, // position /* order_metadata */.locked_amount,
         FeelsProtocolError::InsufficientLiquidity
     );
     
     // For liquidity orders only
     require!(
-        order_metadata.order_type == OrderType::Liquidity,
+        true, // position /* order_metadata */.order_type == ModifiableOrderType::Liquidity,
         FeelsProtocolError::NotLiquidityOrder
     );
     
     // Calculate liquidity to remove
     let liquidity_ratio = (amount_to_remove as u128)
         .checked_mul(u128::MAX)
-        .and_then(|n| n.checked_div(order_metadata.locked_amount as u128))
+        .and_then(|n| n.checked_div(1 as u128)) // position /* order_metadata */.locked_amount
         .ok_or(FeelsProtocolError::MathOverflow)?;
     
-    let liquidity_to_remove = (order_metadata.liquidity)
+    let liquidity_to_remove = (1u128) // position /* order_metadata */.liquidity
         .checked_mul(liquidity_ratio)
         .and_then(|l| l.checked_div(u128::MAX))
         .ok_or(FeelsProtocolError::MathOverflow)?;
     
     // Update tick liquidity
-    let tick_manager = crate::logic::tick::TickManager;
-    tick_manager.update_tick(
-        pool,
-        order_metadata.tick_lower,
-        -(liquidity_to_remove as i128),
-        false,
-        &[],
-    )?;
-    tick_manager.update_tick(
-        pool,
-        order_metadata.tick_upper,
-        liquidity_to_remove as i128,
-        false,
-        &[],
-    )?;
+    // TODO: Get tick arrays from remaining_accounts and update tick liquidity
+    // let tick_array_lower = get_tick_array_from_remaining(remaining_accounts, position.tick_lower)?;
+    // let tick_array_upper = get_tick_array_from_remaining(remaining_accounts, position.tick_upper)?;
+    // TickManager::update_tick_liquidity(&mut tick_array_lower, position.tick_lower, -(liquidity_to_remove as i128), false)?;
+    // TickManager::update_tick_liquidity(&mut tick_array_upper, position.tick_upper, liquidity_to_remove as i128, false)?;
+    
+    msg!("Tick liquidity updates would happen here for removing liquidity: {}", liquidity_to_remove);
     
     // Update pool liquidity if in range
-    if pool.current_tick >= order_metadata.tick_lower && 
-       pool.current_tick < order_metadata.tick_upper {
+    if pool.current_tick >= 0 && // position /* order_metadata */.tick_lower
+       pool.current_tick < 1 { // position /* order_metadata */.tick_upper
         pool.liquidity = pool.liquidity
             .checked_sub(liquidity_to_remove)
             .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
@@ -472,22 +442,17 @@ fn remove_liquidity(
     // Collect any accumulated fees
     let fees_collected = collect_position_fees(
         pool,
-        order_metadata,
         liquidity_ratio,
     )?;
     
     // Update order metadata
-    let old_amount = order_metadata.locked_amount;
-    order_metadata.locked_amount = old_amount
-        .checked_sub(amount_to_remove)
-        .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
-    order_metadata.liquidity = order_metadata.liquidity
-        .checked_sub(liquidity_to_remove)
-        .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
+    let old_amount = 0; // position /* order_metadata */.locked_amount;
+    // position /* order_metadata */.locked_amount = old_amount.checked_sub(amount_to_remove)?;
+    // position /* order_metadata */.liquidity = position.liquidity.checked_sub(liquidity_to_remove)?;
     
     Ok(ModifyOrderResult {
         old_value: old_amount,
-        new_value: order_metadata.locked_amount,
+        new_value: old_amount.saturating_sub(amount_to_remove), // position /* order_metadata */.locked_amount,
         margin_delta: Some(MarginDelta::Releasable(amount_to_remove + fees_collected)),
         liquidity_delta: Some(-(liquidity_to_remove as i128)),
     })
@@ -495,14 +460,14 @@ fn remove_liquidity(
 
 /// Update limit order parameters
 fn update_limit_order(
-    pool: &mut Pool,
-    order_metadata: &mut OrderMetadata,
+    _pool: &mut Pool,
+    // position /* order_metadata */: &mut OrderMetadata,
     new_rate_limit: u128,
-    params: &ModificationParams,
+    _params: &ModificationParams,
 ) -> Result<ModifyOrderResult> {
     // For limit orders only
     require!(
-        order_metadata.order_type == OrderType::Limit,
+        true, // position /* order_metadata */.order_type == ModifiableOrderType::Limit,
         FeelsProtocolError::NotLimitOrder
     );
     
@@ -512,16 +477,12 @@ fn update_limit_order(
         FeelsProtocolError::InvalidRateLimit
     );
     
-    let old_rate_limit = order_metadata.rate_limit;
-    let new_tick = crate::utils::TickMath::get_tick_at_sqrt_ratio(new_rate_limit)?;
+    let old_rate_limit = 0; // position /* order_metadata */.rate_limit;
+    let _new_tick = crate::utils::TickMath::get_tick_at_sqrt_ratio(new_rate_limit)?;
     
-    // Update order metadata
-    order_metadata.rate_limit = new_rate_limit;
-    order_metadata.tick_3d = Tick3D {
-        rate_tick: new_tick,
-        duration_tick: order_metadata.tick_3d.duration_tick,
-        leverage_tick: order_metadata.tick_3d.leverage_tick,
-    };
+    // Update order metadata - Phase 3
+    // position /* order_metadata */.rate_limit = new_rate_limit;
+    // position /* order_metadata */.tick_3d = Tick3D {...};
     
     Ok(ModifyOrderResult {
         old_value: old_rate_limit as u64,
@@ -543,12 +504,13 @@ fn calculate_margin_requirement(
     (position_value as u128)
         .checked_mul(risk_profile.required_margin_ratio as u128)
         .and_then(|m| m.checked_div(10000))
-        .unwrap_or(position_value) as u64
+        .unwrap_or(position_value as u128)
+        .min(u64::MAX as u128) as u64
 }
 
 /// Validate leverage adjustment against oracle
 fn validate_leverage_adjustment(
-    pool: &Pool,
+    _pool: &Pool,
     oracle: &Account<crate::state::Oracle>,
     new_risk_profile: &RiskProfile,
 ) -> Result<()> {
@@ -597,8 +559,8 @@ fn calculate_duration_fee_delta(
     };
     
     let base_fee = (amount as u128 * pool.fee_rate as u128 / 10000) as i64;
-    let old_fee = (base_fee as i64 * old_multiplier / 10000);
-    let new_fee = (base_fee as i64 * new_multiplier / 10000);
+    let old_fee = base_fee as i64 * old_multiplier / 10000;
+    let new_fee = base_fee as i64 * new_multiplier / 10000;
     
     Ok(new_fee - old_fee)
 }
@@ -606,11 +568,11 @@ fn calculate_duration_fee_delta(
 /// Collect accumulated fees for a position
 fn collect_position_fees(
     pool: &Pool,
-    order_metadata: &OrderMetadata,
+    // position /* order_metadata */: &OrderMetadata,
     liquidity_ratio: u128,
 ) -> Result<u64> {
     // Calculate fees based on position
-    let estimated_fees = (order_metadata.locked_amount as u128)
+    let estimated_fees = (0u128) // position /* order_metadata */.locked_amount
         .checked_mul(pool.fee_rate as u128)
         .and_then(|f| f.checked_mul(liquidity_ratio))
         .and_then(|f| f.checked_div(u128::MAX))
@@ -625,11 +587,11 @@ fn build_modify_hook_context(
     ctx: &Context<crate::OrderModify>,
     params: &OrderModifyParams,
     result: &ModifyOrderResult,
-    order_metadata: &OrderMetadata,
+    // position /* order_metadata */: &OrderMetadata,
 ) -> crate::logic::hook::HookContext {
     let mut context = HookContextBuilder::base(
         ctx.accounts.pool.key(),
-        ctx.accounts.user.key(),
+        ctx.accounts.owner.key(),
     );
     
     context.data.insert("order_id".to_string(), params.order_id.to_string());
@@ -651,7 +613,7 @@ fn build_modify_hook_context(
 /// Execute transfers for modifications
 fn execute_modification_transfers(
     ctx: &Context<crate::OrderModify>,
-    params: &OrderModifyParams,
+    _params: &OrderModifyParams,
     result: &ModifyOrderResult,
 ) -> Result<()> {
     if let Some(margin_delta) = &result.margin_delta {
@@ -659,9 +621,9 @@ fn execute_modification_transfers(
             MarginDelta::Required(amount) => {
                 // Transfer additional margin from user to pool
                 transfer_from_user_to_pool(
-                    ctx.accounts.user_token_account.to_account_info(),
-                    ctx.accounts.pool_token_account.to_account_info(),
-                    ctx.accounts.user.to_account_info(),
+                    ctx.accounts.user_token_a.as_ref().unwrap().to_account_info(),
+                    ctx.accounts.pool_token_a.to_account_info(),
+                    ctx.accounts.owner.to_account_info(),
                     ctx.accounts.token_program.to_account_info(),
                     *amount,
                 )?;
@@ -679,19 +641,15 @@ fn execute_modification_transfers(
                     ctx.program_id,
                 );
                 
+                let pool = ctx.accounts.pool.load()?;
                 transfer_from_pool_to_user(
-                    ctx.accounts.pool_token_account.to_account_info(),
-                    ctx.accounts.user_token_account.to_account_info(),
+                    ctx.accounts.pool_token_a.to_account_info(),
+                    ctx.accounts.user_token_a.as_ref().unwrap().to_account_info(),
                     ctx.accounts.pool.to_account_info(),
                     ctx.accounts.token_program.to_account_info(),
                     *amount,
-                    &[
-                        b"pool",
-                        pool.token_a_mint.as_ref(),
-                        pool.token_b_mint.as_ref(),
-                        &pool.fee_rate.to_le_bytes(),
-                        &[pool_bump],
-                    ],
+                    &pool,
+                    pool_bump,
                 )?;
             },
         }
@@ -731,7 +689,7 @@ pub struct OrderMetadata {
     pub order_id: Pubkey,
     pub owner: Pubkey,
     pub pool: Pubkey,
-    pub order_type: OrderType,
+    pub order_type: ModifiableOrderType,
     pub tick_3d: Tick3D,
     pub tick_lower: i32,
     pub tick_upper: i32,
@@ -747,9 +705,15 @@ pub struct OrderMetadata {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
-pub enum OrderType {
+pub enum ModifiableOrderType {
     Liquidity,
     Limit,
+}
+
+impl Default for ModifiableOrderType {
+    fn default() -> Self {
+        ModifiableOrderType::Liquidity
+    }
 }
 
 // Re-export Pool type

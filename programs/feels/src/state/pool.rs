@@ -4,10 +4,10 @@ use anchor_lang::prelude::*;
 use crate::state::{FeelsProtocolError, duration::Duration};
 use crate::state::reentrancy::ReentrancyStatus;
 use crate::state::leverage::{LeverageParameters, RiskProfile, LeverageStatistics};
-use crate::state::fee::DynamicFeeConfig;
 use crate::state::metrics_volume::VolumeTracker;
 use crate::state::tick::Tick3D;
 use crate::utils::U256Wrapper;
+use crate::constant::TICK_ARRAY_SIZE;
 
 // ============================================================================
 // Unified Pool Structure
@@ -26,11 +26,9 @@ pub struct Pool {
     pub token_b_vault: Pubkey,     // FeelsSOL vault PDA
     
     // ========== Fee Configuration ==========
-    pub fee_config: Pubkey,        // Reference to FeeConfig account
-    pub fee_rate: u16,             // Current fee rate (basis points)
-    pub protocol_fee_rate: u16,    // Protocol fee share (basis points)
-    pub liquidity_fee_rate: u16,   // LP fee share
-    pub _fee_padding: [u8; 2],     // Alignment
+    pub fee_config: Pubkey,        // Reference to FeeConfig account (single source of truth)
+    pub fee_rate: u16,             // IMMUTABLE: Only for PDA derivation compatibility
+    pub _fee_padding: [u8; 6],     // Alignment
     
     // ========== Rate and Liquidity State ==========
     pub current_tick: i32,         // Current rate tick
@@ -68,9 +66,6 @@ pub struct Pool {
     pub leverage_params: LeverageParameters,
     pub leverage_stats: LeverageStatistics,
     
-    // ========== Dynamic Fees ==========
-    pub dynamic_fee_config: DynamicFeeConfig,
-    
     // ========== Volume Tracking ==========
     pub volume_tracker: VolumeTracker,
     
@@ -86,7 +81,9 @@ pub struct Pool {
     pub valence_session: Pubkey,   // Valence hook session (Pubkey::default() if none)
     
     // ========== Reserved Space ==========
-    pub _reserved: [u8; 224],      // Reserved for future use (reduced by 32 for hook_registry)
+    pub _reserved: [u8; 128],      // Reserved for future use  
+    pub _reserved2: [u8; 64],      // Additional reserved space
+    pub _reserved3: [u8; 32],      // More reserved space
     
     // TODO: When implementing zero-copy optimization, most of these fields
     // would move to compressed accounts. The Pool would store only:
@@ -112,7 +109,7 @@ impl Pool {
         32 +                      // position vault
         8 + 8 +                   // redenomination
         32 + 32 +                 // hook_registry + valence
-        224;                      // reserved
+        128 + 64 + 32;            // reserved (_reserved + _reserved2 + _reserved3)
     
     // ========================================================================
     // Core Pool Functions
@@ -138,20 +135,20 @@ impl Pool {
     pub fn verify_authority(&self, signer: &Pubkey) -> Result<()> {
         require!(
             self.authority == *signer,
-            FeelsProtocolError::UnauthorizedPoolAuthority
+            FeelsProtocolError::InvalidAuthority
         );
         Ok(())
     }
     
     /// Get vault PDAs for this pool
-    pub fn get_vault_pdas(&self, program_id: &Pubkey) -> (Pubkey, u8, Pubkey, u8) {
+    pub fn get_vault_pdas(&self, pool_key: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8, Pubkey, u8) {
         let (vault_a, bump_a) = Pubkey::find_program_address(
-            &[b"token_vault", self.key().as_ref(), self.token_a_mint.as_ref()],
+            &[b"token_vault", pool_key.as_ref(), self.token_a_mint.as_ref()],
             program_id,
         );
         
         let (vault_b, bump_b) = Pubkey::find_program_address(
-            &[b"token_vault", self.key().as_ref(), self.token_b_mint.as_ref()],
+            &[b"token_vault", pool_key.as_ref(), self.token_b_mint.as_ref()],
             program_id,
         );
         
@@ -160,11 +157,11 @@ impl Pool {
     
     /// Calculate current 3D tick position
     pub fn get_current_tick_3d(&self) -> Result<Tick3D> {
-        Ok(Tick3D::new(
-            self.current_tick,
-            Duration::Swap.to_tick(),
-            0, // Default 1x leverage
-        )?)
+        Ok(Tick3D {
+            rate_tick: self.current_tick,
+            duration_tick: Duration::Swap.to_tick(),
+            leverage_tick: 0, // Default 1x leverage
+        })
     }
     
     // ========================================================================
@@ -174,7 +171,7 @@ impl Pool {
     /// Get reentrancy status
     pub fn get_reentrancy_status(&self) -> Result<ReentrancyStatus> {
         ReentrancyStatus::try_from(self.reentrancy_status)
-            .map_err(|_| FeelsProtocolError::InvalidValue.into())
+            .map_err(|_| FeelsProtocolError::InvalidAmount.into())
     }
     
     /// Set reentrancy status
@@ -237,17 +234,21 @@ impl Pool {
         }
         
         let fee_growth = U256Wrapper::from_u64(fee_amount)
-            .checked_mul(U256Wrapper::from_u64(1u64 << 32))?
-            .checked_div(U256Wrapper::from_u128(self.liquidity))?;
+            .checked_mul(U256Wrapper::from_u64(1u64 << 32))
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(U256Wrapper::from_u128(self.liquidity))
+            .ok_or(FeelsProtocolError::MathOverflow)?;
         
         if is_token_a {
             let current = U256Wrapper::from_u64_array(self.fee_growth_global_a);
-            let new = current.checked_add(fee_growth)?;
-            self.fee_growth_global_a = new.to_u64_array();
+            let new = current.checked_add(fee_growth)
+                .ok_or(FeelsProtocolError::MathOverflow)?;
+            self.fee_growth_global_a = new.as_u64_array();
         } else {
             let current = U256Wrapper::from_u64_array(self.fee_growth_global_b);
-            let new = current.checked_add(fee_growth)?;
-            self.fee_growth_global_b = new.to_u64_array();
+            let new = current.checked_add(fee_growth)
+                .ok_or(FeelsProtocolError::MathOverflow)?;
+            self.fee_growth_global_b = new.as_u64_array();
         }
         
         Ok(())
@@ -295,12 +296,12 @@ impl Pool {
         self.leverage_stats.total_base_liquidity = self.leverage_stats
             .total_base_liquidity
             .checked_sub(liquidity)
-            .ok_or(FeelsProtocolError::MathUnderflow)?;
+            .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
             
         self.leverage_stats.total_leveraged_liquidity = self.leverage_stats
             .total_leveraged_liquidity
             .checked_sub(effective_liquidity)
-            .ok_or(FeelsProtocolError::MathUnderflow)?;
+            .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
         
         if leverage > RiskProfile::LEVERAGE_SCALE && 
            self.leverage_stats.leveraged_position_count > 0 {
@@ -326,7 +327,9 @@ impl Pool {
             .ok_or(FeelsProtocolError::MathOverflow)?;
             
         let current_timestamp = Clock::get()?.unix_timestamp;
-        self.volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
+        let mut volume_tracker = self.volume_tracker;
+        volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
+        self.volume_tracker = volume_tracker;
         
         Ok(())
     }
@@ -352,7 +355,7 @@ impl Pool {
         let word_pos = (tick / 64) as usize;
         let bit_pos = (tick % 64) as u8;
         
-        require!(word_pos < 16, FeelsProtocolError::InvalidTick);
+        require!(word_pos < 16, FeelsProtocolError::InvalidTickIndex);
         
         if initialized {
             self.tick_array_bitmap[word_pos] |= 1u64 << bit_pos;
@@ -360,6 +363,47 @@ impl Pool {
             self.tick_array_bitmap[word_pos] &= !(1u64 << bit_pos);
         }
         
+        Ok(())
+    }
+    
+    /// Check if a specific tick array is initialized
+    pub fn is_tick_array_initialized(&self, start_tick_index: i32) -> bool {
+        // Calculate which bit in the bitmap represents this tick array
+        let array_index = start_tick_index / (TICK_ARRAY_SIZE as i32 * self.tick_spacing as i32);
+        if array_index < 0 || array_index >= 1024 {
+            return false;
+        }
+        
+        let word_pos = (array_index / 64) as usize;
+        let bit_pos = (array_index % 64) as u8;
+        
+        if word_pos >= 16 {
+            return false;
+        }
+        
+        (self.tick_array_bitmap[word_pos] & (1u64 << bit_pos)) != 0
+    }
+    
+    /// Update fee growth tracking
+    pub fn update_fee_growth(&mut self, fee_growth_a: U256Wrapper, fee_growth_b: U256Wrapper) -> Result<()> {
+        // Update global fee growth
+        self.fee_growth_global_a = fee_growth_a.as_u64_array();
+        self.fee_growth_global_b = fee_growth_b.as_u64_array();
+        Ok(())
+    }
+    
+    /// Check if phase 2 features are enabled
+    pub fn is_phase2_enabled(&self) -> bool {
+        // Phase 2 is enabled if leverage parameters allow leverage > 1x
+        self.leverage_params.max_leverage > RiskProfile::LEVERAGE_SCALE
+    }
+    
+    /// Update volume tracker
+    pub fn update_volume_tracker(&mut self, amount_a: u64, amount_b: u64) -> Result<()> {
+        let current_timestamp = Clock::get()?.unix_timestamp;
+        let mut volume_tracker = self.volume_tracker;
+        volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
+        self.volume_tracker = volume_tracker;
         Ok(())
     }
 }
@@ -386,23 +430,7 @@ impl AccountSerialize for Pool {
     }
 }
 
-impl AccountDeserialize for Pool {
-    fn try_deserialize(buf: &mut &[u8]) -> Result<Self> {
-        let pool: &Pool = bytemuck::try_from_bytes(buf)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        Ok(*pool)
-    }
-    
-    fn try_deserialize_unchecked(buf: &mut &[u8]) -> Result<Self> {
-        Self::try_deserialize(buf)
-    }
-}
-
-impl anchor_lang::Owner for Pool {
-    fn owner() -> Pubkey {
-        crate::ID
-    }
-}
+// Note: AccountDeserialize and Owner traits are automatically implemented by #[account(zero_copy)]
 
 /// Helper trait for Pool key operations
 pub trait PoolKey {
@@ -411,6 +439,6 @@ pub trait PoolKey {
 
 impl<'info> PoolKey for AccountLoader<'info, Pool> {
     fn key(&self) -> Pubkey {
-        AccountLoader::key(self)
+        self.to_account_info().key()
     }
 }

@@ -61,9 +61,12 @@ impl EventBase for PoolInitialized {
 /// Emitted when FeelsSOL is initialized
 #[event]
 pub struct FeelsSOLInitialized {
-    pub feels_mint: Pubkey,
+    pub feelssol: Pubkey,
     pub underlying_mint: Pubkey,
-    pub authority: Pubkey,
+    pub feels_mint: Pubkey,
+    pub vault: Pubkey,
+    pub initial_exchange_rate: u64,
+    pub timestamp: i64,
 }
 
 // ============================================================================

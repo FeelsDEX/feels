@@ -34,34 +34,35 @@ pub fn collect_pool_fees(
 
     // Validate position owner
     require!(
-        position.owner == ctx.accounts.position_authority.key(),
+        position.owner == ctx.accounts.owner.key(),
         FeelsProtocolError::InvalidAuthority
     );
 
     // Calculate fees based on fee growth
-    let collected_amount_0 = std::cmp::min(amount_0_requested, position.tokens_owed_0);
-    let collected_amount_1 = std::cmp::min(amount_1_requested, position.tokens_owed_1);
+    let collected_amount_0 = std::cmp::min(amount_0_requested, position.tokens_owed_a);
+    let collected_amount_1 = std::cmp::min(amount_1_requested, position.tokens_owed_b);
 
     // Update position fees owed
-    position.tokens_owed_0 = position.tokens_owed_0.saturating_sub(collected_amount_0);
-    position.tokens_owed_1 = position.tokens_owed_1.saturating_sub(collected_amount_1);
+    position.tokens_owed_a = position.tokens_owed_a.saturating_sub(collected_amount_0);
+    position.tokens_owed_b = position.tokens_owed_b.saturating_sub(collected_amount_1);
 
     // Update fee growth inside
-    position.fee_growth_inside_0_last = pool.fee_growth_global_a;
-    position.fee_growth_inside_1_last = pool.fee_growth_global_b;
+    position.fee_growth_inside_last_a = pool.fee_growth_global_a;
+    position.fee_growth_inside_last_b = pool.fee_growth_global_b;
 
     // Transfer fees from pool to user
     if collected_amount_0 > 0 || collected_amount_1 > 0 {
         let pool_bump = ctx.bumps.pool;
         transfer_pair_from_pool_to_user(
-            &ctx.accounts.token_vault_a,
-            &ctx.accounts.token_vault_b,
-            &ctx.accounts.user_token_a,
-            &ctx.accounts.user_token_b,
-            &ctx.accounts.pool,
-            &ctx.accounts.token_program,
+            ctx.accounts.token_vault_a.to_account_info(),
+            ctx.accounts.token_vault_b.to_account_info(),
+            ctx.accounts.token_account_a.to_account_info(),
+            ctx.accounts.token_account_b.to_account_info(),
+            ctx.accounts.pool.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
             collected_amount_0,
             collected_amount_1,
+            &pool,
             pool_bump,
         )?;
     }
@@ -70,9 +71,8 @@ pub fn collect_pool_fees(
     emit!(FeeCollectionEvent {
         pool: ctx.accounts.pool.key(),
         position: position.key(),
-        owner: position.owner,
-        amount_0: collected_amount_0,
-        amount_1: collected_amount_1,
+        amount_a: collected_amount_0,
+        amount_b: collected_amount_1,
         timestamp: Clock::get()?.unix_timestamp,
     });
 
@@ -114,37 +114,38 @@ pub fn collect_protocol_fees(
     // Transfer protocol fees to treasury
     if collect_amount_0 > 0 || collect_amount_1 > 0 {
         let pool_bump = ctx.bumps.pool;
-        collect_protocol_fees(
-            &ctx.accounts.token_vault_a,
-            &ctx.accounts.token_vault_b,
-            &ctx.accounts.treasury_token_a,
-            &ctx.accounts.treasury_token_b,
-            &ctx.accounts.pool,
-            &ctx.accounts.token_program,
+        transfer_protocol_fees(
+            ctx.accounts.token_vault_a.to_account_info(),
+            ctx.accounts.token_vault_b.to_account_info(),
+            ctx.accounts.recipient_a.to_account_info(),
+            ctx.accounts.recipient_b.to_account_info(),
+            ctx.accounts.pool.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
             collect_amount_0,
             collect_amount_1,
+            &pool,
             pool_bump,
         )?;
     }
 
     // Update pool timestamp
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    pool.last_update_slot = Clock::get()?.slot;
 
     // Emit protocol fee collection event
     emit!(ProtocolFeeCollectionEvent {
         pool: ctx.accounts.pool.key(),
-        authority: ctx.accounts.authority.key(),
-        treasury_a: ctx.accounts.treasury_token_a.key(),
-        treasury_b: ctx.accounts.treasury_token_b.key(),
-        amount_0: collect_amount_0,
-        amount_1: collect_amount_1,
+        collector: ctx.accounts.authority.key(),
+        amount_a: collect_amount_0,
+        amount_b: collect_amount_1,
         timestamp: Clock::get()?.unix_timestamp,
     });
 
     msg!("Protocol fees collected");
     msg!("Amount 0: {}", collect_amount_0);
     msg!("Amount 1: {}", collect_amount_1);
-    msg!("Remaining protocol fees - A: {}, B: {}", pool.protocol_fees_a, pool.protocol_fees_b);
+    let remaining_fees_a = pool.protocol_fees_a;
+    let remaining_fees_b = pool.protocol_fees_b;
+    msg!("Remaining protocol fees - A: {}, B: {}", remaining_fees_a, remaining_fees_b);
 
     Ok((collect_amount_0, collect_amount_1))
 }
@@ -179,21 +180,22 @@ pub fn update_dynamic_fees(
 
     // Create dynamic fee config
     let config = DynamicFeeConfig {
+        volatility_coefficient: params.volatility_coefficient,
+        volume_discount_threshold: params.volume_discount_threshold,
         base_fee: params.base_fee,
         min_fee: params.min_fee,
         max_fee: params.max_fee,
         min_multiplier: 5000,  // 50% minimum (0.5x)
         max_multiplier: 20000, // 200% maximum (2x)
-        _padding: 0,
-        volatility_coefficient: params.volatility_coefficient,
-        volume_discount_threshold: params.volume_discount_threshold,
+        _padding: [0u8; 6],
     };
 
-    // Use FeeManager to update dynamic fee configuration
-    FeeManager::update_dynamic_fee_config(pool, config)?;
+    // Update dynamic fee configuration on FeeConfig account
+    let fee_config = &mut ctx.accounts.fee_config;
+    FeeManager::update_dynamic_fee_config(fee_config, config)?;
 
     // Update pool timestamp
-    pool.last_updated_at = Clock::get()?.unix_timestamp;
+    pool.last_update_slot = Clock::get()?.slot;
 
     msg!("Dynamic fees updated");
     msg!("Base fee: {} bps", params.base_fee);

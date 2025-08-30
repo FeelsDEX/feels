@@ -1,7 +1,7 @@
 /// Reentrancy protection system preventing reentrant attacks during pool operations.
-/// Implements a state-based locking mechanism that prevents multiple concurrent operations
-/// on the same pool. Essential for Phase 2 where external hooks could potentially
-/// trigger reentrancy attacks through cross-program invocations.
+/// Implements a state-based locking mechanism that prevents multiple concurrent
+/// operations on the same pool. Essential for ensuring external hooks don't trigger
+/// reentrancy attacks through cross-program invocations.
 
 use anchor_lang::prelude::*;
 use crate::state::FeelsProtocolError;
@@ -20,6 +20,19 @@ pub enum ReentrancyStatus {
     Locked = 1,
     /// Pool is in hook execution phase
     HookExecuting = 2,
+}
+
+impl TryFrom<u8> for ReentrancyStatus {
+    type Error = crate::state::FeelsProtocolError;
+
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ReentrancyStatus::Unlocked),
+            1 => Ok(ReentrancyStatus::Locked),
+            2 => Ok(ReentrancyStatus::HookExecuting),
+            _ => Err(crate::state::FeelsProtocolError::InvalidAmount),
+        }
+    }
 }
 
 impl Default for ReentrancyStatus {
@@ -116,6 +129,10 @@ impl<'a> Drop for ScopedReentrancyGuard<'a> {
         let _ = ReentrancyGuard::release(self.status);
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {

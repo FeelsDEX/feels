@@ -12,6 +12,8 @@ pub enum FeelsProtocolError {
     // Validation Errors (0-99): Input validation and constraint violations
     // ========================================================================
     
+    #[msg("Feature not implemented")]
+    NotImplemented,
     #[msg("Invalid metadata format")]
     InvalidMetadata,
     #[msg("Invalid amount - must be greater than zero")]
@@ -365,7 +367,8 @@ impl FeelsProtocolError {
     pub fn category(&self) -> ErrorCategory {
         match self {
             // Validation Errors (0-99)
-            Self::InvalidMetadata
+            Self::NotImplemented
+            | Self::InvalidMetadata
             | Self::InvalidAmount
             | Self::InvalidTokenAmount
             | Self::InputAmountZero
@@ -586,10 +589,15 @@ pub enum ErrorSeverity {
 
 // Type aliases for backwards compatibility
 impl FeelsProtocolError {
+    #[allow(non_upper_case_globals)]
     pub const PriceOutOfBounds: Self = Self::RateOutOfBounds;
+    #[allow(non_upper_case_globals)]
     pub const PriceLimitTooAggressive: Self = Self::RateLimitTooAggressive;
+    #[allow(non_upper_case_globals)]
     pub const PriceLimitOutsideValidRange: Self = Self::RateLimitOutsideValidRange;
+    #[allow(non_upper_case_globals)]
     pub const InvalidPriceRange: Self = Self::InvalidRateRange;
+    #[allow(non_upper_case_globals)]
     pub const InvalidSqrtPrice: Self = Self::InvalidSqrtRate;
 }
 
