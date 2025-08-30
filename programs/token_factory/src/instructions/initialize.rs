@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{events::TokenFactoryInitialized, state::factory::TokenFactory};
+use crate::{events::TokenFactoryInitialized, state::TokenFactory};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

@@ -14,7 +14,6 @@ pub struct InstructionBuilder;
 const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
 const TREASURY_PDA_SEED: &[u8] = b"treasury";
 const FACTORY_PDA_SEED: &[u8] = b"factory";
-const TOKEN_METADATA_PDA_SEED: &[u8] = b"metadata";
 
 impl InstructionBuilder {
     pub fn initialize(
@@ -142,14 +141,13 @@ impl InstructionBuilder {
         token_mint: &Pubkey,
         recipient: &Pubkey,
         payer: &Pubkey,
-        ticker: String,
-        name: String,
         symbol: String,
+        name: String,
+        uri: String,
         decimals: u8,
         initial_supply: u64,
     ) -> (
         anchor_lang::solana_program::instruction::Instruction,
-        Pubkey,
         Pubkey,
     ) {
         let program_id = crate::id();
@@ -159,11 +157,6 @@ impl InstructionBuilder {
         let (protocol_pda, _) = Pubkey::find_program_address(&[PROTOCOL_PDA_SEED], &program_id);
         let (factory_pda, _) =
             Pubkey::find_program_address(&[FACTORY_PDA_SEED], &factory_program_id);
-
-        let (token_metadata_pda, _) = Pubkey::find_program_address(
-            &[TOKEN_METADATA_PDA_SEED, token_mint.as_ref()],
-            &factory_program_id,
-        );
 
         let recipient_token_account =
             spl_associated_token_account::get_associated_token_address_with_program_id(
@@ -176,7 +169,6 @@ impl InstructionBuilder {
             protocol: protocol_pda,
             factory: factory_pda,
             token_mint: *token_mint,
-            token_metadata: token_metadata_pda,
             recipient_token_account,
             recipient: *recipient,
             authority: *payer,
@@ -192,15 +184,15 @@ impl InstructionBuilder {
             program_id,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::CreateToken {
-                ticker,
-                name,
                 symbol,
+                name,
+                uri,
                 decimals,
                 initial_supply,
             }
             .data(),
         };
 
-        (instruction, recipient_token_account, token_metadata_pda)
+        (instruction, recipient_token_account)
     }
 }

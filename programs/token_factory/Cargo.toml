@@ -23,7 +23,7 @@ anchor-lang = { workspace = true, features = ["init-if-needed"] }
 anchor-spl  = { workspace = true }
 
 [dev-dependencies]
-feels-test-utils = { workspace = true }
-solana-sdk       = { workspace = true }
-tokio            = { workspace = true }
-feels-protocol   = { path = "../protocol", features = ["no-entrypoint"] }
+feels-test-utils             = { workspace = true }
+solana-sdk                   = { workspace = true }
+tokio                        = { workspace = true }
+feels-protocol               = { path = "../protocol", features = ["no-entrypoint"] }

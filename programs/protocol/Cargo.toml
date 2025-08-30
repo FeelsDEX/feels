@@ -26,4 +26,5 @@ feels-token-factory = { path = "../token_factory", features = ["cpi"] }
 feels-test-utils    = { workspace = true }
 solana-sdk          = { workspace = true }
 tokio               = { workspace = true }
+anchor-client       = { workspace = true }
 feels-token-factory = { path = "../token_factory", features = ["test-utils"] }
