@@ -1,6 +1,11 @@
 .anchor
 .DS_Store
-target
+# To reuse the same keys every time, we commit the keypairs to git
+target/*
+!target/deploy/
+target/deploy/*
+!target/deploy/feels_protocol-keypair.json
+!target/deploy/feels_token_factory-keypair.json
 **/*.rs.bk
 node_modules
 test-ledger

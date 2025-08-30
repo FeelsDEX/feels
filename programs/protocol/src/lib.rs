@@ -12,7 +12,7 @@ mod tests;
 use instructions::*;
 
 // TODO: Update when we have the real ID
-declare_id!("Fee1sProtoco11111111111111111111111111111111");
+declare_id!("Hp6rg3ZoeubQkjo2XwoYWYS748U4Eh8k5AtoUuebQRgE");
 
 #[program]
 pub mod feels_protocol {
@@ -56,12 +56,12 @@ pub mod feels_protocol {
 
     pub fn create_token(
         ctx: Context<CreateToken>,
-        ticker: String,
-        name: String,
         symbol: String,
+        name: String,
+        uri: String,
         decimals: u8,
         initial_supply: u64,
     ) -> Result<()> {
-        instructions::create_token_via_factory(ctx, ticker, name, symbol, decimals, initial_supply)
+        instructions::create_token_via_factory(ctx, symbol, name, uri, decimals, initial_supply)
     }
 }

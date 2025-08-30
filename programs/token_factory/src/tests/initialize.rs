@@ -1,4 +1,4 @@
-use crate::{state::factory::TokenFactory, tests::PROGRAM_PATH, InstructionBuilder};
+use crate::{state::TokenFactory, tests::PROGRAM_PATH, InstructionBuilder};
 
 use feels_test_utils::{to_sdk_instruction, TestApp};
 

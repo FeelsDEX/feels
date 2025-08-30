@@ -8,13 +8,13 @@ use feels_token_factory::{
         create_token as token_factory_create_token,
     },
     program::FeelsTokenFactory,
-    state::factory::TokenFactory,
+    state::TokenFactory,
 };
 
 use crate::{error::ProtocolError, state::protocol::ProtocolState};
 
 #[derive(Accounts)]
-#[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
+#[instruction(symbol: String, name: String, uri: String, decimals: u8, initial_supply: u64)]
 pub struct CreateToken<'info> {
     #[account(
         mut,
@@ -33,13 +33,9 @@ pub struct CreateToken<'info> {
     pub factory: Account<'info, TokenFactory>,
 
     /// New token mint that will be created
-    #[account(mut)]
-    pub token_mint: Signer<'info>,
-
-    /// Token metadata account - will be created by token factory
-    /// CHECK: PDA will be validated by token factory program
-    #[account(mut)]
-    pub token_metadata: UncheckedAccount<'info>,
+    /// CHECK: Will be initialized by token factory program
+    #[account(mut, signer)]
+    pub token_mint: UncheckedAccount<'info>,
 
     /// Recipient token account for initial mint
     /// CHECK: Will be created/validated by token factory program  
@@ -70,9 +66,9 @@ pub struct CreateToken<'info> {
 
 pub fn create_token_via_factory(
     ctx: Context<CreateToken>,
-    ticker: String,
-    name: String,
     symbol: String,
+    name: String,
+    uri: String,
     decimals: u8,
     initial_supply: u64,
 ) -> Result<()> {
@@ -84,7 +80,6 @@ pub fn create_token_via_factory(
     let cpi_accounts = TokenFactoryCreateToken {
         factory: ctx.accounts.factory.to_account_info(),
         token_mint: ctx.accounts.token_mint.to_account_info(),
-        token_metadata: ctx.accounts.token_metadata.to_account_info(),
         recipient_token_account: ctx.accounts.recipient_token_account.to_account_info(),
         recipient: ctx.accounts.recipient.to_account_info(),
         payer: ctx.accounts.authority.to_account_info(),
@@ -98,7 +93,7 @@ pub fn create_token_via_factory(
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
     // Make the CPI call to the token factory
-    token_factory_create_token(cpi_ctx, ticker, name, symbol, decimals, initial_supply)?;
+    token_factory_create_token(cpi_ctx, symbol, name, uri, decimals, initial_supply)?;
 
     Ok(())
 }

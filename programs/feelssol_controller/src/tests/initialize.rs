@@ -10,8 +10,8 @@ use solana_sdk::signer::{SeedDerivable, Signer};
 const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
 // Example secret key that gives a Pubkey that starts with `Fee1s`.
 const FEELS_PRIVATE_KEY: [u8; 32] = [
-    175, 231, 9, 4, 171, 54, 207, 154, 207, 24, 149, 237, 50, 226, 208, 61, 57, 155, 22, 83, 47,
-    86, 18, 123, 18, 154, 127, 87, 224, 112, 101, 180,
+    208, 250, 243, 217, 178, 15, 248, 65, 233, 94, 242, 229, 196, 92, 156, 153, 172, 164, 14, 45,
+    147, 20, 212, 158, 3, 235, 20, 9, 75, 178, 205, 35,
 ];
 
 #[tokio::test]
@@ -21,7 +21,7 @@ async fn test_initialize_feelssol_controller_success() {
     let token_mint = solana_sdk::signature::Keypair::from_seed(&FEELS_PRIVATE_KEY).unwrap();
     let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
 
-    assert!(token_mint_pubkey.to_string().starts_with("Fee1s"));
+    assert!(token_mint_pubkey.to_string().starts_with("FeeLs"));
 
     let (instruction, feelssol_pda) = InstructionBuilder::initialize(
         &payer_pubkey,

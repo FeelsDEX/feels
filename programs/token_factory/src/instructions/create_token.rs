@@ -1,22 +1,27 @@
+use anchor_lang::system_program::{transfer, Transfer};
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
+use anchor_spl::token_2022::spl_token_2022::extension::{
+    BaseStateWithExtensions, PodStateWithExtensions,
+};
+use anchor_spl::token_2022::spl_token_2022::pod::PodMint;
+use anchor_spl::token_interface::spl_token_metadata_interface::state::TokenMetadata;
+use anchor_spl::token_interface::TokenMetadataInitialize;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_2022::{
         mint_to, set_authority, spl_token_2022::instruction::AuthorityType, MintTo, SetAuthority,
         Token2022,
     },
-    token_interface::{Mint, TokenAccount},
+    token_interface::{token_metadata_initialize, Mint, TokenAccount},
 };
 
 use crate::{
-    error::TokenFactoryError,
-    events::TokenCreated,
-    state::{factory::TokenFactory, metadata::TokenMetadata},
+    error::TokenFactoryError, events::TokenCreated, state::TokenFactory,
     token_validate::validate_token,
 };
 
 #[derive(Accounts)]
-#[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
+#[instruction(symbol: String, name: String, uri: String, decimals: u8, initial_supply: u64)]
 pub struct CreateToken<'info> {
     /// Token factory (becomes mint authority)
     #[account(
@@ -29,26 +34,16 @@ pub struct CreateToken<'info> {
     /// New token mint - FACTORY becomes mint authority
     #[account(
         init,
+        signer,
         payer = payer,
         mint::decimals = decimals,
         mint::authority = factory,
         mint::freeze_authority = factory,
         mint::token_program = token_program,
+        extensions::metadata_pointer::metadata_address = token_mint,
+        extensions::metadata_pointer::authority = factory,
     )]
     pub token_mint: InterfaceAccount<'info, Mint>,
-
-    /// Token metadata
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + TokenMetadata::INIT_SPACE,
-        seeds = [
-            b"metadata",
-            token_mint.key().as_ref()
-        ],
-        bump
-    )]
-    pub token_metadata: Account<'info, TokenMetadata>,
 
     /// Recipient token account for initial mint
     #[account(
@@ -80,9 +75,9 @@ pub struct CreateToken<'info> {
 
 pub fn create_token(
     ctx: Context<CreateToken>,
-    ticker: String,
-    name: String,
     symbol: String,
+    name: String,
+    uri: String,
     decimals: u8,
     initial_supply: u64,
 ) -> Result<()> {
@@ -93,17 +88,66 @@ pub fn create_token(
         TokenFactoryError::UnauthorizedProtocol
     );
 
-    // Validate ticker against restrictions and format requirements
-    validate_token(&ticker, &name, &symbol, decimals)?;
+    // Validate token against restrictions and format requirements
+    validate_token(&symbol, &name, decimals)?;
 
-    // Initialize token metadata
-    let token_metadata = &mut ctx.accounts.token_metadata;
-    token_metadata.ticker = ticker.clone();
-    token_metadata.name = name.clone();
-    token_metadata.symbol = symbol.clone();
-    token_metadata.mint = ctx.accounts.token_mint.key();
-    token_metadata.authority = ctx.accounts.factory.key();
-    token_metadata.created_at = Clock::get()?.unix_timestamp;
+    // Fund the account with enough lamports to store the metadata
+    let (required_lamports, current_lamports) = {
+        let mint_info = ctx.accounts.token_mint.to_account_info();
+        let mint_data = mint_info.try_borrow_data()?;
+        let mint_state = PodStateWithExtensions::<PodMint>::unpack(&mint_data)?;
+
+        let metadata = TokenMetadata {
+            name: name.clone(),
+            symbol: symbol.clone(),
+            uri: uri.clone(),
+            ..Default::default()
+        };
+
+        let new_len = mint_state.try_get_new_account_len_for_variable_len_extension(&metadata)?;
+        let required_lamports = Rent::get()?.minimum_balance(new_len);
+        let current_lamports = mint_info.lamports();
+
+        (required_lamports, current_lamports)
+    };
+
+    if required_lamports > current_lamports {
+        let lamport_diff = required_lamports - current_lamports;
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.payer.to_account_info(),
+                    to: ctx.accounts.token_mint.to_account_info(),
+                },
+            ),
+            lamport_diff,
+        )?;
+        msg!(
+            "Transferred {} lamports to mint account for metadata",
+            lamport_diff
+        );
+    }
+
+    // Initialize the metadata of the token
+    let factory_seeds: &[&[u8]] = &[b"factory".as_ref(), &[ctx.bumps.factory]];
+    let signer_seeds = &[factory_seeds];
+    token_metadata_initialize(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TokenMetadataInitialize {
+                program_id: ctx.accounts.token_program.to_account_info(),
+                metadata: ctx.accounts.token_mint.to_account_info(),
+                update_authority: ctx.accounts.factory.to_account_info(),
+                mint: ctx.accounts.token_mint.to_account_info(),
+                mint_authority: ctx.accounts.factory.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        name.clone(),
+        symbol.clone(),
+        uri,
+    )?;
 
     // Mint initial supply to recipient if requested
     if initial_supply > 0 {
@@ -113,8 +157,6 @@ pub fn create_token(
             authority: ctx.accounts.factory.to_account_info(),
         };
 
-        let factory_seeds: &[&[u8]] = &[b"factory".as_ref(), &[ctx.bumps.factory]];
-        let signer_seeds = &[factory_seeds];
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
 
@@ -140,10 +182,9 @@ pub fn create_token(
 
     emit!(TokenCreated {
         mint: ctx.accounts.token_mint.key(),
-        ticker: ctx.accounts.token_metadata.ticker.clone(),
-        name: ctx.accounts.token_metadata.name.clone(),
-        symbol: ctx.accounts.token_metadata.symbol.clone(),
-        decimals: ctx.accounts.token_mint.decimals,
+        name,
+        symbol,
+        decimals,
         initial_supply,
     });
 

@@ -19,7 +19,7 @@ pub mod instruction_builder;
 pub use instruction_builder::*;
 
 // TODO: Update when we have the real ID
-declare_id!("TokenFactory1111111111111111111111111111111");
+declare_id!("49nnQKfdGZoksCFg3ZTdStvyaMgptmEkDY77oaMpG2Hd");
 
 #[program]
 pub mod feels_token_factory {
@@ -33,12 +33,12 @@ pub mod feels_token_factory {
     /// Create a token
     pub fn create_token(
         ctx: Context<CreateToken>,
-        ticker: String,
-        name: String,
         symbol: String,
+        name: String,
+        uri: String,
         decimals: u8,
         initial_supply: u64,
     ) -> Result<()> {
-        instructions::create_token(ctx, ticker, name, symbol, decimals, initial_supply)
+        instructions::create_token(ctx, symbol, name, uri, decimals, initial_supply)
     }
 }

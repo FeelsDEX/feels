@@ -1,6 +1,6 @@
-/// Token ticker validation utilities for preventing restricted token creation
+/// Token symbol validation utilities for preventing restricted token creation
 ///
-/// Maintains a restricted list of token tickers that cannot be used when creating
+/// Maintains a restricted list of token symbols that cannot be used when creating
 /// fungible tokens on the platform. This prevents confusion with existing
 /// major tokens and protocol-specific tokens.
 use anchor_lang::prelude::*;
@@ -8,18 +8,17 @@ use anchor_lang::prelude::*;
 use crate::error::TokenFactoryError;
 
 const MAX_DECIMALS: u8 = 18;
-const MAX_TICKER_LENGTH: usize = 12;
 const MAX_NAME_LENGTH: usize = 32;
 const MAX_SYMBOL_LENGTH: usize = 12;
 
-/// List of restricted token tickers that cannot be used for token creation
+/// List of restricted token symbols that cannot be used for token creation
 ///
 /// This includes:
 /// - Protocol tokens (FeelsSOL)
 /// - Major blockchain tokens (SOL)  
 /// - Major stablecoins (USDC, USDT)
 /// - Other reserved names
-pub const RESTRICTED_TICKERS: &[&str] = &[
+pub const RESTRICTED_SYMBOLS: &[&str] = &[
     // Protocol tokens
     "FEELSSOL", "FEELS", // Major blockchain tokens
     "SOL", "WSOL", "MSOL", "STSOL", "JSOL", "BSOL", // Major stablecoins
@@ -49,79 +48,79 @@ pub const RESTRICTED_TICKERS: &[&str] = &[
     "GOLD", "SILVER", "BITCOIN", "ETHEREUM", "SOLANA",
 ];
 
-/// Check if a token ticker is restricted
+/// Check if a token symbol is restricted
 ///
 /// Performs case-insensitive comparison with the restricted list
 ///
 /// # Arguments
-/// * `ticker` - The token ticker to check
+/// * `symbol` - The token symbol to check
 ///
 /// # Returns
-/// * `true` if the ticker is restricted and cannot be used
-/// * `false` if the ticker is allowed
-pub fn is_ticker_restricted(ticker: &str) -> bool {
-    let ticker_upper = ticker.to_uppercase();
-    RESTRICTED_TICKERS.contains(&ticker_upper.as_str())
+/// * `true` if the symbol is restricted and cannot be used
+/// * `false` if the symbol is allowed
+pub fn is_symbol_restricted(symbol: &str) -> bool {
+    let symbol_upper = symbol.to_uppercase();
+    RESTRICTED_SYMBOLS.contains(&symbol_upper.as_str())
 }
 
-/// Validate that a token ticker is not restricted
+/// Validate that a token symbol is not restricted
 ///
 /// # Arguments
-/// * `ticker` - The token ticker to validate
+/// * `symbol` - The token symbol to validate
 ///
 /// # Returns
-/// * `Ok(())` if the ticker is allowed
-/// * `Err(TokenFactoryError::TickerIsRestricted)` if the ticker is restricted
-pub fn validate_ticker_not_restricted(ticker: &str) -> Result<()> {
-    if is_ticker_restricted(ticker) {
-        return Err(error!(TokenFactoryError::TickerIsRestricted));
+/// * `Ok(())` if the symbol is allowed
+/// * `Err(TokenFactoryError::SymbolIsRestricted)` if the symbol is restricted
+pub fn validate_symbol_not_restricted(symbol: &str) -> Result<()> {
+    if is_symbol_restricted(symbol) {
+        return Err(error!(TokenFactoryError::SymbolIsRestricted));
     }
     Ok(())
 }
 
-/// Comprehensive validation for token ticker format and restrictions
+/// Comprehensive validation for token symbol format and restrictions
 ///
-/// Checks that the ticker meets basic requirements:
+/// Checks that the symbol meets basic requirements:
 /// - Contains only alphanumeric characters
 /// - Not restricted
 ///
 /// # Arguments
-/// * `ticker` - The token ticker to validate
+/// * `symbol` - The token symbol to validate
 ///
 /// # Returns
-/// * `Ok(())` if the ticker is valid
+/// * `Ok(())` if the symbol is valid
 /// * `Err(TokenFactoryError)` with appropriate error if validation fails
-pub fn validate_ticker_format(ticker: &str) -> Result<()> {
+pub fn validate_symbol_format(symbol: &str) -> Result<()> {
     // Check length
-    if ticker.is_empty() {
-        return Err(error!(TokenFactoryError::TickerIsEmpty));
+    if symbol.is_empty() {
+        return Err(error!(TokenFactoryError::SymbolIsEmpty));
     }
     require!(
-        ticker.len() <= MAX_TICKER_LENGTH,
-        TokenFactoryError::TickerTooLong
+        symbol.len() <= MAX_SYMBOL_LENGTH,
+        TokenFactoryError::SymbolTooLong
     );
 
-    // Check ticker is uppercase
+    // Check symbol is uppercase
     require!(
-        ticker == ticker.to_uppercase(),
-        TokenFactoryError::TickerNotUppercase
+        symbol == symbol.to_uppercase(),
+        TokenFactoryError::SymbolNotUppercase
     );
 
     // Check characters - only alphanumeric allowed
-    if !ticker.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(error!(TokenFactoryError::TickerNotAlphanumeric));
+    if !symbol.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(error!(TokenFactoryError::SymbolNotAlphanumeric));
     }
 
     // Check restrictions
-    validate_ticker_not_restricted(ticker)?;
+    validate_symbol_not_restricted(symbol)?;
 
     Ok(())
 }
 
 /// Validate token creation parameters
-pub fn validate_token(ticker: &str, name: &str, symbol: &str, decimals: u8) -> Result<()> {
-    // Validate ticker
-    validate_ticker_format(ticker)?;
+pub fn validate_token(symbol: &str, name: &str, decimals: u8) -> Result<()> {
+    // Validate symbol
+    validate_symbol_format(symbol)?;
 
     require!(
         decimals <= MAX_DECIMALS,
@@ -130,88 +129,81 @@ pub fn validate_token(ticker: &str, name: &str, symbol: &str, decimals: u8) -> R
 
     require!(!name.is_empty(), TokenFactoryError::NameIsEmpty);
 
-    require!(!symbol.is_empty(), TokenFactoryError::SymbolIsEmpty);
-
     require!(
         name.len() <= MAX_NAME_LENGTH,
         TokenFactoryError::NameTooLong
-    );
-
-    require!(
-        symbol.len() <= MAX_SYMBOL_LENGTH,
-        TokenFactoryError::SymbolTooLong
     );
 
     Ok(())
 }
 
 #[test]
-fn test_restricted_tickers() {
+fn test_restricted_symbols() {
     // Test protocol tokens
-    assert!(is_ticker_restricted("FeelsSOL"));
-    assert!(is_ticker_restricted("FEELSSOL"));
-    assert!(is_ticker_restricted("feelssol"));
-    assert!(is_ticker_restricted("Feels"));
+    assert!(is_symbol_restricted("FeelsSOL"));
+    assert!(is_symbol_restricted("FEELSSOL"));
+    assert!(is_symbol_restricted("feelssol"));
+    assert!(is_symbol_restricted("Feels"));
 
     // Test major tokens
-    assert!(is_ticker_restricted("SOL"));
-    assert!(is_ticker_restricted("sol"));
-    assert!(is_ticker_restricted("USDC"));
-    assert!(is_ticker_restricted("usdc"));
-    assert!(is_ticker_restricted("USDT"));
-    assert!(is_ticker_restricted("usdt"));
+    assert!(is_symbol_restricted("SOL"));
+    assert!(is_symbol_restricted("sol"));
+    assert!(is_symbol_restricted("USDC"));
+    assert!(is_symbol_restricted("usdc"));
+    assert!(is_symbol_restricted("USDT"));
+    assert!(is_symbol_restricted("usdt"));
 
     // Test case insensitivity
-    assert!(is_ticker_restricted("Bitcoin"));
-    assert!(is_ticker_restricted("ETHEREUM"));
-    assert!(is_ticker_restricted("solana"));
+    assert!(is_symbol_restricted("Bitcoin"));
+    assert!(is_symbol_restricted("ETHEREUM"));
+    assert!(is_symbol_restricted("solana"));
 }
 
 #[test]
-fn test_allowed_tickers() {
-    // Test allowed tickers
-    assert!(!is_ticker_restricted("MYTOKEN"));
-    assert!(!is_ticker_restricted("TEST123"));
-    assert!(!is_ticker_restricted("CUSTOM"));
-    assert!(!is_ticker_restricted("NEWCOIN"));
-    assert!(!is_ticker_restricted("DEFI"));
-    assert!(!is_ticker_restricted("MOON"));
+fn test_allowed_symbols() {
+    // Test allowed symbols
+    assert!(!is_symbol_restricted("MYTOKEN"));
+    assert!(!is_symbol_restricted("TEST123"));
+    assert!(!is_symbol_restricted("CUSTOM"));
+    assert!(!is_symbol_restricted("NEWCOIN"));
+    assert!(!is_symbol_restricted("DEFI"));
+    assert!(!is_symbol_restricted("MOON"));
 }
 
 #[test]
-fn test_ticker_validation() {
-    // Test valid tickers
-    assert!(validate_ticker_format("MYTOKEN").is_ok());
-    assert!(validate_ticker_format("TEST123").is_ok());
-    assert!(validate_ticker_format("A").is_ok());
+fn test_symbol_validation() {
+    // Test valid symbols
+    assert!(validate_symbol_format("MYTOKEN").is_ok());
+    assert!(validate_symbol_format("TEST123").is_ok());
+    assert!(validate_symbol_format("A").is_ok());
 
     // Test invalid length
-    assert!(validate_ticker_format("").is_err());
+    assert!(validate_symbol_format("").is_err());
 
     // Test too long
-    assert!(validate_ticker_format("AAAAAAAAAAAAAAAAAAAAAAAAA").is_err());
+    assert!(validate_symbol_format("AAAAAAAAAAAAAAAAAAAAAAAAA").is_err());
 
     // Test invalid characters
-    assert!(validate_ticker_format("MY-TOKEN").is_err());
-    assert!(validate_ticker_format("MY_TOKEN").is_err());
-    assert!(validate_ticker_format("MY.TOKEN").is_err());
-    assert!(validate_ticker_format("MY TOKEN").is_err());
-    assert!(validate_ticker_format("MY@TOKEN").is_err());
+    assert!(validate_symbol_format("MY-TOKEN").is_err());
+    assert!(validate_symbol_format("MY_TOKEN").is_err());
+    assert!(validate_symbol_format("MY.TOKEN").is_err());
+    assert!(validate_symbol_format("MY TOKEN").is_err());
+    assert!(validate_symbol_format("MY@TOKEN").is_err());
 
-    // Test restricted tickers
-    assert!(validate_ticker_format("SOL").is_err());
-    assert!(validate_ticker_format("USDC").is_err());
-    assert!(validate_ticker_format("FeelsSOL").is_err());
+    // Test restricted symbols
+    assert!(validate_symbol_format("SOL").is_err());
+    assert!(validate_symbol_format("USDC").is_err());
+    assert!(validate_symbol_format("FeelsSOL").is_err());
 }
 
 #[test]
 fn test_comprehensive_restriction_coverage() {
     // Test that major categories are covered
-    assert!(is_ticker_restricted("FEELSSOL")); // Protocol
-    assert!(is_ticker_restricted("SOL")); // Blockchain
-    assert!(is_ticker_restricted("USDC")); // Stablecoin
-    assert!(is_ticker_restricted("BTC")); // Major crypto
-    assert!(is_ticker_restricted("ETH")); // Major crypto
-    assert!(is_ticker_restricted("TOKEN")); // Reserved word
-    assert!(is_ticker_restricted("MONEY")); // Reserved word
+    assert!(is_symbol_restricted("FEELSSOL")); // Protocol
+    assert!(is_symbol_restricted("SOL")); // Blockchain
+    assert!(is_symbol_restricted("USDC")); // Stablecoin
+    assert!(is_symbol_restricted("BTC")); // Major crypto
+    assert!(is_symbol_restricted("ETH")); // Major crypto
+    assert!(is_symbol_restricted("TOKEN")); // Reserved word
+    assert!(is_symbol_restricted("MONEY")); // Reserved word
 }
