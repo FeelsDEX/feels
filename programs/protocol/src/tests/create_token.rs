@@ -2,6 +2,7 @@ use anchor_client::{
     solana_sdk::{
         commitment_config::CommitmentConfig,
         signature::{read_keypair_file, Keypair},
+        signer::Signer as _,
         system_program, sysvar,
     },
     Client, Cluster,
@@ -26,9 +27,9 @@ use crate::{
     tests::{InstructionBuilder, FACTORY_PROGRAM_PATH, PROGRAM_PATH},
 };
 
-const TEST_KEYPAIR_PATH: &str = "/../../test_keypair.json";
-const PROTOCOL_KEYPAIR_PATH: &str = "/../../target/deploy/feels_protocol-keypair.json";
-const FACTORY_KEYPAIR_PATH: &str = "/../../target/deploy/feels_token_factory-keypair.json";
+const TEST_KEYPAIR_PATH: &str = "../../test_keypair.json";
+const PROTOCOL_KEYPAIR_PATH: &str = "../../target/deploy/feels_protocol-keypair.json";
+const FACTORY_KEYPAIR_PATH: &str = "../../target/deploy/feels_token_factory-keypair.json";
 
 const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
 const TREASURY_PDA_SEED: &[u8] = b"treasury";
@@ -62,6 +63,64 @@ async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
         .unwrap();
 
     (app, protocol_pda, treasury_pda, factory_pda)
+}
+
+struct TestComponents {
+    payer: Keypair,
+    protocol_program_id: Pubkey,
+    factory_program_id: Pubkey,
+}
+
+fn setup_test_components() -> TestComponents {
+    let current_dir = std::env::current_dir().unwrap();
+
+    // Wallet keypair path
+    let wallet_path = current_dir.join(TEST_KEYPAIR_PATH);
+    let payer = read_keypair_file(&wallet_path).unwrap();
+
+    // Read program IDs from keypair files
+    let protocol_program_keypair_path = current_dir.join(PROTOCOL_KEYPAIR_PATH);
+    let protocol_program_keypair = read_keypair_file(&protocol_program_keypair_path)
+        .expect("Protocol Program keypair should exist");
+    let protocol_program_id = protocol_program_keypair.pubkey();
+
+    let factory_program_keypair_path = current_dir.join(FACTORY_KEYPAIR_PATH);
+    let factory_program_keypair = read_keypair_file(&factory_program_keypair_path)
+        .expect("Factory Program keypair should exist");
+    let factory_program_id = factory_program_keypair.pubkey();
+
+    TestComponents {
+        payer,
+        protocol_program_id,
+        factory_program_id,
+    }
+}
+
+impl TestComponents {
+    fn client(&self) -> Client<&Keypair> {
+        Client::new_with_options(
+            Cluster::Localnet,
+            &self.payer,
+            CommitmentConfig::confirmed(),
+        )
+    }
+
+    fn payer_pubkey(&self) -> Pubkey {
+        self.payer.pubkey()
+    }
+
+    fn programs(
+        &self,
+    ) -> (
+        anchor_client::Program<&Keypair>,
+        anchor_client::Program<&Keypair>,
+    ) {
+        let client = self.client();
+        (
+            client.program(self.protocol_program_id).unwrap(),
+            client.program(self.factory_program_id).unwrap(),
+        )
+    }
 }
 
 fn deploy_protocol_and_factory_test_validator(
@@ -120,32 +179,8 @@ fn deploy_protocol_and_factory_test_validator(
 
 #[test]
 fn test_create_token_via_factory_success() {
-    // Setup paths relative to current directory
-    let current_dir = std::env::current_dir().unwrap();
-
-    // Wallet keypair path, the one we use as the payer of the transactions
-    let wallet_path = format!("{}{TEST_KEYPAIR_PATH}", current_dir.display());
-    let payer = read_keypair_file(&wallet_path).unwrap();
-    let payer_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&payer).to_bytes());
-
-    // Use our local running validator
-    let client = Client::new_with_options(Cluster::Localnet, &payer, CommitmentConfig::confirmed());
-
-    // Read program IDs from the keypair files
-    let protocol_program_keypair_path = format!("{}{PROTOCOL_KEYPAIR_PATH}", current_dir.display());
-    let protocol_program_keypair = read_keypair_file(&protocol_program_keypair_path)
-        .expect("Protocol Program keypair should exist");
-    let protocol_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&protocol_program_keypair);
-    let protocol_program = client.program(protocol_program_id).unwrap();
-
-    let factory_program_keypair_path = format!("{}{FACTORY_KEYPAIR_PATH}", current_dir.display());
-    let factory_program_keypair = read_keypair_file(&factory_program_keypair_path)
-        .expect("Factory Program keypair should exist");
-    let factory_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&factory_program_keypair);
-    let factory_program = client.program(factory_program_id).unwrap();
+    let test_components = setup_test_components();
+    let (protocol_program, factory_program) = test_components.programs();
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
@@ -153,11 +188,9 @@ fn test_create_token_via_factory_success() {
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
-    let token_mint_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&token_mint).to_bytes());
+    let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
-    let recipient_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&recipient).to_bytes());
+    let recipient_pubkey = recipient.pubkey();
     let recipient_token_account =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
@@ -181,8 +214,8 @@ fn test_create_token_via_factory_success() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: payer_pubkey,
-            token_factory_program: factory_program_id,
+            authority: test_components.payer_pubkey(),
+            token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -197,7 +230,7 @@ fn test_create_token_via_factory_success() {
             initial_supply,
         })
         .signer(&token_mint)
-        .signer(&payer)
+        .signer(&test_components.payer)
         .send()
         .unwrap();
 
@@ -240,32 +273,8 @@ fn test_create_token_via_factory_success() {
 
 #[test]
 fn test_create_token_via_factory_fail_reuse_mint() {
-    // Setup paths relative to current directory
-    let current_dir = std::env::current_dir().unwrap();
-
-    // Wallet keypair path, the one we use as the payer of the transactions
-    let wallet_path = format!("{}{TEST_KEYPAIR_PATH}", current_dir.display());
-    let payer = read_keypair_file(&wallet_path).unwrap();
-    let payer_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&payer).to_bytes());
-
-    // Use our local running validator
-    let client = Client::new_with_options(Cluster::Localnet, &payer, CommitmentConfig::confirmed());
-
-    // Read program IDs from the keypair files
-    let protocol_program_keypair_path = format!("{}{PROTOCOL_KEYPAIR_PATH}", current_dir.display());
-    let protocol_program_keypair = read_keypair_file(&protocol_program_keypair_path)
-        .expect("Protocol Program keypair should exist");
-    let protocol_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&protocol_program_keypair);
-    let protocol_program = client.program(protocol_program_id).unwrap();
-
-    let factory_program_keypair_path = format!("{}{FACTORY_KEYPAIR_PATH}", current_dir.display());
-    let factory_program_keypair = read_keypair_file(&factory_program_keypair_path)
-        .expect("Factory Program keypair should exist");
-    let factory_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&factory_program_keypair);
-    let factory_program = client.program(factory_program_id).unwrap();
+    let test_components = setup_test_components();
+    let (protocol_program, factory_program) = test_components.programs();
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
@@ -273,11 +282,9 @@ fn test_create_token_via_factory_fail_reuse_mint() {
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
-    let token_mint_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&token_mint).to_bytes());
+    let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
-    let recipient_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&recipient).to_bytes());
+    let recipient_pubkey = recipient.pubkey();
     let recipient_token_account =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
@@ -301,8 +308,8 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: payer_pubkey,
-            token_factory_program: factory_program_id,
+            authority: test_components.payer_pubkey(),
+            token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -317,7 +324,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             initial_supply,
         })
         .signer(&token_mint)
-        .signer(&payer)
+        .signer(&test_components.payer)
         .send()
         .unwrap();
 
@@ -330,8 +337,8 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: payer_pubkey,
-            token_factory_program: factory_program_id,
+            authority: test_components.payer_pubkey(),
+            token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -346,7 +353,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             initial_supply,
         })
         .signer(&token_mint)
-        .signer(&payer)
+        .signer(&test_components.payer)
         .send()
         .unwrap_err();
 }
