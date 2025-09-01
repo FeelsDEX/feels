@@ -26,9 +26,9 @@ use crate::{
     tests::{InstructionBuilder, FACTORY_PROGRAM_PATH, PROGRAM_PATH},
 };
 
-const TEST_KEYPAIR_PATH: &str = "/../../test_keypair.json";
-const PROTOCOL_KEYPAIR_PATH: &str = "/../../target/deploy/feels_protocol-keypair.json";
-const FACTORY_KEYPAIR_PATH: &str = "/../../target/deploy/feels_token_factory-keypair.json";
+const TEST_KEYPAIR_PATH: &str = "../../test_keypair.json";
+const PROTOCOL_KEYPAIR_PATH: &str = "../../target/deploy/feels_protocol-keypair.json";
+const FACTORY_KEYPAIR_PATH: &str = "../../target/deploy/feels_token_factory-keypair.json";
 
 const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
 const TREASURY_PDA_SEED: &[u8] = b"treasury";
@@ -75,19 +75,19 @@ fn setup_test_components() -> TestComponents {
     let current_dir = std::env::current_dir().unwrap();
 
     // Wallet keypair path
-    let wallet_path = format!("{}{TEST_KEYPAIR_PATH}", current_dir.display());
+    let wallet_path = current_dir.join(TEST_KEYPAIR_PATH);
     let payer = read_keypair_file(&wallet_path).unwrap();
     let payer_pubkey =
         Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&payer).to_bytes());
 
     // Read program IDs from keypair files
-    let protocol_program_keypair_path = format!("{}{PROTOCOL_KEYPAIR_PATH}", current_dir.display());
+    let protocol_program_keypair_path = current_dir.join(PROTOCOL_KEYPAIR_PATH);
     let protocol_program_keypair = read_keypair_file(&protocol_program_keypair_path)
         .expect("Protocol Program keypair should exist");
     let protocol_program_id =
         anchor_client::solana_sdk::signer::Signer::pubkey(&protocol_program_keypair);
 
-    let factory_program_keypair_path = format!("{}{FACTORY_KEYPAIR_PATH}", current_dir.display());
+    let factory_program_keypair_path = current_dir.join(FACTORY_KEYPAIR_PATH);
     let factory_program_keypair = read_keypair_file(&factory_program_keypair_path)
         .expect("Factory Program keypair should exist");
     let factory_program_id =
@@ -110,12 +110,17 @@ impl TestComponents {
         )
     }
 
-    fn protocol_program(&self) -> anchor_client::Program<&Keypair> {
-        self.client().program(self.protocol_program_id).unwrap()
-    }
-
-    fn factory_program(&self) -> anchor_client::Program<&Keypair> {
-        self.client().program(self.factory_program_id).unwrap()
+    fn programs(
+        &self,
+    ) -> (
+        anchor_client::Program<&Keypair>,
+        anchor_client::Program<&Keypair>,
+    ) {
+        let client = self.client();
+        (
+            client.program(self.protocol_program_id).unwrap(),
+            client.program(self.factory_program_id).unwrap(),
+        )
     }
 }
 
@@ -176,8 +181,7 @@ fn deploy_protocol_and_factory_test_validator(
 #[test]
 fn test_create_token_via_factory_success() {
     let test_components = setup_test_components();
-    let protocol_program = test_components.protocol_program();
-    let factory_program = test_components.factory_program();
+    let (protocol_program, factory_program) = test_components.programs();
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
@@ -273,8 +277,7 @@ fn test_create_token_via_factory_success() {
 #[test]
 fn test_create_token_via_factory_fail_reuse_mint() {
     let test_components = setup_test_components();
-    let protocol_program = test_components.protocol_program();
-    let factory_program = test_components.factory_program();
+    let (protocol_program, factory_program) = test_components.programs();
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
