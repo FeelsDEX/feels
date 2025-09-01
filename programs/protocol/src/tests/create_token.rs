@@ -2,6 +2,7 @@ use anchor_client::{
     solana_sdk::{
         commitment_config::CommitmentConfig,
         signature::{read_keypair_file, Keypair},
+        signer::Signer as _,
         system_program, sysvar,
     },
     Client, Cluster,
@@ -66,7 +67,6 @@ async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
 
 struct TestComponents {
     payer: Keypair,
-    payer_pubkey: Pubkey,
     protocol_program_id: Pubkey,
     factory_program_id: Pubkey,
 }
@@ -77,8 +77,6 @@ fn setup_test_components() -> TestComponents {
     // Wallet keypair path
     let wallet_path = current_dir.join(TEST_KEYPAIR_PATH);
     let payer = read_keypair_file(&wallet_path).unwrap();
-    let payer_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&payer).to_bytes());
 
     // Read program IDs from keypair files
     let protocol_program_keypair_path = current_dir.join(PROTOCOL_KEYPAIR_PATH);
@@ -95,7 +93,6 @@ fn setup_test_components() -> TestComponents {
 
     TestComponents {
         payer,
-        payer_pubkey,
         protocol_program_id,
         factory_program_id,
     }
@@ -108,6 +105,10 @@ impl TestComponents {
             &self.payer,
             CommitmentConfig::confirmed(),
         )
+    }
+
+    fn payer_pubkey(&self) -> Pubkey {
+        self.payer.pubkey()
     }
 
     fn programs(
@@ -217,7 +218,7 @@ fn test_create_token_via_factory_success() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: test_components.payer_pubkey,
+            authority: test_components.payer_pubkey(),
             token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
@@ -313,7 +314,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: test_components.payer_pubkey,
+            authority: test_components.payer_pubkey(),
             token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
@@ -342,7 +343,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             token_mint: token_mint_pubkey,
             recipient_token_account,
             recipient: recipient_pubkey,
-            authority: test_components.payer_pubkey,
+            authority: test_components.payer_pubkey(),
             token_factory_program: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
