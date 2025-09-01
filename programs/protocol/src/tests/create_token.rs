@@ -82,14 +82,12 @@ fn setup_test_components() -> TestComponents {
     let protocol_program_keypair_path = current_dir.join(PROTOCOL_KEYPAIR_PATH);
     let protocol_program_keypair = read_keypair_file(&protocol_program_keypair_path)
         .expect("Protocol Program keypair should exist");
-    let protocol_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&protocol_program_keypair);
+    let protocol_program_id = protocol_program_keypair.pubkey();
 
     let factory_program_keypair_path = current_dir.join(FACTORY_KEYPAIR_PATH);
     let factory_program_keypair = read_keypair_file(&factory_program_keypair_path)
         .expect("Factory Program keypair should exist");
-    let factory_program_id =
-        anchor_client::solana_sdk::signer::Signer::pubkey(&factory_program_keypair);
+    let factory_program_id = factory_program_keypair.pubkey();
 
     TestComponents {
         payer,
@@ -190,11 +188,9 @@ fn test_create_token_via_factory_success() {
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
-    let token_mint_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&token_mint).to_bytes());
+    let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
-    let recipient_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&recipient).to_bytes());
+    let recipient_pubkey = recipient.pubkey();
     let recipient_token_account =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
@@ -286,11 +282,9 @@ fn test_create_token_via_factory_fail_reuse_mint() {
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
-    let token_mint_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&token_mint).to_bytes());
+    let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
-    let recipient_pubkey =
-        Pubkey::from(anchor_client::solana_sdk::signer::Signer::pubkey(&recipient).to_bytes());
+    let recipient_pubkey = recipient.pubkey();
     let recipient_token_account =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
