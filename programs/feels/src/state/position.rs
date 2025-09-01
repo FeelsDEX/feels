@@ -43,6 +43,9 @@ pub struct TickPositionMetadata {
     pub creation_slot: u64,               // When position was created
     pub maturity_slot: u64,               // When position matures (0 for perpetual)
 
+    // Virtual rebasing checkpoint
+    pub rebase_checkpoint: crate::state::rebase::RebaseCheckpoint,
+
     // Reserved for future extensions
     pub _reserved: [u8; 31],
 }
@@ -56,6 +59,7 @@ impl TickPositionMetadata {
     const FEE_TRACKING_SIZE: usize = 32 * 2 + 8 * 2; // fee_growth_inside_last + tokens_owed
     const LEVERAGE_SIZE: usize = 8 + 8; // leverage + risk_profile_hash
     const DURATION_SIZE: usize = 1 + 8 + 8; // duration enum + creation_slot + maturity_slot
+    const REBASE_CHECKPOINT_SIZE: usize = 16 + 16 + 16 + 8; // index_a + index_b + funding_index + timestamp
     const RESERVED_SIZE: usize = 31; // reserved for future upgrades
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
@@ -65,7 +69,8 @@ impl TickPositionMetadata {
         + Self::FEE_TRACKING_SIZE
         + Self::LEVERAGE_SIZE
         + Self::DURATION_SIZE
-        + Self::RESERVED_SIZE; // Total: 262 bytes
+        + Self::REBASE_CHECKPOINT_SIZE
+        + Self::RESERVED_SIZE; // Total: 318 bytes
 
     /// Calculate hash for risk profile verification
     pub fn calculate_risk_profile_hash(leverage: u64, protection_factor: u64) -> [u8; 8] {
@@ -99,7 +104,7 @@ impl TickPositionMetadata {
         }
         
         if self.maturity_slot == 0 {
-            // Legacy positions or perpetual positions
+            // Perpetual positions
             return true;
         }
         
@@ -120,5 +125,33 @@ impl TickPositionMetadata {
         
         // Combined priority: leverage × duration / distance
         leverage_score.saturating_mul(duration_score) / tick_distance
+    }
+    
+    /// Apply virtual rebasing to get current position value
+    pub fn apply_virtual_rebase(
+        &self,
+        base_value_a: u64,
+        base_value_b: u64,
+        rebase_accumulator: &crate::state::rebase::RebaseAccumulator,
+    ) -> Result<(u64, u64)> {
+        crate::state::rebase::apply_position_rebase(
+            base_value_a,
+            base_value_b,
+            &self.rebase_checkpoint,
+            rebase_accumulator,
+            self.is_leveraged(),
+            true, // Assume long for now, would need to track this
+        )
+    }
+    
+    /// Update checkpoint after claiming yield
+    pub fn update_rebase_checkpoint(
+        &mut self,
+        rebase_accumulator: &crate::state::rebase::RebaseAccumulator,
+    ) {
+        self.rebase_checkpoint = crate::state::rebase::create_checkpoint(
+            rebase_accumulator,
+            true, // Assume long for now
+        );
     }
 }

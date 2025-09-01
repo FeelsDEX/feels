@@ -107,6 +107,7 @@ pub struct SwapRoute {
 // ============================================================================
 
 use crate::utils::U256;
+use crate::utils::math::big_int::{mul_div, Rounding};
 
 /// Wrapper around U256 for fee growth calculations
 #[derive(Clone, Copy, Debug)]
@@ -147,6 +148,18 @@ impl U256Wrapper {
             ]);
         }
         limbs
+    }
+    
+    /// Multiply by numerator and divide by denominator using the consolidated math module
+    pub fn mul_div(&self, numerator: U256Wrapper, denominator: U256Wrapper) -> Option<U256Wrapper> {
+        mul_div(self.0, numerator.0, denominator.0, Rounding::Down)
+            .map(U256Wrapper)
+    }
+    
+    /// Multiply by numerator and divide by denominator, rounding up
+    pub fn mul_div_round_up(&self, numerator: U256Wrapper, denominator: U256Wrapper) -> Option<U256Wrapper> {
+        mul_div(self.0, numerator.0, denominator.0, Rounding::Up)
+            .map(U256Wrapper)
     }
 }
 

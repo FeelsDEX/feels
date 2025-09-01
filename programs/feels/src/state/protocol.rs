@@ -57,12 +57,12 @@ pub struct ProtocolState {
 impl ProtocolState {
     // Size breakdown for clarity and maintainability
     const DISCRIMINATOR_SIZE: usize = 8;
-    const AUTHORITY_SIZE: usize = 32 + 32; // authority + treasury
-    const FEE_CONFIG_SIZE: usize = 2 + 2; // default_protocol_fee_rate + max_pool_fee_rate
-    const FLAGS_SIZE: usize = 1 + 1; // paused + pool_creation_allowed
+    const AUTHORITY_SIZE: usize = 32 + 32;            // authority + treasury
+    const FEE_CONFIG_SIZE: usize = 2 + 2;             // default_protocol_fee_rate + max_pool_fee_rate
+    const FLAGS_SIZE: usize = 1 + 1;                  // paused + pool_creation_allowed
     const STATISTICS_SIZE: usize = 8 + 8 + 8 + 8 + 8; // total_pools + total_fees_collected + USD fields
-    const METADATA_SIZE: usize = 8; // initialized_at
-    const RESERVED_SIZE: usize = 104; // reserved for future upgrades
+    const METADATA_SIZE: usize = 8;                   // initialized_at
+    const RESERVED_SIZE: usize = 104;                 // reserved for future upgrades
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
         + Self::AUTHORITY_SIZE

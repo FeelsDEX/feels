@@ -28,8 +28,6 @@ pub const EVENT_ORDER_FILLED: u32 = 1 << 12;
 pub const EVENT_ORDER_MODIFIED: u32 = 1 << 13;
 pub const EVENT_REDENOMINATION: u32 = 1 << 14;
 
-// Type alias for backwards compatibility
-pub const EVENT_PRICE_UPDATED: u32 = EVENT_RATE_UPDATED;
 
 // Hook execution stages as bit flags (up to 8 stages)
 pub const STAGE_VALIDATE: u8 = 1 << 0;      // Can abort operation

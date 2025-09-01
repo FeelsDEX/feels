@@ -355,6 +355,40 @@ pub enum FeelsProtocolError {
     InvalidPermission,
     #[msg("Message queue is full")]
     MessageQueueFull,
+    
+    // Keeper errors
+    #[msg("No active ticks found")]
+    NoActiveTicks,
+    #[msg("No liquidity in pool")]
+    NoLiquidity,
+    #[msg("Invalid optimality bound")]
+    InvalidOptimalityBound,
+    #[msg("No tight points found for convex bound")]
+    NoTightPoints,
+    #[msg("Stale gradient update")]
+    StaleGradientUpdate,
+    #[msg("Excessive optimality gap")]
+    ExcessiveOptimalityGap,
+    #[msg("Invalid gradient value")]
+    InvalidGradient,
+    #[msg("Invalid tick index")]
+    InvalidTickIndex,
+    #[msg("Insufficient keeper stake")]
+    InsufficientKeeperStake,
+    #[msg("Too many keepers registered")]
+    TooManyKeepers,
+    #[msg("Keeper already registered")]
+    KeeperAlreadyRegistered,
+    #[msg("Keeper not found")]
+    KeeperNotFound,
+    #[msg("Stake is locked")]
+    StakeLocked,
+    #[msg("Exit cooldown not complete")]
+    ExitCooldownNotComplete,
+    #[msg("Keeper not exiting")]
+    KeeperNotExiting,
+    #[msg("Path too long")]
+    PathTooLong,
 
     // ========================================================================
     // Reserved for Future Use (600-999)
@@ -523,7 +557,23 @@ impl FeelsProtocolError {
             | Self::HookNotFound
             | Self::HookValidationFailed
             | Self::InvalidPermission
-            | Self::MessageQueueFull => ErrorCategory::System,
+            | Self::MessageQueueFull
+            | Self::NoActiveTicks
+            | Self::NoLiquidity
+            | Self::InvalidOptimalityBound
+            | Self::NoTightPoints
+            | Self::StaleGradientUpdate
+            | Self::ExcessiveOptimalityGap
+            | Self::InvalidGradient
+            | Self::InvalidTickIndex
+            | Self::InsufficientKeeperStake
+            | Self::TooManyKeepers
+            | Self::KeeperAlreadyRegistered
+            | Self::KeeperNotFound
+            | Self::StakeLocked
+            | Self::ExitCooldownNotComplete
+            | Self::KeeperNotExiting
+            | Self::PathTooLong => ErrorCategory::System,
         }
     }
 
@@ -587,19 +637,6 @@ pub enum ErrorSeverity {
     Critical,
 }
 
-// Type aliases for backwards compatibility
-impl FeelsProtocolError {
-    #[allow(non_upper_case_globals)]
-    pub const PriceOutOfBounds: Self = Self::RateOutOfBounds;
-    #[allow(non_upper_case_globals)]
-    pub const PriceLimitTooAggressive: Self = Self::RateLimitTooAggressive;
-    #[allow(non_upper_case_globals)]
-    pub const PriceLimitOutsideValidRange: Self = Self::RateLimitOutsideValidRange;
-    #[allow(non_upper_case_globals)]
-    pub const InvalidPriceRange: Self = Self::InvalidRateRange;
-    #[allow(non_upper_case_globals)]
-    pub const InvalidSqrtPrice: Self = Self::InvalidSqrtRate;
-}
 
 #[cfg(test)]
 mod tests {

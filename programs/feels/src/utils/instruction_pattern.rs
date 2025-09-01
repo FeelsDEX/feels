@@ -1,0 +1,352 @@
+/// Standardized patterns for instruction handlers
+/// 
+/// This module provides macros and utilities to ensure consistent structure
+/// across all instruction handlers in the protocol.
+use anchor_lang::prelude::*;
+use crate::error::FeelsError;
+
+// ============================================================================
+// Instruction Handler Pattern Traits
+// ============================================================================
+
+/// Standard phases for instruction execution
+pub trait InstructionHandler<'info, P, R> {
+    /// Phase 1: Validate inputs and setup
+    fn validate(&self, params: &P) -> Result<()>;
+    
+    /// Phase 2: Load and prepare state
+    fn prepare_state(&mut self) -> Result<()>;
+    
+    /// Phase 3: Execute core logic
+    fn execute(&mut self, params: P) -> Result<R>;
+    
+    /// Phase 4: Emit events
+    fn emit_events(&self, result: &R) -> Result<()>;
+    
+    /// Phase 5: Cleanup and finalize
+    fn finalize(&mut self) -> Result<()>;
+}
+
+/// Common validation utilities
+pub trait ValidationUtils {
+    /// Validate non-zero amount
+    fn validate_amount(&self, amount: u64) -> Result<()> {
+        require!(
+            amount > 0,
+            FeelsError::zero_amount("input")
+        );
+        Ok(())
+    }
+    
+    /// Validate basis points value
+    fn validate_bps(&self, bps: u16) -> Result<()> {
+        require!(
+            bps <= 10_000,
+            FeelsError::ValidationError {
+                field: "basis_points".to_string(),
+                reason: format!("{} exceeds maximum of 10000", bps),
+            }
+        );
+        Ok(())
+    }
+    
+    /// Validate authority
+    fn validate_authority(&self, authority: &Pubkey, expected: &Pubkey) -> Result<()> {
+        require!(
+            authority == expected,
+            FeelsError::Unauthorized {
+                action: "operation".to_string(),
+                required_role: "authority".to_string(),
+            }
+        );
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Instruction Handler Macros
+// ============================================================================
+
+/// Macro to generate standard instruction handler structure
+#[macro_export]
+macro_rules! instruction_handler {
+    (
+        $handler_name:ident,
+        $context_type:ty,
+        $params_type:ty,
+        $result_type:ty,
+        {
+            validate: $validate_block:block,
+            prepare: $prepare_block:block,
+            execute: $execute_block:block,
+            events: $events_block:block,
+            finalize: $finalize_block:block
+        }
+    ) => {
+        pub fn $handler_name<'info>(
+            ctx: Context<'_, '_, 'info, 'info, $context_type>,
+            params: $params_type,
+        ) -> Result<$result_type> {
+            // Phase 1: Validation
+            msg!("Phase 1: Validating inputs");
+            $validate_block
+            
+            // Phase 2: State preparation
+            msg!("Phase 2: Preparing state");
+            $prepare_block
+            
+            // Phase 3: Core execution
+            msg!("Phase 3: Executing logic");
+            let result = $execute_block;
+            
+            // Phase 4: Event emission
+            msg!("Phase 4: Emitting events");
+            $events_block
+            
+            // Phase 5: Finalization
+            msg!("Phase 5: Finalizing");
+            $finalize_block
+            
+            Ok(result)
+        }
+    };
+}
+
+/// Macro for common validation patterns
+#[macro_export]
+macro_rules! validate {
+    (amount: $amount:expr) => {
+        require!($amount > 0, FeelsError::zero_amount("input"));
+    };
+    
+    (authority: $auth:expr, $expected:expr) => {
+        require!(
+            $auth == $expected,
+            FeelsError::invalid_authority()
+        );
+    };
+    
+    (range: $value:expr, $min:expr, $max:expr, $name:expr) => {
+        require!(
+            $value >= $min && $value <= $max,
+            FeelsError::InvalidRange {
+                range_type: $name.to_string(),
+                min: $min.to_string(),
+                max: $max.to_string(),
+            }
+        );
+    };
+}
+
+/// Macro for reentrancy protection
+#[macro_export]
+macro_rules! with_reentrancy_lock {
+    ($pool:expr, $body:block) => {{
+        use crate::state::reentrancy::ReentrancyStatus;
+        
+        // Acquire lock
+        let current_status = $pool.get_reentrancy_status()?;
+        require!(
+            current_status == ReentrancyStatus::Unlocked,
+            FeelsError::ReentrancyDetected {
+                operation: "instruction".to_string()
+            }
+        );
+        $pool.set_reentrancy_status(ReentrancyStatus::Locked)?;
+        
+        // Execute body
+        let result = $body;
+        
+        // Release lock
+        $pool.set_reentrancy_status(ReentrancyStatus::Unlocked)?;
+        
+        result
+    }};
+}
+
+// ============================================================================
+// Event Builder Pattern
+// ============================================================================
+
+/// Builder pattern for constructing events
+pub struct EventBuilder<T> {
+    event: T,
+}
+
+impl<T> EventBuilder<T> {
+    pub fn new(event: T) -> Self {
+        Self { event }
+    }
+    
+    pub fn emit(self) -> Result<()> {
+        emit!(self.event);
+        Ok(())
+    }
+}
+
+/// Macro for building and emitting events
+#[macro_export]
+macro_rules! emit_event {
+    ($event_type:ty { $($field:ident: $value:expr),* $(,)? }) => {{
+        let event = $event_type {
+            $($field: $value),*
+        };
+        emit!(event);
+    }};
+}
+
+// ============================================================================
+// Common Instruction Patterns
+// ============================================================================
+
+/// Pattern for swap-like instructions
+pub struct SwapPattern;
+
+impl SwapPattern {
+    /// Validate swap parameters
+    pub fn validate_params(
+        amount_in: u64,
+        min_amount_out: u64,
+        sqrt_price_limit: u128,
+    ) -> Result<()> {
+        validate!(amount: amount_in);
+        require!(
+            min_amount_out > 0,
+            FeelsError::zero_amount("min_output")
+        );
+        require!(
+            sqrt_price_limit > 0,
+            FeelsError::InvalidAmount {
+                amount_type: "sqrt_price_limit".to_string(),
+                reason: "Must be greater than zero".to_string(),
+            }
+        );
+        Ok(())
+    }
+}
+
+/// Pattern for liquidity-like instructions
+pub struct LiquidityPattern;
+
+impl LiquidityPattern {
+    /// Validate liquidity parameters
+    pub fn validate_params(
+        liquidity_amount: u128,
+        tick_lower: i32,
+        tick_upper: i32,
+    ) -> Result<()> {
+        require!(
+            liquidity_amount > 0,
+            FeelsError::zero_amount("liquidity")
+        );
+        require!(
+            tick_lower < tick_upper,
+            FeelsError::InvalidRange {
+                range_type: "tick".to_string(),
+                min: tick_lower.to_string(),
+                max: tick_upper.to_string(),
+            }
+        );
+        Ok(())
+    }
+}
+
+/// Pattern for admin-like instructions
+pub struct AdminPattern;
+
+impl AdminPattern {
+    /// Validate admin operation
+    pub fn validate_authority(
+        signer: &Pubkey,
+        expected_authority: &Pubkey,
+    ) -> Result<()> {
+        validate!(authority: signer, expected_authority);
+        Ok(())
+    }
+    
+    /// Validate parameter update
+    pub fn validate_update<T: PartialOrd + std::fmt::Display>(
+        new_value: T,
+        min_allowed: T,
+        max_allowed: T,
+        param_name: &str,
+    ) -> Result<()> {
+        require!(
+            new_value >= min_allowed && new_value <= max_allowed,
+            FeelsError::ValidationError {
+                field: param_name.to_string(),
+                reason: format!("Value {} out of allowed range", new_value),
+            }
+        );
+        Ok(())
+    }
+}
+
+// ============================================================================
+// State Loading Helpers
+// ============================================================================
+
+/// Helper to load multiple accounts with error context
+pub struct StateLoader;
+
+impl StateLoader {
+    /// Load account with descriptive error
+    pub fn load_account<'info, T: anchor_lang::AccountDeserialize + anchor_lang::Owner>(
+        account: &'info AccountInfo<'info>,
+        name: &str,
+    ) -> Result<T> {
+        T::try_deserialize(&mut &account.data.borrow()[..])
+            .map_err(|_| FeelsError::NotInitialized {
+                entity: name.to_string(),
+                identifier: account.key().to_string(),
+            }.into())
+    }
+    
+    /// Load account loader with descriptive error
+    pub fn load_zero_copy<'info, T: anchor_lang::ZeroCopy + anchor_lang::Owner>(
+        loader: &AccountLoader<'info, T>,
+        name: &str,
+    ) -> Result<anchor_lang::AccountLoader<'info, T>> {
+        loader.load().map_err(|_| FeelsError::NotInitialized {
+            entity: name.to_string(),
+            identifier: loader.key().to_string(),
+        })?;
+        Ok(loader.clone())
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_validation_utils() {
+        struct TestValidator;
+        impl ValidationUtils for TestValidator {}
+        
+        let validator = TestValidator;
+        
+        // Test amount validation
+        assert!(validator.validate_amount(100).is_ok());
+        assert!(validator.validate_amount(0).is_err());
+        
+        // Test bps validation
+        assert!(validator.validate_bps(5000).is_ok());
+        assert!(validator.validate_bps(10001).is_err());
+    }
+    
+    #[test]
+    fn test_swap_pattern() {
+        // Valid swap params
+        assert!(SwapPattern::validate_params(1000, 900, 1_u128 << 96).is_ok());
+        
+        // Invalid swap params
+        assert!(SwapPattern::validate_params(0, 900, 1_u128 << 96).is_err());
+        assert!(SwapPattern::validate_params(1000, 0, 1_u128 << 96).is_err());
+        assert!(SwapPattern::validate_params(1000, 900, 0).is_err());
+    }
+}

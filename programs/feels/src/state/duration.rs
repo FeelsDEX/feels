@@ -87,7 +87,7 @@ impl Duration {
         *self as u8
     }
     
-    /// Convert duration to blocks (legacy naming for compatibility)
+    /// Convert duration to blocks
     pub fn to_blocks(&self) -> u64 {
         self.to_slots()
     }

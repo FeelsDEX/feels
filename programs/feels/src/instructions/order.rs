@@ -7,10 +7,38 @@ use crate::{execute_hooks, execute_post_hooks};
 use crate::logic::event::OrderEvent;
 use crate::logic::hook::{HookContextBuilder, EVENT_ORDER_CREATED, EVENT_ORDER_FILLED};
 use crate::logic::{OrderManager, OrderState};
-use crate::state::{Pool, FeelsProtocolError, RiskProfile, Tick3D, Oracle, FeeConfig};
+use crate::state::{Pool, FeelsProtocolError, RiskProfile, Tick3D, Oracle, FeeConfig, TickArray};
 use crate::state::duration::Duration;
 use crate::state::reentrancy::ReentrancyStatus;
-use crate::logic::order::{SecureOrderManager, get_oracle_from_remaining, get_oracle_data_from_remaining};
+use crate::logic::core::order::{SecureOrderManager, get_oracle_from_remaining, get_oracle_data_from_remaining};
+use crate::logic::core::tick::TickManager;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Get tick array from remaining accounts based on tick index
+fn get_tick_array_from_remaining<'info>(
+    remaining_accounts: &[AccountInfo<'info>],
+    tick_index: i32,
+    tick_spacing: i32,
+) -> Result<AccountLoader<'info, TickArray>> {
+    // Calculate which tick array contains this tick
+    let array_start = (tick_index / (tick_spacing * 88)) * (tick_spacing * 88);
+    
+    // Find the tick array in remaining accounts
+    for account in remaining_accounts {
+        if let Ok(tick_array) = AccountLoader::<TickArray>::try_from(account) {
+            let ta = tick_array.load()?;
+            if ta.start_tick_index == array_start {
+                drop(ta);
+                return Ok(tick_array);
+            }
+        }
+    }
+    
+    Err(FeelsProtocolError::InvalidTickArrayAccount.into())
+}
 
 // ============================================================================
 // Parameters
@@ -399,16 +427,36 @@ fn execute_liquidity_order(
                 .and_then(|l| l.checked_div(RiskProfile::LEVERAGE_SCALE as u128))
                 .ok_or(FeelsProtocolError::MathOverflow)?;
             
-            // Update tick arrays
-            // TODO: In a real implementation, we would get the tick arrays from remaining_accounts
-            // For now, we'll skip the tick update as it requires loading the actual tick array accounts
-            // This would be done like:
-            // let tick_array_lower = get_tick_array_from_remaining(remaining_accounts, tick_lower)?;
-            // let tick_array_upper = get_tick_array_from_remaining(remaining_accounts, tick_upper)?;
-            // TickManager::update_tick_liquidity(&mut tick_array_lower, *tick_lower, effective_liquidity as i128, false)?;
-            // TickManager::update_tick_liquidity(&mut tick_array_upper, *tick_upper, -(effective_liquidity as i128), true)?;
+            // Update tick arrays - minimal implementation
+            let tick_spacing = pool.tick_spacing;
+            let remaining_accounts = ctx.remaining_accounts;
             
-            msg!("Tick liquidity updates would happen here for ticks {} and {}", tick_lower, tick_upper);
+            if remaining_accounts.len() >= 2 {
+                // Try to load tick arrays from remaining accounts
+                match (
+                    get_tick_array_from_remaining(remaining_accounts, *tick_lower, tick_spacing),
+                    get_tick_array_from_remaining(remaining_accounts, *tick_upper, tick_spacing)
+                ) {
+                    (Ok(tick_array_lower), Ok(tick_array_upper)) => {
+                        // Update lower tick
+                        let mut ta_lower = tick_array_lower.load_mut()?;
+                        TickManager::update_tick_liquidity(&mut ta_lower, *tick_lower, effective_liquidity as i128, false)?;
+                        drop(ta_lower);
+                        
+                        // Update upper tick
+                        let mut ta_upper = tick_array_upper.load_mut()?;
+                        TickManager::update_tick_liquidity(&mut ta_upper, *tick_upper, -(effective_liquidity as i128), true)?;
+                        drop(ta_upper);
+                        
+                        msg!("Updated tick liquidity for ticks {} and {} with delta: {}", tick_lower, tick_upper, effective_liquidity);
+                    },
+                    _ => {
+                        msg!("Tick arrays not found in remaining accounts, skipping tick updates");
+                    }
+                }
+            } else {
+                msg!("No remaining accounts provided for tick arrays, skipping tick updates");
+            }
             
             // Update pool liquidity if position is in range
             if pool.current_tick >= *tick_lower && pool.current_tick < *tick_upper {

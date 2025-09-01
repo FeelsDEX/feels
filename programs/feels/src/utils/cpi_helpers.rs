@@ -106,7 +106,7 @@ pub fn transfer_tokens_unified<'info>(params: TransferParams<'info>) -> Result<(
     }
 }
 
-/// Helper function to transfer tokens using CPI (legacy support)
+/// Helper function to transfer tokens using CPI
 /// This is the most general transfer function that others build upon
 pub fn transfer_tokens<'info>(
     from: AccountInfo<'info>,

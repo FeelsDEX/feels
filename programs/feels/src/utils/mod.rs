@@ -10,6 +10,7 @@ pub mod account_pattern;        // Reusable account pattern abstractions
 pub mod cpi_helpers;           // Cross-Program Invocation helpers
 pub mod deterministic_seed;    // PDA seed generation and derivation
 pub mod error_handling;        // Error handling utilities
+pub mod instruction_pattern;   // Standardized instruction handler patterns
 pub mod math;                  // Unified mathematics module
 pub mod time_weighted_average; // Time-weighted average buffer for TWAP/TWAV
 pub mod token_validation;      // Token ticker validation
@@ -110,4 +111,13 @@ pub use time_weighted_average::{
     TimeWeightedObservation, TimeWeightedAverageBuffer,
     PriceObservation, FlashVolumeObservation,
     TimeWeightedMetrics,
+};
+
+// ============================================================================
+// Re-exports from Instruction Patterns
+// ============================================================================
+
+pub use instruction_pattern::{
+    InstructionHandler, ValidationUtils, EventBuilder,
+    SwapPattern, LiquidityPattern, AdminPattern, StateLoader,
 };

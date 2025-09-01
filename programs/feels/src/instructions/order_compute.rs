@@ -516,9 +516,28 @@ fn populate_tick_array_router(
     // Update last update slot
     router_data.last_update_slot = current_slot;
     
-    // Note: In a real implementation, we would need to save this back to the account
-    // This would require making the router parameter mutable and using proper account serialization
-    msg!("TickArrayRouter populated with {} arrays", tick_arrays.len());
+    // Save the router state back to the account
+    // Drop the immutable borrow before getting mutable access
+    drop(router_data);
+    
+    // Get mutable access to save the updated state
+    if let Ok(mut router_data_mut) = router.load_mut() {
+        // Copy the updated arrays and bitmap
+        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+            router_data_mut.tick_arrays[i] = tick_arrays.get(i)
+                .map(|info| info.pubkey)
+                .unwrap_or(Pubkey::default());
+            router_data_mut.start_indices[i] = tick_arrays.get(i)
+                .map(|info| info.start_tick_index)
+                .unwrap_or(0);
+        }
+        router_data_mut.active_bitmap = (1u64 << tick_arrays.len()) - 1;
+        router_data_mut.last_update_slot = current_slot;
+        
+        msg!("TickArrayRouter state persisted with {} arrays", tick_arrays.len());
+    } else {
+        msg!("Warning: Could not persist router state updates");
+    }
     
     Ok(())
 }

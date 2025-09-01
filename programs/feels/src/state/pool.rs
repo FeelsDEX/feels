@@ -3,8 +3,7 @@
 use anchor_lang::prelude::*;
 use crate::state::{FeelsProtocolError, duration::Duration};
 use crate::state::reentrancy::ReentrancyStatus;
-use crate::state::leverage::{LeverageParameters, RiskProfile, LeverageStatistics};
-use crate::state::metrics_volume::VolumeTracker;
+use crate::state::leverage::{LeverageParameters, RiskProfile};
 use crate::state::tick::Tick3D;
 use crate::utils::U256Wrapper;
 use crate::constant::TICK_ARRAY_SIZE;
@@ -51,9 +50,11 @@ pub struct Pool {
     pub creation_timestamp: i64,   // Creation time
     pub last_update_slot: u64,     // Last update slot
     
-    // ========== Statistics ==========
-    pub total_volume_a: u128,      // Cumulative volume token A
-    pub total_volume_b: u128,      // Cumulative volume token B
+    // ========== References to Separate Accounts ==========
+    pub pool_metrics: Pubkey,      // Reference to PoolMetrics account
+    pub pool_hooks: Pubkey,        // Reference to PoolHooks account
+    pub pool_rebase: Pubkey,       // Reference to PoolRebase account
+    pub market_field: Pubkey,      // Reference to MarketField account
     
     // ========== Security Features ==========
     pub reentrancy_status: u8,     // Reentrancy protection state
@@ -63,25 +64,22 @@ pub struct Pool {
     pub oracle: Pubkey,            // Oracle account (Pubkey::default() if none)
     
     // ========== Leverage System ==========
-    pub leverage_params: LeverageParameters,
-    pub leverage_stats: LeverageStatistics,
+    pub leverage_params: LeverageParameters,  // Hot path params stay
+    // leverage_stats moved to PoolMetrics
     
-    // ========== Volume Tracking ==========
-    pub volume_tracker: VolumeTracker,
+    // Volume tracking moved to PoolMetrics
     
     // ========== Position Vault ==========
     pub position_vault: Pubkey,    // Position vault (Pubkey::default() if none)
     
-    // ========== Redenomination ==========
-    pub last_redenomination: i64,
-    pub redenomination_threshold: u64,
+    // Redenomination moved to PoolRebase
     
-    // ========== Hook Integration ==========
-    pub hook_registry: Pubkey,     // Hook registry account (Pubkey::default() if none)
-    pub valence_session: Pubkey,   // Valence hook session (Pubkey::default() if none)
+    // Hook integration moved to PoolHooks
+    
+    // Virtual rebasing moved to PoolRebase
     
     // ========== Reserved Space ==========
-    pub _reserved: [u8; 128],      // Reserved for future use  
+    pub _reserved: [u8; 64],       // Reserved for future use (reduced by 64)
     pub _reserved2: [u8; 64],      // Additional reserved space
     pub _reserved3: [u8; 32],      // More reserved space
     
@@ -95,21 +93,17 @@ pub struct Pool {
 impl Pool {
     pub const SIZE: usize = 8 +    // discriminator
         32 * 4 +                   // token configuration (4 pubkeys)
-        32 + 2 + 2 + 2 + 2 +      // fee configuration
+        32 + 2 + 6 +              // fee configuration (removed duplicate padding)
         4 + 16 + 16 +             // rate and liquidity
         128 + 2 + 6 +             // tick management
         32 + 32 + 8 + 8 +         // fee tracking
         32 + 8 + 8 +              // metadata
-        16 + 16 +                 // statistics
+        32 + 32 + 32 + 32 +       // references to separate accounts (pool_metrics, pool_hooks, pool_rebase, market_field)
         1 + 7 +                   // security
         32 +                      // oracle
-        32 + 32 +                 // leverage (params + stats sizes)
-        64 +                      // dynamic fees
-        64 +                      // volume tracker
+        32 +                      // leverage params only (stats moved)
         32 +                      // position vault
-        8 + 8 +                   // redenomination
-        32 + 32 +                 // hook_registry + valence
-        128 + 64 + 32;            // reserved (_reserved + _reserved2 + _reserved3)
+        96 + 64 + 32;             // reserved (_reserved + _reserved2 + _reserved3)
     
     // ========================================================================
     // Core Pool Functions
@@ -194,14 +188,19 @@ impl Pool {
         self.position_vault != Pubkey::default()
     }
     
-    /// Check if valence session is active
-    pub fn has_valence_session(&self) -> bool {
-        self.valence_session != Pubkey::default()
+    /// Check if pool hooks are configured
+    pub fn has_pool_hooks(&self) -> bool {
+        self.pool_hooks != Pubkey::default()
     }
     
-    /// Check if hook registry is configured
-    pub fn has_hook_registry(&self) -> bool {
-        self.hook_registry != Pubkey::default()
+    /// Check if pool metrics are configured
+    pub fn has_pool_metrics(&self) -> bool {
+        self.pool_metrics != Pubkey::default()
+    }
+    
+    /// Check if pool rebase is configured
+    pub fn has_pool_rebase(&self) -> bool {
+        self.pool_rebase != Pubkey::default()
     }
     
     /// Get maximum allowed leverage
@@ -255,84 +254,25 @@ impl Pool {
     }
     
     // ========================================================================
-    // Leverage Statistics
+    // Reference Account Helpers
     // ========================================================================
     
-    /// Update leverage statistics when adding liquidity
-    pub fn update_leverage_stats_add(
+    /// Initialize reference accounts (called during pool creation)
+    pub fn initialize_references(
         &mut self,
-        liquidity: u128,
-        leverage: u64,
-        effective_liquidity: u128,
+        pool_metrics: Pubkey,
+        pool_hooks: Pubkey,
+        pool_rebase: Pubkey,
     ) -> Result<()> {
-        self.leverage_stats.total_base_liquidity = self.leverage_stats
-            .total_base_liquidity
-            .checked_add(liquidity)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-            
-        self.leverage_stats.total_leveraged_liquidity = self.leverage_stats
-            .total_leveraged_liquidity
-            .checked_add(effective_liquidity)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-        
-        if leverage > RiskProfile::LEVERAGE_SCALE {
-            self.leverage_stats.leveraged_position_count = self.leverage_stats
-                .leveraged_position_count
-                .checked_add(1)
-                .ok_or(FeelsProtocolError::MathOverflow)?;
-        }
-        
-        self.leverage_stats.last_update = Clock::get()?.unix_timestamp;
+        self.pool_metrics = pool_metrics;
+        self.pool_hooks = pool_hooks;
+        self.pool_rebase = pool_rebase;
         Ok(())
     }
     
-    /// Update leverage statistics when removing liquidity
-    pub fn update_leverage_stats_remove(
-        &mut self,
-        liquidity: u128,
-        leverage: u64,
-        effective_liquidity: u128,
-    ) -> Result<()> {
-        self.leverage_stats.total_base_liquidity = self.leverage_stats
-            .total_base_liquidity
-            .checked_sub(liquidity)
-            .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
-            
-        self.leverage_stats.total_leveraged_liquidity = self.leverage_stats
-            .total_leveraged_liquidity
-            .checked_sub(effective_liquidity)
-            .ok_or(FeelsProtocolError::ArithmeticUnderflow)?;
-        
-        if leverage > RiskProfile::LEVERAGE_SCALE && 
-           self.leverage_stats.leveraged_position_count > 0 {
-            self.leverage_stats.leveraged_position_count -= 1;
-        }
-        
-        self.leverage_stats.last_update = Clock::get()?.unix_timestamp;
-        Ok(())
-    }
+    // Leverage statistics methods moved to PoolMetrics
     
-    // ========================================================================
-    // Volume Tracking
-    // ========================================================================
-    
-    /// Update trading volume
-    pub fn update_volume(&mut self, amount_a: u64, amount_b: u64) -> Result<()> {
-        self.total_volume_a = self.total_volume_a
-            .checked_add(amount_a as u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-            
-        self.total_volume_b = self.total_volume_b
-            .checked_add(amount_b as u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-            
-        let current_timestamp = Clock::get()?.unix_timestamp;
-        let mut volume_tracker = self.volume_tracker;
-        volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
-        self.volume_tracker = volume_tracker;
-        
-        Ok(())
-    }
+    // Volume tracking methods moved to PoolMetrics
     
     // ========================================================================
     // Bitmap Operations
@@ -399,11 +339,11 @@ impl Pool {
     }
     
     /// Update volume tracker
-    pub fn update_volume_tracker(&mut self, amount_a: u64, amount_b: u64) -> Result<()> {
-        let current_timestamp = Clock::get()?.unix_timestamp;
-        let mut volume_tracker = self.volume_tracker;
-        volume_tracker.update_volume(amount_a, amount_b, current_timestamp)?;
-        self.volume_tracker = volume_tracker;
+    /// Note: Volume tracking has been moved to PoolMetrics account
+    /// This method is deprecated and will be removed
+    pub fn update_volume_tracker(&mut self, _amount_a: u64, _amount_b: u64) -> Result<()> {
+        // Volume tracking moved to PoolMetrics
+        // This method kept for compatibility but does nothing
         Ok(())
     }
 }

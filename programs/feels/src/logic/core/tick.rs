@@ -3,7 +3,7 @@
 /// Also contains router initialization and update functions. Central module
 /// for all tick operations in the concentrated liquidity system.
 use anchor_lang::prelude::*;
-use crate::state::{FeelsProtocolError, Tick, TickArray};
+use crate::state::{FeelsProtocolError, Tick, TickArray, TickPositionMetadata};
 use crate::utils::{add_liquidity_delta, safe_add_i128, safe_sub_i128, FeeGrowthMath};
 use crate::utils::{MAX_LIQUIDITY_DELTA, TICK_ARRAY_SIZE, MIN_TICK, MAX_TICK};
 
@@ -555,6 +555,145 @@ pub struct TickPositionArrays {
     pub lower: Pubkey,
     pub upper: Pubkey,
     pub middle: Vec<Pubkey>,
+}
+
+// ============================================================================
+// Tick Position Implementation
+// ============================================================================
+
+/// Business logic operations for Position management (consolidated from tick_position.rs)
+impl TickPositionMetadata {
+    /// Calculate the seeds for position metadata PDA derivation
+    pub fn seeds(tick_position_mint: &Pubkey) -> Vec<Vec<u8>> {
+        vec![b"position".to_vec(), tick_position_mint.to_bytes().to_vec()]
+    }
+
+    /// Validate the position parameters
+    pub fn validate(&self, tick_spacing: i16) -> Result<()> {
+        // Ensure tick range is valid
+        require!(
+            self.tick_lower < self.tick_upper,
+            FeelsProtocolError::InvalidTickRange
+        );
+
+        // Ensure ticks are properly aligned to tick spacing
+        require!(
+            self.tick_lower % tick_spacing as i32 == 0,
+            FeelsProtocolError::TickNotAligned
+        );
+        require!(
+            self.tick_upper % tick_spacing as i32 == 0,
+            FeelsProtocolError::TickNotAligned
+        );
+
+        // Ensure tick range is within bounds
+        require!(
+            self.tick_lower >= MIN_TICK && self.tick_upper <= MAX_TICK,
+            FeelsProtocolError::TickOutOfBounds
+        );
+
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------------
+    // Tick Position State Queries
+    // ------------------------------------------------------------------------
+
+    /// Check if the tick position is in range at the given current tick
+    pub fn is_in_range(&self, current_tick: i32) -> bool {
+        current_tick >= self.tick_lower && current_tick < self.tick_upper
+    }
+
+    // ------------------------------------------------------------------------
+    // Fee Growth Management
+    // ------------------------------------------------------------------------
+
+    /// Set fee growth inside last values for token A
+    pub fn set_fee_growth_inside_last_a(&mut self, value: [u64; 4]) {
+        self.fee_growth_inside_last_a = value;
+    }
+
+    /// Set fee growth inside last values for token B
+    pub fn set_fee_growth_inside_last_b(&mut self, value: [u64; 4]) {
+        self.fee_growth_inside_last_b = value;
+    }
+
+    /// Get fee growth inside last as u256 for token A
+    pub fn get_fee_growth_inside_last_a(&self) -> [u64; 4] {
+        self.fee_growth_inside_last_a
+    }
+
+    /// Get fee growth inside last as u256 for token B
+    pub fn get_fee_growth_inside_last_b(&self) -> [u64; 4] {
+        self.fee_growth_inside_last_b
+    }
+
+    // ------------------------------------------------------------------------
+    // Position Updates
+    // ------------------------------------------------------------------------
+
+    /// Update the position's liquidity using safe arithmetic
+    pub fn update_liquidity(&mut self, liquidity_delta: i128) -> Result<()> {
+        self.liquidity = add_liquidity_delta(self.liquidity, liquidity_delta)?;
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------------
+    // Fee Calculation and Collection
+    // ------------------------------------------------------------------------
+
+    /// Calculate fees owed since last collection
+    /// This uses simplified fee math based on Uniswap V3 principles
+    pub fn calculate_fees_owed(
+        &self,
+        fee_growth_inside_0: [u64; 4],
+        fee_growth_inside_1: [u64; 4],
+    ) -> (u64, u64) {
+        // Calculate fee growth delta for each token
+        // In production, this would use full u256 arithmetic
+        
+        // For minimal implementation, use the lowest 64 bits for calculation
+        let fee_growth_delta_0 = fee_growth_inside_0[0].saturating_sub(self.fee_growth_inside_last_a[0]);
+        let fee_growth_delta_1 = fee_growth_inside_1[0].saturating_sub(self.fee_growth_inside_last_b[0]);
+        
+        // Calculate fees: liquidity * fee_growth_delta / 2^64 (simplified from 2^128)
+        // Using u128 to prevent overflow in intermediate calculations
+        let fees_0 = ((self.liquidity as u128)
+            .saturating_mul(fee_growth_delta_0 as u128))
+            .saturating_shr(64) // Divide by 2^64
+            .min(u64::MAX as u128) as u64;
+            
+        let fees_1 = ((self.liquidity as u128)
+            .saturating_mul(fee_growth_delta_1 as u128))
+            .saturating_shr(64) // Divide by 2^64
+            .min(u64::MAX as u128) as u64;
+        
+        // Add to existing owed amounts
+        let total_owed_0 = self.tokens_owed_a.saturating_add(fees_0);
+        let total_owed_1 = self.tokens_owed_b.saturating_add(fees_1);
+        
+        (total_owed_0, total_owed_1)
+    }
+
+    /// Update tokens owed after fee collection using safe arithmetic
+    pub fn update_tokens_owed(&mut self, tokens_0: u64, tokens_1: u64) -> Result<()> {
+        // Use saturating add to prevent overflow in token accounting
+        self.tokens_owed_a = self.tokens_owed_a.saturating_add(tokens_0);
+        self.tokens_owed_b = self.tokens_owed_b.saturating_add(tokens_1);
+        Ok(())
+    }
+
+    /// Collect fees and reset tokens owed using safe arithmetic
+    pub fn collect_fees(&mut self, amount_0: u64, amount_1: u64) -> (u64, u64) {
+        let collected_0 = amount_0.min(self.tokens_owed_a);
+        let collected_1 = amount_1.min(self.tokens_owed_b);
+
+        // Use saturating subtraction to prevent underflow
+        self.tokens_owed_a = self.tokens_owed_a.saturating_sub(collected_0);
+        self.tokens_owed_b = self.tokens_owed_b.saturating_sub(collected_1);
+
+        (collected_0, collected_1)
+    }
 }
 
 // ============================================================================

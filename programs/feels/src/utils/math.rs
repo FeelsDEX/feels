@@ -305,6 +305,35 @@ pub mod safe {
 
         Ok(result as u64)
     }
+    
+    /// Safe mul_div for u64 (alias for compatibility)
+    pub fn safe_mul_div_u64(a: u64, b: u64, denominator: u64) -> Result<u64> {
+        mul_div_u64(a, b, denominator)
+    }
+    
+    /// Safe mul_div for u128 values
+    pub fn safe_mul_div_u128(a: u128, b: u128, denominator: u128) -> Result<u128> {
+        if denominator == 0 {
+            return Err(FeelsProtocolError::DivisionByZero.into());
+        }
+        
+        // Use U256 for overflow-safe multiplication
+        let a_u256 = U256::from(a);
+        let b_u256 = U256::from(b);
+        let denominator_u256 = U256::from(denominator);
+        
+        let product = a_u256
+            .checked_mul(b_u256)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+            
+        let result = product
+            .checked_div(denominator_u256)
+            .ok_or(FeelsProtocolError::DivisionByZero)?;
+            
+        // Convert back to u128
+        result.try_into()
+            .map_err(|_| FeelsProtocolError::MathOverflow.into())
+    }
 }
 
 /// Q96 fixed-point arithmetic using spl-math

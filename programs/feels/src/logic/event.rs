@@ -28,6 +28,39 @@ pub enum LiquidityEventType {
 }
 
 // ============================================================================
+// Oracle Update Events
+// ============================================================================
+
+/// Emitted when oracle updates market parameters
+#[event]
+pub struct OracleUpdateEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub oracle: Pubkey,
+    pub timestamp: i64,
+    pub spot_gradient: i64,
+    pub rate_gradient: i64,
+    pub leverage_gradient: i64,
+    pub market_curvature: u64,
+    pub risk_adjustment: u32,
+    pub volatility: u32,
+}
+
+impl EventBase for OracleUpdateEvent {
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
+    
+    fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+    
+    fn actor(&self) -> Pubkey {
+        self.oracle
+    }
+}
+
+// ============================================================================
 // Protocol Initialization Events
 // ============================================================================
 
@@ -110,8 +143,8 @@ pub struct CrossTokenSwapEvent {
     pub amount_out: u64,
     pub route: OrderRoute,
     pub intermediate_amount: Option<u64>,    // For two-hop swaps
-    pub sqrt_rate_after_hop1: Option<u128>, // Rate after first hop
-    pub sqrt_rate_after_final: u128,        // Final rate state
+    pub sqrt_rate_after_hop1: Option<u128>,  // Rate after first hop
+    pub sqrt_rate_after_final: u128,         // Final rate state
     pub tick_after_hop1: Option<i32>,        // Tick after first hop
     pub tick_after_final: i32,               // Final tick state
     pub total_fees_paid: u64,                // Sum of all fees across hops
@@ -531,6 +564,32 @@ pub struct RedenominationEvent {
 }
 
 impl EventBase for RedenominationEvent {
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
+    fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+    fn actor(&self) -> Pubkey {
+        self.authority
+    }
+}
+
+// ============================================================================
+// Configuration Events
+// ============================================================================
+
+/// Emitted when pool configuration is updated
+#[event]
+pub struct PoolConfigUpdatedEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub authority: Pubkey,
+    pub config_type: String,
+    pub timestamp: i64,
+}
+
+impl EventBase for PoolConfigUpdatedEvent {
     fn pool(&self) -> Pubkey {
         self.pool
     }
