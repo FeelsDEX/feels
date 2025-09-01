@@ -12,6 +12,7 @@ pub mod deterministic_seed;    // PDA seed generation and derivation
 pub mod error_handling;        // Error handling utilities
 pub mod instruction_pattern;   // Standardized instruction handler patterns
 pub mod math;                  // Unified mathematics module
+pub mod security;              // Centralized security utilities and macros
 pub mod time_weighted_average; // Time-weighted average buffer for TWAP/TWAV
 pub mod token_validation;      // Token ticker validation
 pub mod types;                 // Common parameter and result types
@@ -120,4 +121,14 @@ pub use time_weighted_average::{
 pub use instruction_pattern::{
     InstructionHandler, ValidationUtils, EventBuilder,
     SwapPattern, LiquidityPattern, AdminPattern, StateLoader,
+};
+
+// ============================================================================
+// Re-exports from Security Module
+// ============================================================================
+
+pub use security::{
+    validate_initialized, validate_bounds, validate_freshness,
+    validate_rate_of_change, validate_swap_params, validate_liquidity_params,
+    ScopedSecurityGuard,
 };

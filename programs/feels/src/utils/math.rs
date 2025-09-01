@@ -149,7 +149,11 @@ pub mod big_int {
         let bytes: [u8; 32] = value.to_le_bytes();
         let mut words = [0u64; 4];
         for i in 0..4 {
-            words[i] = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+            words[i] = u64::from_le_bytes(
+                bytes[i * 8..(i + 1) * 8]
+                    .try_into()
+                    .expect("u256_to_words: slice conversion failed - array indexing error")
+            );
         }
         words
     }
@@ -157,6 +161,7 @@ pub mod big_int {
 
 /// Safe arithmetic operations with overflow protection
 pub mod safe {
+    use super::U256;
     use crate::state::FeelsProtocolError;
     use anchor_lang::prelude::Result;
 
@@ -247,13 +252,13 @@ pub mod safe {
 
     /// Calculate percentage with basis points (10000 = 100%)
     pub fn calculate_percentage(amount: u64, basis_points: u16) -> Result<u64> {
-        const BASIS_POINTS_DIVISOR: u64 = 10_000;
-
-        if basis_points > BASIS_POINTS_DIVISOR as u16 {
+        use crate::constant::BASIS_POINTS_DENOMINATOR;
+        
+        if basis_points > BASIS_POINTS_DENOMINATOR as u16 {
             return Err(FeelsProtocolError::InvalidPercentage.into());
         }
 
-        mul_div_u64(amount, basis_points as u64, BASIS_POINTS_DIVISOR)
+        mul_div_u64(amount, basis_points as u64, BASIS_POINTS_DENOMINATOR as u64)
     }
 
     /// Integer square root for u64 (Newton's method)
@@ -394,7 +399,11 @@ pub mod q96 {
         let result_bytes: [u8; 32] = result.to_le_bytes();
         let mut words = [0u64; 4];
         for i in 0..4 {
-            words[i] = u64::from_le_bytes(result_bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+            words[i] = u64::from_le_bytes(
+                result_bytes[i * 8..(i + 1) * 8]
+                    .try_into()
+                    .expect("calculate_fee_growth_q128: slice conversion failed - array indexing error")
+            );
         }
         Ok(words)
     }
@@ -414,11 +423,8 @@ pub mod amm {
     // Constants
     // ============================================================================
 
-    /// Sqrt price constants in Q96 format
-    /// These are the sqrt price values at the min/max ticks
-    /// Derived from Orca's Q64 constants
-    pub const MIN_SQRT_PRICE_X96: u128 = 18447090763469684736; // Actual value for tick -443636
-    pub const MAX_SQRT_PRICE_X96: u128 = 340_275_971_719_517_849_884_101_479_037_289_023_427; // Actual value for tick 443636
+    // Use constants from constant.rs to avoid duplication
+    use crate::constant::{MIN_SQRT_RATE_X96 as MIN_SQRT_PRICE_X96, MAX_SQRT_RATE_X96 as MAX_SQRT_PRICE_X96};
 
     // ============================================================================
     // Tick-Price Conversion Mathematics
@@ -467,8 +473,13 @@ pub mod amm {
         /// assert_eq!(sqrt_price, 79228162514264337593543950336); // 2^96 (price = 1.0)
         /// ```
         pub fn get_sqrt_ratio_at_tick(tick: i32) -> Result<u128> {
+            // Validate tick bounds with explicit error messages
             require!(
-                (MIN_TICK..=MAX_TICK).contains(&tick),
+                tick >= MIN_TICK,
+                FeelsProtocolError::TickOutOfBounds
+            );
+            require!(
+                tick <= MAX_TICK,
                 FeelsProtocolError::TickOutOfBounds
             );
 
@@ -566,10 +577,19 @@ pub mod amm {
         }
 
         /// Helper for multiplying and right-shifting in negative tick calculation
+        /// 
+        /// # Safety Invariants
+        /// - Input values a and b must be within the valid negative tick constants
+        /// - The product a * b must fit in U256 (guaranteed by precomputed constants)
+        /// - Result after >> 64 must fit in u128 (guaranteed by mathematical bounds)
         #[inline(always)]
         fn mul_shift_64(a: u128, b: u128) -> u128 {
-            let result: U256 = (U256::from(a) * U256::from(b)) >> 64;
-            result.try_into().unwrap()
+            let product = U256::from(a)
+                .checked_mul(U256::from(b))
+                .expect("mul_shift_64: multiplication overflow - inputs exceed expected bounds");
+            let result: U256 = product >> 64;
+            result.try_into()
+                .expect("mul_shift_64: result doesn't fit in u128 - inputs exceed expected bounds")
         }
 
         /// Performs the exponential conversion for negative ticks.
@@ -675,6 +695,11 @@ pub mod amm {
         /// The function guarantees that the returned tick, when converted back to
         /// a sqrt price, will be the largest tick whose sqrt price is ≤ the input.
         pub fn get_tick_at_sqrt_ratio(sqrt_ratio_x96: u128) -> Result<i32> {
+            // Validate input bounds
+            require!(
+                sqrt_ratio_x96 > 0,
+                FeelsProtocolError::InvalidSqrtPrice
+            );
             require!(
                 (MIN_SQRT_PRICE_X96..=MAX_SQRT_PRICE_X96).contains(&sqrt_ratio_x96),
                 FeelsProtocolError::PriceOutOfBounds
@@ -683,9 +708,19 @@ pub mod amm {
             // Convert from Q96 to Q64 for Orca's algorithm
             // This conversion is safe and maintains precision for tick calculations
             let sqrt_price_x64 = q96_to_q64(sqrt_ratio_x96);
+            
+            // Additional safety check for Q64 conversion
+            if sqrt_price_x64 == 0 {
+                return Err(FeelsProtocolError::InvalidSqrtPrice.into());
+            }
 
             // Determine log_b(sqrt_ratio). First by calculating integer portion (msb)
-            let msb: u32 = 128 - sqrt_price_x64.leading_zeros() - 1;
+            let leading_zeros = sqrt_price_x64.leading_zeros();
+            if leading_zeros >= 128 {
+                return Err(FeelsProtocolError::InvalidSqrtPrice.into());
+            }
+            let msb: u32 = 128 - leading_zeros - 1;
+            // Safe cast: msb is computed from leading_zeros, guaranteed to fit in i128
             let log2p_integer_x32 = (msb as i128 - 64) << 32;
 
             // Get fractional value (r/2^msb), msb always > 128
@@ -698,9 +733,17 @@ pub mod amm {
             // Go through each 2^(j) bit where j < 64 in a Q64.64 number
             // Append current bit value to fraction result if r^2 Q2.126 is more than 2
             let mut r = if msb >= 64 {
-                sqrt_price_x64 >> (msb - 63)
+                let shift = msb - 63;
+                if shift > 64 {
+                    return Err(FeelsProtocolError::MathOverflow.into());
+                }
+                sqrt_price_x64 >> shift
             } else {
-                sqrt_price_x64 << (63 - msb)
+                let shift = 63 - msb;
+                if shift > 63 {
+                    return Err(FeelsProtocolError::MathOverflow.into());
+                }
+                sqrt_price_x64 << shift
             };
 
             const BIT_PRECISION: u32 = 14;
@@ -708,6 +751,7 @@ pub mod amm {
                 r *= r;
                 let is_r_more_than_two = r >> 127_u32;
                 r >>= 63 + is_r_more_than_two;
+                // Safe cast: is_r_more_than_two is 0 or 1, fits in i128
                 log2p_fraction_x64 += bit * is_r_more_than_two as i128;
                 bit >>= 1;
                 precision += 1;
@@ -725,6 +769,8 @@ pub mod amm {
             const LOG_B_P_ERR_MARGIN_LOWER_X64: i128 = 184467440737095516i128; // 0.01
             const LOG_B_P_ERR_MARGIN_UPPER_X64: i128 = 15793534762490258745i128; // 2^-precision / log_2_b + 0.01
 
+            // Safe cast: the tick calculation is bounded by mathematical limits
+            // The logarithm result, when shifted, will be within i32 range for valid inputs
             let tick_low: i32 = ((logbp_x64 - LOG_B_P_ERR_MARGIN_LOWER_X64) >> 64) as i32;
             let tick_high: i32 = ((logbp_x64 + LOG_B_P_ERR_MARGIN_UPPER_X64) >> 64) as i32;
 
@@ -735,8 +781,9 @@ pub mod amm {
                 // then the actual tick_high has to be higher than tick_high.
                 // Otherwise, the actual value is between tick_low & tick_high, so a floor value
                 // (tick_low) is returned
-                let actual_tick_high_sqrt_price =
-                    Self::get_sqrt_ratio_at_tick(tick_high.min(MAX_TICK))?;
+                let clamped_tick_high = tick_high.min(MAX_TICK);
+                let actual_tick_high_sqrt_price = Self::get_sqrt_ratio_at_tick(clamped_tick_high)?;
+                
                 if actual_tick_high_sqrt_price <= sqrt_ratio_x96 {
                     Ok(tick_high.clamp(MIN_TICK, MAX_TICK))
                 } else {
@@ -748,10 +795,18 @@ pub mod amm {
         /// Helper function for multiplication followed by division by 2^96
         /// This maintains Q96 format after multiplication
         /// Adapted from Orca's mul_shift_96
+        /// 
+        /// # Safety Invariants
+        /// - Input values n0 and n1 must be within the valid tick range bounds
+        /// - The product n0 * n1 must fit in U256 (guaranteed by input validation)
+        /// - Result after >> 96 must fit in u128 (guaranteed by mathematical bounds)
         fn mul_shift_96(n0: u128, n1: u128) -> u128 {
-            let product = U256::from(n0).checked_mul(U256::from(n1)).unwrap();
+            let product = U256::from(n0)
+                .checked_mul(U256::from(n1))
+                .expect("mul_shift_96: multiplication overflow - inputs exceed expected bounds");
             let result: U256 = product >> 96;
-            result.try_into().unwrap()
+            result.try_into()
+                .expect("mul_shift_96: result doesn't fit in u128 - inputs exceed expected bounds")
         }
     }
 
@@ -969,6 +1024,12 @@ pub mod amm {
     ///
     /// Formula: Δtoken0 = L × (1/√P_lower - 1/√P_upper)
     ///
+    /// # Mathematical Invariants
+    /// - sqrt_ratio_0_x96 and sqrt_ratio_1_x96 must be > 0
+    /// - Both sqrt ratios must be within [MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96]
+    /// - liquidity must be finite and > 0 for non-zero result
+    /// - The function handles the case where sqrt_ratio_0 > sqrt_ratio_1 by swapping
+    ///
     /// This function accepts Q96 format sqrt prices and internally converts to Q64
     /// to use Orca's optimized get_amount_delta_a algorithm. The Q64 calculations
     /// are more efficient on Solana while maintaining precision for token amounts.
@@ -1035,6 +1096,13 @@ pub mod amm {
     ///
     /// Formula: Δtoken1 = L × (√P_upper - √P_lower)
     ///
+    /// # Mathematical Invariants
+    /// - sqrt_ratio_0_x96 and sqrt_ratio_1_x96 must be > 0
+    /// - Both sqrt ratios must be within [MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96]
+    /// - liquidity must be finite and > 0 for non-zero result
+    /// - The multiplication n0 * n1 is checked for overflow
+    /// - Cast (p >> 64) to u64 is safe: max value is u64::MAX when p = u128::MAX
+    ///
     /// This function accepts Q96 format sqrt prices and internally converts to Q64
     /// to use Orca's optimized get_amount_delta_b algorithm. The Q64 calculations
     /// are more efficient on Solana while maintaining precision for token amounts.
@@ -1071,6 +1139,8 @@ pub mod amm {
         }
 
         if let Some(p) = n0.checked_mul(n1) {
+            // Safe cast: p >> 64 is guaranteed to fit in u64 since p is u128
+            // Maximum value of (p >> 64) is u64::MAX when p = u128::MAX
             let result = (p >> 64) as u64;
 
             let should_round = round_up && (p & ((1u128 << 64) - 1) > 0);
@@ -1078,6 +1148,7 @@ pub mod amm {
                 return Err(FeelsProtocolError::MathOverflow.into());
             }
 
+            // Safe cast: result is u64, so result + 1 fits in u128
             Ok(if should_round {
                 (result + 1) as u128
             } else {
@@ -1179,6 +1250,13 @@ pub mod amm {
 
     /// Calculate the next sqrt price after swapping a given amount of token0
     ///
+    /// # Mathematical Invariants
+    /// - sqrt_price_x96 must be within [MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96]
+    /// - liquidity must be > 0 to avoid division by zero
+    /// - amount must fit in u64 (validated with try_from)
+    /// - Result must remain within valid sqrt price bounds
+    /// - When add=false, liquidity_shift_left must be > product to avoid negative denominator
+    ///
     /// This function accepts a Q96 format sqrt price and returns a Q96 result.
     /// Internally converts to Q64 to use Orca's get_next_sqrt_price_from_a_round_up
     /// algorithm, which is optimized for Solana's compute units.
@@ -1201,17 +1279,15 @@ pub mod amm {
             return Ok(sqrt_price_x96);
         }
 
-        // Orca expects u64, so we need to validate
-        if amount > u64::MAX as u128 {
-            return Err(FeelsProtocolError::MathOverflow.into());
-        }
-        let amount_u64 = amount as u64;
+        // Orca expects u64, so we need to validate the range
+        let amount_u64 = u64::try_from(amount)
+            .map_err(|_| FeelsProtocolError::MathOverflow)?;
 
         // Convert from Q96 to Q64 for Orca's calculations
         let sqrt_price_x64 = q96_to_q64(sqrt_price_x96);
 
         let product = U256::from(sqrt_price_x64)
-            .checked_mul(U256::from(amount_u64 as u128))
+            .checked_mul(U256::from(amount_u64))
             .ok_or(FeelsProtocolError::MathOverflow)?;
 
         let numerator = U256::from(liquidity)
@@ -1255,6 +1331,13 @@ pub mod amm {
 
     /// Calculate the next sqrt price after swapping a given amount of token1
     ///
+    /// # Mathematical Invariants
+    /// - sqrt_price_x96 must be within [MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96] 
+    /// - liquidity must be > 0 to avoid division by zero
+    /// - amount must fit in u64 (validated with try_from)
+    /// - Result must remain within valid sqrt price bounds
+    /// - Delta calculation uses div_round_up_if for proper rounding behavior
+    ///
     /// This function accepts a Q96 format sqrt price and returns a Q96 result.
     /// Internally converts to Q64 to use Orca's get_next_sqrt_price_from_b_round_down
     /// algorithm, which is optimized for Solana's compute units.
@@ -1273,16 +1356,15 @@ pub mod amm {
         amount: u128,
         add: bool,
     ) -> Result<u128> {
-        // Orca expects u64, so we need to validate
-        if amount > u64::MAX as u128 {
-            return Err(FeelsProtocolError::MathOverflow.into());
-        }
-        let amount_u64 = amount as u64;
+        // Orca expects u64, so we need to validate the range
+        let amount_u64 = u64::try_from(amount)
+            .map_err(|_| FeelsProtocolError::MathOverflow)?;
 
         // Convert from Q96 to Q64 for Orca's calculations
         let sqrt_price_x64 = q96_to_q64(sqrt_price_x96);
 
         // Q64.0 << 64 => Q64.64
+        // Safe cast: amount_u64 is u64, so it fits in u128
         let amount_x64 = (amount_u64 as u128) << 64;
 
         // Q64.64 / Q64.0 => Q64.64

@@ -15,6 +15,9 @@ pub mod logic;
 pub mod state;
 pub mod utils;
 
+// Re-export security macros for use in instructions
+pub use utils::security;
+
 // Import logic modules
 use logic::tick::TickManager;
 
@@ -319,35 +322,6 @@ pub struct InitializePool<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[derive(Accounts)]
-pub struct CleanupTickArray<'info> {
-    #[account(mut)]
-    pub pool: AccountLoader<'info, Pool>,
-
-    /// The tick array to cleanup (will be closed)
-    /// CHECK: Validated in handler
-    #[account(
-        mut,
-        close = cleaner,
-        constraint = tick_array.to_account_info().owner == __program_id @ FeelsProtocolError::InvalidAccountOwner
-    )]
-    pub tick_array: AccountLoader<'info, TickArray>,
-
-    /// The cleaner who initiated the cleanup (receives 80% of rent)
-    #[account(mut)]
-    pub cleaner: Signer<'info>,
-
-    /// Protocol treasury (receives 20% of rent)
-    /// CHECK: Treasury address validated by pool
-    #[account(
-        mut,
-        constraint = protocol_fee_recipient.key() == pool.load()?.authority @ FeelsProtocolError::InvalidAuthority
-    )]
-    pub protocol_fee_recipient: UncheckedAccount<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
 // ============================================================================
 // Hook Management Contexts
 // ============================================================================
@@ -427,21 +401,6 @@ pub struct ToggleHooks<'info> {
     
     /// Authority
     pub authority: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct BatchCleanupTickArrays<'info> {
-    /// Pool containing the tick arrays
-    #[account(mut)]
-    pub pool: AccountLoader<'info, Pool>,
-    
-    /// Cleaner receiving rent
-    #[account(mut)]
-    pub cleaner: Signer<'info>,
-    
-    /// Protocol fee recipient (optional)
-    /// CHECK: Validated in handler
-    pub protocol_fee_recipient: Option<UncheckedAccount<'info>>,
 }
 
 /// Unified pool configuration context
@@ -751,18 +710,6 @@ pub mod feels {
 
     // Protocol fee collection is now handled through the unified order system
 
-    /// Clean up empty tick arrays
-    /// 
-    /// **DEPRECATED** - Use `cleanup_tick_array_v2` or `cleanup_empty_tick_array` instead.
-    /// This instruction will be removed in a future release.
-    #[deprecated(since = "1.1.0", note = "Use cleanup_tick_array_v2 instead")]
-    pub fn cleanup_tick_array(ctx: Context<CleanupTickArray>) -> Result<()> {
-        let params = instructions::cleanup::CleanupTickArrayParams {
-            incentivized: true, // Default to incentivized mode
-        };
-        instructions::cleanup::cleanup_tick_array(ctx, params)
-    }
-
     // All trading operations use the unified order system:
     // - For swaps: order(...) with OrderType::Immediate
     // - For liquidity: order(...) with OrderType::Liquidity
@@ -917,5 +864,27 @@ pub mod feels {
         params: instructions::configure_pool::PoolConfigParams,
     ) -> Result<()> {
         instructions::configure_pool::handler(ctx, params)
+    }
+    
+    // ========================================================================
+    // Market Field Instructions
+    // ========================================================================
+    
+    /// Initialize market field data for a pool
+    /// This enables client-side optimal routing using the field commitment strategy
+    pub fn initialize_market_field(
+        ctx: Context<instructions::update_market_field::InitializeMarketField>,
+        params: instructions::update_market_field::InitializeMarketFieldParams,
+    ) -> Result<()> {
+        instructions::update_market_field::initialize_handler(ctx, params)
+    }
+    
+    /// Update market field data from current pool state
+    /// Updates market scalars and TWAPs for client-side work calculation
+    pub fn update_market_field(
+        ctx: Context<instructions::update_market_field::UpdateMarketField>,
+        update: crate::state::MarketUpdate,
+    ) -> Result<()> {
+        instructions::update_market_field::handler(ctx, update)
     }
 }

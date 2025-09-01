@@ -8,6 +8,7 @@ use crate::state::{
     FeelsProtocolError, Pool, FeeConfig, LeverageParameters, ProtectionCurveType, 
     ProtectionCurveData, RiskProfile, DynamicFeeConfig, HookRegistry, HookPermission
 };
+use crate::{validate_pool_authority, validate_authority};
 
 // ============================================================================
 // Unified Configuration Parameters
@@ -190,11 +191,8 @@ fn configure_leverage(
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_mut()?;
     
-    // Validate authority
-    require!(
-        ctx.accounts.authority.key() == pool.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    // Validate authority using centralized macro
+    validate_pool_authority!(ctx.accounts.authority, ctx.accounts.pool);
     
     match config.operation {
         LeverageOperation::Enable => {
@@ -285,11 +283,8 @@ fn configure_dynamic_fees(
 ) -> Result<()> {
     let pool = ctx.accounts.pool.load()?;
     
-    // Validate authority
-    require!(
-        ctx.accounts.authority.key() == pool.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    // Validate authority using centralized macro
+    validate_pool_authority!(ctx.accounts.authority, ctx.accounts.pool);
     
     // Validate fee parameters
     require!(
@@ -318,11 +313,8 @@ fn configure_authority(
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_mut()?;
     
-    // Validate current authority
-    require!(
-        ctx.accounts.authority.key() == pool.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    // Validate current authority using centralized macro
+    validate_pool_authority!(ctx.accounts.authority, ctx.accounts.pool);
     
     // Update authority
     let old_authority = pool.authority;
@@ -351,10 +343,7 @@ fn configure_hook(
     let clock = Clock::get()?;
     
     // Validate authority
-    require!(
-        ctx.accounts.authority.key() == registry.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    validate_authority!(ctx.accounts.authority, registry.authority);
     
     match config {
         HookConfig::Register { hook_program, permission, event_mask, stage_mask } => {
@@ -436,11 +425,8 @@ fn configure_oracle(
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_mut()?;
     
-    // Validate authority
-    require!(
-        ctx.accounts.authority.key() == pool.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    // Validate authority using centralized macro
+    validate_pool_authority!(ctx.accounts.authority, ctx.accounts.pool);
     
     // Update oracle
     let old_oracle = pool.oracle;
@@ -473,11 +459,8 @@ fn configure_redenomination(
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_mut()?;
     
-    // Validate authority
-    require!(
-        ctx.accounts.authority.key() == pool.authority,
-        FeelsProtocolError::InvalidAuthority
-    );
+    // Validate authority using centralized macro
+    validate_pool_authority!(ctx.accounts.authority, ctx.accounts.pool);
     
     // Validate parameters
     require!(

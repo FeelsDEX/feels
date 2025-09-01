@@ -1,8 +1,9 @@
+/// Liquidity instruction builders using the unified API
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
-/// Build instruction to add liquidity to a pool using the unified order system
+/// Build instruction to add liquidity
 #[allow(clippy::too_many_arguments)]
 pub fn add_liquidity(
     program_id: &Pubkey,
@@ -12,14 +13,14 @@ pub fn add_liquidity(
     user_token_b: &Pubkey,
     pool_token_a: &Pubkey,
     pool_token_b: &Pubkey,
+    position: &Pubkey,
     tick_lower: i32,
     tick_upper: i32,
-    liquidity_amount: u128,
-    leverage: Option<u64>,
-    _amount_a_max: u64,
-    _amount_b_max: u64,
+    liquidity: u128,
+    max_amount_0: u64,
+    max_amount_1: u64,
+    duration: Option<feels::Duration>,
 ) -> Instruction {
-    // Use the unified Order context
     let accounts = feels::accounts::Order {
         pool: *pool,
         user: *user,
@@ -28,25 +29,28 @@ pub fn add_liquidity(
         pool_token_a: *pool_token_a,
         pool_token_b: *pool_token_b,
         token_program: spl_token_2022::ID,
-        system_program: system_program::ID,
+        system_program: solana_sdk::system_program::ID,
+        tick_array_router: None,
         hook_registry: None,
         hook_message_queue: None,
     };
 
-    // Use the unified order instruction with OrderType::Liquidity
-    let params = feels::OrderParams {
-        amount: liquidity_amount as u64, // Convert liquidity to amount
-        rate_params: feels::RateParams::RateRange {
+    let params = feels::UnifiedOrderParams {
+        amount: liquidity as u64,
+        config: feels::unified_order::OrderConfig::AddLiquidity {
             tick_lower,
             tick_upper,
+            token_amounts: Some((max_amount_0, max_amount_1)),
         },
-        duration: feels::Duration::Weekly, // Default to weekly duration
-        leverage: leverage.unwrap_or(1_000_000), // Default to 1x leverage
-        order_type: feels::OrderType::Liquidity,
-        limit_value: 0, // Not used for liquidity
+        advanced: duration.map(|d| feels::unified_order::AdvancedOrderParams {
+            duration: d,
+            leverage: 1_000_000, // 1x leverage
+            mev_protection: None,
+            hook_data: None,
+        }),
     };
 
-    let data = feels::instruction::Order { params };
+    let data = feels::instruction::OrderUnified { params };
 
     Instruction {
         program_id: *program_id,
@@ -55,50 +59,43 @@ pub fn add_liquidity(
     }
 }
 
-/// Build instruction to remove liquidity from a pool using the unified order system
+/// Build instruction to remove liquidity
 #[allow(clippy::too_many_arguments)]
 pub fn remove_liquidity(
     program_id: &Pubkey,
     pool: &Pubkey,
     user: &Pubkey,
+    position: &Pubkey,
     user_token_a: &Pubkey,
     user_token_b: &Pubkey,
     pool_token_a: &Pubkey,
     pool_token_b: &Pubkey,
-    tick_lower: i32,
-    tick_upper: i32,
     liquidity_amount: u128,
-    _amount_a_min: u64,
-    _amount_b_min: u64,
+    min_amount_0: u64,
+    min_amount_1: u64,
 ) -> Instruction {
-    // Use the unified Order context
-    let accounts = feels::accounts::Order {
+    let accounts = feels::accounts::OrderModify {
         pool: *pool,
-        user: *user,
-        user_token_a: *user_token_a,
-        user_token_b: *user_token_b,
+        owner: *user,
+        position: *position,
+        user_token_a: Some(*user_token_a),
+        user_token_b: Some(*user_token_b),
         pool_token_a: *pool_token_a,
         pool_token_b: *pool_token_b,
         token_program: spl_token_2022::ID,
-        system_program: system_program::ID,
-        hook_registry: None,
-        hook_message_queue: None,
     };
 
-    // Use the unified order instruction with OrderType::Liquidity and negative amount for removal
-    let params = feels::OrderParams {
-        amount: liquidity_amount as u64, // Amount to remove
-        rate_params: feels::RateParams::RateRange {
-            tick_lower,
-            tick_upper,
+    let params = feels::UnifiedModifyParams {
+        target: feels::unified_order::ModifyTarget::Position(*position),
+        modification: feels::unified_order::OrderModification::Update {
+            amount: Some(liquidity_amount as u64), // Amount to remove (negative handled internally)
+            rate: None,
+            leverage: None,
+            duration: None,
         },
-        duration: feels::Duration::Swap, // Immediate removal
-        leverage: 1_000_000, // No leverage for removal
-        order_type: feels::OrderType::Liquidity,
-        limit_value: 0, // Use amount_a_min and amount_b_min separately if needed
     };
 
-    let data = feels::instruction::Order { params };
+    let data = feels::instruction::OrderModifyUnified { params };
 
     Instruction {
         program_id: *program_id,

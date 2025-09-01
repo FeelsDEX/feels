@@ -14,6 +14,7 @@ use crate::{
     instructions,
     types::{AddLiquidityResult, CreatePoolResult, PoolInfo, PositionInfo, SwapResult},
 };
+use feels::{UnifiedOrderParams, unified_order::*, PoolConfigParams};
 
 /// Main SDK client for interacting with the Feels Protocol
 pub struct FeelsClient {
@@ -35,6 +36,276 @@ impl FeelsClient {
             program_id: config.program_id,
             payer: config.payer,
         }
+    }
+
+    /// Execute a swap
+    pub async fn swap(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        amount_in: u64,
+        min_amount_out: u64,
+        is_token_a_to_b: bool,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_swap(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            amount_in,
+            min_amount_out,
+            is_token_a_to_b,
+            None,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Execute a leveraged swap
+    pub async fn swap_leveraged(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        amount_in: u64,
+        min_amount_out: u64,
+        is_token_a_to_b: bool,
+        leverage: u64,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_leveraged_swap(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            amount_in,
+            min_amount_out,
+            is_token_a_to_b,
+            leverage,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Add liquidity to a pool
+    pub async fn add_liquidity(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        position: &Pubkey,
+        tick_lower: i32,
+        tick_upper: i32,
+        liquidity: u128,
+        max_amount_0: u64,
+        max_amount_1: u64,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_add_liquidity(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            position,
+            tick_lower,
+            tick_upper,
+            liquidity,
+            max_amount_0,
+            max_amount_1,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Add liquidity with duration lock
+    pub async fn add_liquidity_locked(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        position: &Pubkey,
+        tick_lower: i32,
+        tick_upper: i32,
+        liquidity: u128,
+        duration: feels::Duration,
+        leverage: Option<u64>,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_add_liquidity_locked(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            position,
+            tick_lower,
+            tick_upper,
+            liquidity,
+            duration,
+            leverage,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Remove liquidity from a position
+    pub async fn remove_liquidity(
+        &self,
+        pool: &Pubkey,
+        position: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        liquidity_amount: u128,
+        min_amount_0: u64,
+        min_amount_1: u64,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::remove_liquidity(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            position,
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            liquidity_amount,
+            min_amount_0,
+            min_amount_1,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Create a limit order
+    pub async fn create_limit_order(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        amount: u64,
+        is_buy: bool,
+        target_sqrt_rate: u128,
+        expiry: i64,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_limit_order(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            amount,
+            is_buy,
+            target_sqrt_rate,
+            expiry,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Execute a flash loan
+    pub async fn flash_loan(
+        &self,
+        pool: &Pubkey,
+        user_token_a: &Pubkey,
+        user_token_b: &Pubkey,
+        pool_token_a: &Pubkey,
+        pool_token_b: &Pubkey,
+        amount: u64,
+        borrow_token_a: bool,
+        callback_program: &Pubkey,
+        callback_data: Vec<u8>,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_flash_loan(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            user_token_a,
+            user_token_b,
+            pool_token_a,
+            pool_token_b,
+            amount,
+            borrow_token_a,
+            callback_program,
+            callback_data,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Configure pool parameters
+    pub async fn configure_pool(
+        &self,
+        pool: &Pubkey,
+        params: PoolConfigParams,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_configure_pool(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            params,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Cancel an order
+    pub async fn cancel_order(
+        &self,
+        pool: &Pubkey,
+        position: &Pubkey,
+    ) -> SdkResult<Signature> {
+        let ix = instructions::unified_cancel_order(
+            &self.program_id,
+            pool,
+            &self.payer.pubkey(),
+            position,
+        );
+
+        self.send_transaction(&[ix]).await
+    }
+
+    /// Compute optimal routing for an order
+    pub async fn compute_route(
+        &self,
+        pool: &Pubkey,
+        is_swap: bool,
+        is_token_a_to_b: bool,
+        amount: u64,
+    ) -> SdkResult<feels::instructions::order_compute::Tick3DArrayInfo> {
+        let ix = instructions::unified_compute_route(
+            &self.program_id,
+            pool,
+            is_swap,
+            is_token_a_to_b,
+            amount,
+        );
+
+        // This would typically involve simulating the transaction
+        // For now, return a placeholder
+        unimplemented!("Compute route simulation not implemented")
     }
 
     /// Initialize the protocol
@@ -106,167 +377,40 @@ impl FeelsClient {
             protocol_share,
         );
 
-        let signature = self.send_transaction(&[ix]).await?;
+        let sig = self.send_transaction(&[ix]).await?;
 
         Ok(CreatePoolResult {
-            pool_pubkey: *pool,
-            vault_a: *token_a_vault,
-            vault_b: *token_b_vault,
-            signature,
-        })
-    }
-
-    /// Add liquidity to a pool
-    #[allow(clippy::too_many_arguments)]
-    pub async fn add_liquidity(
-        &self,
-        pool: &Pubkey,
-        user: &Pubkey,
-        user_token_0: &Pubkey,
-        user_token_1: &Pubkey,
-        pool_token_0: &Pubkey,
-        pool_token_1: &Pubkey,
-        tick_lower: i32,
-        tick_upper: i32,
-        liquidity_amount: u128,
-        leverage: Option<u64>,
-        amount_0_max: u64,
-        amount_1_max: u64,
-    ) -> SdkResult<AddLiquidityResult> {
-        let ix = instructions::add_liquidity(
-            &self.program_id,
-            pool,
-            user,
-            user_token_0,
-            user_token_1,
-            pool_token_0,
-            pool_token_1,
-            tick_lower,
-            tick_upper,
-            liquidity_amount,
-            leverage,
-            amount_0_max,
-            amount_1_max,
-        );
-
-        let signature = self.send_transaction(&[ix]).await?;
-
-        Ok(AddLiquidityResult {
-            position_pubkey: Pubkey::default(), // In unified system, positions tracked differently
-            position_mint: Pubkey::default(), // In production, get from position metadata
-            liquidity_amount,
-            amount_0: amount_0_max, // In production, get actual amounts from logs
-            amount_1: amount_1_max,
-            signature,
-        })
-    }
-
-    /// Execute a swap
-    #[allow(clippy::too_many_arguments)]
-    pub async fn swap(
-        &self,
-        pool: &Pubkey,
-        _oracle_state: &Pubkey, // No longer used - oracle accessed via remaining_accounts
-        user: &Pubkey,
-        user_token_a: &Pubkey,
-        user_token_b: &Pubkey,
-        pool_token_a: &Pubkey,
-        pool_token_b: &Pubkey,
-        amount_in: u64,
-        amount_out_minimum: u64,
-        sqrt_price_limit: u128,
-        is_token_0_to_1: bool,
-    ) -> SdkResult<SwapResult> {
-        let ix = instructions::swap_execute(
-            &self.program_id,
-            pool,
-            user,
-            user_token_a,
-            user_token_b,
-            pool_token_a,
-            pool_token_b,
-            amount_in,
-            amount_out_minimum,
-            sqrt_price_limit,
-            is_token_0_to_1,
-        );
-
-        let signature = self.send_transaction(&[ix]).await?;
-
-        Ok(SwapResult {
-            amount_in,
-            amount_out: 0,  // In production, get from transaction logs
-            fee_amount: 0,  // In production, get from transaction logs
-            price_after: 0, // In production, get from transaction logs
-            signature,
-        })
-    }
-
-    /// Get pool information
-    pub async fn get_pool_info(&self, pool_address: &Pubkey) -> SdkResult<PoolInfo> {
-        let _account = self
-            .rpc_client
-            .get_account(pool_address)
-            .map_err(|e| SdkError::RpcError(e.to_string()))?;
-
-        // In production, deserialize the pool account data
-        Ok(PoolInfo {
-            pubkey: *pool_address,
-            token_a_mint: Pubkey::default(),
-            token_b_mint: Pubkey::default(),
-            token_a_vault: Pubkey::default(),
-            token_b_vault: Pubkey::default(),
-            fee_rate: 0,
-            protocol_fee_rate: 0,
-            liquidity: 0,
-            sqrt_price: 0,
-            current_tick: 0,
-            tick_spacing: 0,
-        })
-    }
-
-    /// Get position information
-    pub async fn get_position_info(&self, position_address: &Pubkey) -> SdkResult<PositionInfo> {
-        let _account = self
-            .rpc_client
-            .get_account(position_address)
-            .map_err(|e| SdkError::RpcError(e.to_string()))?;
-
-        // In production, deserialize the position account data
-        Ok(PositionInfo {
-            pubkey: *position_address,
-            mint: Pubkey::default(),
-            pool: Pubkey::default(),
-            owner: Pubkey::default(),
-            liquidity: 0,
-            tick_lower: 0,
-            tick_upper: 0,
-            fee_growth_0_checkpoint: 0,
-            fee_growth_1_checkpoint: 0,
-            tokens_owed_0: 0,
-            tokens_owed_1: 0,
+            signature: sig,
+            pool: *pool,
+            token_a_vault: *token_a_vault,
+            token_b_vault: *token_b_vault,
         })
     }
 
     /// Send a transaction
-    async fn send_transaction(
-        &self,
-        instructions: &[solana_sdk::instruction::Instruction],
-    ) -> SdkResult<Signature> {
-        let recent_blockhash = self
-            .rpc_client
-            .get_latest_blockhash()
-            .map_err(|e| SdkError::RpcError(e.to_string()))?;
-
-        let transaction = Transaction::new_signed_with_payer(
+    async fn send_transaction(&self, instructions: &[Instruction]) -> SdkResult<Signature> {
+        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
+        
+        let tx = Transaction::new_signed_with_payer(
             instructions,
             Some(&self.payer.pubkey()),
             &[&*self.payer],
             recent_blockhash,
         );
 
-        self.rpc_client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| SdkError::TransactionFailed(e.to_string()))
+        let sig = self.rpc_client.send_and_confirm_transaction(&tx)?;
+        Ok(sig)
+    }
+
+    /// Get pool information
+    pub async fn get_pool_info(&self, pool: &Pubkey) -> SdkResult<PoolInfo> {
+        unimplemented!("Pool info fetching not implemented")
+    }
+
+    /// Get position information
+    pub async fn get_position_info(&self, position: &Pubkey) -> SdkResult<PositionInfo> {
+        unimplemented!("Position info fetching not implemented")
     }
 }
+
+use solana_sdk::instruction::Instruction;

@@ -15,6 +15,7 @@ pub mod rebase;
 // Standalone modules
 pub mod concentrated_liquidity;
 pub mod event;
+pub mod field_update;
 pub mod hook;
 pub mod lazy_router;
 pub mod optimal_path;
@@ -59,7 +60,13 @@ pub use hook::{
 };
 
 
-// Oracle system
+// Field update system
+pub use field_update::{
+    update_market_field, update_risk_parameters,
+    MAX_SCALAR_CHANGE_BPS, MIN_UPDATE_INTERVAL,
+};
+
+// Oracle system (legacy - to be removed)
 pub use oracle::{
     OracleUpdate, MarketParameters, OracleConfig, OracleProvider,
     validate_oracle_update, apply_oracle_update, calculate_simple_gradients,

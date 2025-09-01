@@ -24,11 +24,8 @@ pub mod rebase; // Virtual rebasing with lazy evaluation
 // Vault removed - position management handled through unified order system
 pub mod reentrancy; // Reentrancy protection
 
-// Metrics
-pub mod metrics_price; // Price oracle and TWAP
-pub mod metrics_volume; // Trading volume tracking
-pub mod metrics_volatility; // High-frequency volatility tracking
-pub mod metrics_lending; // Lending metrics (flash loans + utilization)
+// Metrics - now consolidated
+// Individual metrics modules removed in favor of pool_metrics_consolidated
 
 // ============================================================================
 // Re-exports
@@ -51,7 +48,7 @@ pub use hook::{
 
 // Core pool types
 pub use pool::{Pool, PoolKey};
-pub use pool_metrics::PoolMetrics;
+pub use pool_metrics::{PoolMetricsConsolidated as PoolMetrics, migrate_to_consolidated};
 pub use pool_hooks::PoolHooks;
 pub use pool_rebase::PoolRebase;
 
@@ -90,35 +87,15 @@ pub use rebase::{
     REBASE_INDEX_SCALE, SECONDS_PER_YEAR, BPS_DENOMINATOR,
 };
 
-// Price metrics
-pub use metrics_price::{
-    PriceOracle, PriceTransition, update_price_oracle,
-    calculate_price_twap,
-};
-
-// Volume metrics
-pub use metrics_volume::{
-    VolumeTracker, VolumeWindow, update_volume_tracker,
-    get_current_volume,
-};
-
-// Volatility metrics
-pub use metrics_volatility::{
-    VolatilityCalculator, VolatilityWindow, update_volatility,
-    calculate_realized_volatility,
-};
-
-// Lending metrics
-pub use metrics_lending::{
-    LendingMetrics, FlashLoanTracker, update_lending_metrics,
-    calculate_utilization_rate,
-};
+// Metrics are now consolidated in PoolMetricsConsolidated
+// Use the consolidated metrics account for all metric operations
 
 // ============================================================================
 // Market Physics
 // ============================================================================
 
 pub mod buffer;
+pub mod market_data_source;
 pub mod market_field;
 pub mod numeraire;
 pub mod twap_oracle;
@@ -129,6 +106,12 @@ pub use buffer::{
     InitializeBuffer, UpdateBufferParams,
     MAX_REBATE_PER_TX_BPS, MAX_REBATE_PER_EPOCH_BPS,
     FEE_EWMA_HALF_LIFE, BPS_DENOMINATOR as BUFFER_BPS_DENOMINATOR,
+};
+
+// Market data source
+pub use market_data_source::{
+    MarketDataSource, MarketUpdate, ParamSnapshot, GradientCommitment,
+    verify_market_update,
 };
 
 // Market field commitment

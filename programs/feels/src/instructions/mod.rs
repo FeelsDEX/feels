@@ -26,13 +26,8 @@ pub mod weight_rebase;
 // Protocol configuration
 pub mod configure_pool;  // Unified configuration system
 
-// Keeper operations
-pub mod keeper_register;
-pub mod keeper_slash;
-pub mod verify_market_update;
-
-// Simplified oracle system
-pub mod oracle_update;
+// Market field updates
+pub mod update_market_field;
 
 // Asset management
 pub mod token;
@@ -40,6 +35,9 @@ pub mod token;
 // Maintenance operations
 pub mod cleanup;
 
+// Security examples (for documentation)
+#[cfg(feature = "security-examples")]
+pub mod security_example;
 
 // Re-export functions
 pub use pool::{initialize_protocol, initialize_feelssol, initialize_pool};
@@ -54,10 +52,6 @@ pub use order_redenominate::{handler as order_redenominate_handler, Redenominate
 pub use configure_pool::{handler as configure_pool_handler, PoolConfigParams};
 pub use unified_order::{UnifiedOrderParams, UnifiedOrderResult, UnifiedModifyParams, UnifiedComputeParams};
 pub use weight_rebase::{execute_weight_rebase, ExecuteWeightRebase, emergency_weight_update, EmergencyWeightUpdate};
-pub use keeper_register::{register_keeper, RegisterKeeper, add_keeper_stake, AddKeeperStake, 
-    remove_keeper_stake, RemoveKeeperStake, exit_keeper, ExitKeeper, withdraw_keeper_stake, WithdrawKeeperStake};
-pub use keeper_slash::{slash_keeper, SlashKeeper, automated_slash_batch, AutomatedSlash, appeal_slash, AppealSlash};
-pub use verify_market_update::{verify_market_update, VerifyMarketUpdate};
-pub use oracle_update::{update_oracle, UpdateOracle, initialize_oracle_config, InitializeOracleConfig,
-    update_oracle_config, UpdateOracleConfig, emergency_oracle_override, EmergencyOracleOverride};
+pub use update_market_field::{handler as update_market_field, UpdateMarketField, UpdateMarketFieldParams,
+    initialize_handler as initialize_market_field, InitializeMarketField, InitializeMarketFieldParams};
 
