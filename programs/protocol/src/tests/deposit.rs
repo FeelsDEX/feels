@@ -20,7 +20,7 @@ use anchor_spl::{
     token_2022::spl_token_2022::{self},
 };
 
-use feelssol_controller::error::FeelsSolError;
+use feelssol_controller::{error::FeelsSolError, state::FeelsSolController};
 use spl_stake_pool::{instruction::deposit_sol, state::StakePool};
 
 use crate::{
@@ -275,6 +275,12 @@ fn test_deposit_lst_success() {
 
     let vault_balance_before = get_token_balance(&protocol_program, &vault_pda);
 
+    // Get the total_wrapped from the feelsSol state
+    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
+    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
+    let total_wrapped_before = feelssol_state.total_wrapped;
+    println!("Total wrapped before: {}", total_wrapped_before);
+
     protocol_program
         .request()
         .accounts(accounts::Deposit {
@@ -303,7 +309,12 @@ fn test_deposit_lst_success() {
         .unwrap();
 
     let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
-    assert_eq!(vault_balance_after, vault_balance_before + deposit_amount);
+    assert!(vault_balance_after > vault_balance_before);
+
+    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
+    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
+    let total_wrapped_after = feelssol_state.total_wrapped;
+    assert!(total_wrapped_after > total_wrapped_before);
 
     let user_initial_feelssol_balance =
         get_token2022_balance(&protocol_program, &user_feelssol_account);

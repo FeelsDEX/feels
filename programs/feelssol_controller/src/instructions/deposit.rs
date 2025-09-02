@@ -133,7 +133,14 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     token_2022::mint_to(mint_ctx, output_amount)?;
 
     // Update the amount of LST wrapped
-    ctx.accounts.feelssol.total_wrapped += amount;
+    let new_total = ctx
+        .accounts
+        .feelssol
+        .total_wrapped
+        .checked_add(amount)
+        .ok_or(FeelsSolError::MathOverflow)?;
+
+    ctx.accounts.feelssol.total_wrapped = new_total;
 
     emit!(DepositEvent {
         user: ctx.accounts.user.key(),
