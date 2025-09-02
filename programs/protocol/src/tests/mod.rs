@@ -1,19 +1,42 @@
 pub mod authority_transfer;
 pub mod create_token;
+pub mod deposit;
 pub mod initialize;
 pub mod update_protocol;
 
 const PROGRAM_PATH: &str = "../../target/deploy/feels_protocol.so";
 const FACTORY_PROGRAM_PATH: &str = "../../target/deploy/feels_token_factory.so";
 
+use anchor_client::solana_sdk::{program_pack::Pack, signature::Keypair};
 use anchor_lang::{prelude::*, system_program, InstructionData};
-use anchor_spl::{associated_token::spl_associated_token_account, token_2022::spl_token_2022};
+use anchor_spl::{
+    associated_token::spl_associated_token_account,
+    token::spl_token,
+    token_2022::spl_token_2022::{self, extension::StateWithExtensions},
+};
 
 pub struct InstructionBuilder;
 
-const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
-const TREASURY_PDA_SEED: &[u8] = b"treasury";
-const FACTORY_PDA_SEED: &[u8] = b"factory";
+pub const TEST_KEYPAIR_PATH: &str = "../../test_keypair.json";
+pub const PROTOCOL_KEYPAIR_PATH: &str = "../../target/deploy/feels_protocol-keypair.json";
+pub const FACTORY_KEYPAIR_PATH: &str = "../../target/deploy/feels_token_factory-keypair.json";
+pub const FEELSSOL_CONTROLLER_KEYPAIR_PATH: &str =
+    "../../target/deploy/feelssol_controller-keypair.json";
+
+pub const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
+pub const TREASURY_PDA_SEED: &[u8] = b"treasury";
+pub const FACTORY_PDA_SEED: &[u8] = b"factory";
+pub const FEELSSOL_PDA_SEED: &[u8] = b"feelssol";
+pub const VAULT_PDA_SEED: &[u8] = b"vault";
+
+pub const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
+pub const JITO_STAKE_POOL: &str = "Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb";
+
+// Example secret key that gives a Pubkey that starts with `Fee1s`.
+pub const FEELS_PRIVATE_KEY: [u8; 32] = [
+    208, 250, 243, 217, 178, 15, 248, 65, 233, 94, 242, 229, 196, 92, 156, 153, 172, 164, 14, 45,
+    147, 20, 212, 158, 3, 235, 20, 9, 75, 178, 205, 35,
+];
 
 impl InstructionBuilder {
     pub fn initialize(
@@ -201,5 +224,43 @@ impl InstructionBuilder {
         };
 
         (instruction, recipient_token)
+    }
+}
+
+pub fn get_token_balance(
+    program: &anchor_client::Program<&Keypair>,
+    token_account: &Pubkey,
+) -> u64 {
+    match program.rpc().get_account(token_account) {
+        Ok(account_info) => {
+            match spl_token::state::Account::unpack(&account_info.data) {
+                Ok(token_account_data) => token_account_data.amount,
+                Err(_) => 0, // Account exists but isn't a valid token account
+            }
+        }
+        Err(_) => 0, // Account doesn't exist
+    }
+}
+
+pub fn get_token2022_balance(
+    program: &anchor_client::Program<&Keypair>,
+    token_account: &Pubkey,
+) -> u64 {
+    match program.rpc().get_account(token_account) {
+        Ok(account_info) => {
+            // First try with extensions (the proper Token2022 way)
+            match StateWithExtensions::<spl_token_2022::state::Account>::unpack(&account_info.data)
+            {
+                Ok(account_state) => account_state.base.amount,
+                Err(_) => {
+                    // Fallback: try without extensions
+                    match spl_token_2022::state::Account::unpack(&account_info.data) {
+                        Ok(token_account_data) => token_account_data.amount,
+                        Err(_) => 0, // Return 0 instead of panicking
+                    }
+                }
+            }
+        }
+        Err(_) => 0, // Return 0 if account doesn't exist instead of panicking
     }
 }

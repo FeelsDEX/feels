@@ -25,16 +25,12 @@ use solana_sdk::signature::Signer;
 use crate::{
     accounts,
     error::ProtocolError,
-    tests::{InstructionBuilder, FACTORY_PROGRAM_PATH, PROGRAM_PATH},
+    tests::{
+        InstructionBuilder, FACTORY_KEYPAIR_PATH, FACTORY_PDA_SEED, FACTORY_PROGRAM_PATH,
+        PROGRAM_PATH, PROTOCOL_KEYPAIR_PATH, PROTOCOL_PDA_SEED, TEST_KEYPAIR_PATH,
+        TREASURY_PDA_SEED,
+    },
 };
-
-const TEST_KEYPAIR_PATH: &str = "../../test_keypair.json";
-const PROTOCOL_KEYPAIR_PATH: &str = "../../target/deploy/feels_protocol-keypair.json";
-const FACTORY_KEYPAIR_PATH: &str = "../../target/deploy/feels_token_factory-keypair.json";
-
-const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
-const TREASURY_PDA_SEED: &[u8] = b"treasury";
-const FACTORY_PDA_SEED: &[u8] = b"factory";
 
 // Helper to create a TestApp that initializes both the protocol and the factory
 async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
@@ -137,7 +133,7 @@ impl TestComponents {
     }
 }
 
-fn deploy_protocol_and_factory_test_validator(
+fn deploy_protocol_and_factory_on_test_validator(
     protocol: &anchor_client::Program<&Keypair>,
     factory: &anchor_client::Program<&Keypair>,
 ) -> (Pubkey, Pubkey, Pubkey) {
@@ -159,7 +155,7 @@ fn deploy_protocol_and_factory_test_validator(
         })
         .args(crate::instruction::Initialize {
             token_factory: feels_token_factory::id(),
-            feelssol_controller: Pubkey::new_unique(),
+            feelssol_controller: feelssol_controller::id(),
             default_protocol_fee_rate: 2000,
             max_pool_fee_rate: 10000,
         })
@@ -200,7 +196,7 @@ fn test_create_token_via_factory_success() {
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
-        deploy_protocol_and_factory_test_validator(&protocol_program, &factory_program);
+        deploy_protocol_and_factory_on_test_validator(&protocol_program, &factory_program);
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
@@ -294,7 +290,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
-        deploy_protocol_and_factory_test_validator(&protocol_program, &factory_program);
+        deploy_protocol_and_factory_on_test_validator(&protocol_program, &factory_program);
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();

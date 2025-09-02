@@ -23,8 +23,11 @@ pub struct Deposit<'info> {
     )]
     pub protocol: Account<'info, ProtocolState>,
 
-    /// CHECK: This is the FeelsSOL controller account - validated by has_one constraint above
+    /// CHECK: This is the FeelsSOL pda used by the controller
     #[account(mut)]
+    pub feelssol: UncheckedAccount<'info>,
+
+    /// CHECK: This is the FeelsSOL controller program - validated by has_one constraint above
     pub feelssol_controller: UncheckedAccount<'info>,
 
     /// CHECK: FeelsSOL mint account, validated by the FeelsSOL program
@@ -37,11 +40,11 @@ pub struct Deposit<'info> {
 
     /// CHECK: User's FeelsSOL token account, validated by the FeelsSOL program
     #[account(mut)]
-    pub user_feelssol: InterfaceAccount<'info, TokenAccount>,
+    pub user_feelssol: UncheckedAccount<'info>,
 
     /// CHECK: LST vault account, validated by the FeelsSOL program
     #[account(mut)]
-    pub lst_vault: InterfaceAccount<'info, TokenAccount>,
+    pub lst_vault: UncheckedAccount<'info>,
 
     /// CHECK: Underlying mint account, validated by the FeelsSOL program
     pub underlying_mint: InterfaceAccount<'info, Mint>,
@@ -66,9 +69,6 @@ pub struct Deposit<'info> {
     /// CHECK: This is the instructions sysvar
     #[account(address = anchor_lang::solana_program::sysvar::instructions::ID)]
     pub instructions: UncheckedAccount<'info>,
-
-    /// CHECK: FeelsSOL program account
-    pub feelssol_program: AccountInfo<'info>,
 }
 
 pub fn deposit_via_feelssol_controller(ctx: Context<Deposit>, amount: u64) -> Result<()> {
@@ -80,7 +80,7 @@ pub fn deposit_via_feelssol_controller(ctx: Context<Deposit>, amount: u64) -> Re
     // Set up the CPI context
     let cpi_program = ctx.accounts.feelssol_controller.to_account_info();
     let cpi_accounts = FeelsSOLDeposit {
-        feelssol: ctx.accounts.user_feelssol.to_account_info(),
+        feelssol: ctx.accounts.feelssol.to_account_info(),
         feels_mint: ctx.accounts.feels_mint.to_account_info(),
         user_lst: ctx.accounts.user_lst.to_account_info(),
         user_feelssol: ctx.accounts.user_feelssol.to_account_info(),

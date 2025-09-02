@@ -1903,10 +1903,12 @@ dependencies = [
  "anchor-client",
  "anchor-lang",
  "anchor-spl",
+ "borsh 1.5.7",
  "feels-test-utils",
  "feels-token-factory",
  "feelssol-controller",
  "solana-sdk 3.0.0",
+ "spl-stake-pool",
  "tokio",
 ]
 

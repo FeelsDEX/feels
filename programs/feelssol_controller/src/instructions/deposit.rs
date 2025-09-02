@@ -28,7 +28,8 @@ pub struct Deposit<'info> {
     #[account(
         mut,
         associated_token::mint = feelssol.underlying_mint,
-        associated_token::authority = user
+        associated_token::authority = user,
+        associated_token::token_program = token_program
     )]
     pub user_lst: InterfaceAccount<'info, TokenAccount>,
 
@@ -36,7 +37,8 @@ pub struct Deposit<'info> {
         init_if_needed,
         payer = user,
         associated_token::mint = feels_mint,
-        associated_token::authority = user
+        associated_token::authority = user,
+        associated_token::token_program = token_2022_program
     )]
     pub user_feelssol: InterfaceAccount<'info, TokenAccount>,
 
@@ -120,7 +122,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     let signer_seeds = &[&seeds[..]];
 
     let mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.token_2022_program.to_account_info(),
         MintTo {
             mint: ctx.accounts.feels_mint.to_account_info(),
             to: ctx.accounts.user_feelssol.to_account_info(),

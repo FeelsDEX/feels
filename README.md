@@ -58,7 +58,7 @@ solana-test-validator \
 3. Fund the test account with enough Solana to start interacting with the local network
 
 ```bash
-solana airdrop 50000 AGkjyfbEoLbehpZ4BC4ZxAr6zsyeVoDYdp7s43PCtQjS
+solana airdrop 500000 AGkjyfbEoLbehpZ4BC4ZxAr6zsyeVoDYdp7s43PCtQjS
 ```
 
 4. Deploy the programs. This will deploy all programs to the local running validator which are used by some of the tests

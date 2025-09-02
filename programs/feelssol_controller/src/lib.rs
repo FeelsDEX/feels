@@ -12,7 +12,7 @@ mod tests;
 use instructions::*;
 
 // TODO: Update when we have the real ID
-declare_id!("Fee1sSo1Contro11er11111111111111111111111111");
+declare_id!("BjBR6qczDV4iimwRq6PTEF9sqjoju8GgAytqi5ATrSes");
 
 #[program]
 pub mod feelssol_controller {
