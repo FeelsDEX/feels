@@ -19,4 +19,8 @@ pub enum ProtocolError {
     NotPendingAuthority,
     #[msg("Protocol is paused")]
     ProtocolPaused,
+    #[msg("Invalid token factory")]
+    InvalidTokenFactory,
+    #[msg("Invalid FeelsSOL controller")]
+    InvalidFeelsSOLController,
 }

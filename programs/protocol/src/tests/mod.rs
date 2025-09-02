@@ -42,7 +42,7 @@ impl InstructionBuilder {
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::Initialize {
                 token_factory: feels_token_factory::id(),
-                feels_sol_controller: Pubkey::new_unique(),
+                feelssol_controller: Pubkey::new_unique(),
                 default_protocol_fee_rate,
                 max_pool_fee_rate,
             }
@@ -175,8 +175,8 @@ impl InstructionBuilder {
             recipient_token,
             recipient: *recipient,
             authority: *payer,
-            token_factory_program: if invalid_factory {
-                program_id
+            token_factory: if invalid_factory {
+                Pubkey::new_unique()
             } else {
                 factory_program_id
             },

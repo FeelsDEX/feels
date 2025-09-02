@@ -32,4 +32,9 @@ pub mod feelssol_controller {
             feels_protocol,
         )
     }
+
+    /// Deposit underlying LST assets to get feelsSOL
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit(ctx, amount)
+    }
 }

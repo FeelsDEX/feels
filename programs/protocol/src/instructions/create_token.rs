@@ -2,13 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_2022::Token2022};
 
 // Import your token factory for CPI
-use feels_token_factory::{
-    cpi::{
-        accounts::CreateToken as TokenFactoryCreateToken,
-        create_token as token_factory_create_token,
-    },
-    program::FeelsTokenFactory,
-    state::TokenFactory,
+use feels_token_factory::cpi::{
+    accounts::CreateToken as TokenFactoryCreateToken, create_token as token_factory_create_token,
 };
 
 use crate::{error::ProtocolError, state::protocol::ProtocolState};
@@ -20,17 +15,14 @@ pub struct CreateToken<'info> {
         mut,
         seeds = [b"protocol"],
         bump,
-        has_one = authority @ ProtocolError::InvalidAuthority
+        has_one = authority @ ProtocolError::InvalidAuthority,
+        has_one = token_factory @ ProtocolError::InvalidTokenFactory
     )]
     pub protocol: Account<'info, ProtocolState>,
 
-    #[account(
-        mut,
-        seeds = [b"factory"],
-        bump,
-        seeds::program = token_factory_program
-    )]
-    pub factory: Account<'info, TokenFactory>,
+    /// CHECK: Will be the PDA used by token factory program
+    #[account(mut)]
+    pub factory: UncheckedAccount<'info>,
 
     /// New token mint that will be created
     /// CHECK: Will be initialized by token factory program
@@ -51,10 +43,8 @@ pub struct CreateToken<'info> {
     pub authority: Signer<'info>,
 
     /// Token factory program
-    #[account(
-        constraint = token_factory_program.key() == protocol.token_factory
-    )]
-    pub token_factory_program: Program<'info, FeelsTokenFactory>,
+    /// CHECK: This is checked via constraint
+    pub token_factory: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -84,7 +74,7 @@ pub fn create_token_via_factory(
     }
 
     // Set up the CPI context
-    let cpi_program = ctx.accounts.token_factory_program.to_account_info();
+    let cpi_program = ctx.accounts.token_factory.to_account_info();
     let cpi_accounts = TokenFactoryCreateToken {
         factory: ctx.accounts.factory.to_account_info(),
         token_mint: ctx.accounts.token_mint.to_account_info(),

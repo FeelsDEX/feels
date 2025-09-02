@@ -39,7 +39,7 @@ pub struct Initialize<'info> {
 pub fn initialize_protocol(
     ctx: Context<Initialize>,
     token_factory: Pubkey,
-    feels_sol_controller: Pubkey,
+    feelssol_controller: Pubkey,
     default_protocol_fee_rate: u16,
     max_pool_fee_rate: u16,
 ) -> Result<()> {
@@ -65,7 +65,7 @@ pub fn initialize_protocol(
     protocol_state.authority = authority_key;
     protocol_state.treasury = treasury_key;
     protocol_state.token_factory = token_factory;
-    protocol_state.feels_sol_controller = feels_sol_controller;
+    protocol_state.feelssol_controller = feelssol_controller;
     protocol_state.default_protocol_fee_rate = default_protocol_fee_rate;
     protocol_state.max_pool_fee_rate = max_pool_fee_rate;
     protocol_state.paused = false;

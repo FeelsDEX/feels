@@ -159,7 +159,7 @@ fn deploy_protocol_and_factory_test_validator(
         })
         .args(crate::instruction::Initialize {
             token_factory: feels_token_factory::id(),
-            feels_sol_controller: Pubkey::new_unique(),
+            feelssol_controller: Pubkey::new_unique(),
             default_protocol_fee_rate: 2000,
             max_pool_fee_rate: 10000,
         })
@@ -231,7 +231,7 @@ fn test_create_token_via_factory_success() {
             recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -325,7 +325,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -354,7 +354,7 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -474,13 +474,20 @@ async fn test_create_token_via_factory_fail_invalid_factory() {
     );
 
     // Process the instruction - should fail because an invalid factory was passed
-    app.process_instruction_with_multiple_signers(
-        to_sdk_instruction(instruction),
-        &app.context.payer.insecure_clone(),
-        &[&token_mint],
-    )
-    .await
-    .unwrap_err();
+    let result = app
+        .process_instruction_with_multiple_signers(
+            to_sdk_instruction(instruction),
+            &app.context.payer.insecure_clone(),
+            &[&token_mint],
+        )
+        .await;
+
+    let anchor_error_code: u32 = ProtocolError::InvalidTokenFactory.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[tokio::test]
