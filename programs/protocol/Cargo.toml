@@ -21,10 +21,12 @@ idl-build      = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 anchor-lang         = { workspace = true }
 anchor-spl          = { workspace = true }
 feels-token-factory = { path = "../token_factory", features = ["cpi"] }
+feelssol-controller = { path = "../feelssol_controller", features = ["cpi"] }
 
 [dev-dependencies]
 feels-test-utils    = { workspace = true }
 solana-sdk          = { workspace = true }
 tokio               = { workspace = true }
 anchor-client       = { workspace = true }
-feels-token-factory = { path = "../token_factory", features = ["test-utils"] }
+feels-token-factory = { path = "../token_factory" }
+feelssol-controller = { path = "../feelssol_controller" }

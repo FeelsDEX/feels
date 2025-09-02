@@ -40,7 +40,7 @@ pub struct CreateToken<'info> {
     /// Recipient token account for initial mint
     /// CHECK: Will be created/validated by token factory program  
     #[account(mut)]
-    pub recipient_token_account: UncheckedAccount<'info>,
+    pub recipient_token: UncheckedAccount<'info>,
 
     /// Token recipient
     /// CHECK: Can be any account
@@ -51,6 +51,9 @@ pub struct CreateToken<'info> {
     pub authority: Signer<'info>,
 
     /// Token factory program
+    #[account(
+        constraint = token_factory_program.key() == protocol.token_factory
+    )]
     pub token_factory_program: Program<'info, FeelsTokenFactory>,
 
     pub token_program: Program<'info, Token2022>,
@@ -75,12 +78,17 @@ pub fn create_token_via_factory(
     // TODO: Add feels protocol specific logic here
     // For example: validation, fees, etc.
 
+    // Check if protocol is paused
+    if ctx.accounts.protocol.paused {
+        return Err(ProtocolError::ProtocolPaused.into());
+    }
+
     // Set up the CPI context
     let cpi_program = ctx.accounts.token_factory_program.to_account_info();
     let cpi_accounts = TokenFactoryCreateToken {
         factory: ctx.accounts.factory.to_account_info(),
         token_mint: ctx.accounts.token_mint.to_account_info(),
-        recipient_token_account: ctx.accounts.recipient_token_account.to_account_info(),
+        recipient_token: ctx.accounts.recipient_token.to_account_info(),
         recipient: ctx.accounts.recipient.to_account_info(),
         payer: ctx.accounts.authority.to_account_info(),
         token_program: ctx.accounts.token_program.to_account_info(),

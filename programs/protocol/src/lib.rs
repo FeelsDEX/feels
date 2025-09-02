@@ -20,10 +20,18 @@ pub mod feels_protocol {
 
     pub fn initialize(
         ctx: Context<Initialize>,
+        token_factory: Pubkey,
+        feels_sol_controller: Pubkey,
         default_protocol_fee_rate: u16,
         max_pool_fee_rate: u16,
     ) -> Result<()> {
-        instructions::initialize_protocol(ctx, default_protocol_fee_rate, max_pool_fee_rate)
+        instructions::initialize_protocol(
+            ctx,
+            token_factory,
+            feels_sol_controller,
+            default_protocol_fee_rate,
+            max_pool_fee_rate,
+        )
     }
 
     pub fn update_protocol(

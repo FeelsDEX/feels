@@ -18,8 +18,10 @@ no-log-ix-name = []
 idl-build      = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = { workspace = true }
-anchor-spl  = { workspace = true }
+anchor-lang    = { workspace = true, features = ["init-if-needed"] }
+anchor-spl     = { workspace = true }
+spl-stake-pool = { workspace = true, features = ["no-entrypoint"] }
+borsh          = { workspace = true }
 
 [dev-dependencies]
 feels-test-utils = { workspace = true }

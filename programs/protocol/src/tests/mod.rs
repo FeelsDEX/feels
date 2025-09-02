@@ -41,6 +41,8 @@ impl InstructionBuilder {
             program_id,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::Initialize {
+                token_factory: feels_token_factory::id(),
+                feels_sol_controller: Pubkey::new_unique(),
                 default_protocol_fee_rate,
                 max_pool_fee_rate,
             }
@@ -146,6 +148,7 @@ impl InstructionBuilder {
         uri: String,
         decimals: u8,
         initial_supply: u64,
+        invalid_factory: bool,
     ) -> (
         anchor_lang::solana_program::instruction::Instruction,
         Pubkey,
@@ -158,7 +161,7 @@ impl InstructionBuilder {
         let (factory_pda, _) =
             Pubkey::find_program_address(&[FACTORY_PDA_SEED], &factory_program_id);
 
-        let recipient_token_account =
+        let recipient_token =
             spl_associated_token_account::get_associated_token_address_with_program_id(
                 recipient,
                 token_mint,
@@ -169,10 +172,14 @@ impl InstructionBuilder {
             protocol: protocol_pda,
             factory: factory_pda,
             token_mint: *token_mint,
-            recipient_token_account,
+            recipient_token,
             recipient: *recipient,
             authority: *payer,
-            token_factory_program: factory_program_id,
+            token_factory_program: if invalid_factory {
+                program_id
+            } else {
+                factory_program_id
+            },
             token_program: anchor_spl::token_2022::ID,
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
@@ -193,6 +200,6 @@ impl InstructionBuilder {
             .data(),
         };
 
-        (instruction, recipient_token_account)
+        (instruction, recipient_token)
     }
 }

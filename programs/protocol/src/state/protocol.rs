@@ -5,6 +5,8 @@ use anchor_lang::prelude::*;
 pub struct ProtocolState {
     pub authority: Pubkey, // 32 - Who can modify the protocol state and withdraw
     pub treasury: Pubkey,  // 32 - Reference to the treasury account
+    pub token_factory: Pubkey, // 32 - Reference to the token factory account
+    pub feels_sol_controller: Pubkey, // 32 - Reference to the FeelsSOL controller account
     pub default_protocol_fee_rate: u16, // 2 - Default fee rate for the protocol
     pub max_pool_fee_rate: u16, // 2 - Maximum fee rate for any pool
     pub paused: bool,      // 1 - Is the protocol paused
