@@ -20,10 +20,18 @@ pub mod feels_protocol {
 
     pub fn initialize(
         ctx: Context<Initialize>,
+        token_factory: Pubkey,
+        feelssol_controller: Pubkey,
         default_protocol_fee_rate: u16,
         max_pool_fee_rate: u16,
     ) -> Result<()> {
-        instructions::initialize_protocol(ctx, default_protocol_fee_rate, max_pool_fee_rate)
+        instructions::initialize_protocol(
+            ctx,
+            token_factory,
+            feelssol_controller,
+            default_protocol_fee_rate,
+            max_pool_fee_rate,
+        )
     }
 
     pub fn update_protocol(
@@ -63,5 +71,9 @@ pub mod feels_protocol {
         initial_supply: u64,
     ) -> Result<()> {
         instructions::create_token_via_factory(ctx, symbol, name, uri, decimals, initial_supply)
+    }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit_via_feelssol_controller(ctx, amount)
     }
 }

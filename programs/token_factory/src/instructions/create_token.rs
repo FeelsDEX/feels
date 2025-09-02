@@ -53,7 +53,7 @@ pub struct CreateToken<'info> {
         associated_token::authority = recipient,
         associated_token::token_program = token_program,
     )]
-    pub recipient_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub recipient_token: InterfaceAccount<'info, TokenAccount>,
 
     /// Token recipient
     /// CHECK: Can be any account
@@ -153,7 +153,7 @@ pub fn create_token(
     if initial_supply > 0 {
         let cpi_accounts = MintTo {
             mint: ctx.accounts.token_mint.to_account_info(),
-            to: ctx.accounts.recipient_token_account.to_account_info(),
+            to: ctx.accounts.recipient_token.to_account_info(),
             authority: ctx.accounts.factory.to_account_info(),
         };
 

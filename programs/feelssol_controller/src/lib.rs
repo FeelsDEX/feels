@@ -2,6 +2,7 @@
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
 
+pub mod error;
 pub mod events;
 pub mod instructions;
 pub mod state;
@@ -11,7 +12,7 @@ mod tests;
 use instructions::*;
 
 // TODO: Update when we have the real ID
-declare_id!("Fee1sSo1Contro11er11111111111111111111111111");
+declare_id!("BjBR6qczDV4iimwRq6PTEF9sqjoju8GgAytqi5ATrSes");
 
 #[program]
 pub mod feelssol_controller {
@@ -21,8 +22,19 @@ pub mod feelssol_controller {
     pub fn initialize(
         ctx: Context<Initialize>,
         underlying_mint: Pubkey,
+        underlying_stake_pool: Pubkey,
         feels_protocol: Pubkey,
     ) -> Result<()> {
-        instructions::initialize_feelssol(ctx, underlying_mint, feels_protocol)
+        instructions::initialize_feelssol(
+            ctx,
+            underlying_mint,
+            underlying_stake_pool,
+            feels_protocol,
+        )
+    }
+
+    /// Deposit underlying LST assets to get feelsSOL
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit(ctx, amount)
     }
 }

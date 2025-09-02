@@ -1,18 +1,11 @@
 use crate::{
     state::FeelsSolController,
-    tests::{InstructionBuilder, PROGRAM_PATH},
+    tests::{InstructionBuilder, FEELS_PRIVATE_KEY, JITOSOL_MINT, JITO_STAKE_POOL, PROGRAM_PATH},
 };
 use anchor_lang::prelude::Pubkey;
 use anchor_spl::token_interface::Mint;
 use feels_test_utils::{to_sdk_instruction, TestApp};
 use solana_sdk::signer::{SeedDerivable, Signer};
-
-const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
-// Example secret key that gives a Pubkey that starts with `Fee1s`.
-const FEELS_PRIVATE_KEY: [u8; 32] = [
-    208, 250, 243, 217, 178, 15, 248, 65, 233, 94, 242, 229, 196, 92, 156, 153, 172, 164, 14, 45,
-    147, 20, 212, 158, 3, 235, 20, 9, 75, 178, 205, 35,
-];
 
 #[tokio::test]
 async fn test_initialize_feelssol_controller_success() {
@@ -27,6 +20,7 @@ async fn test_initialize_feelssol_controller_success() {
         &payer_pubkey,
         token_mint_pubkey,
         JITOSOL_MINT.parse().unwrap(),
+        JITO_STAKE_POOL.parse().unwrap(),
         feels_protocol::ID,
     );
 
@@ -43,10 +37,12 @@ async fn test_initialize_feelssol_controller_success() {
 
     // State assertions
     assert_eq!(feels_sol.underlying_mint, JITOSOL_MINT.parse().unwrap());
+    assert_eq!(
+        feels_sol.underlying_stake_pool,
+        JITO_STAKE_POOL.parse().unwrap()
+    );
+    assert_eq!(feels_sol.feels_mint, token_mint_pubkey);
     assert_eq!(feels_sol.total_wrapped, 0);
-    assert_eq!(feels_sol.virtual_reserves, 0);
-    assert_eq!(feels_sol.yield_accumulator, 0);
-    assert_eq!(feels_sol.last_update_slot, 0);
     assert_eq!(feels_sol.feels_protocol, feels_protocol::ID);
 
     // Mint state assertions

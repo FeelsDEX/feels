@@ -12,12 +12,6 @@ pub mod token_validate;
 
 use instructions::*;
 
-#[cfg(any(test, feature = "test-utils"))]
-pub mod instruction_builder;
-
-#[cfg(any(test, feature = "test-utils"))]
-pub use instruction_builder::*;
-
 // TODO: Update when we have the real ID
 declare_id!("49nnQKfdGZoksCFg3ZTdStvyaMgptmEkDY77oaMpG2Hd");
 

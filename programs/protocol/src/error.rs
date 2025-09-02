@@ -17,4 +17,10 @@ pub enum ProtocolError {
     AuthorityTransferDelayNotMet,
     #[msg("Not pending authority transfer")]
     NotPendingAuthority,
+    #[msg("Protocol is paused")]
+    ProtocolPaused,
+    #[msg("Invalid token factory")]
+    InvalidTokenFactory,
+    #[msg("Invalid FeelsSOL controller")]
+    InvalidFeelsSOLController,
 }

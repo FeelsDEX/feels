@@ -7,7 +7,8 @@ use anchor_client::{
     },
     Client, Cluster,
 };
-use anchor_lang::{prelude::*, solana_program::system_instruction::transfer};
+use anchor_lang::{prelude::*, solana_program::system_instruction::transfer, InstructionData};
+
 use anchor_spl::{
     associated_token::{self, spl_associated_token_account},
     token_2022::spl_token_2022::{
@@ -24,16 +25,12 @@ use solana_sdk::signature::Signer;
 use crate::{
     accounts,
     error::ProtocolError,
-    tests::{InstructionBuilder, FACTORY_PROGRAM_PATH, PROGRAM_PATH},
+    tests::{
+        InstructionBuilder, FACTORY_KEYPAIR_PATH, FACTORY_PDA_SEED, FACTORY_PROGRAM_PATH,
+        PROGRAM_PATH, PROTOCOL_KEYPAIR_PATH, PROTOCOL_PDA_SEED, TEST_KEYPAIR_PATH,
+        TREASURY_PDA_SEED,
+    },
 };
-
-const TEST_KEYPAIR_PATH: &str = "../../test_keypair.json";
-const PROTOCOL_KEYPAIR_PATH: &str = "../../target/deploy/feels_protocol-keypair.json";
-const FACTORY_KEYPAIR_PATH: &str = "../../target/deploy/feels_token_factory-keypair.json";
-
-const PROTOCOL_PDA_SEED: &[u8] = b"protocol";
-const TREASURY_PDA_SEED: &[u8] = b"treasury";
-const FACTORY_PDA_SEED: &[u8] = b"factory";
 
 // Helper to create a TestApp that initializes both the protocol and the factory
 async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
@@ -53,11 +50,24 @@ async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
         .unwrap();
 
     // Initialize the token factory
-    let (instruction, factory_pda) =
-        feels_token_factory::instruction_builder::InstructionBuilder::initialize(
-            &payer_pubkey,
-            crate::id(),
-        );
+    let (factory_pda, _) =
+        Pubkey::find_program_address(&[FACTORY_PDA_SEED], &feels_token_factory::id());
+
+    let accounts = feels_token_factory::accounts::Initialize {
+        token_factory: factory_pda,
+        payer: payer_pubkey,
+        system_program: system_program::ID,
+    };
+
+    let instruction = anchor_lang::solana_program::instruction::Instruction {
+        program_id: feels_token_factory::id(),
+        accounts: accounts.to_account_metas(None),
+        data: feels_token_factory::instruction::Initialize {
+            feels_protocol: crate::id(),
+        }
+        .data(),
+    };
+
     app.process_instruction(to_sdk_instruction(instruction))
         .await
         .unwrap();
@@ -123,7 +133,7 @@ impl TestComponents {
     }
 }
 
-fn deploy_protocol_and_factory_test_validator(
+fn deploy_protocol_and_factory_on_test_validator(
     protocol: &anchor_client::Program<&Keypair>,
     factory: &anchor_client::Program<&Keypair>,
 ) -> (Pubkey, Pubkey, Pubkey) {
@@ -144,6 +154,8 @@ fn deploy_protocol_and_factory_test_validator(
             system_program: system_program::ID,
         })
         .args(crate::instruction::Initialize {
+            token_factory: feels_token_factory::id(),
+            feelssol_controller: feelssol_controller::id(),
             default_protocol_fee_rate: 2000,
             max_pool_fee_rate: 10000,
         })
@@ -184,14 +196,14 @@ fn test_create_token_via_factory_success() {
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
-        deploy_protocol_and_factory_test_validator(&protocol_program, &factory_program);
+        deploy_protocol_and_factory_on_test_validator(&protocol_program, &factory_program);
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
     let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
     let recipient_pubkey = recipient.pubkey();
-    let recipient_token_account =
+    let recipient_token =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
             &token_mint_pubkey,
@@ -212,10 +224,10 @@ fn test_create_token_via_factory_success() {
             protocol: protocol_pda,
             factory: factory_pda,
             token_mint: token_mint_pubkey,
-            recipient_token_account,
+            recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -260,7 +272,7 @@ fn test_create_token_via_factory_success() {
     // Finally verify that we minted the correct amount to the recipient
     let recipient_account = protocol_program
         .rpc()
-        .get_account(&recipient_token_account)
+        .get_account(&recipient_token)
         .unwrap();
     let token_account_data =
         StateWithExtensions::<spl_token_2022::state::Account>::unpack(&recipient_account.data)
@@ -278,14 +290,14 @@ fn test_create_token_via_factory_fail_reuse_mint() {
 
     // Deploy the protocol and factory
     let (protocol_pda, _, factory_pda) =
-        deploy_protocol_and_factory_test_validator(&protocol_program, &factory_program);
+        deploy_protocol_and_factory_on_test_validator(&protocol_program, &factory_program);
 
     // Create a random token mint and recipient
     let token_mint = Keypair::new();
     let token_mint_pubkey = token_mint.pubkey();
     let recipient = Keypair::new();
     let recipient_pubkey = recipient.pubkey();
-    let recipient_token_account =
+    let recipient_token =
         spl_associated_token_account::get_associated_token_address_with_program_id(
             &recipient_pubkey,
             &token_mint_pubkey,
@@ -306,10 +318,10 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             protocol: protocol_pda,
             factory: factory_pda,
             token_mint: token_mint_pubkey,
-            recipient_token_account,
+            recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -335,10 +347,10 @@ fn test_create_token_via_factory_fail_reuse_mint() {
             protocol: protocol_pda,
             factory: factory_pda,
             token_mint: token_mint_pubkey,
-            recipient_token_account,
+            recipient_token,
             recipient: recipient_pubkey,
             authority: test_components.payer_pubkey(),
-            token_factory_program: test_components.factory_program_id,
+            token_factory: test_components.factory_program_id,
             token_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
@@ -356,6 +368,122 @@ fn test_create_token_via_factory_fail_reuse_mint() {
         .signer(&test_components.payer)
         .send()
         .unwrap_err();
+}
+
+#[tokio::test]
+async fn test_create_token_via_factory_fail_protocol_paused() {
+    let (mut app, _, _, _) = deploy_protocol_and_factory().await;
+    let payer_pubkey = app.payer_pubkey();
+    let recipient = solana_sdk::signer::keypair::Keypair::new();
+    let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
+    let token_mint = solana_sdk::signer::keypair::Keypair::new();
+    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
+
+    let symbol = "TEST".to_string();
+    let name = "Test Token".to_string();
+    let uri = "https://example.com/metadata.json".to_string();
+    let decimals = 9u8;
+    let initial_supply = 1_000_000u64;
+
+    // Update the protocol to pause it
+    let pause_instruction = InstructionBuilder::update_protocol(
+        &payer_pubkey,
+        Some(0),
+        Some(0),
+        Some(true),
+        Some(false),
+    );
+
+    app.process_instruction(to_sdk_instruction(pause_instruction))
+        .await
+        .unwrap();
+
+    // Create token instruction
+    let (instruction, _) = InstructionBuilder::create_token(
+        &token_mint_pubkey,
+        &recipient_pubkey,
+        &payer_pubkey,
+        symbol.clone(),
+        name.clone(),
+        uri.clone(),
+        decimals,
+        initial_supply,
+        false,
+    );
+
+    // Process the instruction - should fail because protocol is paused
+    let result = app
+        .process_instruction_with_multiple_signers(
+            to_sdk_instruction(instruction),
+            &app.context.payer.insecure_clone(),
+            &[&token_mint],
+        )
+        .await;
+
+    let anchor_error_code: u32 = ProtocolError::ProtocolPaused.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
+}
+
+#[tokio::test]
+async fn test_create_token_via_factory_fail_invalid_factory() {
+    let (mut app, _, _, _) = deploy_protocol_and_factory().await;
+    let payer_pubkey = app.payer_pubkey();
+    let recipient = solana_sdk::signer::keypair::Keypair::new();
+    let recipient_pubkey = Pubkey::from(recipient.pubkey().to_bytes());
+    let token_mint = solana_sdk::signer::keypair::Keypair::new();
+    let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
+
+    let symbol = "TEST".to_string();
+    let name = "Test Token".to_string();
+    let uri = "https://example.com/metadata.json".to_string();
+    let decimals = 9u8;
+    let initial_supply = 1_000_000u64;
+
+    // Update the protocol to pause it
+    let pause_instruction = InstructionBuilder::update_protocol(
+        &payer_pubkey,
+        Some(0),
+        Some(0),
+        Some(true),
+        Some(false),
+    );
+
+    app.process_instruction(to_sdk_instruction(pause_instruction))
+        .await
+        .unwrap();
+
+    // Create token instruction
+    let (instruction, _) = InstructionBuilder::create_token(
+        &token_mint_pubkey,
+        &recipient_pubkey,
+        &payer_pubkey,
+        symbol.clone(),
+        name.clone(),
+        uri.clone(),
+        decimals,
+        initial_supply,
+        true,
+    );
+
+    // Process the instruction - should fail because an invalid factory was passed
+    let result = app
+        .process_instruction_with_multiple_signers(
+            to_sdk_instruction(instruction),
+            &app.context.payer.insecure_clone(),
+            &[&token_mint],
+        )
+        .await;
+
+    let anchor_error_code: u32 = ProtocolError::InvalidTokenFactory.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[tokio::test]
@@ -387,6 +515,7 @@ async fn test_create_token_via_factory_fail_unauthorized() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Fund the fake authority
@@ -438,6 +567,7 @@ async fn test_create_token_via_factory_fail_invalid_token_format() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -483,6 +613,7 @@ async fn test_create_token_via_factory_fail_symbol_not_alphanumeric() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -527,6 +658,7 @@ async fn test_create_token_via_factory_fail_symbol_too_long() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -569,6 +701,7 @@ async fn test_create_token_via_factory_fail_symbol_not_uppercase() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -613,6 +746,7 @@ async fn test_create_token_via_factory_fail_name_empty() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -657,6 +791,7 @@ async fn test_create_token_via_factory_fail_name_too_long() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
@@ -701,6 +836,7 @@ async fn test_create_token_via_factory_fail_invalid_decimals() {
         uri.clone(),
         decimals,
         initial_supply,
+        false,
     );
 
     // Process the instruction
