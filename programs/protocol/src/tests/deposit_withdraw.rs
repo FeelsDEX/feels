@@ -245,7 +245,7 @@ fn get_jitosol_by_staking(
 }
 
 #[test]
-fn test_deposit_lst_success() {
+fn test_full_flow_deposit_withdraw_success() {
     let test_components = setup_test_components();
     let (protocol_program, feelssol_controller_program) = test_components.programs();
 
@@ -279,7 +279,6 @@ fn test_deposit_lst_success() {
     let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
     let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
     let total_wrapped_before = feelssol_state.total_wrapped;
-    println!("Total wrapped before: {}", total_wrapped_before);
 
     protocol_program
         .request()
@@ -309,12 +308,12 @@ fn test_deposit_lst_success() {
         .unwrap();
 
     let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
-    assert!(vault_balance_after > vault_balance_before);
+    assert_eq!(vault_balance_after, vault_balance_before + deposit_amount);
 
     let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
     let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
     let total_wrapped_after = feelssol_state.total_wrapped;
-    assert!(total_wrapped_after > total_wrapped_before);
+    assert_eq!(total_wrapped_after, total_wrapped_before + deposit_amount);
 
     let user_initial_feelssol_balance =
         get_token2022_balance(&protocol_program, &user_feelssol_account);
@@ -355,6 +354,140 @@ fn test_deposit_lst_success() {
 
     let user_feelssol_balance = get_token2022_balance(&protocol_program, &user_feelssol_account);
     assert!(user_feelssol_balance > user_initial_feelssol_balance);
+
+    // Lets try to withdraw now
+    let vault_balance_before = get_token_balance(&protocol_program, &vault_pda);
+
+    // Get FeelsSOL balance before withdraw
+    let user_feelssol_balance_before_withdraw =
+        get_token2022_balance(&protocol_program, &user_feelssol_account);
+
+    let user_lst_balance_before = get_token_balance(&protocol_program, &user_jitosol_account);
+
+    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
+    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
+    let total_wrapped_before = feelssol_state.total_wrapped;
+
+    let withdraw_amount = user_feelssol_balance / 2; // Withdraw half of the feelsSOL
+
+    protocol_program
+        .request()
+        .accounts(accounts::Withdraw {
+            protocol: protocol_pda,
+            feelssol: feelssol_pda,
+            feelssol_controller: feelssol_controller::id(),
+            feels_mint: feelssol_mint,
+            user_lst: user_jitosol_account,
+            user_feelssol: user_feelssol_account,
+            lst_vault: vault_pda,
+            underlying_mint: JITOSOL_MINT.parse().unwrap(),
+            stake_pool: JITO_STAKE_POOL.parse().unwrap(),
+            user: test_components.user_pubkey(),
+            token_program: spl_token::ID,
+            token_2022_program: spl_token_2022::ID,
+            associated_token_program: associated_token::ID,
+            system_program: system_program::ID,
+            rent: sysvar::rent::ID,
+            instructions: sysvar::instructions::ID,
+        })
+        .args(crate::instruction::Withdraw {
+            amount: withdraw_amount,
+        })
+        .signer(&test_components.user)
+        .send()
+        .unwrap();
+
+    // User LST balance should have gone up
+    let user_lst_balance_after = get_token_balance(&protocol_program, &user_jitosol_account);
+    assert!(user_lst_balance_after > user_lst_balance_before);
+
+    // Fewer LST should be wrapped - the difference between the user lst balance
+    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
+    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
+    let total_wrapped_after = feelssol_state.total_wrapped;
+    assert_eq!(
+        total_wrapped_after,
+        total_wrapped_before - user_lst_balance_after + user_lst_balance_before
+    );
+
+    // Vault balance should have gone down in the same way
+    let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
+    assert_eq!(
+        vault_balance_after,
+        vault_balance_before - user_lst_balance_after + user_lst_balance_before
+    );
+
+    // Some feelssol should have been burned
+    let user_feelssol_balance_after_withdraw =
+        get_token2022_balance(&protocol_program, &user_feelssol_account);
+    assert!(user_feelssol_balance_after_withdraw < user_feelssol_balance_before_withdraw);
+
+    // Trying to withdraw more than available balance should fail
+    let withdraw_amount = user_feelssol_balance_after_withdraw + 1;
+    let result = protocol_program
+        .request()
+        .accounts(accounts::Withdraw {
+            protocol: protocol_pda,
+            feelssol: feelssol_pda,
+            feelssol_controller: feelssol_controller::id(),
+            feels_mint: feelssol_mint,
+            user_lst: user_jitosol_account,
+            user_feelssol: user_feelssol_account,
+            lst_vault: vault_pda,
+            underlying_mint: JITOSOL_MINT.parse().unwrap(),
+            stake_pool: JITO_STAKE_POOL.parse().unwrap(),
+            user: test_components.user_pubkey(),
+            token_program: spl_token::ID,
+            token_2022_program: spl_token_2022::ID,
+            associated_token_program: associated_token::ID,
+            system_program: system_program::ID,
+            rent: sysvar::rent::ID,
+            instructions: sysvar::instructions::ID,
+        })
+        .args(crate::instruction::Withdraw {
+            amount: withdraw_amount,
+        })
+        .signer(&test_components.user)
+        .send();
+
+    let anchor_error_code: u32 = FeelsSolError::InsufficientBalance.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
+
+    // Trying to withdraw zero tokens should also fail
+    let result = protocol_program
+        .request()
+        .accounts(accounts::Withdraw {
+            protocol: protocol_pda,
+            feelssol: feelssol_pda,
+            feelssol_controller: feelssol_controller::id(),
+            feels_mint: feelssol_mint,
+            user_lst: user_jitosol_account,
+            user_feelssol: user_feelssol_account,
+            lst_vault: vault_pda,
+            underlying_mint: JITOSOL_MINT.parse().unwrap(),
+            stake_pool: JITO_STAKE_POOL.parse().unwrap(),
+            user: test_components.user_pubkey(),
+            token_program: spl_token::ID,
+            token_2022_program: spl_token_2022::ID,
+            associated_token_program: associated_token::ID,
+            system_program: system_program::ID,
+            rent: sysvar::rent::ID,
+            instructions: sysvar::instructions::ID,
+        })
+        .args(crate::instruction::Withdraw { amount: 0 })
+        .signer(&test_components.user)
+        .send();
+
+    let anchor_error_code: u32 = FeelsSolError::InvalidAmount.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
 }
 
 #[test]
@@ -408,7 +541,68 @@ fn test_deposit_fails_zero_amount() {
         .signer(&test_components.user)
         .send();
 
-    let anchor_error_code: u32 = FeelsSolError::InvalidDepositAmount.into();
+    let anchor_error_code: u32 = FeelsSolError::InvalidAmount.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains(&anchor_hex_error_code));
+}
+
+#[test]
+fn test_deposit_fails_not_enough_lst() {
+    let test_components = setup_test_components();
+    let (protocol_program, feelssol_controller_program) = test_components.programs();
+
+    // Deploy the protocol and factory
+    let (protocol_pda, _, feelssol_pda, feelssol_mint, vault_pda) =
+        deploy_protocol_and_controller_on_test_validator(
+            &protocol_program,
+            &feelssol_controller_program,
+        );
+
+    let staking_amount = 5_000_000_000; // 5 SOL
+    let jitosol_received =
+        get_jitosol_by_staking(&protocol_program, &test_components.user, staking_amount);
+    assert!(jitosol_received > 0);
+
+    let user_jitosol_account = get_associated_token_address(
+        &test_components.user_pubkey(),
+        &JITOSOL_MINT.parse().unwrap(),
+    );
+    let user_feelssol_account = get_associated_token_address_with_program_id(
+        &test_components.user_pubkey(),
+        &feelssol_mint,
+        &spl_token_2022::id(),
+    );
+
+    let result = protocol_program
+        .request()
+        .accounts(accounts::Deposit {
+            protocol: protocol_pda,
+            feelssol: feelssol_pda,
+            feelssol_controller: feelssol_controller::id(),
+            feels_mint: feelssol_mint,
+            user_lst: user_jitosol_account,
+            user_feelssol: user_feelssol_account,
+            lst_vault: vault_pda,
+            underlying_mint: JITOSOL_MINT.parse().unwrap(),
+            stake_pool: JITO_STAKE_POOL.parse().unwrap(),
+            user: test_components.user_pubkey(),
+            token_program: spl_token::ID,
+            token_2022_program: spl_token_2022::ID,
+            associated_token_program: associated_token::ID,
+            system_program: system_program::ID,
+            rent: sysvar::rent::ID,
+            instructions: sysvar::instructions::ID,
+        })
+        .args(crate::instruction::Deposit {
+            amount: 10_000_000_000,
+        })
+        .signer(&test_components.user)
+        .send();
+
+    let anchor_error_code: u32 = FeelsSolError::InsufficientBalance.into();
     let anchor_hex_error_code = format!("{:x}", anchor_error_code);
     assert!(result
         .unwrap_err()

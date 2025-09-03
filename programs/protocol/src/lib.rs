@@ -76,4 +76,8 @@ pub mod feels_protocol {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit_via_feelssol_controller(ctx, amount)
     }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        instructions::withdraw_via_feelssol_controller(ctx, amount)
+    }
 }

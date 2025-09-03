@@ -37,4 +37,9 @@ pub mod feelssol_controller {
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         instructions::deposit(ctx, amount)
     }
+
+    /// Withdraw feelsSOL and receive underlying LST assets
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        instructions::withdraw(ctx, amount)
+    }
 }

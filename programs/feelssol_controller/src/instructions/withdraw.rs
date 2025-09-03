@@ -1,16 +1,16 @@
-use crate::{error::FeelsSolError, events::DepositEvent, state::FeelsSolController};
+use crate::{error::FeelsSolError, events::WithdrawEvent, state::FeelsSolController};
 use ::borsh::BorshDeserialize;
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Token},
-    token_2022::{self, MintTo, Token2022},
+    token_2022::{self, Burn, Token2022},
     token_interface::{Mint, TokenAccount},
 };
 use spl_stake_pool::state::StakePool;
 
 #[derive(Accounts)]
-pub struct Deposit<'info> {
+pub struct Withdraw<'info> {
     /// FeelsSOL controller account
     #[account(
         mut,
@@ -34,8 +34,7 @@ pub struct Deposit<'info> {
     pub user_lst: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         associated_token::mint = feels_mint,
         associated_token::authority = user,
         associated_token::token_program = token_2022_program
@@ -43,8 +42,7 @@ pub struct Deposit<'info> {
     pub user_feelssol: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        init_if_needed,
-        payer = user,
+        mut,
         seeds = [b"vault"],
         bump,
         token::mint = underlying_mint,
@@ -67,7 +65,7 @@ pub struct Deposit<'info> {
     /// SPL Token program (for LST transfers like JitoSOL)
     pub token_program: Program<'info, Token>,
 
-    /// Token2022 program (for FeelsSOL minting)
+    /// Token2022 program (for FeelsSOL burning)
     pub token_2022_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -79,7 +77,7 @@ pub struct Deposit<'info> {
     pub instructions: UncheckedAccount<'info>,
 }
 
-pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     // Verify this is called from the feels protocol
     let ix = get_instruction_relative(0, &ctx.accounts.instructions)?;
     require!(
@@ -91,9 +89,9 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         return Err(FeelsSolError::InvalidAmount.into());
     }
 
-    // Ensure user has enough LST tokens to deposit
+    // Ensure user has enough FeelsSOL tokens to burn
     require!(
-        ctx.accounts.user_lst.amount >= amount,
+        ctx.accounts.user_feelssol.amount >= amount,
         FeelsSolError::InsufficientBalance
     );
 
@@ -101,57 +99,56 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     let stake_pool_data = ctx.accounts.stake_pool.try_borrow_data()?;
     let stake_pool = StakePool::deserialize(&mut &stake_pool_data[..])?;
 
-    // Calculate the SOL equivalent using proper precision
-    // We want: (amount * total_lamports) / pool_token_supply
-    // But we need to be careful about overflow
+    // Calculate the LST amount to return using proper precision
+    // We want: (amount * pool_token_supply) / total_lamports
+    // This is the inverse of the deposit calculation
     let output_amount = (amount as u128)
-        .checked_mul(stake_pool.total_lamports as u128)
+        .checked_mul(stake_pool.pool_token_supply as u128)
         .ok_or(FeelsSolError::MathOverflow)?
-        .checked_div(stake_pool.pool_token_supply as u128)
+        .checked_div(stake_pool.total_lamports as u128)
         .ok_or(FeelsSolError::MathOverflow)?
         .try_into()
         .map_err(|_| FeelsSolError::MathOverflow)?;
 
-    // Transfer input tokens from user to program vault
-    let transfer_ctx = CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
-        token::Transfer {
-            from: ctx.accounts.user_lst.to_account_info(),
-            to: ctx.accounts.lst_vault.to_account_info(),
+    // Burn FeelsSOL tokens from user
+    let burn_ctx = CpiContext::new(
+        ctx.accounts.token_2022_program.to_account_info(),
+        Burn {
+            mint: ctx.accounts.feels_mint.to_account_info(),
+            from: ctx.accounts.user_feelssol.to_account_info(),
             authority: ctx.accounts.user.to_account_info(),
         },
     );
-    token::transfer(transfer_ctx, amount)?;
+    token_2022::burn(burn_ctx, amount)?;
 
-    // Mint output tokens to user
+    // Transfer LST tokens from vault to user
     let seeds = &[b"feelssol".as_ref(), &[ctx.bumps.feelssol]];
     let signer_seeds = &[&seeds[..]];
 
-    let mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_2022_program.to_account_info(),
-        MintTo {
-            mint: ctx.accounts.feels_mint.to_account_info(),
-            to: ctx.accounts.user_feelssol.to_account_info(),
+    let transfer_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        token::Transfer {
+            from: ctx.accounts.lst_vault.to_account_info(),
+            to: ctx.accounts.user_lst.to_account_info(),
             authority: ctx.accounts.feelssol.to_account_info(),
         },
         signer_seeds,
     );
-    token_2022::mint_to(mint_ctx, output_amount)?;
+    token::transfer(transfer_ctx, output_amount)?;
 
     // Update the amount of LST wrapped
     let new_total = ctx
         .accounts
         .feelssol
         .total_wrapped
-        .checked_add(amount)
-        .ok_or(FeelsSolError::MathOverflow)?;
+        .saturating_sub(output_amount);
 
     ctx.accounts.feelssol.total_wrapped = new_total;
 
-    emit!(DepositEvent {
+    emit!(WithdrawEvent {
         user: ctx.accounts.user.key(),
-        lst_deposited: amount,
-        feelssol_minted: output_amount,
+        feelssol_burned: amount,
+        lst_withdrawn: output_amount,
         current_lst_amount_wrapped: ctx.accounts.feelssol.total_wrapped,
     });
 
