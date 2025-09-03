@@ -137,7 +137,11 @@ pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     token::transfer(transfer_ctx, output_amount)?;
 
     // Update the amount of LST wrapped
-    let new_total = ctx.accounts.feelssol.total_wrapped.saturating_sub(amount);
+    let new_total = ctx
+        .accounts
+        .feelssol
+        .total_wrapped
+        .saturating_sub(output_amount);
 
     ctx.accounts.feelssol.total_wrapped = new_total;
 

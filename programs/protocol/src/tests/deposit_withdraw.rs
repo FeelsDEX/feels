@@ -308,12 +308,12 @@ fn test_full_flow_deposit_withdraw_success() {
         .unwrap();
 
     let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
-    assert!(vault_balance_after > vault_balance_before);
+    assert_eq!(vault_balance_after, vault_balance_before + deposit_amount);
 
     let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
     let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
     let total_wrapped_after = feelssol_state.total_wrapped;
-    assert!(total_wrapped_after > total_wrapped_before);
+    assert_eq!(total_wrapped_after, total_wrapped_before + deposit_amount);
 
     let user_initial_feelssol_balance =
         get_token2022_balance(&protocol_program, &user_feelssol_account);
@@ -397,19 +397,25 @@ fn test_full_flow_deposit_withdraw_success() {
         .send()
         .unwrap();
 
-    // Fewer LST should be wrapped
-    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
-    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
-    let total_wrapped_after = feelssol_state.total_wrapped;
-    assert!(total_wrapped_after < total_wrapped_before);
-
-    // Vault balance should have gone down
-    let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
-    assert!(vault_balance_after < vault_balance_before);
-
     // User LST balance should have gone up
     let user_lst_balance_after = get_token_balance(&protocol_program, &user_jitosol_account);
     assert!(user_lst_balance_after > user_lst_balance_before);
+
+    // Fewer LST should be wrapped - the difference between the user lst balance
+    let feelssol_account = protocol_program.rpc().get_account(&feelssol_pda).unwrap();
+    let feelssol_state = FeelsSolController::deserialize(&mut &feelssol_account.data[8..]).unwrap();
+    let total_wrapped_after = feelssol_state.total_wrapped;
+    assert_eq!(
+        total_wrapped_after,
+        total_wrapped_before - user_lst_balance_after + user_lst_balance_before
+    );
+
+    // Vault balance should have gone down in the same way
+    let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
+    assert_eq!(
+        vault_balance_after,
+        vault_balance_before - user_lst_balance_after + user_lst_balance_before
+    );
 
     // Some feelssol should have been burned
     let user_feelssol_balance_after_withdraw =
