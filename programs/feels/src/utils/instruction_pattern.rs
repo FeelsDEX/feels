@@ -3,6 +3,7 @@
 /// This module provides macros and utilities to ensure consistent structure
 /// across all instruction handlers in the protocol.
 use anchor_lang::prelude::*;
+use std::cell::Ref;
 use crate::error::FeelsError;
 
 // ============================================================================
@@ -42,10 +43,7 @@ pub trait ValidationUtils {
     fn validate_bps(&self, bps: u16) -> Result<()> {
         require!(
             bps <= 10_000,
-            FeelsError::ValidationError {
-                field: "basis_points".to_string(),
-                reason: format!("{} exceeds maximum of 10000", bps),
-            }
+            FeelsError::ValidationError
         );
         Ok(())
     }
@@ -54,10 +52,7 @@ pub trait ValidationUtils {
     fn validate_authority(&self, authority: &Pubkey, expected: &Pubkey) -> Result<()> {
         require!(
             authority == expected,
-            FeelsError::Unauthorized {
-                action: "operation".to_string(),
-                required_role: "authority".to_string(),
-            }
+            FeelsError::Unauthorized
         );
         Ok(())
     }
@@ -87,25 +82,54 @@ macro_rules! instruction_handler {
             ctx: Context<'_, '_, 'info, 'info, $context_type>,
             params: $params_type,
         ) -> Result<$result_type> {
+            // Create a closure that captures ctx and params for validation
+            let validate_fn = |ctx: &Context<'_, '_, 'info, 'info, $context_type>, params: &$params_type| -> Result<()> {
+                $validate_block
+                Ok(())
+            };
+            
             // Phase 1: Validation
             msg!("Phase 1: Validating inputs");
-            $validate_block
+            validate_fn(&ctx, &params)?;
+            
+            // Create a closure for preparation
+            let prepare_fn = |ctx: &Context<'_, '_, 'info, 'info, $context_type>, params: &$params_type| -> Result<()> {
+                $prepare_block
+                Ok(())
+            };
             
             // Phase 2: State preparation
             msg!("Phase 2: Preparing state");
-            $prepare_block
+            prepare_fn(&ctx, &params)?;
+            
+            // Create a closure for execution
+            let execute_fn = |ctx: &Context<'_, '_, 'info, 'info, $context_type>, params: $params_type| -> Result<$result_type> {
+                $execute_block
+            };
             
             // Phase 3: Core execution
             msg!("Phase 3: Executing logic");
-            let result = $execute_block;
+            let result = execute_fn(&ctx, params)?;
+            
+            // Create a closure for events
+            let events_fn = |ctx: &Context<'_, '_, 'info, 'info, $context_type>, result: &$result_type| -> Result<()> {
+                $events_block
+                Ok(())
+            };
             
             // Phase 4: Event emission
             msg!("Phase 4: Emitting events");
-            $events_block
+            events_fn(&ctx, &result)?;
+            
+            // Create a closure for finalization
+            let finalize_fn = |result: &$result_type, params: &$params_type| -> Result<()> {
+                $finalize_block
+                Ok(())
+            };
             
             // Phase 5: Finalization
             msg!("Phase 5: Finalizing");
-            $finalize_block
+            finalize_fn(&result, &params)?;
             
             Ok(result)
         }
@@ -122,18 +146,14 @@ macro_rules! validate {
     (authority: $auth:expr, $expected:expr) => {
         require!(
             $auth == $expected,
-            FeelsError::invalid_authority()
+            FeelsError::Unauthorized
         );
     };
     
     (range: $value:expr, $min:expr, $max:expr, $name:expr) => {
         require!(
             $value >= $min && $value <= $max,
-            FeelsError::InvalidRange {
-                range_type: $name.to_string(),
-                min: $min.to_string(),
-                max: $max.to_string(),
-            }
+            FeelsError::InvalidRange
         );
     };
 }
@@ -148,9 +168,7 @@ macro_rules! with_reentrancy_lock {
         let current_status = $pool.get_reentrancy_status()?;
         require!(
             current_status == ReentrancyStatus::Unlocked,
-            FeelsError::ReentrancyDetected {
-                operation: "instruction".to_string()
-            }
+            FeelsError::ReentrancyDetected
         );
         $pool.set_reentrancy_status(ReentrancyStatus::Locked)?;
         
@@ -168,32 +186,7 @@ macro_rules! with_reentrancy_lock {
 // Event Builder Pattern
 // ============================================================================
 
-/// Builder pattern for constructing events
-pub struct EventBuilder<T> {
-    event: T,
-}
-
-impl<T> EventBuilder<T> {
-    pub fn new(event: T) -> Self {
-        Self { event }
-    }
-    
-    pub fn emit(self) -> Result<()> {
-        emit!(self.event);
-        Ok(())
-    }
-}
-
-/// Macro for building and emitting events
-#[macro_export]
-macro_rules! emit_event {
-    ($event_type:ty { $($field:ident: $value:expr),* $(,)? }) => {{
-        let event = $event_type {
-            $($field: $value),*
-        };
-        emit!(event);
-    }};
-}
+// EventBuilder removed - use Anchor's emit! directly for better consistency
 
 // ============================================================================
 // Common Instruction Patterns
@@ -216,10 +209,7 @@ impl SwapPattern {
         );
         require!(
             sqrt_price_limit > 0,
-            FeelsError::InvalidAmount {
-                amount_type: "sqrt_price_limit".to_string(),
-                reason: "Must be greater than zero".to_string(),
-            }
+            FeelsError::InvalidAmount
         );
         Ok(())
     }
@@ -241,11 +231,7 @@ impl LiquidityPattern {
         );
         require!(
             tick_lower < tick_upper,
-            FeelsError::InvalidRange {
-                range_type: "tick".to_string(),
-                min: tick_lower.to_string(),
-                max: tick_upper.to_string(),
-            }
+            FeelsError::InvalidRange
         );
         Ok(())
     }
@@ -260,7 +246,10 @@ impl AdminPattern {
         signer: &Pubkey,
         expected_authority: &Pubkey,
     ) -> Result<()> {
-        validate!(authority: signer, expected_authority);
+        require!(
+            signer == expected_authority,
+            crate::error::FeelsProtocolError::Unauthorized
+        );
         Ok(())
     }
     
@@ -269,14 +258,11 @@ impl AdminPattern {
         new_value: T,
         min_allowed: T,
         max_allowed: T,
-        param_name: &str,
+        _param_name: &str,
     ) -> Result<()> {
         require!(
             new_value >= min_allowed && new_value <= max_allowed,
-            FeelsError::ValidationError {
-                field: param_name.to_string(),
-                reason: format!("Value {} out of allowed range", new_value),
-            }
+            FeelsError::ValidationError
         );
         Ok(())
     }
@@ -293,25 +279,21 @@ impl StateLoader {
     /// Load account with descriptive error
     pub fn load_account<'info, T: anchor_lang::AccountDeserialize + anchor_lang::Owner>(
         account: &'info AccountInfo<'info>,
-        name: &str,
+        _name: &str,
     ) -> Result<T> {
         T::try_deserialize(&mut &account.data.borrow()[..])
-            .map_err(|_| FeelsError::NotInitialized {
-                entity: name.to_string(),
-                identifier: account.key().to_string(),
-            }.into())
+            .map_err(|_| FeelsError::NotInitialized.into())
     }
     
-    /// Load account loader with descriptive error
+    /// Load zero-copy account with descriptive error
     pub fn load_zero_copy<'info, T: anchor_lang::ZeroCopy + anchor_lang::Owner>(
-        loader: &AccountLoader<'info, T>,
+        loader: &'info AccountLoader<'info, T>,
         name: &str,
-    ) -> Result<anchor_lang::AccountLoader<'info, T>> {
-        loader.load().map_err(|_| FeelsError::NotInitialized {
-            entity: name.to_string(),
-            identifier: loader.key().to_string(),
-        })?;
-        Ok(loader.clone())
+    ) -> Result<Ref<'info, T>> {
+        loader.load().map_err(|_| {
+            msg!("Failed to load zero-copy account: {} at {}", name, loader.key());
+            FeelsError::NotInitialized.into()
+        })
     }
 }
 

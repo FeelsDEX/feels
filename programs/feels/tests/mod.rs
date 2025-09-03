@@ -34,3 +34,7 @@ pub mod functional {
 //     pub mod phase2_e2e;
 //     pub mod stress_tests;
 // }
+
+// Property-based tests
+#[cfg(test)]
+pub mod property_tests;

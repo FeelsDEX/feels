@@ -1,17 +1,1 @@
-Feels Protocol Development Environment
-======================================
-
-Available tools:
-  - solana: Solana CLI and validator
-  - anchor: Anchor framework for Solana development
-  - crate2nix: Generate Cargo.nix for Nix builds
-  - just: Task runner (run 'just' to see commands)
-
-Quick commands:
-  - just                      - Show all available commands
-  - just build                - Build all programs
-  - just test                 - Run tests
-
-Build commands:
-  - cargo build-sbf           - Build Solana programs directly
-
+(eval):1: command not found: cargo

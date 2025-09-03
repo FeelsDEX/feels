@@ -4,11 +4,13 @@
 /// for accurate pricing across the full range of possible token ratios.
 use anchor_lang::prelude::*;
 use crate::state::FeelsProtocolError;
-use crate::utils::{
-    get_amount_0_delta, get_amount_1_delta, get_liquidity_for_amount_0, get_liquidity_for_amount_1,
-    get_next_sqrt_rate_from_amount_0_rounding_up, get_next_sqrt_rate_from_amount_1_rounding_down,
-    MAX_SQRT_RATE_X96, MIN_SQRT_RATE_X96,
+use crate::utils::math::amm::{
+    get_amount_0_delta, get_amount_1_delta,
+    get_next_sqrt_rate_from_amount_0_rounding_up,
+    get_next_sqrt_rate_from_amount_1_rounding_down,
+    get_liquidity_for_amount_0, get_liquidity_for_amount_1,
 };
+use crate::constant::{MAX_SQRT_RATE_X64, MIN_SQRT_RATE_X64};
 
 // ============================================================================
 // Concentrated Liquidity Math Implementation
@@ -31,36 +33,36 @@ impl ConcentratedLiquidityMath {
             FeelsProtocolError::InvalidPriceRange
         );
 
-        let amount_a;
-        let amount_b;
+        let amount_0;
+        let amount_1;
 
         if sqrt_price_current <= sqrt_price_lower {
-            // All token A
-            amount_a = get_amount_0_delta(
+            // All token 0
+            amount_0 = get_amount_0_delta(
                 sqrt_price_lower,
                 sqrt_price_upper,
                 concentrated_liquidity,
                 true,
             )?;
-            amount_b = 0;
+            amount_1 = 0;
         } else if sqrt_price_current < sqrt_price_upper {
             // Both tokens
-            amount_a = get_amount_0_delta(
+            amount_0 = get_amount_0_delta(
                 sqrt_price_current,
                 sqrt_price_upper,
                 concentrated_liquidity,
                 true,
             )?;
-            amount_b = get_amount_1_delta(
+            amount_1 = get_amount_1_delta(
                 sqrt_price_lower,
                 sqrt_price_current,
                 concentrated_liquidity,
                 true,
             )?
         } else {
-            // All token B
-            amount_a = 0;
-            amount_b = get_amount_1_delta(
+            // All token 1
+            amount_0 = 0;
+            amount_1 = get_amount_1_delta(
                 sqrt_price_lower,
                 sqrt_price_upper,
                 concentrated_liquidity,
@@ -68,10 +70,10 @@ impl ConcentratedLiquidityMath {
             )?;
         }
 
-        let amount_a_u64 = amount_a
+        let amount_a_u64 = amount_0
             .try_into()
             .map_err(|_| FeelsProtocolError::ArithmeticOverflow)?;
-        let amount_b_u64 = amount_b
+        let amount_b_u64 = amount_1
             .try_into()
             .map_err(|_| FeelsProtocolError::ArithmeticOverflow)?;
 
@@ -93,15 +95,15 @@ impl ConcentratedLiquidityMath {
         );
 
         if sqrt_price_current <= sqrt_price_lower {
-            get_liquidity_for_amount_0(sqrt_price_lower, sqrt_price_upper, amount_0 as u128)
+            get_liquidity_for_amount_0(sqrt_price_lower, sqrt_price_upper, amount_0)
         } else if sqrt_price_current < sqrt_price_upper {
             let liquidity_0 =
-                get_liquidity_for_amount_0(sqrt_price_current, sqrt_price_upper, amount_0 as u128)?;
+                get_liquidity_for_amount_0(sqrt_price_current, sqrt_price_upper, amount_0)?;
             let liquidity_1 =
-                get_liquidity_for_amount_1(sqrt_price_lower, sqrt_price_current, amount_1 as u128)?;
+                get_liquidity_for_amount_1(sqrt_price_lower, sqrt_price_current, amount_1)?;
             Ok(liquidity_0.min(liquidity_1))
         } else {
-            get_liquidity_for_amount_1(sqrt_price_lower, sqrt_price_upper, amount_1 as u128)
+            get_liquidity_for_amount_1(sqrt_price_lower, sqrt_price_upper, amount_1)
         }
     }
 
@@ -115,7 +117,7 @@ impl ConcentratedLiquidityMath {
     ) -> Result<u128> {
         // Validate upper bounds for sqrt_rate
         require!(
-            (MIN_SQRT_RATE_X96..=MAX_SQRT_RATE_X96).contains(&sqrt_price),
+            (MIN_SQRT_RATE_X64..=MAX_SQRT_RATE_X64).contains(&sqrt_price),
             FeelsProtocolError::RateOutOfBounds
         );
         require!(liquidity > 0, FeelsProtocolError::InsufficientLiquidity);
@@ -125,14 +127,14 @@ impl ConcentratedLiquidityMath {
             get_next_sqrt_rate_from_amount_0_rounding_up(
                 sqrt_price,
                 liquidity,
-                amount_in as u128,
+                amount_in,
                 true,
             )
         } else {
             get_next_sqrt_rate_from_amount_1_rounding_down(
                 sqrt_price,
                 liquidity,
-                amount_in as u128,
+                amount_in,
                 true,
             )
         }
@@ -147,7 +149,7 @@ impl ConcentratedLiquidityMath {
     ) -> Result<u128> {
         // Validate upper bounds for sqrt_rate (same as input version)
         require!(
-            (MIN_SQRT_RATE_X96..=MAX_SQRT_RATE_X96).contains(&sqrt_price),
+            (MIN_SQRT_RATE_X64..=MAX_SQRT_RATE_X64).contains(&sqrt_price),
             FeelsProtocolError::RateOutOfBounds
         );
         require!(liquidity > 0, FeelsProtocolError::InsufficientLiquidity);
@@ -157,14 +159,14 @@ impl ConcentratedLiquidityMath {
             get_next_sqrt_rate_from_amount_1_rounding_down(
                 sqrt_price,
                 liquidity,
-                amount_out as u128,
+                amount_out,
                 false,
             )
         } else {
             get_next_sqrt_rate_from_amount_0_rounding_up(
                 sqrt_price,
                 liquidity,
-                amount_out as u128,
+                amount_out,
                 false,
             )
         }
@@ -212,15 +214,15 @@ impl ConcentratedLiquidityManager {
         sqrt_rate_current: u128,
         sqrt_rate_lower: u128,
         sqrt_rate_upper: u128,
-        amount_a: u64,
-        amount_b: u64,
+        amount_0: u64,
+        amount_1: u64,
     ) -> Result<u128> {
         ConcentratedLiquidityMath::get_concentrated_liquidity_for_amounts(
             sqrt_rate_current,
             sqrt_rate_lower,
             sqrt_rate_upper,
-            amount_a,
-            amount_b,
+            amount_0,
+            amount_1,
         )
     }
 }

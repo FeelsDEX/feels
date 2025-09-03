@@ -18,7 +18,7 @@ mod math_unit_tests {
 
     #[test]
     fn test_safe_math_overflow_protection() {
-        use feels::utils::{safe_add_u64, safe_mul_u64};
+        use feels::utils::safe::{add_u64 as safe_add_u64, mul_u64 as safe_mul_u64};
 
         // Test u64 overflow
         let max_u64 = u64::MAX;
@@ -37,7 +37,7 @@ mod math_unit_tests {
 
     #[test]
     fn test_safe_math_underflow_protection() {
-        use feels::utils::safe_sub_u64;
+        use feels::utils::safe::{sub_u64 as safe_sub_u64};
 
         // Test u64 underflow
         let result = safe_sub_u64(0u64, 1);
@@ -50,7 +50,7 @@ mod math_unit_tests {
 
     #[test]
     fn test_division_by_zero_protection() {
-        use feels::utils::safe_div_u64;
+        use feels::utils::safe::{div_u64 as safe_div_u64};
 
         // Test safe division by zero
         let result = safe_div_u64(100u64, 0);
@@ -67,7 +67,7 @@ mod math_unit_tests {
 
     #[test]
     fn test_liquidity_safe_math() {
-        use feels::utils::{add_liquidity_delta, sub_liquidity_delta};
+        use feels::utils::safe::{add_liquidity_delta, sub_liquidity_delta};
 
         let liquidity = 1000u128;
 

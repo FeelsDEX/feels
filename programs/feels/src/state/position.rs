@@ -9,6 +9,8 @@
 /// - Generate proofs for historical fee claims
 /// - Enable gas-free position queries via RPC
 use anchor_lang::prelude::*;
+use crate::state::duration::Duration;
+use crate::state::rebase::RebaseCheckpoint;
 
 // ============================================================================
 // Tick Position NFT Structure
@@ -17,7 +19,8 @@ use anchor_lang::prelude::*;
 #[account]
 pub struct TickPositionMetadata {
     // Tick Position identification
-    pub pool: Pubkey,
+    pub market: Pubkey,
+    pub pool: Pubkey, // Alias for market for compatibility
     pub tick_position_mint: Pubkey,
     pub owner: Pubkey,
 
@@ -29,22 +32,22 @@ pub struct TickPositionMetadata {
     pub liquidity: u128,
 
     // Fee tracking (using [u64; 4] to represent u256)
-    pub fee_growth_inside_last_a: [u64; 4],
-    pub fee_growth_inside_last_b: [u64; 4],
-    pub tokens_owed_a: u64,
-    pub tokens_owed_b: u64,
+    pub fee_growth_inside_last_0: [u64; 4],
+    pub fee_growth_inside_last_1: [u64; 4],
+    pub tokens_owed_0: u64,
+    pub tokens_owed_1: u64,
 
     // Phase 2: Continuous leverage support
     pub leverage: u64,              // 6 decimals (1_000_000 = 1x, 3_000_000 = 3x)
     pub risk_profile_hash: [u8; 8], // Hash of risk profile parameters for verification
     
     // Phase 3: Duration dimension for 3D model
-    pub duration: crate::state::duration::Duration, // Time commitment (Flash, Swap, Weekly, etc.)
+    pub duration: Duration, // Time commitment (Flash, Swap, Weekly, etc.)
     pub creation_slot: u64,               // When position was created
     pub maturity_slot: u64,               // When position matures (0 for perpetual)
 
     // Virtual rebasing checkpoint
-    pub rebase_checkpoint: crate::state::rebase::RebaseCheckpoint,
+    pub rebase_checkpoint: RebaseCheckpoint,
 
     // Reserved for future extensions
     pub _reserved: [u8; 31],
@@ -59,7 +62,7 @@ impl TickPositionMetadata {
     const FEE_TRACKING_SIZE: usize = 32 * 2 + 8 * 2; // fee_growth_inside_last + tokens_owed
     const LEVERAGE_SIZE: usize = 8 + 8; // leverage + risk_profile_hash
     const DURATION_SIZE: usize = 1 + 8 + 8; // duration enum + creation_slot + maturity_slot
-    const REBASE_CHECKPOINT_SIZE: usize = 16 + 16 + 16 + 8; // index_a + index_b + funding_index + timestamp
+    const REBASE_CHECKPOINT_SIZE: usize = 16 + 16 + 16 + 8; // index_0 + index_1 + funding_index + timestamp
     const RESERVED_SIZE: usize = 31; // reserved for future upgrades
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
@@ -130,13 +133,13 @@ impl TickPositionMetadata {
     /// Apply virtual rebasing to get current position value
     pub fn apply_virtual_rebase(
         &self,
-        base_value_a: u64,
-        base_value_b: u64,
+        base_value_0: u64,
+        base_value_1: u64,
         rebase_accumulator: &crate::state::rebase::RebaseAccumulator,
     ) -> Result<(u64, u64)> {
         crate::state::rebase::apply_position_rebase(
-            base_value_a,
-            base_value_b,
+            base_value_0,
+            base_value_1,
             &self.rebase_checkpoint,
             rebase_accumulator,
             self.is_leveraged(),

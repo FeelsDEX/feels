@@ -2,20 +2,41 @@
 resolver = "2"
 members = [
     "programs/feels",
-    "sdk",
+    "crates/types",
+    "crates/math", 
+    "crates/sdk",
+    "crates/keeper",
     "simulation",
 ]
 
 [workspace.dependencies]
 anchor-lang = "0.29.0"
+anchor-client = "0.29.0"
 anchor-spl = "0.29.0"
 solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+solana-client = "1.18.26"
 borsh = "0.10"
 bytemuck = "1.14"
 spl-token = "4.0.0"
 spl-token-2022 = { version = "1.0.0", default-features = false }
 spl-token-metadata-interface = "0.2.0"
 spl-associated-token-account = "2.3.0"
+integer-sqrt = "0.1"
+
+# Shared protocol crates
+feels-types = { path = "crates/types" }
+feels-math = { path = "crates/math" }
+
+# Common dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+rand = "0.8"
+anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+fixed = { version = "1.28", features = ["serde", "num-traits"] }
+num-traits = "0.2"
 # Test dependencies disabled due to yanked solana_rbpf dependency
 # solana-program-test = "1.18.26"
 # solana-sdk = "1.18.26"

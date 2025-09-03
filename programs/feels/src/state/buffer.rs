@@ -24,9 +24,7 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 // ============================================================================
 
 /// Buffer account managing fees and rebates
-#[account(zero_copy)]
-#[derive(Default)]
-#[repr(C, packed)]
+#[account]
 pub struct BufferAccount {
     /// Pool this buffer belongs to
     pub pool: Pubkey,
@@ -84,6 +82,9 @@ pub struct BufferAccount {
     /// Rebate participation rate η [0, 10000]
     pub rebate_eta: u32,
     
+    /// Price improvement clamp factor κ [0, 10000]
+    pub kappa: u32,
+    
     // ========== Statistics ==========
     
     /// Total fees collected (all-time)
@@ -95,8 +96,46 @@ pub struct BufferAccount {
     /// Last update timestamp
     pub last_update: i64,
     
+    // ========== Administration ==========
+    
+    /// Authority that can update buffer parameters
+    pub authority: Pubkey,
+    
+    /// Protocol fee recipient
+    pub protocol_fee_recipient: Pubkey,
+    
     /// Reserved for future use
     pub _reserved: [u8; 64],
+}
+
+impl Default for BufferAccount {
+    fn default() -> Self {
+        Self {
+            pool: Pubkey::default(),
+            tau_value: 0,
+            tau_reserved: 0,
+            zeta_spot: 3333,
+            zeta_time: 3333,
+            zeta_leverage: 3334,
+            fee_share_spot: 0,
+            fee_share_time: 0,
+            fee_share_leverage: 0,
+            fee_share_last_update: 0,
+            rebate_cap_tx: 0,
+            rebate_cap_epoch: 0,
+            rebate_paid_epoch: 0,
+            epoch_start: 0,
+            epoch_duration: 3600,
+            rebate_eta: 5000,
+            kappa: 5000,
+            total_fees_collected: 0,
+            total_rebates_paid: 0,
+            last_update: 0,
+            authority: Pubkey::default(),
+            protocol_fee_recipient: Pubkey::default(),
+            _reserved: [0u8; 64],
+        }
+    }
 }
 
 impl BufferAccount {
@@ -113,6 +152,7 @@ impl BufferAccount {
         
         // Default rebate configuration
         self.rebate_eta = 5000; // 50% participation
+        self.kappa = 1000; // 10% price improvement clamp
         self.rebate_cap_tx = u64::MAX;
         self.rebate_cap_epoch = u64::MAX;
     }
@@ -230,6 +270,7 @@ impl BufferAccount {
         cap_tx: Option<u64>,
         cap_epoch: Option<u64>,
         eta: Option<u32>,
+        kappa: Option<u32>,
     ) -> Result<()> {
         if let Some(cap) = cap_tx {
             self.rebate_cap_tx = cap;
@@ -242,6 +283,11 @@ impl BufferAccount {
         if let Some(e) = eta {
             require!(e <= BPS_DENOMINATOR as u32, FeelsProtocolError::InvalidInput);
             self.rebate_eta = e;
+        }
+        
+        if let Some(k) = kappa {
+            require!(k <= BPS_DENOMINATOR as u32, FeelsProtocolError::InvalidInput);
+            self.kappa = k;
         }
         
         Ok(())
@@ -271,6 +317,38 @@ impl BufferAccount {
         
         Ok(())
     }
+    
+    /// Get available tau for rebates
+    pub fn get_available_tau(&self) -> Result<u64> {
+        let available = self.tau_value.saturating_sub(self.tau_reserved);
+        Ok(available.min(u64::MAX as u128) as u64)
+    }
+}
+
+// ============================================================================
+// Size Constants
+// ============================================================================
+
+impl BufferAccount {
+    pub const SIZE: usize = 8 +  // discriminator
+        32 +                      // pool pubkey
+        16 +                      // tau_value
+        16 +                      // tau_reserved
+        4 * 3 +                   // zeta coefficients
+        4 * 3 +                   // fee shares
+        8 +                       // fee_share_last_update
+        8 * 2 +                   // rebate caps
+        8 +                       // rebate_paid_epoch
+        8 +                       // epoch_start
+        8 +                       // epoch_duration
+        4 +                       // rebate_eta
+        4 +                       // kappa
+        16 +                      // total_fees_collected
+        16 +                      // total_rebates_paid
+        8 +                       // last_update
+        32 +                      // authority
+        32 +                      // protocol_fee_recipient
+        64;                       // reserved
 }
 
 // ============================================================================
@@ -304,7 +382,96 @@ fn apply_ewma(old_value: u32, new_value: u32, decay: u32) -> Result<u32> {
 // Rebate Calculation
 // ============================================================================
 
-/// Calculate rebate amount for negative work
+/// Price improvement data for fee/rebate calculation
+#[derive(Clone, Debug, Default)]
+pub struct PriceImprovement {
+    /// Oracle/reference price (Q64)
+    pub oracle_price: u128,
+    /// Execution price (Q64)
+    pub execution_price: u128,
+    /// Price improvement amount (basis points)
+    pub improvement_bps: u64,
+    /// Is this a buy order (affects improvement calculation)
+    pub is_buy: bool,
+}
+
+/// Calculate instantaneous fee with price improvement clamp
+/// Returns (fee_amount, rebate_amount) where one will always be zero
+pub fn calculate_instantaneous_fee(
+    work: i128,
+    price_improvement: &PriceImprovement,
+    buffer: &BufferAccount,
+) -> Result<(u64, u64)> {
+    // Calculate κ * price_improvement
+    let kappa_improvement = (buffer.kappa as u128)
+        .checked_mul(price_improvement.improvement_bps as u128)
+        .ok_or(FeelsProtocolError::MathOverflow)?
+        .checked_div(BPS_DENOMINATOR as u128)
+        .ok_or(FeelsProtocolError::MathOverflow)?;
+    
+    // Calculate fee = max(0, W - κ * price_improvement)
+    if work > 0 {
+        let work_u128 = work as u128;
+        let clamped_work = work_u128.saturating_sub(kappa_improvement);
+        
+        // Convert to token units (work is already in appropriate units from SDK)
+        let fee = clamped_work.min(u64::MAX as u128) as u64;
+        
+        Ok((fee, 0))
+    } else {
+        // Negative work case - calculate rebate
+        let negative_work = (-work) as u128;
+        
+        // Apply η participation rate
+        let rebate_base = negative_work
+            .checked_mul(buffer.rebate_eta as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .checked_div(BPS_DENOMINATOR as u128)
+            .ok_or(FeelsProtocolError::MathOverflow)?;
+        
+        // Add price improvement bonus
+        let rebate_total = rebate_base
+            .checked_add(kappa_improvement)
+            .ok_or(FeelsProtocolError::MathOverflow)?
+            .min(u64::MAX as u128) as u64;
+        
+        Ok((0, rebate_total))
+    }
+}
+
+/// Calculate price improvement for an order
+pub fn calculate_price_improvement(
+    oracle_price: u128,
+    execution_price: u128,
+    is_buy: bool,
+) -> PriceImprovement {
+    let improvement_bps = if is_buy {
+        // For buys: improvement when execution price < oracle price
+        if execution_price < oracle_price {
+            let diff = oracle_price - execution_price;
+            ((diff * BPS_DENOMINATOR as u128) / oracle_price) as u64
+        } else {
+            0
+        }
+    } else {
+        // For sells: improvement when execution price > oracle price
+        if execution_price > oracle_price {
+            let diff = execution_price - oracle_price;
+            ((diff * BPS_DENOMINATOR as u128) / oracle_price) as u64
+        } else {
+            0
+        }
+    };
+    
+    PriceImprovement {
+        oracle_price,
+        execution_price,
+        improvement_bps,
+        is_buy,
+    }
+}
+
+/// Legacy rebate calculation (deprecated - use calculate_instantaneous_fee)
 pub fn calculate_rebate(
     negative_work: u128,
     price_map: u128,
@@ -312,10 +479,10 @@ pub fn calculate_rebate(
 ) -> Result<u64> {
     // R* = -W * Π(P) * η
     let rebate_star = negative_work
-        .checked_mul(price_map)?
-        .checked_div(crate::constant::Q64)?
-        .checked_mul(buffer.rebate_eta as u128)?
-        .checked_div(BPS_DENOMINATOR as u128)?;
+        .checked_mul(price_map).ok_or(FeelsProtocolError::MathOverflow)?
+        .checked_div(crate::constant::Q64).ok_or(FeelsProtocolError::MathOverflow)?
+        .checked_mul(buffer.rebate_eta as u128).ok_or(FeelsProtocolError::MathOverflow)?
+        .checked_div(BPS_DENOMINATOR as u128).ok_or(FeelsProtocolError::MathOverflow)?;
     
     // Check overflow
     require!(
@@ -336,12 +503,12 @@ pub struct InitializeBuffer<'info> {
         init,
         payer = payer,
         space = 8 + std::mem::size_of::<BufferAccount>(),
-        seeds = [b"buffer", pool.key().as_ref()],
+        seeds = [b"buffer", market_field.key().as_ref()],
         bump
     )]
-    pub buffer: AccountLoader<'info, BufferAccount>,
+    pub buffer: Account<'info, BufferAccount>,
     
-    pub pool: AccountLoader<'info, crate::state::Pool>,
+    pub market_field: Account<'info, crate::state::MarketField>,
     
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -352,9 +519,9 @@ pub struct InitializeBuffer<'info> {
 #[derive(Accounts)]
 pub struct UpdateBufferParams<'info> {
     #[account(mut)]
-    pub buffer: AccountLoader<'info, BufferAccount>,
+    pub buffer: Account<'info, BufferAccount>,
     
-    pub pool: AccountLoader<'info, crate::state::Pool>,
+    pub market_field: Account<'info, crate::state::MarketField>,
     
     pub authority: Signer<'info>,
 }

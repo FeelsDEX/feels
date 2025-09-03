@@ -4,6 +4,7 @@
 /// Duration affects fee calculations and position behavior throughout the protocol.
 
 use anchor_lang::prelude::*;
+use crate::utils::bitmap::u8_bitmap;
 
 // ============================================================================
 // Duration Types
@@ -91,6 +92,27 @@ impl Duration {
     pub fn to_blocks(&self) -> u64 {
         self.to_slots()
     }
+    
+    /// Convert to time factor for physics calculations using Q64 fixed-point
+    pub fn to_time_factor(&self) -> Result<u128> {
+        use crate::constant::Q64;
+        
+        let days = match self {
+            Duration::Flash => 1,       // 1 day minimum for flash loans
+            Duration::Swap => 1,        // Immediate execution treated as 1 day
+            Duration::Weekly => 7,
+            Duration::Monthly => 28,
+            Duration::Quarterly => 90,
+            Duration::Annual => 365,
+        };
+        
+        // Time factor = 1 / (1 + days/365) in Q64 format
+        // This represents the time decay factor for the physics model
+        // To avoid overflow, just return Q64 scaled by the inverse
+        let factor = (Q64 as u128).saturating_mul(365) / (365 + days as u128);
+        
+        Ok(factor)
+    }
 }
 
 /// Duration configuration for pools
@@ -120,7 +142,6 @@ impl Default for DurationConfig {
 impl DurationConfig {
     /// Check if a duration is allowed in this pool
     pub fn is_duration_allowed(&self, duration: Duration) -> bool {
-        let duration_bit = 1u8 << (duration as u8);
-        (self.allowed_durations & duration_bit) != 0
+        u8_bitmap::is_bit_set(self.allowed_durations, duration as usize).unwrap_or(false)
     }
 }

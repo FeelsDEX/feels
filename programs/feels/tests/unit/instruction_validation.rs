@@ -106,15 +106,15 @@ mod instruction_validation_tests {
     #[test]
     fn test_pool_pda_seeds() {
         // Test that pool PDAs use correct seeds with token mints and fee rate
-        let token_a = Pubkey::new_unique();
-        let token_b = Pubkey::new_unique();
+        let token_0 = Pubkey::new_unique();
+        let token_1 = Pubkey::new_unique();
         let fee_rate = 30u16;
 
         let fee_bytes = fee_rate.to_le_bytes();
         let seeds = [
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             fee_bytes.as_ref(),
         ];
         let (expected_pda, _) = Pubkey::find_program_address(&seeds, &feels::ID);
@@ -420,8 +420,8 @@ mod instruction_validation_tests {
     #[test]
     fn test_pda_derivation_properties() {
         // Property: PDAs should be deterministic and unique
-        let token_a = Pubkey::new_unique();
-        let token_b = Pubkey::new_unique();
+        let token_0 = Pubkey::new_unique();
+        let token_1 = Pubkey::new_unique();
         let fee_rate = 30u16;
         let program_id = feels::ID;
 
@@ -429,8 +429,8 @@ mod instruction_validation_tests {
         let fee_bytes = fee_rate.to_le_bytes();
         let seeds: &[&[u8]] = &[
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             fee_bytes.as_ref(),
         ];
 
@@ -446,8 +446,8 @@ mod instruction_validation_tests {
         let different_fee_bytes = different_fee.to_le_bytes();
         let different_seeds: &[&[u8]] = &[
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             different_fee_bytes.as_ref(),
         ];
 
@@ -596,8 +596,8 @@ mod instruction_validation_tests {
     #[test]
     fn test_pool_pda_uniqueness_property() {
         // Property: Different fee rates should produce different pool PDAs
-        let token_a = Pubkey::new_unique();
-        let token_b = Pubkey::new_unique();
+        let token_0 = Pubkey::new_unique();
+        let token_1 = Pubkey::new_unique();
         let fee_rate_1 = 30u16;
         let fee_rate_2 = 100u16;
 
@@ -605,8 +605,8 @@ mod instruction_validation_tests {
         let fee_bytes_1 = fee_rate_1.to_le_bytes();
         let seeds_1 = [
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             fee_bytes_1.as_ref(),
         ];
         let (pda_1, _) = Pubkey::find_program_address(&seeds_1, &feels::ID);
@@ -614,8 +614,8 @@ mod instruction_validation_tests {
         let fee_bytes_2 = fee_rate_2.to_le_bytes();
         let seeds_2 = [
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             fee_bytes_2.as_ref(),
         ];
         let (pda_2, _) = Pubkey::find_program_address(&seeds_2, &feels::ID);
@@ -658,15 +658,15 @@ mod instruction_validation_tests {
     #[test]
     fn test_protocol_fee_pda_validation() {
         // Property: Protocol fee collection must validate pool PDAs
-        let token_a = Pubkey::new_unique();
-        let token_b = Pubkey::new_unique();
+        let token_0 = Pubkey::new_unique();
+        let token_1 = Pubkey::new_unique();
         let fee_rate = 30u16;
 
         let fee_bytes = fee_rate.to_le_bytes();
         let pool_seeds = [
             b"pool",
-            token_a.as_ref(),
-            token_b.as_ref(),
+            token_0.as_ref(),
+            token_1.as_ref(),
             fee_bytes.as_ref(),
         ];
 
@@ -723,15 +723,15 @@ mod instruction_validation_tests {
     #[test]
     fn test_transfer_authority_pda_property() {
         // Property: Transfer authority uses proper PDA seeds
-        let token_a_mint = Pubkey::new_unique();
-        let token_b_mint = Pubkey::new_unique();
+        let token_0_mint = Pubkey::new_unique();
+        let token_1_mint = Pubkey::new_unique();
         let fee_rate = 30u16;
 
         let fee_bytes = fee_rate.to_le_bytes();
         let pool_seeds = [
             b"pool",
-            token_a_mint.as_ref(),
-            token_b_mint.as_ref(),
+            token_0_mint.as_ref(),
+            token_1_mint.as_ref(),
             fee_bytes.as_ref(),
         ];
 

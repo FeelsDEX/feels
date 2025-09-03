@@ -8,9 +8,9 @@ use crate::error::FeelsProtocolError;
 // ============================================================================
 
 /// Minimal market state for field commitment strategy (Option A)
-#[account(zero_copy)]
-#[derive(Default)]
-#[repr(C, packed)]
+#[account]
+#[derive(Default, Debug)]
+#[allow(non_snake_case)]
 pub struct MarketField {
     /// Pool this field belongs to
     pub pool: Pubkey,
@@ -42,12 +42,12 @@ pub struct MarketField {
     
     // ========== Spot Value Weights ==========
     
-    /// Token A weight within spot dimension (ω_a)
+    /// Token 0 weight within spot dimension (ω_a)
     /// Defaults to token weight if not specified
-    pub omega_a: u32,
+    pub omega_0: u32,
     
-    /// Token B weight within spot dimension (ω_b)
-    pub omega_b: u32,
+    /// Token 1 weight within spot dimension (ω_b)
+    pub omega_1: u32,
     
     // ========== Risk Scalers (basis points) ==========
     
@@ -62,11 +62,11 @@ pub struct MarketField {
     
     // ========== Internal TWAPs (Q64 in common numeraire) ==========
     
-    /// Token A TWAP price
-    pub twap_a: u128,
+    /// Token 0 TWAP price
+    pub twap_0: u128,
     
-    /// Token B TWAP price
-    pub twap_b: u128,
+    /// Token 1 TWAP price
+    pub twap_1: u128,
     
     // ========== Freshness & Validity ==========
     
@@ -76,10 +76,15 @@ pub struct MarketField {
     /// Maximum staleness before refresh required (seconds)
     pub max_staleness: i64,
     
+    // ========== Commitment Hash ==========
+    
+    /// Deterministic hash of the field commitment payload
+    pub commitment_hash: [u8; 32],
+    
     // ========== Reserved ==========
     
-    /// Reserved for future extensions
-    pub _reserved: [u8; 64],
+    /// Reserved for future extensions (reduced by 32 bytes for hash)
+    pub _reserved: [u8; 32],
 }
 
 impl MarketField {
@@ -88,40 +93,35 @@ impl MarketField {
         current_ts - self.snapshot_ts <= self.max_staleness
     }
     
+    /// Get the commitment hash
+    pub fn get_commitment_hash(&self) -> [u8; 32] {
+        self.commitment_hash
+    }
+    
     /// Validate field parameters are within bounds
     pub fn validate(&self) -> Result<()> {
         // Weights must sum to 10000
         require!(
             self.w_s + self.w_t + self.w_l + self.w_tau == 10000,
-            FeelsProtocolError::InvalidWeights { 
-                description: "Domain weights must sum to 10000".to_string() 
-            }
+            FeelsProtocolError::InvalidWeights
         );
         
         // Spot weights must sum to 10000
         require!(
-            self.omega_a + self.omega_b == 10000,
-            FeelsProtocolError::InvalidWeights { 
-                description: "Spot weights must sum to 10000".to_string() 
-            }
+            self.omega_0 + self.omega_1 == 10000,
+            FeelsProtocolError::InvalidWeights
         );
         
         // Scalars must be positive
         require!(
             self.S > 0 && self.T > 0 && self.L > 0,
-            FeelsProtocolError::InvalidParameter { 
-                param: "Market scalars".to_string(),
-                reason: "Must be positive".to_string()
-            }
+            FeelsProtocolError::InvalidParameter
         );
         
         // TWAPs must be positive
         require!(
-            self.twap_a > 0 && self.twap_b > 0,
-            FeelsProtocolError::InvalidParameter { 
-                param: "TWAPs".to_string(),
-                reason: "Must be positive".to_string()
-            }
+            self.twap_0 > 0 && self.twap_1 > 0,
+            FeelsProtocolError::InvalidParameter
         );
         
         Ok(())
@@ -141,6 +141,21 @@ impl MarketField {
         
         (w_hat_s, w_hat_t, w_hat_l)
     }
+    
+    /// Convert to MarketState for physics calculations
+    pub fn to_market_state(&self) -> Result<crate::state::market_state::MarketState> {
+        Ok(crate::state::market_state::MarketState {
+            S: self.S,
+            T: self.T,
+            L: self.L,
+            weights: crate::state::DomainWeights {
+                w_s: self.w_s,
+                w_t: self.w_t,
+                w_l: self.w_l,
+                w_tau: self.w_tau,
+            },
+        })
+    }
 }
 
 // ============================================================================
@@ -149,6 +164,7 @@ impl MarketField {
 
 /// Parameters for client-side work calculation
 #[derive(Clone, Debug)]
+#[allow(non_snake_case)]
 pub struct WorkCalculationParams {
     /// Start position scalars
     pub S_start: u128,
@@ -164,9 +180,15 @@ pub struct WorkCalculationParams {
     pub field: MarketField,
 }
 
-/// Calculate work using closed-form log work formula
-/// W = -ŵ_s · ln(S_end/S_start) - ŵ_t · ln(T_end/T_start) - ŵ_l · ln(L_end/L_start)
+/// Calculate work using closed-form log work formula - DEPRECATED
+/// This function is kept for backwards compatibility but should not be used directly.
+/// Use market_field_work::calculate_work_for_market instead.
+#[deprecated(note = "Use market_field_work module for proper work calculation")]
 pub fn calculate_work_closed_form(params: &WorkCalculationParams) -> Result<i128> {
+    msg!("Warning: calculate_work_closed_form is deprecated. Use market_field_work module.");
+    
+    // For backwards compatibility, call the deprecated calculate_ln_ratio
+    // This will fail with InvalidOperation error
     let (w_hat_s, w_hat_t, w_hat_l) = params.field.get_hat_weights();
     
     // Calculate work components
@@ -174,6 +196,7 @@ pub fn calculate_work_closed_form(params: &WorkCalculationParams) -> Result<i128
     
     // Spot component
     if params.S_start != params.S_end && w_hat_s > 0 {
+        #[allow(deprecated)]
         let ln_ratio = calculate_ln_ratio(params.S_end, params.S_start)?;
         let w_component = apply_weight(ln_ratio, w_hat_s)?;
         work = work.saturating_sub(w_component);
@@ -181,6 +204,7 @@ pub fn calculate_work_closed_form(params: &WorkCalculationParams) -> Result<i128
     
     // Time component
     if params.T_start != params.T_end && w_hat_t > 0 {
+        #[allow(deprecated)]
         let ln_ratio = calculate_ln_ratio(params.T_end, params.T_start)?;
         let w_component = apply_weight(ln_ratio, w_hat_t)?;
         work = work.saturating_sub(w_component);
@@ -188,6 +212,7 @@ pub fn calculate_work_closed_form(params: &WorkCalculationParams) -> Result<i128
     
     // Leverage component
     if params.L_start != params.L_end && w_hat_l > 0 {
+        #[allow(deprecated)]
         let ln_ratio = calculate_ln_ratio(params.L_end, params.L_start)?;
         let w_component = apply_weight(ln_ratio, w_hat_l)?;
         work = work.saturating_sub(w_component);
@@ -196,15 +221,13 @@ pub fn calculate_work_closed_form(params: &WorkCalculationParams) -> Result<i128
     Ok(work)
 }
 
-/// Calculate ln(a/b) in fixed point
-fn calculate_ln_ratio(a: u128, b: u128) -> Result<i128> {
-    use crate::logic::market_physics::potential::{ln_fixed, FixedPoint};
-    
-    // ln(a/b) = ln(a) - ln(b)
-    let ln_a = ln_fixed(a)?.value;
-    let ln_b = ln_fixed(b)?.value;
-    
-    Ok(ln_a.saturating_sub(ln_b))
+/// Calculate ln(a/b) - DEPRECATED
+/// This function is kept for backwards compatibility but should not be used.
+/// Use market_field_work::calculate_work_for_market instead.
+#[deprecated(note = "Use market_field_work module for proper work calculation")]
+fn calculate_ln_ratio(_a: u128, _b: u128) -> Result<i128> {
+    msg!("Warning: calculate_ln_ratio is deprecated. Use market_field_work module.");
+    Err(FeelsProtocolError::InvalidOperation.into())
 }
 
 /// Apply weight to value
@@ -224,6 +247,7 @@ fn apply_weight(value: i128, weight: u64) -> Result<i128> {
 
 /// Parameters for updating market field data
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+#[allow(non_snake_case)]
 pub struct FieldUpdateParams {
     /// New market scalars
     pub S: u128,
@@ -231,8 +255,8 @@ pub struct FieldUpdateParams {
     pub L: u128,
     
     /// Updated TWAPs
-    pub twap_a: u128,
-    pub twap_b: u128,
+    pub twap_0: u128,
+    pub twap_1: u128,
     
     /// Updated risk scalers (optional, 0 means no change)
     pub sigma_price: u64,
@@ -246,19 +270,13 @@ impl FieldUpdateParams {
         // Scalars must be positive
         require!(
             self.S > 0 && self.T > 0 && self.L > 0,
-            FeelsProtocolError::InvalidParameter { 
-                param: "Market scalars".to_string(),
-                reason: "Must be positive".to_string()
-            }
+            FeelsProtocolError::InvalidParameter
         );
         
         // TWAPs must be positive
         require!(
-            self.twap_a > 0 && self.twap_b > 0,
-            FeelsProtocolError::InvalidParameter { 
-                param: "TWAPs".to_string(),
-                reason: "Must be positive".to_string()
-            }
+            self.twap_0 > 0 && self.twap_1 > 0,
+            FeelsProtocolError::InvalidParameter
         );
         
         Ok(())
@@ -278,5 +296,6 @@ impl MarketField {
         8 * 3 +                   // risk scalers
         16 * 2 +                  // TWAPs
         8 * 2 +                   // timestamps
-        64;                       // reserved
+        32 +                      // commitment_hash
+        32;                       // reserved
 }

@@ -6,7 +6,7 @@
 
 use anchor_lang::prelude::*;
 use crate::constant::{MAX_ROUTER_ARRAYS, TICK_ARRAY_SIZE};
-use crate::state::Pool;
+use crate::utils::bitmap::{u8_bitmap, bit_encoding};
 
 // ============================================================================
 // Tick Data Structures
@@ -45,7 +45,8 @@ impl Tick {
 #[account(zero_copy)]
 #[repr(C, packed)]
 pub struct TickArray {
-    pub pool: Pubkey,                   // Associated pool
+    pub market: Pubkey,                 // Associated market
+    pub pool: Pubkey,                   // Associated pool (alias for market)
     pub start_tick_index: i32,          // First tick in this array
     pub ticks: [Tick; TICK_ARRAY_SIZE], // Array of tick data
     pub initialized_tick_count: u8,     // Number of initialized ticks
@@ -54,7 +55,7 @@ pub struct TickArray {
 impl TickArray {
     // Size constants for each section of the TickArray struct
     const DISCRIMINATOR_SIZE: usize = 8;
-    const POOL_SIZE: usize = 32;
+    const MARKET_SIZE: usize = 32;
     const START_TICK_INDEX_SIZE: usize = 4;
     const INITIALIZED_TICK_COUNT_SIZE: usize = 1;
 
@@ -76,7 +77,7 @@ impl TickArray {
     const TICKS_ARRAY_SIZE: usize = Self::SINGLE_TICK_SIZE * TICK_ARRAY_SIZE; // 104 * 32 = 3328 bytes
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
-        + Self::POOL_SIZE
+        + Self::MARKET_SIZE
         + Self::START_TICK_INDEX_SIZE
         + Self::TICKS_ARRAY_SIZE
         + Self::INITIALIZED_TICK_COUNT_SIZE; // Total: 3373 bytes
@@ -90,8 +91,8 @@ impl TickArray {
 /// commonly used tick arrays
 #[account]
 pub struct TickArrayRouter {
-    /// The pool this router is associated with
-    pub pool: Pubkey,
+    /// The market this router is associated with
+    pub market: Pubkey,
 
     /// Pre-registered tick array accounts (up to 8 for Valence compatibility)
     pub tick_arrays: [Pubkey; MAX_ROUTER_ARRAYS],
@@ -115,7 +116,7 @@ pub struct TickArrayRouter {
 impl TickArrayRouter {
     // Size constants for each section of the TickArrayRouter struct
     const DISCRIMINATOR_SIZE: usize = 8;
-    const POOL_SIZE: usize = 32;
+    const MARKET_MANAGER_SIZE: usize = 32;
     const TICK_ARRAYS_SIZE: usize = 32 * MAX_ROUTER_ARRAYS; // 32 * 8 = 256 bytes
     const START_INDICES_SIZE: usize = 4 * MAX_ROUTER_ARRAYS; // 4 * 8 = 32 bytes
     const ACTIVE_BITMAP_SIZE: usize = 1;
@@ -124,7 +125,7 @@ impl TickArrayRouter {
     const RESERVED_SIZE: usize = 64;
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
-        + Self::POOL_SIZE
+        + Self::MARKET_MANAGER_SIZE
         + Self::TICK_ARRAYS_SIZE
         + Self::START_INDICES_SIZE
         + Self::ACTIVE_BITMAP_SIZE
@@ -143,7 +144,7 @@ impl TickArrayRouter {
         if index >= MAX_ROUTER_ARRAYS {
             return false;
         }
-        (self.active_bitmap & (1 << index)) != 0
+        u8_bitmap::is_bit_set(self.active_bitmap, index).unwrap_or(false)
     }
 }
 
@@ -184,13 +185,13 @@ pub struct InitializeRouter<'info> {
         init,
         payer = authority,
         space = TickArrayRouter::SIZE,
-        seeds = [b"router", pool.key().as_ref()],
+        seeds = [b"router", market_manager.key().as_ref()],
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
 
     #[account(mut)]
-    pub pool: AccountLoader<'info, Pool>,
+    pub market_manager: AccountLoader<'info, super::MarketManager>,
 
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -202,12 +203,12 @@ pub struct InitializeRouter<'info> {
 pub struct UpdateRouter<'info> {
     #[account(
         mut,
-        seeds = [b"router", pool.key().as_ref()],
+        seeds = [b"router", market_manager.key().as_ref()],
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
 
-    pub pool: AccountLoader<'info, Pool>,
+    pub market_manager: AccountLoader<'info, super::MarketManager>,
 
     pub authority: Signer<'info>,
 }
@@ -238,23 +239,27 @@ impl Tick3D {
     
     /// Encode 3D tick into single i32
     pub fn encode(&self) -> i32 {
-        // Rate uses primary bits (highest precision needed)
-        let rate_masked = self.rate_tick & ((1 << Self::RATE_BITS) - 1);
+        let mut packed = 0u64;
         
-        // Duration uses middle bits
-        let duration_shifted = ((self.duration_tick as i32) & ((1 << Self::DURATION_BITS) - 1)) << Self::RATE_BITS;
+        // Pack rate tick (primary bits)
+        bit_encoding::pack_bits(&mut packed, self.rate_tick as u64, 0, Self::RATE_BITS).unwrap();
         
-        // Leverage uses high bits
-        let leverage_shifted = ((self.leverage_tick as i32) & ((1 << Self::LEVERAGE_BITS) - 1)) << (Self::RATE_BITS + Self::DURATION_BITS);
+        // Pack duration tick (middle bits)
+        bit_encoding::pack_bits(&mut packed, self.duration_tick as u64, Self::RATE_BITS, Self::DURATION_BITS).unwrap();
         
-        rate_masked | duration_shifted | leverage_shifted
+        // Pack leverage tick (high bits) 
+        bit_encoding::pack_bits(&mut packed, self.leverage_tick as u64, Self::RATE_BITS + Self::DURATION_BITS, Self::LEVERAGE_BITS).unwrap();
+        
+        packed as i32
     }
     
     /// Decode i32 into 3D tick components
     pub fn decode(encoded: i32) -> Self {
-        let rate_tick = encoded & ((1 << Self::RATE_BITS) - 1);
-        let duration_tick = ((encoded >> Self::RATE_BITS) & ((1 << Self::DURATION_BITS) - 1)) as i16;
-        let leverage_tick = ((encoded >> (Self::RATE_BITS + Self::DURATION_BITS)) & ((1 << Self::LEVERAGE_BITS) - 1)) as i16;
+        let encoded_u64 = encoded as u64;
+        
+        let rate_tick = bit_encoding::extract_bits(encoded_u64, 0, Self::RATE_BITS) as i32;
+        let duration_tick = bit_encoding::extract_bits(encoded_u64, Self::RATE_BITS, Self::DURATION_BITS) as i16;
+        let leverage_tick = bit_encoding::extract_bits(encoded_u64, Self::RATE_BITS + Self::DURATION_BITS, Self::LEVERAGE_BITS) as i16;
         
         Self {
             rate_tick,

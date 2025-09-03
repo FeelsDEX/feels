@@ -27,6 +27,9 @@ pub struct ProtocolState {
 
     /// Whether new pool creation is allowed
     pub pool_creation_allowed: bool,
+    
+    /// Whether protocol is initialized
+    pub is_initialized: bool,
 
     /// Total number of pools created
     pub total_pools: u64,
@@ -47,7 +50,7 @@ pub struct ProtocolState {
     pub initialized_at: i64,
 
     /// Reserved space for future upgrades
-    pub _reserved: [u8; 104],
+    pub _reserved: [u8; 103],
 }
 
 // ============================================================================
@@ -59,10 +62,10 @@ impl ProtocolState {
     const DISCRIMINATOR_SIZE: usize = 8;
     const AUTHORITY_SIZE: usize = 32 + 32;            // authority + treasury
     const FEE_CONFIG_SIZE: usize = 2 + 2;             // default_protocol_fee_rate + max_pool_fee_rate
-    const FLAGS_SIZE: usize = 1 + 1;                  // paused + pool_creation_allowed
+    const FLAGS_SIZE: usize = 1 + 1 + 1;              // paused + pool_creation_allowed + is_initialized
     const STATISTICS_SIZE: usize = 8 + 8 + 8 + 8 + 8; // total_pools + total_fees_collected + USD fields
     const METADATA_SIZE: usize = 8;                   // initialized_at
-    const RESERVED_SIZE: usize = 104;                 // reserved for future upgrades
+    const RESERVED_SIZE: usize = 103;                 // reserved for future upgrades (reduced by 1 for is_initialized)
 
     pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
         + Self::AUTHORITY_SIZE

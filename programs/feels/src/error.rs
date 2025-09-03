@@ -11,320 +11,351 @@ pub enum FeelsError {
     // Validation Errors: Input validation and constraint violations
     // ========================================================================
     
-    #[msg("Validation error: {field} - {reason}")]
-    ValidationError { field: String, reason: String },
+    #[msg("Validation error occurred")]
+    ValidationError,
     
-    #[msg("Invalid amount: {amount_type} - {reason}")]
-    InvalidAmount { amount_type: String, reason: String },
+    #[msg("Invalid amount provided")]
+    InvalidAmount,
     
-    #[msg("Invalid range: {range_type} from {min} to {max}")]
-    InvalidRange { range_type: String, min: String, max: String },
+    #[msg("Invalid range specified")]
+    InvalidRangeSpecified,
     
-    #[msg("Constraint violation: {constraint} - {value}")]
-    ConstraintViolation { constraint: String, value: String },
+    #[msg("Constraint violation detected")]
+    ConstraintViolation,
     
     // ========================================================================
     // Math Errors: Arithmetic and mathematical operation failures
     // ========================================================================
     
-    #[msg("Math error: {operation} - {details}")]
-    MathError { operation: String, details: String },
+    #[msg("Mathematical operation failed")]
+    MathError,
     
-    #[msg("Overflow in {operation}")]
-    Overflow { operation: String },
+    #[msg("Arithmetic overflow occurred")]
+    ArithmeticOverflow,
     
-    #[msg("Underflow in {operation}")]
-    Underflow { operation: String },
+    #[msg("Arithmetic underflow occurred")]  
+    ArithmeticUnderflow,
     
-    #[msg("Division by zero in {context}")]
-    DivisionByZero { context: String },
+    #[msg("Division by zero")]
+    DivisionByZero,
+    
+    #[msg("Math overflow")]
+    MathOverflow,
     
     // ========================================================================
     // State Errors: State management and consistency violations
     // ========================================================================
     
-    #[msg("State error: {state_type} - {reason}")]
-    StateError { state_type: String, reason: String },
+    #[msg("State error occurred")]
+    StateError,
     
-    #[msg("Insufficient {resource}: have {available}, need {required}")]
-    InsufficientResource { 
-        resource: String, 
-        available: String, 
-        required: String 
-    },
+    #[msg("Insufficient resources")]
+    InsufficientResource,
     
-    #[msg("{entity} not found: {identifier}")]
-    NotFound { entity: String, identifier: String },
+    #[msg("Entity not found")]
+    NotFound,
     
-    #[msg("{entity} not initialized: {identifier}")]
-    NotInitialized { entity: String, identifier: String },
+    #[msg("Entity not initialized")]
+    NotInitialized,
     
     // ========================================================================
     // Security Errors: Access control and security violations
     // ========================================================================
     
-    #[msg("Unauthorized: {action} requires {required_role}")]
-    Unauthorized { action: String, required_role: String },
+    #[msg("Unauthorized action")]
+    Unauthorized,
     
-    #[msg("Security violation: {violation_type} - {details}")]
-    SecurityViolation { violation_type: String, details: String },
+    #[msg("Security violation detected")]
+    SecurityViolation,
     
-    #[msg("Reentrancy detected in {operation}")]
-    ReentrancyDetected { operation: String },
+    #[msg("Reentrancy detected")]
+    ReentrancyDetected,
     
-    // ========================================================================
-    // Protocol Errors: Protocol-specific business logic errors
-    // ========================================================================
+    #[msg("Invalid owner")]
+    InvalidOwner,
     
-    #[msg("Protocol error: {error_type} - {details}")]
-    ProtocolError { error_type: String, details: String },
+    #[msg("Invalid account owner")]
+    InvalidAccountOwner,
     
-    #[msg("Feature not available: {feature} - {reason}")]
-    FeatureUnavailable { feature: String, reason: String },
-    
-    #[msg("Operation paused: {operation} - expires at {expiry}")]
-    OperationPaused { operation: String, expiry: String },
+    #[msg("Invalid market")]
+    InvalidMarket,
     
     // ========================================================================
-    // Market Errors: Market-related errors
+    // Common Errors
     // ========================================================================
     
-    #[msg("Market condition: {condition} - {details}")]
-    MarketCondition { condition: String, details: String },
+    #[msg("Invalid input")]
+    InvalidInput,
     
-    #[msg("Slippage exceeded: expected {expected}, got {actual}")]
-    SlippageExceeded { expected: String, actual: String },
+    #[msg("Invalid tick")]
+    InvalidTick,
     
-    #[msg("Price impact too high: {impact}% exceeds {max_allowed}%")]
-    ExcessivePriceImpact { impact: String, max_allowed: String },
+    #[msg("Invalid percentage")]
+    InvalidPercentage,
+    
+    #[msg("Invalid liquidity")]
+    InvalidLiquidity,
+    
+    #[msg("Tick out of bounds")]
+    TickOutOfBounds,
+    
+    #[msg("Square root price out of bounds")]
+    SqrtPriceOutOfBounds,
+    
+    // Missing variants that are referenced in code
+    #[msg("Invalid parameter")]
+    InvalidParameter,
+    
+    #[msg("Invalid tick range")]
+    InvalidTickRange,
+    
+    #[msg("Invalid pool")]
+    InvalidPool,
+    
+    #[msg("Invalid weights")]
+    InvalidWeights,
+    
+    #[msg("Invalid duration")]
+    InvalidDuration,
+    
+    #[msg("Invalid rate parameters")]
+    InvalidRateParams,
+    
+    #[msg("Invalid range")]
+    InvalidRange,
+    
+    #[msg("Invalid sequence number")]
+    InvalidSequence,
+    
+    #[msg("Data staleness violation")]
+    StaleData,
+    
+    #[msg("Update frequency violation")]
+    UpdateTooFrequent,
+    
+    #[msg("Commitment expired")]
+    CommitmentExpired,
+    
+    #[msg("Insufficient liquidity")]
+    InsufficientLiquidity,
+    
+    #[msg("Decimals too large")]
+    DecimalsTooLarge,
+    
+    #[msg("Invalid token name")]
+    InvalidTokenName,
+    
+    #[msg("Oracle price deviation")]
+    OraclePriceDeviation,
+    
+    #[msg("Market conditions prevent leverage")]
+    MarketConditionsPreventLeverage,
+    
+    #[msg("Invalid tick array")]
+    InvalidTickArray,
+    
+    #[msg("Insufficient data")]
+    InsufficientData,
+    
+    #[msg("Tick not aligned")]
+    TickNotAligned,
+    
+    #[msg("Tick array not empty")]
+    TickArrayNotEmpty,
+    
+    #[msg("Tick array not found")]
+    TickArrayNotFound,
+    
+    #[msg("Invalid operation")]
+    InvalidOperation,
+    
+    #[msg("Invalid price range")]
+    InvalidPriceRange,
+    
+    #[msg("Token not found")]
+    TokenNotFound,
+    
+    #[msg("Stale price")]
+    StalePrice,
+    
+    #[msg("Rate out of bounds")]
+    RateOutOfBounds,
+    
+    #[msg("Insufficient observations")]
+    InsufficientObservations,
+    
+    #[msg("Insufficient buffer")]
+    InsufficientBuffer,
+    
+    #[msg("Excessive change")]
+    ExcessiveChange,
     
     // ========================================================================
-    // Conservation Errors: Physics model conservation violations
+    // Additional Missing Variants
     // ========================================================================
     
-    #[msg("Conservation violation: {invariant} - expected {expected}, got {actual}")]
-    ConservationViolation { 
-        invariant: String, 
-        expected: String, 
-        actual: String 
-    },
+    #[msg("Invalid authority")]
+    InvalidAuthority,
     
-    #[msg("Rebase error: {rebase_type} - {reason}")]
-    RebaseError { rebase_type: String, reason: String },
+    #[msg("Invalid tick array account")]
+    InvalidTickArrayAccount,
     
-    #[msg("Weight change too large: {dimension} changed by {change_bps} bps")]
-    ExcessiveWeightChange { dimension: String, change_bps: u32 },
+    #[msg("Hook validation failed")]
+    HookValidationFailed,
+    
+    #[msg("Hook registry full")]
+    HookRegistryFull,
+    
+    #[msg("Message queue full")]
+    MessageQueueFull,
+    
+    #[msg("Invalid permission")]
+    InvalidPermission,
+    
+    #[msg("Non-canonical token order")]
+    NonCanonicalTokenOrder,
+    
+    #[msg("Swap amount too small")]
+    SwapAmountTooSmall,
+    
+    #[msg("Price manipulation detected")]
+    PriceManipulationDetected,
+    
+    #[msg("Extreme price")]
+    ExtremePrice,
+    
+    #[msg("Tick array index out of bounds")]
+    TickArrayIndexOutOfBounds,
+    
+    // Additional error variants for compatibility
+    #[msg("Math underflow")]
+    MathUnderflow,
+    
+    #[msg("Invalid fee setting")]
+    InvalidFeeSetting,
+    
+    #[msg("Arithmetic error")]
+    ArithmeticError,
+    
+    #[msg("Fee increase too large")]
+    FeeIncreaseTooLarge,
+    
+    #[msg("Invalid pool status")]
+    InvalidPoolStatus,
+    
+    #[msg("Fee decrease too large")]
+    FeeDecreaseTooLarge,
+    
+    #[msg("Fee above maximum")]
+    FeeAboveMaximum,
+    
+    #[msg("Invalid token order")]
+    InvalidTokenOrder,
+    
+    #[msg("Exceeded max orders")]
+    ExceededMaxOrders,
+    
+    #[msg("Invalid position token amount")]
+    InvalidPositionTokenAmount,
+    
+    #[msg("Invalid slippage limit")]
+    InvalidSlippageLimit,
+    
+    #[msg("Fee below minimum")]
+    FeeBelowMinimum,
+    
+    #[msg("Invalid signature")]
+    InvalidSignature,
+    
+    #[msg("Keeper not authorized")]
+    UnauthorizedKeeper,
+    
+    #[msg("Keeper registry full")]
+    KeeperRegistryFull,
+    
+    #[msg("Keeper already exists")]
+    KeeperAlreadyExists,
+    
+    #[msg("Keeper not found")]
+    KeeperNotFound,
+    
+    #[msg("Invalid field commitment")]
+    InvalidFieldCommitment,
+    
+    #[msg("Oracle data is stale")]
+    StaleOracle,
 }
 
-// ============================================================================
-// Error Context Helpers
-// ============================================================================
-
-/// Helper functions to create specific errors with context
 impl FeelsError {
-    /// Create a validation error for amounts
-    pub fn invalid_amount(amount_type: &str, amount: u64) -> Self {
-        Self::InvalidAmount {
-            amount_type: amount_type.to_string(),
-            reason: format!("Amount {} is invalid", amount),
-        }
+    // ========================================================================
+    // Helper Constructors with Context
+    // ========================================================================
+    
+    /// Helper method for zero amount validation
+    pub fn zero_amount(_context: &str) -> Self {
+        FeelsError::InvalidAmount
     }
     
-    /// Create a validation error for zero amounts
-    pub fn zero_amount(amount_type: &str) -> Self {
-        Self::InvalidAmount {
-            amount_type: amount_type.to_string(),
-            reason: "Amount must be greater than zero".to_string(),
-        }
+    /// Helper for range validation with context
+    pub fn invalid_range(lower: i32, upper: i32) -> Self {
+        msg!("Invalid range: {} to {}", lower, upper);
+        FeelsError::InvalidRange
     }
     
-    /// Create an overflow error
-    pub fn overflow(operation: &str) -> Self {
-        Self::Overflow {
-            operation: operation.to_string(),
-        }
+    /// Helper for tick validation with context  
+    pub fn invalid_tick(tick: i32, min: i32, max: i32) -> Self {
+        msg!("Invalid tick {} (bounds: {} to {})", tick, min, max);
+        FeelsError::InvalidTick
     }
     
-    /// Create an underflow error
-    pub fn underflow(operation: &str) -> Self {
-        Self::Underflow {
-            operation: operation.to_string(),
-        }
+    /// Helper for arithmetic overflow with operation context
+    pub fn math_overflow(operation: &str) -> Self {
+        msg!("Math overflow in operation: {}", operation);
+        FeelsError::ArithmeticOverflow
     }
     
-    /// Create an insufficient liquidity error
-    pub fn insufficient_liquidity(available: u128, required: u128) -> Self {
-        Self::InsufficientResource {
-            resource: "liquidity".to_string(),
-            available: available.to_string(),
-            required: required.to_string(),
-        }
+    /// Helper for underflow with operation context
+    pub fn math_underflow(operation: &str) -> Self {
+        msg!("Math underflow in operation: {}", operation);
+        FeelsError::ArithmeticUnderflow
     }
     
-    /// Create a tick not found error
-    pub fn tick_not_found(tick: i32) -> Self {
-        Self::NotFound {
-            entity: "Tick".to_string(),
-            identifier: tick.to_string(),
-        }
+    /// Helper for insufficient liquidity with amount context
+    pub fn insufficient_liquidity(required: u128, available: u128) -> Self {
+        msg!("Insufficient liquidity: need {}, have {}", required, available);
+        FeelsError::InsufficientLiquidity
     }
     
-    /// Create a slippage error
-    pub fn slippage(expected: u64, actual: u64) -> Self {
-        Self::SlippageExceeded {
-            expected: expected.to_string(),
-            actual: actual.to_string(),
-        }
+    /// Helper for stale data with age context
+    pub fn stale_data(age_seconds: i64, max_age: i64) -> Self {
+        msg!("Stale data: age {}s exceeds max {}s", age_seconds, max_age);
+        FeelsError::StaleData
     }
     
-    /// Create a conservation violation error
-    pub fn conservation(invariant: &str, expected: i128, actual: i128) -> Self {
-        Self::ConservationViolation {
-            invariant: invariant.to_string(),
-            expected: expected.to_string(),
-            actual: actual.to_string(),
-        }
+    /// Helper for invalid authority with context
+    pub fn invalid_authority(expected: &str, actual: &str) -> Self {
+        msg!("Invalid authority: expected {}, got {}", expected, actual);
+        FeelsError::InvalidAuthority
+    }
+    
+    /// Helper for excessive change with percentage context
+    pub fn excessive_change(change_bps: u32, max_bps: u32) -> Self {
+        msg!("Excessive change: {}bps exceeds max {}bps", change_bps, max_bps);
+        FeelsError::ExcessiveChange
+    }
+    
+    /// Helper for commitment expiry with time context
+    pub fn commitment_expired(expires_at: i64, current_time: i64) -> Self {
+        msg!("Commitment expired at {}, current time {}", expires_at, current_time);
+        FeelsError::CommitmentExpired
+    }
+    
+    /// Helper for price deviation with percentage context
+    pub fn price_deviation(deviation_bps: u32, max_bps: u32) -> Self {
+        msg!("Price deviation {}bps exceeds max {}bps", deviation_bps, max_bps);
+        FeelsError::OraclePriceDeviation
     }
 }
 
-// ============================================================================
-// Error Categories for Logging
-// ============================================================================
-
-/// Error categories for structured logging and monitoring
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorCategory {
-    Validation,
-    Math,
-    State,
-    Security,
-    Protocol,
-    Market,
-    Conservation,
-}
-
-impl FeelsError {
-    /// Get the category of this error for logging/monitoring
-    pub fn category(&self) -> ErrorCategory {
-        match self {
-            Self::ValidationError { .. } |
-            Self::InvalidAmount { .. } |
-            Self::InvalidRange { .. } |
-            Self::ConstraintViolation { .. } => ErrorCategory::Validation,
-            
-            Self::MathError { .. } |
-            Self::Overflow { .. } |
-            Self::Underflow { .. } |
-            Self::DivisionByZero { .. } => ErrorCategory::Math,
-            
-            Self::StateError { .. } |
-            Self::InsufficientResource { .. } |
-            Self::NotFound { .. } |
-            Self::NotInitialized { .. } => ErrorCategory::State,
-            
-            Self::Unauthorized { .. } |
-            Self::SecurityViolation { .. } |
-            Self::ReentrancyDetected { .. } => ErrorCategory::Security,
-            
-            Self::ProtocolError { .. } |
-            Self::FeatureUnavailable { .. } |
-            Self::OperationPaused { .. } => ErrorCategory::Protocol,
-            
-            Self::MarketCondition { .. } |
-            Self::SlippageExceeded { .. } |
-            Self::ExcessivePriceImpact { .. } => ErrorCategory::Market,
-            
-            Self::ConservationViolation { .. } |
-            Self::RebaseError { .. } |
-            Self::ExcessiveWeightChange { .. } => ErrorCategory::Conservation,
-        }
-    }
-    
-    /// Get severity level for monitoring
-    pub fn severity(&self) -> ErrorSeverity {
-        match self.category() {
-            ErrorCategory::Security => ErrorSeverity::Critical,
-            ErrorCategory::Conservation => ErrorSeverity::Critical,
-            ErrorCategory::Math => ErrorSeverity::High,
-            ErrorCategory::State => ErrorSeverity::High,
-            ErrorCategory::Market => ErrorSeverity::Medium,
-            ErrorCategory::Protocol => ErrorSeverity::Medium,
-            ErrorCategory::Validation => ErrorSeverity::Low,
-        }
-    }
-}
-
-/// Error severity levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ErrorSeverity {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-// ============================================================================
-// Backwards Compatibility
-// ============================================================================
-
-/// Alias for backwards compatibility
+/// Alias for backward compatibility
 pub use FeelsError as FeelsProtocolError;
-
-// Common error mappings for migration
-impl FeelsError {
-    pub fn invalid_authority() -> Self {
-        Self::Unauthorized {
-            action: "Admin operation".to_string(),
-            required_role: "Authority".to_string(),
-        }
-    }
-    
-    pub fn math_overflow() -> Self {
-        Self::Overflow {
-            operation: "Arithmetic operation".to_string(),
-        }
-    }
-    
-    pub fn invalid_input() -> Self {
-        Self::ValidationError {
-            field: "Input".to_string(),
-            reason: "Invalid input provided".to_string(),
-        }
-    }
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_error_categories() {
-        let validation_err = FeelsError::zero_amount("swap");
-        assert_eq!(validation_err.category(), ErrorCategory::Validation);
-        assert_eq!(validation_err.severity(), ErrorSeverity::Low);
-        
-        let security_err = FeelsError::Unauthorized {
-            action: "pause".to_string(),
-            required_role: "admin".to_string(),
-        };
-        assert_eq!(security_err.category(), ErrorCategory::Security);
-        assert_eq!(security_err.severity(), ErrorSeverity::Critical);
-    }
-    
-    #[test]
-    fn test_error_helpers() {
-        let err = FeelsError::insufficient_liquidity(1000, 2000);
-        match err {
-            FeelsError::InsufficientResource { resource, available, required } => {
-                assert_eq!(resource, "liquidity");
-                assert_eq!(available, "1000");
-                assert_eq!(required, "2000");
-            }
-            _ => panic!("Wrong error type"),
-        }
-    }
-}

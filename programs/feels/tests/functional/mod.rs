@@ -1,8 +1,5 @@
-/// Functional test module organization
-/// 
-/// This module organizes functional tests by feature area:
-/// - amm_operations: Core AMM functionality and operations
-/// - amm_operations_sdk: SDK-based functional tests
-
-pub mod amm_operations;
-pub mod amm_operations_sdk;
+/// Functional tests will be reintroduced after the unified API and
+/// physics-based fee path are finalized.
+///
+/// TODO: Reimplement AMM operation tests using unified_order instructions
+/// and client-side work computation (Option A/B) for fees.

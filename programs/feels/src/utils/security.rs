@@ -1,7 +1,8 @@
 /// Centralized security utilities and macros for the Feels Protocol.
 /// Provides consistent reentrancy protection and authority validation across all instructions.
 use anchor_lang::prelude::*;
-use crate::state::{Pool, ProtocolState, ReentrancyStatus, ReentrancyGuard};
+use crate::state::{ReentrancyStatus, ReentrancyGuard}; 
+// MarketManager, ProtocolState, ScopedReentrancyGuard // Unused imports
 use crate::error::FeelsProtocolError;
 
 // ============================================================================
@@ -16,8 +17,13 @@ macro_rules! apply_reentrancy_guard {
         use $crate::state::{ReentrancyStatus, ReentrancyGuard};
         
         let mut pool = $pool.load_mut()?;
-        let _guard = ReentrancyGuard::new(&mut pool)?;
-        Ok::<_, anchor_lang::error::Error>(_guard)
+        let mut status = match pool.reentrancy_status {
+            1 => ReentrancyStatus::Locked,
+            _ => ReentrancyStatus::Unlocked,
+        };
+        ReentrancyGuard::acquire(&mut status)?;
+        pool.reentrancy_status = status as u8;
+        Ok::<_, anchor_lang::error::Error>(())
     }};
 }
 
@@ -84,20 +90,17 @@ macro_rules! apply_security_checks {
 // ============================================================================
 
 /// Validate that an account is initialized
-pub fn validate_initialized<T: AccountDeserialize>(account: &T) -> Result<()> {
+pub fn validate_initialized<T: AccountDeserialize>(_account: &T) -> Result<()> {
     // The fact that we can deserialize means it's initialized
     // This is a placeholder for any additional validation
     Ok(())
 }
 
 /// Validate that a value is within acceptable bounds
-pub fn validate_bounds<T: PartialOrd>(value: T, min: T, max: T, field_name: &str) -> Result<()> {
+pub fn validate_bounds<T: PartialOrd>(value: T, min: T, max: T, _field_name: &str) -> Result<()> {
     require!(
         value >= min && value <= max,
-        FeelsProtocolError::InvalidParameter {
-            param: field_name.to_string(),
-            reason: format!("Value out of bounds")
-        }
+        FeelsProtocolError::InvalidParameter
     );
     Ok(())
 }
@@ -106,10 +109,7 @@ pub fn validate_bounds<T: PartialOrd>(value: T, min: T, max: T, field_name: &str
 pub fn validate_freshness(timestamp: i64, max_age: i64, current_time: i64) -> Result<()> {
     require!(
         current_time - timestamp <= max_age,
-        FeelsProtocolError::StaleData {
-            max_age,
-            actual_age: current_time - timestamp,
-        }
+        FeelsProtocolError::StaleData
     );
     Ok(())
 }
@@ -131,11 +131,7 @@ pub fn validate_rate_of_change(old_value: u128, new_value: u128, max_change_bps:
     
     require!(
         change_bps <= max_change_bps,
-        FeelsProtocolError::ExcessiveChange {
-            field: "value".to_string(),
-            change_bps,
-            max_bps: max_change_bps,
-        }
+        FeelsProtocolError::ExcessiveChange
     );
     
     Ok(())
@@ -147,19 +143,25 @@ pub fn validate_rate_of_change(old_value: u128, new_value: u128, max_change_bps:
 
 /// Enhanced reentrancy guard with automatic cleanup
 pub struct ScopedSecurityGuard<'info> {
-    _reentrancy_guard: Option<ReentrancyGuard<'info>>,
-    pub pool: &'info AccountLoader<'info, Pool>,
+    _reentrancy_guard: Option<()>,
+    pub pool: &'info AccountLoader<'info, crate::state::MarketManager>,
 }
 
 impl<'info> ScopedSecurityGuard<'info> {
     /// Create a new security guard with specified checks
     pub fn new(
-        pool: &'info AccountLoader<'info, Pool>,
+        pool: &'info AccountLoader<'info, crate::state::MarketManager>,
         require_reentrancy: bool,
     ) -> Result<Self> {
         let _reentrancy_guard = if require_reentrancy {
             let mut pool_mut = pool.load_mut()?;
-            Some(ReentrancyGuard::new(&mut pool_mut)?)
+            let mut status = match pool_mut.reentrancy_status {
+                1 => ReentrancyStatus::Locked,
+                _ => ReentrancyStatus::Unlocked,
+            };
+            ReentrancyGuard::acquire(&mut status)?;
+            pool_mut.reentrancy_status = status as u8;
+            Some(())
         } else {
             None
         };
@@ -171,15 +173,15 @@ impl<'info> ScopedSecurityGuard<'info> {
     }
     
     /// Get immutable pool reference
-    pub fn pool(&self) -> Result<std::cell::Ref<Pool>> {
+    pub fn pool(&self) -> Result<std::cell::Ref<crate::state::MarketManager>> {
         self.pool.load()
     }
     
     /// Get mutable pool reference (only if no reentrancy guard)
-    pub fn pool_mut(&self) -> Result<std::cell::RefMut<Pool>> {
+    pub fn pool_mut(&self) -> Result<std::cell::RefMut<crate::state::MarketManager>> {
         require!(
             self._reentrancy_guard.is_none(),
-            FeelsProtocolError::ReentrancyViolation
+            FeelsProtocolError::ReentrancyDetected
         );
         self.pool.load_mut()
     }
@@ -197,27 +199,18 @@ pub fn validate_swap_params(
 ) -> Result<()> {
     require!(
         amount_in > 0,
-        FeelsProtocolError::InvalidParameter {
-            param: "amount_in".to_string(),
-            reason: "Must be greater than zero".to_string()
-        }
+        FeelsProtocolError::InvalidParameter
     );
     
     require!(
         min_amount_out > 0,
-        FeelsProtocolError::InvalidParameter {
-            param: "min_amount_out".to_string(),
-            reason: "Must be greater than zero".to_string()
-        }
+        FeelsProtocolError::InvalidParameter
     );
     
     if let Some(limit) = sqrt_rate_limit {
         require!(
             limit > 0,
-            FeelsProtocolError::InvalidParameter {
-                param: "sqrt_rate_limit".to_string(),
-                reason: "Must be greater than zero".to_string()
-            }
+            FeelsProtocolError::InvalidParameter
         );
     }
     
@@ -232,18 +225,12 @@ pub fn validate_liquidity_params(
 ) -> Result<()> {
     require!(
         tick_lower < tick_upper,
-        FeelsProtocolError::InvalidParameter {
-            param: "tick_range".to_string(),
-            reason: "Lower tick must be less than upper tick".to_string()
-        }
+        FeelsProtocolError::InvalidParameter
     );
     
     require!(
         liquidity_amount > 0,
-        FeelsProtocolError::InvalidParameter {
-            param: "liquidity_amount".to_string(),
-            reason: "Must be greater than zero".to_string()
-        }
+        FeelsProtocolError::InvalidParameter
     );
     
     // Check tick bounds

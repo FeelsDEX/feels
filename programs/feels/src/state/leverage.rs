@@ -152,10 +152,10 @@ impl RiskProfile {
         (normalized * 7).min(63) as i16
     }
     
-    /// Create risk profile from leverage value with pool context
-    pub fn from_leverage_with_pool(leverage: u64, pool: &crate::state::Pool) -> Result<Self> {
-        // Get leverage parameters from pool
-        let params = pool.leverage_params;
+    /// Create risk profile from leverage value with market context
+    pub fn from_leverage_with_market(leverage: u64, _market_manager: &crate::state::MarketManager) -> Result<Self> {
+        // Get leverage parameters from market manager
+        let params = LeverageParameters::default(); // Use default params for now
         
         Self::from_leverage(leverage, &params)
     }

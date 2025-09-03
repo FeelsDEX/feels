@@ -2,7 +2,7 @@
 /// All values in the market physics model are measured in a single numeraire N
 /// using internal protocol TWAPs, avoiding external oracle dependencies.
 use anchor_lang::prelude::*;
-use std::collections::BTreeMap;
+// use std::collections::BTreeMap; // Unused import
 use crate::error::FeelsProtocolError;
 
 // ============================================================================
@@ -114,14 +114,14 @@ pub struct NumeraireCache {
     /// Protocol numeraire reference
     pub numeraire: Pubkey,
     
-    /// Pool this cache belongs to
-    pub pool: Pubkey,
+    /// Market field this cache belongs to
+    pub market_field: Pubkey,
     
-    /// Token A conversion rate
-    pub rate_a: ConversionRate,
+    /// Token 0 conversion rate
+    pub rate_0: ConversionRate,
     
-    /// Token B conversion rate  
-    pub rate_b: ConversionRate,
+    /// Token 1 conversion rate  
+    pub rate_1: ConversionRate,
     
     /// Additional token rates (for multi-asset pools)
     pub additional_rates: Vec<(Pubkey, ConversionRate)>,
@@ -136,9 +136,9 @@ pub struct NumeraireCache {
 impl NumeraireCache {
     /// Convert token amount to numeraire value
     pub fn to_numeraire(&self, token: &Pubkey, amount: u64) -> Result<u128> {
-        let rate = if token == &self.pool {
-            // Assuming token A for now, should check actual token
-            &self.rate_a
+        let rate = if token == &self.market_field {
+            // Assuming token 0 for now, should check actual token
+            &self.rate_0
         } else {
             // Check additional rates
             self.additional_rates
@@ -165,8 +165,8 @@ impl NumeraireCache {
     
     /// Convert numeraire value to token amount
     pub fn from_numeraire(&self, token: &Pubkey, numeraire_value: u128) -> Result<u64> {
-        let rate = if token == &self.pool {
-            &self.rate_a
+        let rate = if token == &self.market_field {
+            &self.rate_0
         } else {
             self.additional_rates
                 .iter()
@@ -216,7 +216,10 @@ pub struct PriceObservation {
     pub liquidity: u128,
 }
 
-/// Calculate geometric mean TWAP from observations
+/// Calculate geometric mean TWAP from observations - OFF-CHAIN ONLY
+/// This function is provided as a reference but CANNOT be executed on-chain.
+/// Keepers must compute TWAP off-chain and submit results via numeraire_twap module.
+#[cfg(feature = "off-chain-only")]
 pub fn calculate_geometric_twap(
     observations: &[PriceObservation],
     window_start: i64,
@@ -281,38 +284,39 @@ pub fn calculate_geometric_twap(
     calculate_exp_approx(avg_ln_price)
 }
 
-/// Approximate natural log for Q64 fixed-point
+/// Calculate natural log - OFF-CHAIN ONLY
+/// This function is feature-gated and only available for off-chain use.
+/// On-chain code must use numeraire_twap module for TWAP submissions.
+#[cfg(feature = "off-chain-only")]
 fn calculate_ln_approx(x: u128) -> Result<i128> {
-    const Q64: u128 = 1 << 64;
-    
-    // For x close to 1, ln(x) ≈ (x - 1)
-    if x > Q64 {
-        Ok(((x - Q64) as i128)
-            .checked_mul(Q64 as i128)
-            .ok_or(FeelsProtocolError::MathOverflow)?
-            .checked_div(Q64 as i128)
-            .ok_or(FeelsProtocolError::DivisionByZero)?)
-    } else {
-        Ok(-((Q64 - x) as i128)
-            .checked_mul(Q64 as i128)
-            .ok_or(FeelsProtocolError::MathOverflow)?
-            .checked_div(Q64 as i128)
-            .ok_or(FeelsProtocolError::DivisionByZero)?)
-    }
+    // This would use high-precision off-chain math libraries
+    // For example, using f64 or arbitrary precision arithmetic
+    unimplemented!("Use off-chain math libraries for ln calculation")
 }
 
-/// Approximate exponential for Q64 fixed-point
+/// Calculate exponential - OFF-CHAIN ONLY
+/// This function is feature-gated and only available for off-chain use.
+/// On-chain code must use numeraire_twap module for TWAP submissions.
+#[cfg(feature = "off-chain-only")]
 fn calculate_exp_approx(x: i128) -> Result<u128> {
-    const Q64: i128 = 1 << 64;
-    
-    // For small x, e^x ≈ 1 + x
-    let result = Q64
-        .checked_add(x)
-        .ok_or(FeelsProtocolError::MathOverflow)?;
-    
-    require!(result > 0, FeelsProtocolError::InvalidState);
-    
-    Ok(result as u128)
+    // This would use high-precision off-chain math libraries
+    // For example, using f64 or arbitrary precision arithmetic
+    unimplemented!("Use off-chain math libraries for exp calculation")
+}
+
+/// Guard functions to prevent accidental on-chain usage
+#[cfg(not(feature = "off-chain-only"))]
+fn calculate_ln_approx(_x: u128) -> Result<i128> {
+    msg!("Error: ln calculation cannot be performed on-chain");
+    msg!("Use numeraire_twap module to submit pre-calculated TWAP");
+    Err(FeelsProtocolError::InvalidOperation.into())
+}
+
+#[cfg(not(feature = "off-chain-only"))]
+fn calculate_exp_approx(_x: i128) -> Result<u128> {
+    msg!("Error: exp calculation cannot be performed on-chain");
+    msg!("Use numeraire_twap module to submit pre-calculated TWAP");
+    Err(FeelsProtocolError::InvalidOperation.into())
 }
 
 // ============================================================================
@@ -343,7 +347,7 @@ pub struct UpdateNumeraireCache<'info> {
     
     pub numeraire: Account<'info, ProtocolNumeraire>,
     
-    pub pool: AccountLoader<'info, crate::state::Pool>,
+    pub market_field: Account<'info, crate::state::MarketField>,
     
     #[account(mut)]
     pub authority: Signer<'info>,

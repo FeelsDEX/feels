@@ -62,10 +62,10 @@ pub fn is_ticker_restricted(ticker: &str) -> bool {
 ///
 /// # Returns
 /// * `Ok(())` if the ticker is allowed
-/// * `Err(FeelsProtocolError::RestrictedTicker)` if the ticker is restricted
+/// * `Err(FeelsProtocolError::InvalidTokenName)` if the ticker is restricted
 pub fn validate_ticker_not_restricted(ticker: &str) -> Result<()> {
     if is_ticker_restricted(ticker) {
-        return Err(error!(crate::state::FeelsProtocolError::RestrictedTicker));
+        return Err(error!(crate::state::FeelsProtocolError::InvalidTokenName));
     }
     Ok(())
 }
@@ -86,16 +86,16 @@ pub fn validate_ticker_not_restricted(ticker: &str) -> Result<()> {
 pub fn validate_ticker_format(ticker: &str) -> Result<()> {
     // Check length
     if ticker.is_empty() {
-        return Err(error!(crate::state::FeelsProtocolError::InvalidTickerLength));
+        return Err(error!(crate::state::FeelsProtocolError::InvalidTokenName));
     }
 
     if ticker.len() > 12 {
-        return Err(error!(crate::state::FeelsProtocolError::InvalidTickerLength));
+        return Err(error!(crate::state::FeelsProtocolError::InvalidTokenName));
     }
 
     // Check characters - only alphanumeric allowed
     if !ticker.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(error!(crate::state::FeelsProtocolError::InvalidTickerFormat));
+        return Err(error!(crate::state::FeelsProtocolError::InvalidTokenName));
     }
 
     // Check restrictions

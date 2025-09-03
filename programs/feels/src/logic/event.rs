@@ -27,6 +27,61 @@ pub enum LiquidityEventType {
     Remove,
 }
 
+/// Market event types
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+pub enum MarketEventType {
+    Initialized,
+    Configured,
+    Updated,
+    Paused,
+    Resumed,
+    ConfigUpdated,
+    FieldCommitted,
+    FieldUpdated,
+}
+
+// ============================================================================
+// Market Events
+// ============================================================================
+
+/// Emitted when market state changes  
+#[event]
+pub struct MarketEvent {
+    #[index]
+    pub market: Pubkey,
+    pub event_type: MarketEventType,
+    
+    // Token information for audit trail
+    pub token_0_mint: Pubkey,      // Actual token mint A
+    pub token_1_mint: Pubkey,      // Actual token mint B
+    pub token_0_vault: Pubkey,     // Token 0 vault account
+    pub token_1_vault: Pubkey,     // Token 1 vault account
+    
+    // Market state snapshot
+    pub spot_price: u128,
+    pub weights: [u32; 4],
+    pub invariant: u128,
+    
+    // Update metadata for audit chain
+    pub update_source: u8,         // 0=Keeper, 1=Oracle, 2=Pool 
+    pub sequence: u64,             // Update sequence number
+    pub previous_commitment: [u8; 32], // Previous commitment hash
+    
+    pub timestamp: i64,
+}
+
+impl EventBase for MarketEvent {
+    fn pool(&self) -> Pubkey {
+        self.market
+    }
+    fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+    fn actor(&self) -> Pubkey {
+        self.market // Market events don't have a specific actor
+    }
+}
+
 // ============================================================================
 // Oracle Update Events
 // ============================================================================
@@ -69,8 +124,8 @@ impl EventBase for OracleUpdateEvent {
 pub struct PoolInitialized {
     #[index]
     pub pool: Pubkey,
-    pub token_a_mint: Pubkey,
-    pub token_b_mint: Pubkey,
+    pub token_0_mint: Pubkey,
+    pub token_1_mint: Pubkey,
     pub fee_rate: u16,
     pub tick_spacing: i16,
     pub initial_sqrt_rate: u128,
@@ -112,11 +167,28 @@ pub struct SwapEvent {
     #[index]
     pub pool: Pubkey,
     pub user: Pubkey,
+    
+    // Token information for audit trail
+    pub token_in_mint: Pubkey,
+    pub token_out_mint: Pubkey,
+    pub zero_for_one: bool,
+    
+    // Amounts and fees
     pub amount_in: u64,
     pub amount_out: u64,
-    pub sqrt_rate_after: u128,
-    pub tick_after: i32,
     pub fee: u64,
+    pub protocol_fee: u64,
+    
+    // Market impact
+    pub sqrt_rate_before: u128,
+    pub sqrt_rate_after: u128,
+    pub tick_before: i32,
+    pub tick_after: i32,
+    
+    // Work calculation data
+    pub work_computed: i128,
+    pub field_commitment_used: [u8; 32],
+    
     pub timestamp: i64,
 }
 
@@ -179,8 +251,8 @@ pub struct LiquidityEvent {
     pub pool: Pubkey,
     pub position: Pubkey,
     pub liquidity_delta: i128,
-    pub amount_a: u64,
-    pub amount_b: u64,
+    pub amount_0: u64,
+    pub amount_1: u64,
     pub tick_lower: i32,
     pub tick_upper: i32,
     pub event_type: LiquidityEventType,
@@ -209,8 +281,8 @@ pub struct FeeCollectionEvent {
     #[index]
     pub pool: Pubkey,
     pub position: Pubkey,
-    pub amount_a: u64,
-    pub amount_b: u64,
+    pub amount_0: u64,
+    pub amount_1: u64,
     pub timestamp: i64,
 }
 
@@ -232,8 +304,8 @@ pub struct ProtocolFeeCollectionEvent {
     #[index]
     pub pool: Pubkey,
     pub collector: Pubkey,
-    pub amount_a: u64,
-    pub amount_b: u64,
+    pub amount_0: u64,
+    pub amount_1: u64,
     pub timestamp: i64,
 }
 
@@ -328,6 +400,100 @@ pub struct TickArrayCleanedUpEvent {
 }
 
 // ============================================================================
+// Field Commitment Events
+// ============================================================================
+
+/// Emitted when a field commitment is updated with hash
+#[event]
+#[allow(non_snake_case)]
+pub struct FieldCommitmentEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub commitment_hash: [u8; 32],
+    pub sequence_number: u64,
+    
+    // Market scalars for audit trail  
+    pub S: u128,
+    pub T: u128,
+    pub L: u128,
+    
+    // Commitment parameters for off-chain verification
+    pub gap_bps: u64,              // Optimality gap in basis points
+    pub lipschitz_L: u64,          // Lipschitz constant
+    pub expires_at: i64,           // Commitment expiration timestamp
+    
+    // Domain weights for field verification
+    pub weights: [u32; 4],         // [w_s, w_t, w_l, w_tau] 
+    pub omega_weights: [u32; 2],   // [omega_0, omega_1]
+    
+    // Data source info for audit trail
+    pub data_source: Pubkey,       // MarketDataSource account
+    pub provider: Pubkey,          // Primary/secondary provider
+    
+    pub authority: Pubkey,
+    pub timestamp: i64,
+}
+
+/// Emitted for detailed market update auditing
+#[event]
+pub struct MarketUpdateAuditEvent {
+    #[index]
+    pub pool: Pubkey,
+    
+    // Validation results
+    pub validation_passed: bool,
+    pub staleness_check: bool,
+    pub sequence_check: bool,
+    pub authority_check: bool,
+    
+    // Change metrics (in basis points)
+    pub scalar_changes_bps: [u32; 3], // [S, T, L] changes in bps
+    pub max_allowed_change_bps: u32,
+    
+    // Verification proof summary
+    pub proof_provided: bool,
+    pub convex_bound_verified: bool,
+    pub lipschitz_verified: bool,
+    pub merkle_verified: bool,
+    
+    // Timing data for monitoring
+    pub update_frequency: i64,
+    pub time_since_last: i64,
+    pub data_age: i64,
+    
+    pub timestamp: i64,
+}
+
+/// Emitted when field verification is performed
+#[event]
+pub struct FieldVerificationEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub commitment_hash: [u8; 32],
+    
+    // Verification details
+    pub verification_type: u8,     // 0=Basic, 1=Enhanced, 2=Full
+    pub proof_hash: [u8; 32],      // Hash of verification proof
+    
+    // Bounds verification results
+    pub convex_points_checked: u32,
+    pub lipschitz_samples: u32,
+    pub optimality_gap_bps: u64,
+    
+    // Coefficient verification (if applicable)
+    pub has_local_coefficients: bool,
+    pub coefficient_root: Option<[u8; 32]>,
+    pub merkle_path_length: u8,
+    
+    // Validation outcome
+    pub all_checks_passed: bool,
+    pub failure_reason: Option<String>,
+    
+    pub verifier: Pubkey,
+    pub timestamp: i64,
+}
+
+// ============================================================================
 // Token Management Events
 // ============================================================================
 
@@ -387,8 +553,8 @@ impl EventAggregator {
         let mut total_volume_b = 0u128;
 
         for event in swap_events {
-            // For zero_for_one swaps: amount_in is token_a, amount_out is token_b
-            // For one_for_zero swaps: amount_in is token_b, amount_out is token_a
+            // For zero_for_one swaps: amount_in is token_0, amount_out is token_1
+            // For one_for_zero swaps: amount_in is token_1, amount_out is token_0
             if event.zero_for_one {
                 total_volume_a = total_volume_a.saturating_add(event.amount_in as u128);
                 total_volume_b = total_volume_b.saturating_add(event.amount_out as u128);
@@ -500,21 +666,43 @@ pub enum OrderEventType {
 
 /// Emitted when a 3D order is created or executed
 #[event]
-pub struct OrderEvent {
+pub struct OrderCreatedEvent {
     #[index]
     pub pool: Pubkey,
     pub user: Pubkey,
-    pub order_type: OrderEventType,
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub rate_tick: i32,
+    pub order_id: u64,
+    pub amount: u64,
+    pub rate: u128,
     pub duration: Duration,
     pub leverage: u64,
-    pub fees_paid: u64,
     pub timestamp: i64,
 }
 
-impl EventBase for OrderEvent {
+/// Emitted when an order is modified
+#[event]
+pub struct OrderModifiedEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub user: Pubkey,
+    pub order_id: u64,
+    pub new_amount: u64,
+    pub new_leverage: u64,
+    pub timestamp: i64,
+}
+
+impl EventBase for OrderCreatedEvent {
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
+    fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+    fn actor(&self) -> Pubkey {
+        self.user
+    }
+}
+
+impl EventBase for OrderModifiedEvent {
     fn pool(&self) -> Pubkey {
         self.pool
     }
@@ -650,5 +838,247 @@ impl EventBase for VaultWithdrawEvent {
     }
     fn actor(&self) -> Pubkey {
         self.user
+    }
+}
+
+// ============================================================================
+// Rebase Events
+// ============================================================================
+
+/// Rebase event types
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+pub enum RebaseEventType {
+    LendingRebase,
+    LeverageRebase,
+    WeightRebase,
+}
+
+/// Emitted when rebase indices are updated
+#[event]
+pub struct RebaseEvent {
+    #[index]
+    pub pool: Pubkey,
+    pub event_type: RebaseEventType,
+    pub index_0: u128,
+    pub index_1: u128,
+    pub funding_index_long: u128,
+    pub funding_index_short: u128,
+    pub timestamp: i64,
+    pub authority: Pubkey,
+}
+
+impl EventBase for RebaseEvent {
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
+    fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+    fn actor(&self) -> Pubkey {
+        self.authority
+    }
+}
+
+// ============================================================================
+// Event Helper Functions
+// ============================================================================
+
+/// Helper functions for creating events with comprehensive audit data
+pub struct EventHelpers;
+
+impl EventHelpers {
+    /// Create field commitment event with all audit data
+    #[allow(non_snake_case, clippy::too_many_arguments)]
+    pub fn create_field_commitment_event(
+        pool: Pubkey,
+        commitment_hash: [u8; 32],
+        sequence_number: u64,
+        S: u128,
+        T: u128, 
+        L: u128,
+        gap_bps: u64,
+        lipschitz_L: u64,
+        expires_at: i64,
+        weights: [u32; 4],
+        omega_weights: [u32; 2],
+        data_source: Pubkey,
+        provider: Pubkey,
+        authority: Pubkey,
+    ) -> FieldCommitmentEvent {
+        FieldCommitmentEvent {
+            pool,
+            commitment_hash,
+            sequence_number,
+            S,
+            T,
+            L,
+            gap_bps,
+            lipschitz_L,
+            expires_at,
+            weights,
+            omega_weights,
+            data_source,
+            provider,
+            authority,
+            timestamp: Clock::get().map(|c| c.unix_timestamp).unwrap_or(0),
+        }
+    }
+    
+    /// Create market event with actual token information
+    pub fn create_market_event(
+        market: Pubkey,
+        event_type: MarketEventType,
+        token_0_mint: Pubkey,
+        token_1_mint: Pubkey,
+        token_0_vault: Pubkey,
+        token_1_vault: Pubkey,
+        spot_price: u128,
+        weights: [u32; 4],
+        invariant: u128,
+        update_source: u8,
+        sequence: u64,
+        previous_commitment: [u8; 32],
+    ) -> MarketEvent {
+        MarketEvent {
+            market,
+            event_type,
+            token_0_mint,
+            token_1_mint,
+            token_0_vault,
+            token_1_vault,
+            spot_price,
+            weights,
+            invariant,
+            update_source,
+            sequence,
+            previous_commitment,
+            timestamp: Clock::get().map(|c| c.unix_timestamp).unwrap_or(0),
+        }
+    }
+    
+    /// Create enhanced swap event with token mints and work data
+    pub fn create_swap_event(
+        pool: Pubkey,
+        user: Pubkey,
+        token_in_mint: Pubkey,
+        token_out_mint: Pubkey,
+        zero_for_one: bool,
+        amount_in: u64,
+        amount_out: u64,
+        fee: u64,
+        protocol_fee: u64,
+        sqrt_rate_before: u128,
+        sqrt_rate_after: u128,
+        tick_before: i32,
+        tick_after: i32,
+        work_computed: i128,
+        field_commitment_used: [u8; 32],
+    ) -> SwapEvent {
+        SwapEvent {
+            pool,
+            user,
+            token_in_mint,
+            token_out_mint,
+            zero_for_one,
+            amount_in,
+            amount_out,
+            fee,
+            protocol_fee,
+            sqrt_rate_before,
+            sqrt_rate_after,
+            tick_before,
+            tick_after,
+            work_computed,
+            field_commitment_used,
+            timestamp: Clock::get().map(|c| c.unix_timestamp).unwrap_or(0),
+        }
+    }
+    
+    /// Create market update audit event
+    pub fn create_audit_event(
+        pool: Pubkey,
+        validation_passed: bool,
+        staleness_check: bool,
+        sequence_check: bool,
+        authority_check: bool,
+        scalar_changes_bps: [u32; 3],
+        max_allowed_change_bps: u32,
+        proof_provided: bool,
+        convex_bound_verified: bool,
+        lipschitz_verified: bool,
+        merkle_verified: bool,
+        update_frequency: i64,
+        time_since_last: i64,
+        data_age: i64,
+    ) -> MarketUpdateAuditEvent {
+        MarketUpdateAuditEvent {
+            pool,
+            validation_passed,
+            staleness_check,
+            sequence_check,
+            authority_check,
+            scalar_changes_bps,
+            max_allowed_change_bps,
+            proof_provided,
+            convex_bound_verified,
+            lipschitz_verified,
+            merkle_verified,
+            update_frequency,
+            time_since_last,
+            data_age,
+            timestamp: Clock::get().map(|c| c.unix_timestamp).unwrap_or(0),
+        }
+    }
+    
+    /// Create field verification event
+    pub fn create_verification_event(
+        pool: Pubkey,
+        commitment_hash: [u8; 32],
+        verification_type: u8,
+        proof_hash: [u8; 32],
+        convex_points_checked: u32,
+        lipschitz_samples: u32,
+        optimality_gap_bps: u64,
+        has_local_coefficients: bool,
+        coefficient_root: Option<[u8; 32]>,
+        merkle_path_length: u8,
+        all_checks_passed: bool,
+        failure_reason: Option<String>,
+        verifier: Pubkey,
+    ) -> FieldVerificationEvent {
+        FieldVerificationEvent {
+            pool,
+            commitment_hash,
+            verification_type,
+            proof_hash,
+            convex_points_checked,
+            lipschitz_samples,
+            optimality_gap_bps,
+            has_local_coefficients,
+            coefficient_root,
+            merkle_path_length,
+            all_checks_passed,
+            failure_reason,
+            verifier,
+            timestamp: Clock::get().map(|c| c.unix_timestamp).unwrap_or(0),
+        }
+    }
+    
+    /// Calculate commitment digest for audit purposes
+    pub fn calculate_commitment_digest(
+        commitment_hash: [u8; 32],
+        gap_bps: u64,
+        lipschitz_L: u64,
+        expires_at: i64,
+    ) -> [u8; 32] {
+        use anchor_lang::solana_program::hash::{hash, Hash};
+        
+        let mut data = Vec::new();
+        data.extend_from_slice(&commitment_hash);
+        data.extend_from_slice(&gap_bps.to_le_bytes());
+        data.extend_from_slice(&lipschitz_L.to_le_bytes());
+        data.extend_from_slice(&expires_at.to_le_bytes());
+        
+        hash(&data).to_bytes()
     }
 }

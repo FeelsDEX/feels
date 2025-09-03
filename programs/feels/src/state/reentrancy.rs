@@ -4,6 +4,7 @@
 /// reentrancy attacks through cross-program invocations.
 
 use anchor_lang::prelude::*;
+use crate::error::FeelsError;
 use crate::state::FeelsProtocolError;
 
 // ============================================================================
@@ -23,14 +24,14 @@ pub enum ReentrancyStatus {
 }
 
 impl TryFrom<u8> for ReentrancyStatus {
-    type Error = crate::state::FeelsProtocolError;
+    type Error = crate::error::FeelsError;
 
     fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
         match value {
             0 => Ok(ReentrancyStatus::Unlocked),
             1 => Ok(ReentrancyStatus::Locked),
             2 => Ok(ReentrancyStatus::HookExecuting),
-            _ => Err(crate::state::FeelsProtocolError::InvalidAmount),
+            _ => Err(FeelsError::StateError),
         }
     }
 }
@@ -118,7 +119,7 @@ impl<'a> ScopedReentrancyGuard<'a> {
             *self.status = ReentrancyStatus::HookExecuting;
             Ok(())
         } else {
-            Err(FeelsProtocolError::InvalidReentrancyState.into())
+            Err(FeelsError::StateError.into())
         }
     }
 }

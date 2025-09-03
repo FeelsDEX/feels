@@ -5,7 +5,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Transfer;
-use crate::state::Pool;
+// use crate::state::MarketField; // Unused import
 use crate::utils::deterministic_seed::CanonicalSeeds;
 
 // ============================================================================
@@ -49,12 +49,12 @@ impl<'info> TransferParams<'info> {
         pool_authority: AccountInfo<'info>,
         token_program: AccountInfo<'info>,
         amount: u64,
-        pool: &Pool,
+        pool: &crate::state::MarketManager,
         pool_bump: u8,
     ) -> Self {
         let pool_seeds = CanonicalSeeds::get_pool_seeds(
-            &pool.token_a_mint,
-            &pool.token_b_mint,
+            &pool.token_0_mint,
+            &pool.token_1_mint,
             pool.fee_rate,
             pool_bump,
         );
@@ -174,7 +174,7 @@ pub fn transfer_from_user_to_pool<'info>(
 }
 
 // ============================================================================
-// Pool Transfer Helpers
+// crate::state::MarketManager Transfer Helpers
 // ============================================================================
 
 /// Transfer tokens from pool vault to user account
@@ -185,13 +185,13 @@ pub fn transfer_from_pool_to_user<'info>(
     pool_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
     amount: u64,
-    pool: &Pool,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     // Get pool seeds for PDA signing
     let pool_seeds = CanonicalSeeds::get_pool_seeds(
-        &pool.token_a_mint,
-        &pool.token_b_mint,
+        &pool.token_0_mint,
+        &pool.token_1_mint,
         pool.fee_rate,
         pool_bump,
     );
@@ -217,13 +217,13 @@ pub fn transfer_from_pool<'info>(
     pool_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
     amount: u64,
-    pool: &Pool,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     // Get pool seeds for PDA signing
     let pool_seeds = CanonicalSeeds::get_pool_seeds(
-        &pool.token_a_mint,
-        &pool.token_b_mint,
+        &pool.token_0_mint,
+        &pool.token_1_mint,
         pool.fee_rate,
         pool_bump,
     );
@@ -252,31 +252,31 @@ pub use self::transfer_from_user_to_pool as transfer_tokens_to_pool;
 /// Transfer both tokens from user to pool (for liquidity additions)
 #[allow(clippy::too_many_arguments)]
 pub fn transfer_pair_from_user_to_pool<'info>(
-    user_token_a: AccountInfo<'info>,
-    user_token_b: AccountInfo<'info>,
+    user_token_0: AccountInfo<'info>,
+    user_token_1: AccountInfo<'info>,
     pool_vault_a: AccountInfo<'info>,
     pool_vault_b: AccountInfo<'info>,
     user_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
-    amount_a: u64,
-    amount_b: u64,
+    amount_0: u64,
+    amount_1: u64,
 ) -> Result<()> {
     // Transfer token a
     transfer_from_user_to_pool(
-        user_token_a,
+        user_token_0,
         pool_vault_a,
         user_authority.clone(),
         token_program.clone(),
-        amount_a,
+        amount_0,
     )?;
 
     // Transfer token b
     transfer_from_user_to_pool(
-        user_token_b,
+        user_token_1,
         pool_vault_b,
         user_authority,
         token_program,
-        amount_b,
+        amount_1,
     )
 }
 
@@ -285,36 +285,36 @@ pub fn transfer_pair_from_user_to_pool<'info>(
 pub fn transfer_pair_from_pool_to_user<'info>(
     pool_vault_a: AccountInfo<'info>,
     pool_vault_b: AccountInfo<'info>,
-    user_token_a: AccountInfo<'info>,
-    user_token_b: AccountInfo<'info>,
+    user_token_0: AccountInfo<'info>,
+    user_token_1: AccountInfo<'info>,
     pool_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
-    amount_a: u64,
-    amount_b: u64,
-    pool: &Pool,
+    amount_0: u64,
+    amount_1: u64,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     // Transfer token a if amount > 0
-    if amount_a > 0 {
+    if amount_0 > 0 {
         transfer_from_pool_to_user(
             pool_vault_a,
-            user_token_a,
+            user_token_0,
             pool_authority.clone(),
             token_program.clone(),
-            amount_a,
+            amount_0,
             pool,
             pool_bump,
         )?;
     }
 
     // Transfer token b if amount > 0
-    if amount_b > 0 {
+    if amount_1 > 0 {
         transfer_from_pool_to_user(
             pool_vault_b,
-            user_token_b,
+            user_token_1,
             pool_authority,
             token_program,
-            amount_b,
+            amount_1,
             pool,
             pool_bump,
         )?;
@@ -331,32 +331,32 @@ pub fn transfer_pair_from_pool_to_user<'info>(
 /// Handles both directions (token 0 to 1, or token 1 to 0)
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap_transfers<'info>(
-    user_token_a: AccountInfo<'info>,
-    user_token_b: AccountInfo<'info>,
-    pool_token_a: AccountInfo<'info>,
-    pool_token_b: AccountInfo<'info>,
+    user_token_0: AccountInfo<'info>,
+    user_token_1: AccountInfo<'info>,
+    pool_token_0: AccountInfo<'info>,
+    pool_token_1: AccountInfo<'info>,
     user_authority: AccountInfo<'info>,
     pool_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
     amount_in: u64,
     amount_out: u64,
     is_token_a_to_b: bool,
-    pool: &Pool,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     if is_token_a_to_b {
-        // User pays token A, receives token B
+        // User pays token 0, receives token 1
         transfer_from_user_to_pool(
-            user_token_a,
-            pool_token_a,
+            user_token_0,
+            pool_token_0,
             user_authority,
             token_program.clone(),
             amount_in,
         )?;
 
         transfer_from_pool_to_user(
-            pool_token_b,
-            user_token_b,
+            pool_token_1,
+            user_token_1,
             pool_authority,
             token_program,
             amount_out,
@@ -364,18 +364,18 @@ pub fn execute_swap_transfers<'info>(
             pool_bump,
         )
     } else {
-        // User pays token B, receives token A
+        // User pays token 1, receives token 0
         transfer_from_user_to_pool(
-            user_token_b,
-            pool_token_b,
+            user_token_1,
+            pool_token_1,
             user_authority,
             token_program.clone(),
             amount_in,
         )?;
 
         transfer_from_pool_to_user(
-            pool_token_a,
-            user_token_a,
+            pool_token_0,
+            user_token_0,
             pool_authority,
             token_program,
             amount_out,
@@ -399,32 +399,32 @@ pub fn collect_protocol_fees<'info>(
     recipient_b: AccountInfo<'info>,
     pool_authority: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
-    amount_a: u64,
-    amount_b: u64,
-    pool: &Pool,
+    amount_0: u64,
+    amount_1: u64,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     // Collect fee for token a
-    if amount_a > 0 {
+    if amount_0 > 0 {
         transfer_from_pool(
             pool_vault_a,
             recipient_a,
             pool_authority.clone(),
             token_program.clone(),
-            amount_a,
+            amount_0,
             pool,
             pool_bump,
         )?;
     }
 
     // Collect fee for token b
-    if amount_b > 0 {
+    if amount_1 > 0 {
         transfer_from_pool(
             pool_vault_b,
             recipient_b,
             pool_authority,
             token_program,
-            amount_b,
+            amount_1,
             pool,
             pool_bump,
         )?;
@@ -450,7 +450,7 @@ pub fn execute_single_hop_swap<'info>(
     token_program: AccountInfo<'info>,
     amount_in: u64,
     amount_out: u64,
-    pool: &Pool,
+    pool: &crate::state::MarketManager,
     pool_bump: u8,
 ) -> Result<()> {
     // Transfer input from user to pool
@@ -491,9 +491,9 @@ pub fn execute_two_hop_swap<'info>(
     amount_in: u64,
     intermediate_amount: u64,
     final_amount: u64,
-    pool_1: &Pool,
+    pool_1: &crate::state::MarketManager,
     pool_1_bump: u8,
-    pool_2: &Pool,
+    pool_2: &crate::state::MarketManager,
     pool_2_bump: u8,
 ) -> Result<()> {
     // Step 1: Transfer input from user to pool 1
@@ -507,8 +507,8 @@ pub fn execute_two_hop_swap<'info>(
 
     // Step 2: Transfer intermediate token from pool 1 to pool 2
     let pool_1_seeds = CanonicalSeeds::get_pool_seeds(
-        &pool_1.token_a_mint,
-        &pool_1.token_b_mint,
+        &pool_1.token_0_mint,
+        &pool_1.token_1_mint,
         pool_1.fee_rate,
         pool_1_bump,
     );

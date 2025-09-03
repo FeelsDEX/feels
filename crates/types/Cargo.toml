@@ -1,0 +1,25 @@
+[package]
+name = "feels-types"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types and interfaces for the Feels Protocol"
+license = "MIT"
+
+[dependencies]
+# Core Solana dependencies
+anchor-lang = { workspace = true }
+solana-program = { workspace = true }
+borsh = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Math
+fixed = { workspace = true }
+num-traits = { workspace = true }
+
+[features]
+default = []
+client = []  # Enable client-side features
+keeper = []  # Enable keeper-side features

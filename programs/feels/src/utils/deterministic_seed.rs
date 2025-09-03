@@ -15,7 +15,7 @@ pub struct CanonicalSeeds;
 
 impl CanonicalSeeds {
     /// Sort two token mints into canonical order for consistent PDA derivation
-    /// Returns (token_a, token_b) where token_a < token_b by byte comparison
+    /// Returns (token_0, token_1) where token_0 < token_1 by byte comparison
     pub fn sort_token_mints(mint_a: &Pubkey, mint_b: &Pubkey) -> (Pubkey, Pubkey) {
         match mint_a.as_ref().cmp(mint_b.as_ref()) {
             Ordering::Less => (*mint_a, *mint_b),
@@ -64,9 +64,9 @@ impl CanonicalSeeds {
     }
 
     /// Validate that tokens are in canonical order
-    pub fn validate_canonical_order(token_a: &Pubkey, token_b: &Pubkey) -> Result<()> {
+    pub fn validate_canonical_order(token_0: &Pubkey, token_1: &Pubkey) -> Result<()> {
         require!(
-            token_a.as_ref() <= token_b.as_ref(),
+            token_0.as_ref() <= token_1.as_ref(),
             FeelsProtocolError::NonCanonicalTokenOrder
         );
         Ok(())

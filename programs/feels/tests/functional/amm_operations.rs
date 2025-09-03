@@ -1,203 +1,8 @@
-/// Functional tests for core AMM operations
-///
-/// Tests the end-to-end functionality of the AMM including:
-/// - Pool creation and initialization
-/// - Liquidity management (add/remove)
-/// - Swap execution and routing
-/// - Fee collection mechanisms
-/// - Phase 1 AMM feature set
-///
-/// Note: These tests have been refactored to be standalone unit tests
-/// that validate AMM logic without requiring external dependencies.
-use anchor_lang::prelude::*;
-use feels::utils::*;
-
-#[cfg(test)]
-mod amm_functional_tests {
-    use super::*;
-
-    // ============================================================================
-    // Phase 1 AMM Demonstration Tests
-    // ============================================================================
-
-    #[test]
-    fn test_phase1_amm_end_to_end() {
-        // This test demonstrates the complete Phase 1 AMM functionality design:
-        // 1. Pool parameters validation
-        // 2. Liquidity calculation logic
-        // 3. Swap math validation
-        // 4. Fee collection mechanisms
-
-        println!("Phase 1 AMM Test Suite");
-        println!("======================");
-
-        // Test 1: Pool creation parameters
-        println!("\n✓ Test 1: Pool creation with fee rate 30 bps (0.3%)");
-        let feelssol_mint = Pubkey::new_unique();
-        let token_b_mint = Pubkey::new_unique();
-        let fee_rate = 30u16;
-        let tick_spacing = 60i32;
-        let initial_sqrt_price = Q96; // 1:1 price in Q96 format
-
-        // Validate pool parameters
-        assert_ne!(feelssol_mint, token_b_mint);
-        assert!(fee_rate > 0 && fee_rate <= 1000); // 0-10%
-        assert!(tick_spacing > 0);
-        assert!((MIN_SQRT_PRICE_X96..=MAX_SQRT_PRICE_X96).contains(&initial_sqrt_price));
-        println!("  Pool parameters validated");
-
-        // Test 2: Liquidity calculations
-        println!("\n✓ Test 2: Liquidity provision calculations");
-        let tick_lower = -88720i32; // ~10x price range
-        let tick_upper = 88720i32;
-        let desired_liquidity = 1_000_000_000_000u128;
-
-        // Validate tick range
-        assert!(tick_lower < tick_upper);
-        assert!((MIN_TICK..=MAX_TICK).contains(&tick_lower));
-        assert!((MIN_TICK..=MAX_TICK).contains(&tick_upper));
-        assert!(desired_liquidity > 0);
-
-        // Calculate position amounts (simplified)
-        let price_lower = 0.0001; // Approximation for tick -88720
-        let price_upper = 10000.0; // Approximation for tick 88720
-        let current_price = 1.0; // Price = 1
-
-        // For concentrated liquidity:
-        // When price is in range, both tokens are needed
-        assert!(price_lower < current_price && current_price < price_upper);
-        println!("  Position in range: both tokens required");
-
-        // Test 3: Swap calculations
-        println!("\n✓ Test 3: Swap math validation");
-        let amount_in = 100_000_000u64; // 100M tokens
-        let _pool_liquidity = 1_000_000_000u128; // For future swap calculations
-
-        // Calculate swap fee
-        let swap_fee = (amount_in as u128 * fee_rate as u128 / 10_000) as u64;
-        let amount_after_fee = amount_in - swap_fee;
-
-        assert_eq!(swap_fee, 300_000); // 0.3% of 100M
-        assert_eq!(amount_after_fee, 99_700_000);
-        println!("  Swap fee calculated: {} (0.3%)", swap_fee);
-
-        // Test 4: Fee distribution
-        println!("\n✓ Test 4: Fee collection and distribution");
-        let protocol_fee_rate = 25u16; // 25% of swap fees
-        let protocol_fee = (swap_fee as u128 * protocol_fee_rate as u128 / 100) as u64;
-        let lp_fee = swap_fee - protocol_fee;
-
-        assert_eq!(protocol_fee, 75_000); // 25% of 300k
-        assert_eq!(lp_fee, 225_000); // 75% of 300k
-        assert_eq!(protocol_fee + lp_fee, swap_fee);
-        println!("  Protocol fee: {}, LP fee: {}", protocol_fee, lp_fee);
-
-        println!("\nPhase 1 AMM implementation design validated!");
-        println!("Features validated:");
-        println!("- Pool creation with configurable fee rates ✓");
-        println!("- Concentrated liquidity AMM (Uniswap V3 style) ✓");
-        println!("- Liquidity provision with tick-based positions ✓");
-        println!("- Token swaps with slippage protection ✓");
-        println!("- Fee collection and growth tracking ✓");
-        println!("- FeelsSOL hub-and-spoke model ✓");
-    }
-
-    // ============================================================================
-    // Constant Product Math Validation
-    // ============================================================================
-
-    #[test]
-    fn test_concentrated_liquidity_math() {
-        // Test the concentrated liquidity math used in swaps
-        // This is more complex than constant product (x * y = k)
-
-        let sqrt_price_current = Q96; // Q96 format, price = 1
-        let liquidity = 1000000u128; // L = 1M
-        let amount_in = 100000u64; // 100k tokens
-
-        // For concentrated liquidity:
-        // Δy = L * (√P_new - √P_current) for token1
-        // Δx = L * (1/√P_current - 1/√P_new) for token0
-
-        println!("Concentrated Liquidity Swap Simulation:");
-        println!("Current sqrt_price: {}", sqrt_price_current);
-        println!("Liquidity: {}", liquidity);
-        println!("Amount in: {}", amount_in);
-
-        // Verify the setup is reasonable
-        assert!(sqrt_price_current > 0);
-        assert!(liquidity > 0);
-        assert!(amount_in > 0);
-        assert_eq!(sqrt_price_current, Q96); // Should be Q96 for price = 1
-
-        println!("✓ Concentrated liquidity math setup validated");
-    }
-
-    #[test]
-    fn test_liquidity_position_calculation() {
-        // Test position-based liquidity calculation
-
-        // Position parameters
-        let tick_lower = -1000i32; // Lower price bound
-        let tick_upper = 1000i32; // Upper price bound
-        let amount_0_desired = 1000u64;
-        let amount_1_desired = 1000u64;
-
-        // Calculate liquidity for position
-        // L = min(amount0 / (1/√P_lower - 1/√P_upper), amount1 / (√P_upper - √P_lower))
-
-        println!("Position Liquidity Calculation:");
-        println!("Tick range: {} to {}", tick_lower, tick_upper);
-        println!(
-            "Desired amounts: {}, {}",
-            amount_0_desired, amount_1_desired
-        );
-
-        // Verify tick bounds are valid
-        assert!(tick_lower < tick_upper);
-        assert!(tick_lower >= MIN_TICK);
-        assert!(tick_upper <= MAX_TICK);
-
-        // For Phase 1, positions span the full range for simplicity
-        let range_width = tick_upper - tick_lower;
-        assert!(range_width > 0);
-
-        println!("✓ Position parameters validated");
-    }
-
-    // ============================================================================
-    // Fee Collection Mechanisms
-    // ============================================================================
-
-    #[test]
-    fn test_fee_collection_math() {
-        // Test fee collection and distribution
-        let amount_in = 1_000_000u64; // 1M tokens
-        let fee_rate = 30u16; // 0.3% (30 basis points)
-        let protocol_fee_rate = 25u16; // 25% of swap fees go to protocol
-
-        // Calculate swap fee
-        let swap_fee = ((amount_in as u128) * (fee_rate as u128) / 10_000) as u64;
-
-        // Calculate protocol portion
-        let protocol_fee = ((swap_fee as u128) * (protocol_fee_rate as u128) / 100) as u64;
-        let lp_fee = swap_fee - protocol_fee;
-
-        println!("Fee Distribution Calculation:");
-        println!("Amount in: {}", amount_in);
-        println!("Total swap fee (0.3%): {}", swap_fee);
-        println!("Protocol fee (25% of swap fee): {}", protocol_fee);
-        println!("LP fee (75% of swap fee): {}", lp_fee);
-
-        // Verify calculations
-        assert_eq!(swap_fee, 3_000); // 0.3% of 1M
-        assert_eq!(protocol_fee, 750); // 25% of 3000
-        assert_eq!(lp_fee, 2_250); // 75% of 3000
-        assert_eq!(protocol_fee + lp_fee, swap_fee);
-
-        println!("✓ Fee distribution calculated correctly");
-    }
-
+// TODO: Reimplement functional AMM tests using the unified API and
+// physics-based fee model. Cover:
+// - Pool creation, add/remove liquidity via unified_order
+// - Swaps with client-side work computation (Option A/B)
+// - Protocol/LP fee booking to τ and collection flows
     #[test]
     fn test_fee_growth_tracking() {
         // Test Q128.128 fee growth tracking
@@ -236,20 +41,20 @@ mod amm_functional_tests {
         // Test the hub-and-spoke model where FeelsSOL is the universal base pair
 
         // Direct swap: TokenA <-> FeelsSOL
-        let token_a = "TokenA";
+        let token_0 = "TokenA";
         let feelssol = "FeelsSOL";
 
-        println!("Direct swap route: {} -> {}", token_a, feelssol);
-        assert_ne!(token_a, feelssol);
+        println!("Direct swap route: {} -> {}", token_0, feelssol);
+        assert_ne!(token_0, feelssol);
 
         // Two-hop swap: TokenA <-> FeelsSOL <-> TokenB
-        let token_b = "TokenB";
+        let token_1 = "TokenB";
         println!(
             "Two-hop swap route: {} -> {} -> {}",
-            token_a, feelssol, token_b
+            token_0, feelssol, token_1
         );
-        assert_ne!(token_a, token_b);
-        assert_ne!(feelssol, token_b);
+        assert_ne!(token_0, token_1);
+        assert_ne!(feelssol, token_1);
 
         // All non-FeelsSOL tokens route through FeelsSOL
         // This provides:

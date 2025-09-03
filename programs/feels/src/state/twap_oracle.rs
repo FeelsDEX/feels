@@ -37,6 +37,15 @@ pub struct TwapOracle {
     /// Number of valid observations
     pub observation_count: u8,
     
+    /// Current observation index (legacy compatibility)
+    pub observation_index: u16,
+    
+    /// Current cardinality
+    pub observation_cardinality: u16,
+    
+    /// Next cardinality
+    pub observation_cardinality_next: u16,
+    
     /// Minimum TWAP window (seconds)
     pub min_twap_window: i64,
     
@@ -46,8 +55,35 @@ pub struct TwapOracle {
     /// Last update timestamp
     pub last_update: i64,
     
+    /// Cumulative price for token 0 (for TWAP calculation)
+    pub price_cumulative_0: u128,
+    
+    /// Cumulative price for token 1 (for TWAP calculation)
+    pub price_cumulative_1: u128,
+    
+    /// 5-minute volatility estimate (basis points)
+    pub volatility_5min: u64,
+    
+    /// 24-hour volatility estimate (basis points)
+    pub volatility_24hr: u64,
+    
+    /// 1-hour TWAP for token 0
+    pub twap_1hr_a: u128,
+    
+    /// 1-hour TWAP for token 1
+    pub twap_1hr_b: u128,
+    
+    /// 5-minute TWAP for token 0
+    pub twap_5min_a: u128,
+    
+    /// 5-minute TWAP for token 1
+    pub twap_5min_b: u128,
+    
+    /// TWAP B per A ratio
+    pub twap_1_per_0: u128,
+    
     /// Reserved for future use
-    pub _reserved: [u8; 64],
+    pub _reserved: [u8; 16],
 }
 
 /// Single price observation
@@ -112,17 +148,12 @@ impl TwapOracle {
         // Validate window
         require!(
             window >= self.min_twap_window && window <= self.max_twap_window,
-            FeelsProtocolError::InvalidParameter {
-                param: "TWAP window".to_string(),
-                reason: "Outside allowed range".to_string()
-            }
+            FeelsProtocolError::InvalidParameter
         );
         
         require!(
             self.observation_count > 0,
-            FeelsProtocolError::InsufficientData {
-                reason: "No price observations".to_string()
-            }
+            FeelsProtocolError::InsufficientData
         );
         
         let window_start = current_time - window;
@@ -181,14 +212,12 @@ impl TwapOracle {
         
         require!(
             total_time > 0,
-            FeelsProtocolError::InsufficientData {
-                reason: "No observations in TWAP window".to_string()
-            }
+            FeelsProtocolError::InsufficientData
         );
         
         // Calculate TWAP
         let twap = sum_price_time.checked_div(total_time as u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
+            .ok_or(crate::error::FeelsProtocolError::MathOverflow)?;
         
         Ok(twap)
     }
@@ -197,9 +226,7 @@ impl TwapOracle {
     pub fn get_current_price(&self) -> Result<u128> {
         require!(
             self.observation_count > 0,
-            FeelsProtocolError::InsufficientData {
-                reason: "No price observations".to_string()
-            }
+            FeelsProtocolError::InsufficientData
         );
         
         let last_idx = if self.write_index == 0 {
@@ -210,16 +237,18 @@ impl TwapOracle {
         
         sqrt_price_to_price(self.observations[last_idx].sqrt_price)
     }
+    
+    /// Get safe price with default TWAP window (5 minutes)
+    pub fn get_safe_price(&self) -> Result<u128> {
+        self.get_twap(300, crate::utils::clock::current_timestamp()?) // 5 minutes
+    }
 }
 
-/// Convert sqrt price to price
+/// Convert sqrt price to price using safe math
 fn sqrt_price_to_price(sqrt_price: u128) -> Result<u128> {
-    // price = (sqrt_price)^2 / 2^128
-    sqrt_price
-        .checked_mul(sqrt_price)
-        .ok_or(FeelsProtocolError::MathOverflow)?
-        .checked_div(1u128 << 128)
-        .ok_or(FeelsProtocolError::MathOverflow)
+    // Use the safe math module to prevent arithmetic overflow
+    crate::utils::math::safe::sqrt_price_to_price_safe(sqrt_price)
+        .map_err(|e| Error::from(e))
 }
 
 // ============================================================================

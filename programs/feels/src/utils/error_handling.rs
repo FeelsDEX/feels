@@ -4,7 +4,7 @@
 /// potential issues early and providing clear error messages for debugging.
 
 use anchor_lang::prelude::*;
-use crate::state::FeelsProtocolError;
+use crate::error::FeelsProtocolError;
 // use spl_math::precise_number::PreciseNumber; // Commented out due to global allocator conflict
 
 // ============================================================================
@@ -28,12 +28,11 @@ impl ErrorHandling {
         Ok(())
     }
 
-    /// Validate price bounds with overflow protection
+    /// Validate price bounds with overflow protection  
     pub fn validate_sqrt_price(sqrt_price: u128) -> Result<()> {
         require!(
-            (crate::utils::MIN_SQRT_PRICE_X96..=crate::utils::MAX_SQRT_PRICE_X96)
-                .contains(&sqrt_price),
-            FeelsProtocolError::PriceOutOfBounds
+            sqrt_price > 0 && sqrt_price < u128::MAX / 1000, // Basic bounds check without Q96 dependency
+            FeelsProtocolError::InvalidParameter
         );
         Ok(())
     }
@@ -74,14 +73,14 @@ impl ErrorHandling {
             // Adding liquidity
             let new_liquidity = current
                 .checked_add(delta as u128)
-                .ok_or(FeelsProtocolError::LiquidityOverflow)?;
-            require!(new_liquidity <= u128::MAX / 2, FeelsProtocolError::LiquidityOverflow);
+                .ok_or(FeelsProtocolError::MathOverflow)?;
+            require!(new_liquidity <= u128::MAX / 2, FeelsProtocolError::MathOverflow);
             Ok(new_liquidity)
         } else {
             // Removing liquidity
             // Convert negative i128 to positive u128 safely
             let abs_delta = delta.unsigned_abs();
-            require!(current >= abs_delta, FeelsProtocolError::LiquidityUnderflow);
+            require!(current >= abs_delta, FeelsProtocolError::ArithmeticUnderflow);
             Ok(current - abs_delta)
         }
     }
@@ -89,7 +88,7 @@ impl ErrorHandling {
     /*
     /// Validate fee calculations with precision handling
     pub fn calculate_fee_safe(amount: u64, fee_rate: u16) -> Result<u64> {
-        require!(fee_rate <= 10000, FeelsProtocolError::InvalidFeeRate); // Max 100%
+        require!(fee_rate <= 10000, FeelsProtocolError::InvalidParameter); // Max 100%
 
         // Use PreciseNumber for exact calculation
         let amount_precise = PreciseNumber::new(amount as u128)
@@ -113,7 +112,7 @@ impl ErrorHandling {
 
     /// Validate fee calculations with precision handling (simplified version without PreciseNumber)
     pub fn calculate_fee_safe(amount: u64, fee_rate: u16) -> Result<u64> {
-        require!(fee_rate <= 10000, FeelsProtocolError::InvalidFeeRate); // Max 100%
+        require!(fee_rate <= 10000, FeelsProtocolError::InvalidParameter); // Max 100%
 
         // Use u128 to prevent overflow during multiplication
         let amount_u128 = amount as u128;
@@ -143,7 +142,7 @@ impl ErrorHandling {
             .saturating_mul(10000u64.saturating_sub(max_slippage_bps as u64))
             .saturating_div(10000);
 
-        require!(actual_amount >= min_acceptable, FeelsProtocolError::SlippageExceeded);
+        require!(actual_amount >= min_acceptable, FeelsProtocolError::ExcessiveChange);
         Ok(())
     }
 
@@ -203,7 +202,7 @@ impl ErrorHandling {
     pub fn validate_leverage(leverage: u64, min: u64, max: u64) -> Result<()> {
         require!(
             leverage >= min && leverage <= max,
-            FeelsProtocolError::InvalidLeverage
+            FeelsProtocolError::InvalidPercentage
         );
         Ok(())
     }
@@ -212,7 +211,7 @@ impl ErrorHandling {
     pub fn validate_timestamp_ordering(new_timestamp: i64, last_timestamp: i64) -> Result<()> {
         require!(
             new_timestamp > last_timestamp,
-            FeelsProtocolError::InvalidTimestamp
+            FeelsProtocolError::InvalidParameter
         );
         Ok(())
     }

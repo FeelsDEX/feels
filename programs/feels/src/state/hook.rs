@@ -27,6 +27,9 @@ pub const EVENT_ORDER_CREATED: u32 = 1 << 11;
 pub const EVENT_ORDER_FILLED: u32 = 1 << 12;
 pub const EVENT_ORDER_MODIFIED: u32 = 1 << 13;
 pub const EVENT_REDENOMINATION: u32 = 1 << 14;
+pub const EVENT_TICK_CHANGED: u32 = 1 << 15;
+pub const EVENT_REBASE_APPLIED: u32 = 1 << 16;
+pub const EVENT_LEVERAGE_ADJUSTED: u32 = 1 << 17;
 
 
 // Hook execution stages as bit flags (up to 8 stages)

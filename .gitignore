@@ -41,6 +41,7 @@ proptest-regressions/
 # ==================================
 
 result
+result/
 result-*
 .direnv/
 .nix/
@@ -80,6 +81,7 @@ keypairs/
 *.njsproj
 *.sln
 *.sw?
+*.txt
 
 # ==================================
 # Temporary

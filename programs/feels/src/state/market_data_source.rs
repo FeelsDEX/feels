@@ -1,24 +1,92 @@
-/// Unified market data source interface for field updates.
-/// Provides a single interface for market data updates from various sources.
+/// Unified market data source interface consolidating keeper field commitments and oracle feeds.
+/// Single entry point for all market data updates - replaces separate keeper/oracle systems.
 use anchor_lang::prelude::*;
-use crate::state::{MarketField, FieldUpdateParams};
+// use crate::state::{MarketField, FieldCommitment}; // Unused imports
 use crate::error::FeelsProtocolError;
 
 // ============================================================================
-// Market Data Source
+// Data Source Configuration
 // ============================================================================
 
-/// Unified market data source feeding field updates
-#[account]
+/// Data source type and configuration (zero-copy compatible)
+#[zero_copy]
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct DataSourceConfig {
+    /// Type of data source (0=Keeper, 1=Oracle, 2=Hybrid)
+    pub source_type: u8,
+    
+    /// Keeper configuration
+    pub keeper_config: KeeperConfig,
+    
+    /// Oracle configuration  
+    pub oracle_config: OracleConfig,
+    
+    /// Fallback configuration enabled (0 = false, 1 = true)
+    pub fallback_enabled: u8,
+    
+    /// Reserved for future use
+    pub _reserved: [u8; 32],
+}
+
+/// Data source types as constants
+pub const DATA_SOURCE_TYPE_KEEPER: u8 = 0;
+pub const DATA_SOURCE_TYPE_ORACLE: u8 = 1;
+pub const DATA_SOURCE_TYPE_HYBRID: u8 = 2;
+
+/// Keeper-specific configuration (zero-copy compatible)
+#[zero_copy]
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct KeeperConfig {
+    /// Maximum staleness for field commitments (seconds)
+    pub max_staleness: i64,
+    /// Maximum rate of change per update (basis points)
+    pub max_change_bps: u32,
+    /// Sequence number validation enabled (0 = false, 1 = true)
+    pub sequence_validation: u8,
+    /// Reserved for future use
+    pub _reserved: [u8; 16],
+}
+
+/// Oracle-specific configuration (zero-copy compatible)
+#[zero_copy]
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct OracleConfig {
+    /// Oracle account providing data
+    pub oracle_account: Pubkey,
+    /// Confidence threshold (basis points)
+    pub confidence_threshold: u16,
+    /// Maximum price staleness (seconds)
+    pub max_price_staleness: i64,
+    /// Reserved for future use
+    pub _reserved: [u8; 16],
+}
+
+// ============================================================================
+// Unified Market Data Source
+// ============================================================================
+
+/// Unified market data source - single interface for all data providers
+#[account(zero_copy)]
+#[derive(Default)]
+#[repr(C, packed)]
 pub struct MarketDataSource {
-    /// Pool this source provides data for
+    /// Market field this source provides data for
+    pub market_field: Pubkey,
+    
+    /// Pool reference (alias for market_field for compatibility)
     pub pool: Pubkey,
     
-    /// Primary data provider
+    /// Primary data provider (keeper or oracle)
     pub primary_provider: Pubkey,
     
-    /// Secondary provider (for redundancy)
+    /// Secondary provider for redundancy
     pub secondary_provider: Pubkey,
+    
+    /// Data source configuration
+    pub config: DataSourceConfig,
     
     /// Minimum time between updates (seconds)
     pub update_frequency: i64,
@@ -26,255 +94,382 @@ pub struct MarketDataSource {
     /// Last update timestamp
     pub last_update: i64,
     
-    /// Update counter
+    /// Update counter for monitoring
     pub update_count: u64,
     
-    /// Whether this source is active
-    pub is_active: bool,
+    /// Source is active and accepting updates
+    pub is_active: u8, // 0 = false, 1 = true
+    
+    /// Current commitment root for verification
+    pub commitment_root: [u8; 32],
+    
+    /// Last verified sequence number (monotonic)
+    pub last_sequence: u64,
+    
+    /// Reserved for future use
+    pub _reserved: [u8; 24],
 }
 
 impl MarketDataSource {
-    pub const SIZE: usize = 8 + // discriminator
-        32 +                     // pool
-        32 +                     // primary_provider
-        32 +                     // secondary_provider
-        8 +                      // update_frequency
-        8 +                      // last_update
-        8 +                      // update_count
-        1;                       // is_active
+    pub const SIZE: usize = 8 +   // discriminator
+        32 +                       // market_field
+        32 +                       // pool
+        32 +                       // primary_provider
+        32 +                       // secondary_provider
+        128 +                      // config (fixed size now)
+        8 +                        // update_frequency
+        8 +                        // last_update
+        8 +                        // update_count
+        1 +                        // is_active
+        32 +                       // commitment_root
+        8 +                        // last_sequence
+        24;                        // reserved
     
-    /// Validate provider is authorized
+    /// Check if provider is authorized to update this source
     pub fn is_authorized(&self, provider: &Pubkey) -> bool {
-        self.is_active && (
+        self.is_active != 0 && (
             provider == &self.primary_provider ||
             provider == &self.secondary_provider
         )
     }
     
-    /// Check if update is allowed based on frequency
+    /// Check if update is allowed based on frequency limits
     pub fn can_update(&self, current_time: i64) -> bool {
-        current_time >= self.last_update + self.update_frequency
+        current_time - self.last_update >= self.update_frequency
+    }
+    
+    /// Check staleness with detailed error information
+    pub fn check_staleness(&self, current_time: i64) -> Result<()> {
+        // Check update frequency
+        let time_since_last = current_time - self.last_update;
+        if time_since_last < self.update_frequency {
+            msg!("Cannot update: frequency violation");
+            msg!("  Time since last: {} seconds", time_since_last);
+            let freq = self.update_frequency;
+            msg!("  Required interval: {} seconds", freq);
+            return Err(FeelsProtocolError::UpdateTooFrequent.into());
+        }
+        
+        // Check if data source is active
+        if self.is_active == 0 {
+            msg!("Cannot update: data source is inactive");
+            return Err(FeelsProtocolError::StateError.into());
+        }
+        
+        Ok(())
+    }
+    
+    /// Get the appropriate field commitment source
+    pub fn get_field_commitment_source(&self) -> Result<Pubkey> {
+        match self.config.source_type {
+            DATA_SOURCE_TYPE_KEEPER | DATA_SOURCE_TYPE_HYBRID => {
+                // Return field commitment PDA
+                let (field_commitment_pubkey, _) = Pubkey::find_program_address(
+                    &[b"field_commitment", self.market_field.as_ref()],
+                    &crate::ID
+                );
+                Ok(field_commitment_pubkey)
+            },
+            DATA_SOURCE_TYPE_ORACLE => {
+                if self.config.fallback_enabled == 1 {
+                    // Fallback to basic calculation
+                    Ok(self.market_field)
+                } else {
+                    Err(FeelsProtocolError::NotInitialized.into())
+                }
+            },
+            _ => Err(FeelsProtocolError::InvalidInput.into()),
+        }
+    }
+    
+    /// Update commitment root and sequence number
+    pub fn update_commitment(&mut self, new_root: [u8; 32], sequence: u64) -> Result<()> {
+        // Ensure sequence number is monotonically increasing
+        require!(
+            sequence > self.last_sequence,
+            FeelsProtocolError::InvalidInput
+        );
+        
+        self.commitment_root = new_root;
+        self.last_sequence = sequence;
+        
+        Ok(())
+    }
+    
+    /// Validate update sequence number
+    pub fn validate_sequence(&self, sequence: u64) -> bool {
+        sequence == self.last_sequence + 1
     }
 }
 
 // ============================================================================
-// Market Update Types
+// Market Update Types (Unified)
 // ============================================================================
 
-/// Unified market update that can be either simple parameters or commitment
+/// Unified market update that can come from keeper or oracle
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub enum MarketUpdate {
-    /// Simple parameter snapshot (Option A - default)
-    ParamSnapshot(ParamSnapshot),
+pub struct UnifiedMarketUpdate {
+    /// Source of the update
+    pub source: u8,
     
-    /// Gradient commitment (Option B - future extension)
-    /// Not implemented in current version
-    GradientCommitment(GradientCommitment),
+    /// Keeper field commitment data (if applicable)
+    pub field_commitment: Option<FieldCommitmentData>,
+    
+    /// Oracle price data (if applicable)
+    pub price_data: Option<OraclePriceData>,
+    
+    /// Update timestamp
+    pub timestamp: i64,
+    
+    /// Update sequence number
+    pub sequence: u64,
 }
 
-/// Simple parameter snapshot for field updates
+/// Field commitment data from keeper
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct ParamSnapshot {
+#[allow(non_snake_case)]
+pub struct FieldCommitmentData {
     /// Market scalars
     pub S: u128,
     pub T: u128,
     pub L: u128,
     
-    /// Updated TWAPs
-    pub twap_a: u128,
-    pub twap_b: u128,
+    /// Domain weights
+    pub w_s: u32,
+    pub w_t: u32,
+    pub w_l: u32,
+    pub w_tau: u32,
     
-    /// Risk scalers (optional updates)
-    pub sigma_price: Option<u64>,
-    pub sigma_rate: Option<u64>,
-    pub sigma_leverage: Option<u64>,
+    /// Spot weights
+    pub omega_0: u32,
+    pub omega_1: u32,
     
-    /// Update timestamp
-    pub timestamp: i64,
+    /// TWAPs
+    pub twap_0: u128,
+    pub twap_1: u128,
     
-    /// Provider that generated this update
-    pub provider: Pubkey,
+    /// Maximum staleness for this commitment
+    pub max_staleness: i64,
 }
 
-impl ParamSnapshot {
-    /// Convert to field update params
-    pub fn to_field_update_params(&self) -> FieldUpdateParams {
-        FieldUpdateParams {
-            S: self.S,
-            T: self.T,
-            L: self.L,
-            twap_a: self.twap_a,
-            twap_b: self.twap_b,
-            sigma_price: self.sigma_price.unwrap_or(0),
-            sigma_rate: self.sigma_rate.unwrap_or(0),
-            sigma_leverage: self.sigma_leverage.unwrap_or(0),
-        }
-    }
-    
-    /// Validate snapshot parameters
-    pub fn validate(&self) -> Result<()> {
-        // Scalars must be positive
-        require!(
-            self.S > 0 && self.T > 0 && self.L > 0,
-            FeelsProtocolError::InvalidParameter {
-                param: "Market scalars".to_string(),
-                reason: "Must be positive".to_string()
-            }
-        );
-        
-        // TWAPs must be positive
-        require!(
-            self.twap_a > 0 && self.twap_b > 0,
-            FeelsProtocolError::InvalidParameter {
-                param: "TWAPs".to_string(),
-                reason: "Must be positive".to_string()
-            }
-        );
-        
-        // Risk scalers must be reasonable if provided
-        if let Some(sigma) = self.sigma_price {
-            require!(
-                sigma <= 100_000, // Max 1000%
-                FeelsProtocolError::InvalidParameter {
-                    param: "sigma_price".to_string(),
-                    reason: "Too high".to_string()
-                }
-            );
-        }
-        
-        Ok(())
-    }
-}
+/// Price status constants
+pub const PRICE_STATUS_VALID: u8 = 0;
+pub const PRICE_STATUS_STALE: u8 = 1;
+pub const PRICE_STATUS_LOW_CONFIDENCE: u8 = 2;
+pub const PRICE_STATUS_OFFLINE: u8 = 3;
 
-/// Placeholder for gradient commitment (not implemented)
+/// Oracle price data
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct GradientCommitment {
-    /// Commitment root
-    pub root: [u8; 32],
+pub struct OraclePriceData {
+    /// Price value
+    pub price: u64,
     
-    /// Bounds
-    pub lipschitz_constant: u64,
-    pub curvature_bound: u64,
+    /// Confidence interval
+    pub confidence: u64,
     
-    /// Optimality gap
-    pub gap_bps: u16,
-    
-    /// Timestamp
-    pub timestamp: i64,
+    /// Price status
+    pub status: u8,
 }
 
 // ============================================================================
-// Verification
+// Update Validation
 // ============================================================================
 
-/// Verify market update before applying
+/// Validate unified market update with enhanced checks
 pub fn verify_market_update(
-    update: &MarketUpdate,
-    source: &MarketDataSource,
-    field: &MarketField,
+    update: &UnifiedMarketUpdate,
+    data_source: &MarketDataSource,
     current_time: i64,
 ) -> Result<()> {
-    match update {
-        MarketUpdate::ParamSnapshot(snapshot) => {
-            // Verify provider is authorized
-            require!(
-                source.is_authorized(&snapshot.provider),
-                FeelsProtocolError::UnauthorizedAccess {
-                    action: "market_update".to_string()
-                }
-            );
-            
-            // Verify update frequency
-            require!(
-                source.can_update(current_time),
-                FeelsProtocolError::UpdateTooFrequent {
-                    min_interval: source.update_frequency,
-                    elapsed: current_time - source.last_update,
-                }
-            );
-            
-            // Verify freshness
-            require!(
-                current_time - snapshot.timestamp <= field.max_staleness,
-                FeelsProtocolError::StaleData {
-                    max_age: field.max_staleness,
-                    actual_age: current_time - snapshot.timestamp,
-                }
-            );
-            
-            // Validate parameters
-            snapshot.validate()?;
-            
-            // Verify rate of change caps
-            verify_rate_of_change(snapshot, field)?;
-            
-            Ok(())
-        }
-        
-        MarketUpdate::GradientCommitment(_) => {
-            // Not implemented in current version
-            Err(FeelsProtocolError::NotImplemented {
-                feature: "GradientCommitment".to_string()
-            }.into())
-        }
+    // Check source authorization
+    require!(
+        data_source.config.source_type == update.source ||
+        data_source.config.source_type == DATA_SOURCE_TYPE_HYBRID,
+        FeelsProtocolError::Unauthorized
+    );
+    
+    // Validate sequence number is monotonic
+    require!(
+        update.sequence > data_source.last_sequence,
+        FeelsProtocolError::InvalidSequence
+    );
+    
+    // Validate update frequency
+    let time_since_last = current_time - data_source.last_update;
+    if time_since_last < data_source.update_frequency {
+        msg!("UPDATE FREQUENCY VIOLATION");
+        msg!("  Time since last update: {} seconds", time_since_last);
+        let update_frequency = data_source.update_frequency;
+        msg!("  Required interval: {} seconds", update_frequency);
+        msg!("  Too frequent by: {} seconds", data_source.update_frequency - time_since_last);
+        return Err(FeelsProtocolError::UpdateTooFrequent.into());
     }
+    
+    // Validate timestamp freshness
+    let age = current_time - update.timestamp;
+    require!(
+        age >= 0 && age <= 300, // Max 5 minutes old
+        FeelsProtocolError::StaleData
+    );
+    
+    // Validate based on source type
+    match update.source {
+        DATA_SOURCE_TYPE_KEEPER => {
+            if let Some(field_data) = &update.field_commitment {
+                validate_keeper_update(field_data, &data_source.config.keeper_config)?;
+                
+                // Additional staleness check for keeper data
+                let keeper_age = current_time - update.timestamp;
+                if keeper_age > data_source.config.keeper_config.max_staleness {
+                    msg!("KEEPER DATA STALENESS VIOLATION");
+                    msg!("  Keeper data age: {} seconds", keeper_age);
+                    let max_staleness = data_source.config.keeper_config.max_staleness;
+                    msg!("  Maximum allowed: {} seconds", max_staleness);
+                    msg!("  Stale by: {} seconds", keeper_age - data_source.config.keeper_config.max_staleness);
+                    return Err(FeelsProtocolError::StaleData.into());
+                }
+                
+                // Check commitment expiration
+                if current_time > field_data.max_staleness {
+                    msg!("COMMITMENT EXPIRED");
+                    msg!("  Current time: {}", current_time);
+                    msg!("  Expired at: {}", field_data.max_staleness);
+                    msg!("  Expired by: {} seconds", current_time - field_data.max_staleness);
+                    return Err(FeelsProtocolError::CommitmentExpired.into());
+                }
+            } else {
+                return Err(FeelsProtocolError::NotInitialized.into());
+            }
+        },
+        DATA_SOURCE_TYPE_ORACLE => {
+            if let Some(price_data) = &update.price_data {
+                validate_oracle_update(price_data, &data_source.config.oracle_config, current_time)?;
+                
+                // Enhanced confidence check
+                validate_price_confidence(price_data, &data_source.config.oracle_config)?;
+            } else {
+                return Err(FeelsProtocolError::NotInitialized.into());
+            }
+        },
+        DATA_SOURCE_TYPE_HYBRID => {
+            // Both sources should be present
+            require!(
+                update.field_commitment.is_some() || update.price_data.is_some(),
+                FeelsProtocolError::NotInitialized
+            );
+            
+            // Validate both if present
+            if let Some(field_data) = &update.field_commitment {
+                validate_keeper_update(field_data, &data_source.config.keeper_config)?;
+                
+                // Check commitment expiration for hybrid mode
+                if current_time > field_data.max_staleness {
+                    msg!("COMMITMENT EXPIRED (HYBRID MODE)");
+                    msg!("  Current time: {}", current_time);
+                    msg!("  Expired at: {}", field_data.max_staleness);
+                    msg!("  Expired by: {} seconds", current_time - field_data.max_staleness);
+                    return Err(FeelsProtocolError::CommitmentExpired.into());
+                }
+            }
+            if let Some(price_data) = &update.price_data {
+                validate_oracle_update(price_data, &data_source.config.oracle_config, current_time)?;
+            }
+        },
+        _ => return Err(FeelsProtocolError::InvalidInput.into()),
+    }
+    
+    Ok(())
 }
 
-/// Verify rate of change is within acceptable bounds
-fn verify_rate_of_change(
-    snapshot: &ParamSnapshot,
-    current_field: &MarketField,
+/// Validate keeper field commitment update
+fn validate_keeper_update(
+    field_data: &FieldCommitmentData,
+    keeper_config: &KeeperConfig,
 ) -> Result<()> {
-    // Maximum allowed change per update (2%)
-    const MAX_CHANGE_BPS: u32 = 200;
-    
-    // Check S change
-    let s_change = calculate_change_bps(current_field.S, snapshot.S);
+    // Basic field validation
     require!(
-        s_change <= MAX_CHANGE_BPS,
-        FeelsProtocolError::ExcessiveChange {
-            field: "S".to_string(),
-            change_bps: s_change,
-            max_bps: MAX_CHANGE_BPS,
-        }
+        field_data.S > 0 && field_data.T > 0 && field_data.L > 0,
+        FeelsProtocolError::ValidationError
     );
     
-    // Check T change
-    let t_change = calculate_change_bps(current_field.T, snapshot.T);
+    // Weight validation
     require!(
-        t_change <= MAX_CHANGE_BPS,
-        FeelsProtocolError::ExcessiveChange {
-            field: "T".to_string(),
-            change_bps: t_change,
-            max_bps: MAX_CHANGE_BPS,
-        }
+        field_data.w_s + field_data.w_t + field_data.w_l + field_data.w_tau == 10000,
+        FeelsProtocolError::InvalidInput
     );
     
-    // Check L change
-    let l_change = calculate_change_bps(current_field.L, snapshot.L);
     require!(
-        l_change <= MAX_CHANGE_BPS,
-        FeelsProtocolError::ExcessiveChange {
-            field: "L".to_string(),
-            change_bps: l_change,
-            max_bps: MAX_CHANGE_BPS,
-        }
+        field_data.omega_0 + field_data.omega_1 == 10000,
+        FeelsProtocolError::InvalidInput
+    );
+    
+    // Additional keeper-specific validation if configured
+    if keeper_config.sequence_validation == 1 {
+        // Rate of change validation would be implemented here
+        // Currently delegated to keeper_update instruction
+    }
+    
+    Ok(())
+}
+
+/// Validate oracle price update
+fn validate_oracle_update(
+    price_data: &OraclePriceData,
+    oracle_config: &OracleConfig,
+    _current_time: i64,
+) -> Result<()> {
+    // Check price status
+    require!(
+        price_data.status == PRICE_STATUS_VALID || price_data.status == PRICE_STATUS_STALE,
+        FeelsProtocolError::ValidationError
+    );
+    
+    // Confidence check
+    let confidence_bps = (price_data.confidence * 10000 / price_data.price.max(1)) as u16;
+    require!(
+        confidence_bps <= oracle_config.confidence_threshold,
+        FeelsProtocolError::ValidationError
     );
     
     Ok(())
 }
 
-/// Calculate change in basis points
-fn calculate_change_bps(old: u128, new: u128) -> u32 {
-    if old == 0 {
-        return if new == 0 { 0 } else { 10000 };
-    }
+/// Enhanced price confidence validation
+fn validate_price_confidence(
+    price_data: &OraclePriceData,
+    oracle_config: &OracleConfig,
+) -> Result<()> {
+    // Ensure price is positive
+    require!(
+        price_data.price > 0,
+        FeelsProtocolError::InvalidAmount
+    );
     
-    let change = if new > old {
-        new - old
-    } else {
-        old - new
+    // Calculate confidence as percentage of price
+    let confidence_ratio = (price_data.confidence as u128 * 10000) / (price_data.price as u128);
+    
+    // Dynamic threshold based on price status
+    let adjusted_threshold = match price_data.status {
+        PRICE_STATUS_VALID => oracle_config.confidence_threshold,
+        PRICE_STATUS_STALE => oracle_config.confidence_threshold * 2, // More lenient for stale prices
+        _ => return Err(FeelsProtocolError::ValidationError.into()),
     };
     
-    ((change * 10000) / old).min(10000) as u32
+    require!(
+        confidence_ratio <= adjusted_threshold as u128,
+        FeelsProtocolError::ValidationError
+    );
+    
+    // Additional check: absolute confidence bounds
+    require!(
+        price_data.confidence < price_data.price / 2, // Confidence can't exceed 50% of price
+        FeelsProtocolError::ValidationError
+    );
+    
+    Ok(())
 }
+
+// ============================================================================
+// Default Configurations
+// ============================================================================
+

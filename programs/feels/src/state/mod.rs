@@ -1,16 +1,7 @@
-/// State module organizing all on-chain account structures and data types.
-/// Includes pool state, position NFTs, tick arrays for liquidity, token metadata,
-/// protocol configuration, error definitions, and infrastructure for future features
-/// like hooks and tick routing optimization. All accounts use efficient serialization for optimal Solana performance.
-pub mod error;
+/// State module organizing all on-chain account structures for the market physics model.
+/// The protocol is built around the unified physics engine with MarketField, BufferAccount,
+/// and gradient-based fee calculations. All legacy Pool-based architecture has been removed.
 pub mod hook;
-pub mod pool;
-pub mod pool_metrics;
-pub mod pool_hooks;
-pub mod pool_rebase;
-// New simplified structures
-pub mod pool_simplified;
-pub mod pool_metrics_consolidated;
 pub mod protocol;
 pub mod tick; // Now includes TickArrayRouter
 pub mod position;
@@ -23,16 +14,14 @@ pub mod leverage; // Continuous leverage system
 pub mod rebase; // Virtual rebasing with lazy evaluation
 // Vault removed - position management handled through unified order system
 pub mod reentrancy; // Reentrancy protection
-
-// Metrics - now consolidated
-// Individual metrics modules removed in favor of pool_metrics_consolidated
+pub mod volatility; // Volatility observation types
 
 // ============================================================================
 // Re-exports
 // ============================================================================
 
-// Error types
-pub use error::FeelsProtocolError;
+// Error types - re-export from main error module
+pub use crate::error::{FeelsError, FeelsProtocolError};
 
 // Hook system
 pub use hook::{
@@ -46,11 +35,7 @@ pub use hook::{
     STAGE_VALIDATE, STAGE_PRE_EXECUTE, STAGE_POST_EXECUTE, STAGE_ASYNC,
 };
 
-// Core pool types
-pub use pool::{Pool, PoolKey};
-pub use pool_metrics::{PoolMetricsConsolidated as PoolMetrics, migrate_to_consolidated};
-pub use pool_hooks::PoolHooks;
-pub use pool_rebase::PoolRebase;
+// Market physics types are re-exported below
 
 // Protocol configuration
 pub use protocol::ProtocolState;
@@ -95,10 +80,21 @@ pub use rebase::{
 // ============================================================================
 
 pub mod buffer;
+pub mod field_commitment;
+pub mod fees_policy;
 pub mod market_data_source;
 pub mod market_field;
+pub mod market_field_work;
+pub mod market_manager;
+pub mod market_state;
 pub mod numeraire;
+pub mod numeraire_twap;
 pub mod twap_oracle;
+pub mod keeper_registry;
+pub mod volatility_oracle;
+pub mod token_price_oracle;
+pub mod volume_tracker;
+pub mod emergency_flags;
 
 // Buffer account
 pub use buffer::{
@@ -108,16 +104,44 @@ pub use buffer::{
     FEE_EWMA_HALF_LIFE, BPS_DENOMINATOR as BUFFER_BPS_DENOMINATOR,
 };
 
-// Market data source
-pub use market_data_source::{
-    MarketDataSource, MarketUpdate, ParamSnapshot, GradientCommitment,
-    verify_market_update,
+// Fees policy
+pub use fees_policy::{
+    FeesPolicy, PoolStatus,
+    calculate_combined_stress, qualifies_for_rebate,
 };
+
+// Market data source (unified keeper + oracle interface)
+pub use market_data_source::{
+    MarketDataSource, DataSourceConfig, KeeperConfig, OracleConfig,
+    UnifiedMarketUpdate, FieldCommitmentData, OraclePriceData,
+    verify_market_update,
+    // Constants for data source types
+    DATA_SOURCE_TYPE_KEEPER, DATA_SOURCE_TYPE_ORACLE, DATA_SOURCE_TYPE_HYBRID,
+    // Constants for price status
+    PRICE_STATUS_VALID, PRICE_STATUS_STALE, PRICE_STATUS_LOW_CONFIDENCE, PRICE_STATUS_OFFLINE,
+};
+
+// Field commitment (keeper-provided compact market state)
+// Re-export all items from field_commitment module
+pub use field_commitment::*;
 
 // Market field commitment
 pub use market_field::{
     MarketField, WorkCalculationParams, FieldUpdateParams,
+    // Deprecated: use market_field_work module instead
     calculate_work_closed_form,
+};
+
+// Market field work calculation
+pub use market_field_work::{
+    WorkCalculationMethod, calculate_work_for_market,
+    FieldCommitmentWithMethod, LocalQuadraticCoeffs,
+};
+
+// Market manager (AMM compatibility layer)
+pub use market_manager::{
+    MarketManager, MarketView,
+    // position_to_tick, tick_to_position, // Commented out until implemented
 };
 
 // TWAP Oracle
@@ -126,10 +150,55 @@ pub use twap_oracle::{
     OBSERVATION_BUFFER_SIZE, DEFAULT_TWAP_WINDOW,
 };
 
+// Volatility tracking
+pub use volatility::VolatilityObservation;
+
+// Keeper registry
+pub use keeper_registry::KeeperRegistry;
+
+// Volatility oracle
+pub use volatility_oracle::{
+    VolatilityOracle, OracleStatus, VolatilityTimeframe,
+    InitializeVolatilityOracle, initialize_volatility_oracle,
+};
+
+// Token price oracle
+pub use token_price_oracle::{
+    TokenPriceOracle,
+    InitializeTokenPriceOracle, initialize_token_price_oracle,
+};
+
+// Volume tracker
+pub use volume_tracker::{
+    VolumeTracker,
+    InitializeVolumeTracker, initialize_volume_tracker,
+};
+
+// Emergency flags
+pub use emergency_flags::{
+    EmergencyFlags, EmergencyModeParams,
+    InitializeEmergencyFlags, ToggleEmergencyMode,
+    initialize_emergency_flags, toggle_emergency_mode,
+};
+
+// Market state structures
+pub use market_state::{
+    MarketState, DomainWeights, PoolSimplified,
+};
+
+
 // Numeraire system
 pub use numeraire::{
     ConversionRate, ProtocolNumeraire, NumeraireCache,
-    PriceObservation, FallbackRate, calculate_geometric_twap,
+    FallbackRate,
     InitializeNumeraire, UpdateNumeraireCache,
-    DEFAULT_TWAP_WINDOW, MIN_TWAP_OBSERVATIONS, RATE_PRECISION,
+    MIN_TWAP_OBSERVATIONS, RATE_PRECISION,
+    // Note: calculate_geometric_twap is off-chain only
+};
+
+// Numeraire TWAP submission
+pub use numeraire_twap::{
+    TwapResult, TwapSubmission, TwapProof, MethodParams,
+    SubmitTwap, submit_twap_handler, validate_twap_submission,
+    get_fallback_rate,
 };

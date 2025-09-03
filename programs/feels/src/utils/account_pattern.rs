@@ -17,8 +17,8 @@ use anchor_spl::{
 };
 
 use crate::state::{
-    FeelsProtocolError, Pool, TickArray, TickPositionMetadata, 
-    Oracle, OracleData, FeelsSOL
+    FeelsProtocolError, TickArray, TickPositionMetadata 
+    // MarketManager, TwapOracle  // Unused imports
 };
 
 // ============================================================================
@@ -32,43 +32,43 @@ pub struct PoolWithVaults<'info> {
     #[account(
         seeds = [
             b"pool",
-            pool.load()?.token_a_mint.as_ref(),
-            pool.load()?.token_b_mint.as_ref(),
+            pool.load()?.token_0_mint.as_ref(),
+            pool.load()?.token_1_mint.as_ref(),
             &pool.load()?.fee_rate.to_le_bytes()
         ],
         bump
     )]
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 
-    /// Pool's token A vault
+    /// Pool's token 0 vault
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_a_mint.as_ref()
+            pool.load()?.token_0_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_a_mint,
+        token::mint = pool.load()?.token_0_mint,
         token::authority = pool,
         token::token_program = token_program,
     )]
-    pub token_vault_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_a: InterfaceAccount<'info, TokenAccount>,
 
-    /// Pool's token B vault
+    /// Pool's token 1 vault
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_b_mint.as_ref()
+            pool.load()?.token_1_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_b_mint,
+        token::mint = pool.load()?.token_1_mint,
         token::authority = pool,
         token::token_program = token_program,
     )]
-    pub token_vault_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_b: InterfaceAccount<'info, TokenAccount>,
 
     /// Token program for interface compatibility
     pub token_program: Interface<'info, TokenInterface>,
@@ -77,19 +77,19 @@ pub struct PoolWithVaults<'info> {
 /// User token account pair - common in swaps and liquidity operations
 #[derive(Accounts)]
 pub struct UserTokenAccounts<'info> {
-    /// User's token A account
+    /// User's token 0 account
     #[account(
         mut,
         token::token_program = token_program,
     )]
-    pub user_token_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_token_0: InterfaceAccount<'info, TokenAccount>,
 
-    /// User's token B account  
+    /// User's token 1 account  
     #[account(
         mut,
         token::token_program = token_program,
     )]
-    pub user_token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_token_1: InterfaceAccount<'info, TokenAccount>,
 
     /// Token program for interface compatibility
     pub token_program: Interface<'info, TokenInterface>,
@@ -125,7 +125,7 @@ pub struct TickArrayPair<'info> {
     pub tick_array_upper: AccountLoader<'info, TickArray>,
 
     /// Pool reference for validation
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 }
 
 // ============================================================================
@@ -136,13 +136,13 @@ pub struct TickArrayPair<'info> {
 #[derive(Accounts)]
 pub struct LiquidityOperationContext<'info> {
     /// Pool with token vaults - flattened
-    pub pool: AccountLoader<'info, Pool>,
-    pub token_vault_a: Box<InterfaceAccount<'info, TokenAccount>>,
-    pub token_vault_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
+    pub token_vault_a: InterfaceAccount<'info, TokenAccount>,
+    pub token_vault_b: InterfaceAccount<'info, TokenAccount>,
 
     /// User token accounts - flattened  
-    pub user_token_a: Box<InterfaceAccount<'info, TokenAccount>>,
-    pub user_token_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_token_0: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_1: InterfaceAccount<'info, TokenAccount>,
 
     /// Tick arrays - flattened
     pub tick_array_lower: AccountLoader<'info, TickArray>,
@@ -162,11 +162,11 @@ pub struct LiquidityOperationContext<'info> {
 #[derive(Accounts)]
 pub struct SwapContext<'info> {
     /// Pool account
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
     
     /// Pool's token vaults - flattened
-    pub token_vault_a: Box<InterfaceAccount<'info, TokenAccount>>,
-    pub token_vault_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_a: InterfaceAccount<'info, TokenAccount>,
+    pub token_vault_b: InterfaceAccount<'info, TokenAccount>,
 
     /// User as authority for token accounts
     pub user: Signer<'info>,
@@ -177,7 +177,7 @@ pub struct SwapContext<'info> {
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_in: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_token_in: InterfaceAccount<'info, TokenAccount>,
 
     /// User's output token account
     #[account(
@@ -185,7 +185,7 @@ pub struct SwapContext<'info> {
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_out: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_token_out: InterfaceAccount<'info, TokenAccount>,
 
     /// Token program
     pub token_program: Interface<'info, TokenInterface>,
@@ -199,7 +199,7 @@ pub struct SwapContext<'info> {
 #[derive(Accounts)]
 pub struct PoolAuthorityContext<'info> {
     /// Pool being managed
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
     
     /// Authority that must match pool authority
     #[account(
@@ -241,7 +241,7 @@ pub struct ValidatedPosition<'info> {
     pub position: Account<'info, TickPositionMetadata>,
     
     /// Pool the position belongs to
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
     
     /// Position owner
     pub owner: Signer<'info>,
@@ -256,18 +256,18 @@ pub struct ValidatedPosition<'info> {
 pub struct OracleContext<'info> {
     /// Oracle metadata account
     #[account(
-        constraint = oracle.pool == pool.key() @ FeelsProtocolError::InvalidPool
+        constraint = oracle.load()?.pool == pool.key() @ FeelsProtocolError::InvalidPool
     )]
-    pub oracle: Box<Account<'info, Oracle>>,
+    pub oracle: AccountLoader<'info, crate::state::TwapOracle>,
 
     /// Oracle data storage account
     #[account(
         // Oracle data is associated with the oracle via seeds/PDA derivation
     )]
-    pub oracle_data: AccountLoader<'info, OracleData>,
+    pub oracle_data: AccountLoader<'info, crate::state::TwapOracle>,
 
     /// Pool reference for validation
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 }
 
 /// FeelsSOL validation pattern
@@ -282,7 +282,7 @@ pub struct FeelsSOLContext<'info> {
         ],
         bump,
     )]
-    pub feelssol: Account<'info, FeelsSOL>,
+    pub feelssol: Account<'info, crate::state::token::FeelsSOL>,
 }
 
 // ============================================================================
@@ -352,7 +352,7 @@ pub struct ValidatedTickArrayPair<'info> {
     pub tick_array_upper: AccountLoader<'info, TickArray>,
 
     /// Pool reference for validation (must be provided)
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 }
 
 /// User-owned position with complete validation
@@ -369,7 +369,7 @@ pub struct UserOwnedPosition<'info> {
     pub position: Account<'info, TickPositionMetadata>,
     
     /// Pool reference for validation
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
     
     /// User/owner signer for validation
     pub user: Signer<'info>,
@@ -395,28 +395,28 @@ pub struct HookExecutionContext<'info> {
     pub hook_message_queue: Option<Account<'info, crate::state::HookMessageQueue>>,
     
     /// Pool reference for validation
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 }
 
 /// User token pair with authority validation
 /// Enhanced version of UserTokenAccounts with explicit authority constraints
 #[derive(Accounts)]
 pub struct UserTokenPair<'info> {
-    /// User's token A account with authority validation
+    /// User's token 0 account with authority validation
     #[account(
         mut,
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_a: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_0: InterfaceAccount<'info, TokenAccount>,
     
-    /// User's token B account with authority validation
+    /// User's token 1 account with authority validation
     #[account(
         mut,
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_b: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_1: InterfaceAccount<'info, TokenAccount>,
     
     /// User signer for validation
     pub user: Signer<'info>,
@@ -434,45 +434,43 @@ pub struct PoolWithValidatedVaults<'info> {
         mut,
         seeds = [
             b"pool",
-            pool.load()?.token_a_mint.as_ref(),
-            pool.load()?.token_b_mint.as_ref(),
+            pool.load()?.token_0_mint.as_ref(),
+            pool.load()?.token_1_mint.as_ref(),
             &pool.load()?.fee_rate.to_le_bytes()
         ],
         bump
     )]
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
 
-    /// Token A vault with full validation
+    /// Token 0 vault with full validation
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_a_mint.as_ref()
+            pool.load()?.token_0_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_a_mint,
+        token::mint = pool.load()?.token_0_mint,
         token::authority = pool,
-        token::token_program = token_program,
-        constraint = token_vault_a.key() == pool.load()?.token_a_vault @ FeelsProtocolError::InvalidPool
+        token::token_program = token_program
     )]
-    pub token_vault_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_a: InterfaceAccount<'info, TokenAccount>,
 
-    /// Token B vault with full validation
+    /// Token 1 vault with full validation
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_b_mint.as_ref()
+            pool.load()?.token_1_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_b_mint,
+        token::mint = pool.load()?.token_1_mint,
         token::authority = pool,
-        token::token_program = token_program,
-        constraint = token_vault_b.key() == pool.load()?.token_b_vault @ FeelsProtocolError::InvalidPool
+        token::token_program = token_program
     )]
-    pub token_vault_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_b: InterfaceAccount<'info, TokenAccount>,
 
     /// Token program
     pub token_program: Program<'info, Token2022>,
@@ -488,41 +486,41 @@ pub struct CompleteLiquidityContext<'info> {
         mut,
         seeds = [
             b"pool",
-            pool.load()?.token_a_mint.as_ref(),
-            pool.load()?.token_b_mint.as_ref(),
+            pool.load()?.token_0_mint.as_ref(),
+            pool.load()?.token_1_mint.as_ref(),
             &pool.load()?.fee_rate.to_le_bytes()
         ],
         bump
     )]
-    pub pool: AccountLoader<'info, Pool>,
+    pub pool: AccountLoader<'info, crate::state::MarketManager>,
     
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_a_mint.as_ref()
+            pool.load()?.token_0_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_a_mint,
+        token::mint = pool.load()?.token_0_mint,
         token::authority = pool,
         token::token_program = token_program,
     )]
-    pub token_vault_a: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_a: InterfaceAccount<'info, TokenAccount>,
     
     #[account(
         mut,
         seeds = [
             b"vault",
             pool.key().as_ref(),
-            pool.load()?.token_b_mint.as_ref()
+            pool.load()?.token_1_mint.as_ref()
         ],
         bump,
-        token::mint = pool.load()?.token_b_mint,
+        token::mint = pool.load()?.token_1_mint,
         token::authority = pool,
         token::token_program = token_program,
     )]
-    pub token_vault_b: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_vault_b: InterfaceAccount<'info, TokenAccount>,
 
     // User token accounts with authority validation
     #[account(
@@ -530,14 +528,14 @@ pub struct CompleteLiquidityContext<'info> {
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_a: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_0: InterfaceAccount<'info, TokenAccount>,
     
     #[account(
         mut,
         token::authority = user,
         token::token_program = token_program,
     )]
-    pub user_token_b: InterfaceAccount<'info, TokenAccount>,
+    pub user_token_1: InterfaceAccount<'info, TokenAccount>,
 
     // Validated tick arrays
     #[account(
