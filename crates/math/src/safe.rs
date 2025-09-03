@@ -351,8 +351,7 @@ pub fn validate_weights(weights: &[u32], expected_sum: u32) -> FeelsResult<()> {
     let actual_sum: u32 = weights.iter().sum();
     if actual_sum != expected_sum {
         return Err(FeelsProtocolError::InvalidWeights {
-            weights: weights.to_vec(),
-            expected_sum,
+            reason: format!("Weights sum to {}, expected {}", actual_sum, expected_sum),
         });
     }
     Ok(())

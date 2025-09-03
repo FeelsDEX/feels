@@ -9,8 +9,10 @@ pub struct VolatilityObservation {
     pub timestamp: i64,
     /// Squared log return scaled by 10^6 for precision
     pub log_return_squared: u32,
+    /// Padding to align to 8-byte boundary
+    pub _padding: u32,
 }
 
 impl VolatilityObservation {
-    pub const SIZE: usize = 8 + 4; // timestamp (i64) + log_return_squared (u32)
+    pub const SIZE: usize = 8 + 4 + 4; // timestamp (i64) + log_return_squared (u32) + padding (u32)
 }

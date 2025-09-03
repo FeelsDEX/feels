@@ -146,6 +146,11 @@ impl TickArrayRouter {
         }
         u8_bitmap::is_bit_set(self.active_bitmap, index).unwrap_or(false)
     }
+    
+    /// Find the index of a tick array by its start index
+    pub fn find_tick_array_index(&self, start_tick: i32) -> Option<usize> {
+        self.contains_array(start_tick)
+    }
 }
 
 /// Router configuration for automatic array selection

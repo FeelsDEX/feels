@@ -16,8 +16,8 @@ pub struct KeeperRegistry {
     /// Authorized keeper pubkeys
     pub keepers: [Pubkey; 32],
     
-    /// Keeper status (true = active, false = inactive)
-    pub keeper_active: [bool; 32],
+    /// Keeper status (1 = active, 0 = inactive)
+    pub keeper_active: [u8; 32],
     
     /// When each keeper was added (unix timestamp)
     pub keeper_added_at: [i64; 32],
@@ -32,7 +32,7 @@ impl KeeperRegistry {
     /// Check if a keeper is authorized
     pub fn is_keeper_authorized(&self, keeper: &Pubkey) -> bool {
         for i in 0..self.keeper_count as usize {
-            if self.keepers[i] == *keeper && self.keeper_active[i] {
+            if self.keepers[i] == *keeper && self.keeper_active[i] == 1 {
                 return true;
             }
         }
@@ -56,7 +56,7 @@ impl KeeperRegistry {
         
         let index = self.keeper_count as usize;
         self.keepers[index] = keeper;
-        self.keeper_active[index] = true;
+        self.keeper_active[index] = 1;
         self.keeper_added_at[index] = timestamp;
         self.keeper_count += 1;
         
@@ -67,7 +67,7 @@ impl KeeperRegistry {
     pub fn remove_keeper(&mut self, keeper: &Pubkey) -> Result<()> {
         for i in 0..self.keeper_count as usize {
             if self.keepers[i] == *keeper {
-                self.keeper_active[i] = false;
+                self.keeper_active[i] = 0;
                 return Ok(());
             }
         }

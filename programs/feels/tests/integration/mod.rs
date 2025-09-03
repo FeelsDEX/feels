@@ -3,3 +3,5 @@
 ///
 /// TODO: Reimplement protocol lifecycle and token validation tests
 /// against the unified instructions and new state layout.
+
+pub mod routing_integration;

@@ -21,131 +21,90 @@ use crate::logic::tick::TickManager;
 // Type Definitions
 // ============================================================================
 
+// ============================================================================
+// Hub-and-Spoke Routing Types
+// ============================================================================
+
+/// Simple routing structure for hub-and-spoke architecture
+/// All pools must include FeelsSOL, limiting routes to max 2 hops
 #[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
-pub enum OrderRoute {
-    /// Direct order - one of the tokens is FeelsSOL
-    Direct(Pubkey), // pool_key
-    /// Two-hop order - neither token is FeelsSOL, route through FeelsSOL
-    TwoHop(Pubkey, Pubkey), // pool1_key, pool2_key
+pub struct HubRoute {
+    /// Pool keys in order of execution
+    pub pools: Vec<Pubkey>,
+    /// Direction for each pool (true = token0->token1)
+    pub zero_for_one: Vec<bool>,
 }
 
-
-impl OrderRoute {
-    /// Determine the optimal routing strategy for a token pair
-    /// Returns the route using the lowest available fee tier
-    pub fn find<'info>(
+impl HubRoute {
+    /// Build a route for token pair following hub-and-spoke constraint
+    pub fn build(
         token_in: Pubkey,
         token_out: Pubkey,
         feelssol_mint: Pubkey,
-        program_id: &Pubkey,
-        remaining_accounts: &[AccountInfo<'info>],
-    ) -> OrderRoute {
-        // Check if either token is FeelsSOL
+        pool_lookup: &dyn Fn(&Pubkey, &Pubkey) -> Option<Pubkey>,
+    ) -> Result<Self> {
+        // Case 1: Direct swap (one token is FeelsSOL)
         if token_in == feelssol_mint || token_out == feelssol_mint {
-            // Direct order possible - find best fee tier
-            let pool_key = Self::find_best_pool(token_in, token_out, program_id, remaining_accounts);
-            OrderRoute::Direct(pool_key)
-        } else {
-            // Two-hop order needed - find best fee tiers for each hop
-            let pool1_key = Self::find_best_pool(token_in, feelssol_mint, program_id, remaining_accounts);
-            let pool2_key = Self::find_best_pool(feelssol_mint, token_out, program_id, remaining_accounts);
-            OrderRoute::TwoHop(pool1_key, pool2_key)
+            if let Some(pool) = pool_lookup(&token_in, &token_out) {
+                let zero_for_one = token_in < token_out; // Canonical ordering
+                return Ok(HubRoute {
+                    pools: vec![pool],
+                    zero_for_one: vec![zero_for_one],
+                });
+            }
         }
-    }
-
-    /// Find the best market for a token pair by checking multiple fee tiers
-    /// Returns the market with the lowest fee tier that has sufficient liquidity
-    fn find_best_pool(
-        token_0: Pubkey, 
-        token_1: Pubkey, 
-        program_id: &Pubkey,
-        remaining_accounts: &[AccountInfo],
-    ) -> Pubkey {
-        // Use pool discovery to find best pool
-        use crate::logic::PoolDiscovery;
         
-        // Minimum liquidity requirement (can be adjusted based on order size)
-        let min_liquidity = 1_000_000; // Example: 1M units
+        // Case 2: Two-hop through FeelsSOL hub
+        if token_in != feelssol_mint && token_out != feelssol_mint {
+            let pool1 = pool_lookup(&token_in, &feelssol_mint)
+                .ok_or(FeelsProtocolError::PoolNotFound)?;
+            let pool2 = pool_lookup(&feelssol_mint, &token_out)
+                .ok_or(FeelsProtocolError::PoolNotFound)?;
+                
+            let zero_for_one_1 = token_in < feelssol_mint;
+            let zero_for_one_2 = feelssol_mint < token_out;
+            
+            return Ok(HubRoute {
+                pools: vec![pool1, pool2],
+                zero_for_one: vec![zero_for_one_1, zero_for_one_2],
+            });
+        }
         
-        match PoolDiscovery::find_best_pool(
-            token_0,
-            token_1,
-            min_liquidity,
-            program_id,
-            remaining_accounts,
-        ) {
-            Ok(Some(pool_info)) => {
-                msg!("Found best pool with fee tier {} bps", pool_info.fee_tier);
-                pool_info.pool_key
-            }
-            Ok(None) => {
-                msg!("No active pool found, using default 30bps tier");
-                // Fall back to standard fee tier if no pool found
-                Self::derive_pool_key(token_0, token_1, 30, program_id)
-            }
-            Err(_) => {
-                msg!("Error discovering pools, using default 30bps tier");
-                // Fall back to standard fee tier on error
-                Self::derive_pool_key(token_0, token_1, 30, program_id)
-            }
-        }
+        Err(FeelsProtocolError::InvalidRoute.into())
     }
-
-    /// Derive pool PDA for a token pair using proper program derivation
-    /// Considers fee tiers and ensures canonical token ordering
-    pub fn derive_pool_key(
-        token_0: Pubkey,
-        token_1: Pubkey,
-        fee_rate: u16,
-        program_id: &Pubkey,
-    ) -> Pubkey {
-        // Use canonical token ordering to ensure deterministic pool addresses
-        let (token_a_sorted, token_b_sorted) = crate::utils::CanonicalSeeds::sort_token_mints(&token_0, &token_1);
-
-        // Use proper PDA derivation with program ownership
-        let seeds = &[
-            b"market",
-            token_a_sorted.as_ref(),
-            token_b_sorted.as_ref(),
-            &fee_rate.to_le_bytes(),
-        ];
-
-        // Proper PDA derivation owned by the program
-        let (pool_address, _bump) = Pubkey::find_program_address(seeds, program_id);
-        pool_address
-    }
-
-    /// Get all pools involved in this route
-    pub fn get_pools(&self) -> Vec<Pubkey> {
-        match self {
-            OrderRoute::Direct(pool) => vec![*pool],
-            OrderRoute::TwoHop(pool1, pool2) => vec![*pool1, *pool2],
-        }
-    }
-
-    /// Check if this route is optimal (single hop preferred over two hop)
-    pub fn is_optimal(&self) -> bool {
-        matches!(self, OrderRoute::Direct(_))
-    }
-
-    /// Get the number of hops in this route
-    pub fn hop_count(&self) -> u8 {
-        match self {
-            OrderRoute::Direct(_) => 1,
-            OrderRoute::TwoHop(_, _) => 2,
-        }
+    
+    /// Validate route complies with hub constraints
+    pub fn validate(&self, feelssol_mint: &Pubkey) -> Result<()> {
+        // Check hop limit
+        require!(
+            self.pools.len() <= crate::constant::MAX_ROUTE_HOPS,
+            FeelsProtocolError::RouteTooLong
+        );
+        
+        // Check matching lengths
+        require!(
+            self.pools.len() == self.zero_for_one.len(),
+            FeelsProtocolError::InvalidRoute
+        );
+        
+        // TODO: Validate each pool includes FeelsSOL
+        // This requires loading pool state which should be done at execution
+        
+        Ok(())
     }
 }
 
 // ============================================================================
-// Routing Logic
+// Legacy code below - TO BE REMOVED
+// The sections below contain legacy routing logic that will be removed
+// once the unified order system is fully integrated
 // ============================================================================
 
-/// Routing logic for cross-token swaps
+/// DEPRECATED: Legacy routing logic
 pub struct RoutingLogic;
 
 impl RoutingLogic {
-    /// Calculate the optimal route for a given token pair
+    /// DEPRECATED: Calculate the optimal route for a given token pair
     pub fn calculate_route(
         token_0: Pubkey,
         token_1: Pubkey,

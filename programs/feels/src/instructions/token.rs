@@ -42,9 +42,59 @@ pub struct TokenCreateResult {
 }
 
 // ============================================================================
-// State Container
+// Instruction Context
 // ============================================================================
 
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_2022::Token2022;
+use anchor_spl::token_interface::{Mint, TokenAccount};
+use crate::state::TokenMetadata;
+
+#[derive(Accounts)]
+#[instruction(params: TokenCreateParams)]
+pub struct CreateToken<'info> {
+    /// New token mint to create
+    #[account(
+        init,
+        payer = authority,
+        mint::decimals = params.decimals,
+        mint::authority = authority,
+        mint::freeze_authority = authority,
+    )]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+
+    /// Token metadata account to store ticker, name, symbol
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + TokenMetadata::SIZE,
+        seeds = [
+            b"token_metadata",
+            token_mint.key().as_ref()
+        ],
+        bump
+    )]
+    pub token_metadata: Account<'info, TokenMetadata>,
+
+    /// Authority's token account for initial mint
+    #[account(
+        init_if_needed,
+        payer = authority,
+        associated_token::mint = token_mint,
+        associated_token::authority = authority,
+    )]
+    pub authority_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    /// Token create authority (becomes mint authority)
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// Required programs
+    pub token_program: Program<'info, Token2022>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
 
 // ============================================================================
 // Validation Utils
@@ -57,7 +107,7 @@ pub struct TokenCreateResult {
 
 // Temporarily replace instruction_handler! macro with simple function
 pub fn handler<'info>(
-    ctx: Context<'_, '_, 'info, 'info, crate::CreateToken<'info>>,
+    ctx: Context<'_, '_, 'info, 'info, CreateToken<'info>>,
     params: TokenCreateParams,
 ) -> Result<TokenCreateResult> {
     // Simplified implementation for now

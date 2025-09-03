@@ -8,8 +8,8 @@
 pub mod market_initialize;  // Initialize new markets
 pub mod market_update;      // Unified market management (config, keeper updates, field updates)
 
-// Order System (using keeper-provided field commitments)
-pub mod order;              // Unified order execution and modification
+// Order System - ALL operations go through unified order handler
+pub mod order;              // Unified order system with hub-and-spoke routing
 
 // Fee enforcement
 pub mod enforce_fees;       // Fee policy enforcement and pool status management
@@ -38,13 +38,13 @@ pub use market_update::{
     WeightConfig, RiskConfig, BufferConfig, FreshnessConfig,
     MarketUpdate,
 };
-pub use token::{handler as token_create_handler, TokenCreateParams, TokenCreateResult};
+pub use token::{handler as token_create_handler, TokenCreateParams, TokenCreateResult, CreateToken};
 pub use cleanup::{cleanup_tick_array, CleanupTickArrayParams, CleanupTickArrayResult};
 pub use order::{
-    handler as order_handler, 
+    handler as order_handler,
     OrderParams, CreateOrderParams, ModifyOrderParams,
     OrderResult, CreateOrderResult, ModifyOrderResult, 
-    OrderType, RateParams, OrderModification,
+    OrderType, PositionType, OrderModification, OrderUpdateParams,
 };
 pub use enforce_fees::{
     handler as enforce_fees_handler, 

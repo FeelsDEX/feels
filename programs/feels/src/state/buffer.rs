@@ -2,6 +2,7 @@
 /// The buffer receives all fees and provides bounded rebates while participating in conservation laws.
 use anchor_lang::prelude::*;
 use crate::error::FeelsProtocolError;
+use crate::utils::math::safe;
 
 // ============================================================================
 // Constants
@@ -175,9 +176,12 @@ impl BufferAccount {
             return Ok(());
         }
         
-        // Calculate new shares
-        let new_spot_share = (spot_fees as u128 * BPS_DENOMINATOR as u128 / total_fees as u128) as u32;
-        let new_time_share = (time_fees as u128 * BPS_DENOMINATOR as u128 / total_fees as u128) as u32;
+        // Calculate new shares using safe division
+        let numerator_spot = safe::mul_u128(spot_fees as u128, BPS_DENOMINATOR as u128)?;
+        let new_spot_share = safe::div_u128(numerator_spot, total_fees as u128)? as u32;
+        
+        let numerator_time = safe::mul_u128(time_fees as u128, BPS_DENOMINATOR as u128)?;
+        let new_time_share = safe::div_u128(numerator_time, total_fees as u128)? as u32;
         let new_leverage_share = BPS_DENOMINATOR as u32 - new_spot_share - new_time_share;
         
         // Apply EWMA if not first update
@@ -363,8 +367,13 @@ fn calculate_ewma_decay(time_diff: i64, half_life: i64) -> Result<u32> {
     
     // decay = 2^(-time_diff / half_life)
     // Approximation: decay ≈ 1 - (ln(2) * time_diff / half_life)
+    if half_life == 0 {
+        return Err(FeelsProtocolError::DivisionByZero.into());
+    }
+    
     let ln2_bps = 6931; // ln(2) * 10000
-    let decay_reduction = (ln2_bps as i64 * time_diff / half_life) as u32;
+    let numerator = safe::mul_i128(ln2_bps as i64, time_diff)? as i64;
+    let decay_reduction = safe::div_u128(numerator as u128, half_life as u128)? as u32;
     
     Ok(BPS_DENOMINATOR as u32 - decay_reduction.min(BPS_DENOMINATOR as u32))
 }
@@ -372,10 +381,18 @@ fn calculate_ewma_decay(time_diff: i64, half_life: i64) -> Result<u32> {
 /// Apply EWMA update
 fn apply_ewma(old_value: u32, new_value: u32, decay: u32) -> Result<u32> {
     // result = decay * old + (1 - decay) * new
-    let weighted_old = (old_value as u64 * decay as u64) / BPS_DENOMINATOR;
-    let weighted_new = (new_value as u64 * (BPS_DENOMINATOR as u32 - decay) as u64) / BPS_DENOMINATOR;
+    let weighted_old = safe::div_u64(
+        safe::mul_u64(old_value as u64, decay as u64)?,
+        BPS_DENOMINATOR as u64
+    )?;
     
-    Ok((weighted_old + weighted_new) as u32)
+    let one_minus_decay = safe::sub_u64(BPS_DENOMINATOR as u64, decay as u64)?;
+    let weighted_new = safe::div_u64(
+        safe::mul_u64(new_value as u64, one_minus_decay)?,
+        BPS_DENOMINATOR as u64
+    )?;
+    
+    Ok(safe::add_u64(weighted_old, weighted_new)? as u32)
 }
 
 // ============================================================================

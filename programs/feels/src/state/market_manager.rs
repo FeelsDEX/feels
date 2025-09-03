@@ -119,6 +119,37 @@ pub struct MarketManager {
 }
 
 impl MarketManager {
+    /// Size of the MarketManager account
+    pub const SIZE: usize = 32 + // market
+        16 + // current_sqrt_rate
+        4 + // current_tick
+        16 + // liquidity
+        32 + // token_0_mint
+        32 + // token_1_mint
+        1 + // token_0_decimals
+        1 + // token_1_decimals
+        2 + // tick_spacing
+        2 + // fee_rate
+        2 + // protocol_fee_percentage
+        16 + // liquidity_locked
+        8 + // position_count
+        32 + // oracle
+        1 + // oracle_type
+        32 + // authority
+        32 + // fee_recipient
+        1 + // is_paused
+        1 + // reentrancy_status
+        8 + // last_update_timestamp
+        16 + // total_volume_a
+        16 + // total_volume_b
+        (8 * 16) + // tick_array_bitmap
+        16 + // fee_growth_global_0
+        16 + // fee_growth_global_1
+        8 + // max_leverage_bps
+        8 + // avg_leverage_bps
+        16 + // total_leveraged_notional
+        8; // _reserved
+    
     /// Initialize market manager
     pub fn initialize(
         &mut self,

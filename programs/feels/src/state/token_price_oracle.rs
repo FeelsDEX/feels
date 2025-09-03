@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Token-specific price oracle for accurate valuation
 #[account(zero_copy)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct TokenPriceOracle {
     /// Pool this oracle serves
     pub pool: Pubkey,
@@ -40,6 +40,9 @@ pub struct TokenPriceOracle {
     /// Oracle status for token 1
     pub token_1_status: OracleStatus,
     
+    /// Padding for alignment
+    pub _padding: [u8; 6],
+    
     /// Reserved for future use
     pub _reserved: [u8; 128],
 }
@@ -53,8 +56,11 @@ pub enum OracleStatus {
     Offline = 3,
 }
 
+unsafe impl bytemuck::Pod for OracleStatus {}
+unsafe impl bytemuck::Zeroable for OracleStatus {}
+
 impl TokenPriceOracle {
-    pub const SIZE: usize = 32 + 32 + 32 + 32 + 32 + 8 + 16 + 16 + 4 + 4 + 1 + 1 + 128;
+    pub const SIZE: usize = 32 + 32 + 32 + 32 + 32 + 8 + 16 + 16 + 4 + 4 + 1 + 1 + 6 + 128;
     
     /// Check if both oracles are fresh
     pub fn is_fresh(&self, current_time: i64, max_age: i64) -> bool {
@@ -106,7 +112,7 @@ pub struct InitializeTokenPriceOracle<'info> {
         init,
         payer = authority,
         space = 8 + TokenPriceOracle::SIZE,
-        seeds = [b"token_price_oracle", market_manager.load()?.pool.as_ref()],
+        seeds = [b"token_price_oracle", market_manager.load()?.market.as_ref()],
         bump,
     )]
     pub token_price_oracle: AccountLoader<'info, TokenPriceOracle>,
@@ -122,9 +128,9 @@ pub fn initialize_token_price_oracle(
     let mut price_oracle = ctx.accounts.token_price_oracle.load_init()?;
     let market = ctx.accounts.market_manager.load()?;
     
-    price_oracle.pool = market.pool;
-    price_oracle.token_0_mint = market.token_0;
-    price_oracle.token_1_mint = market.token_1;
+    price_oracle.pool = market.market;
+    price_oracle.token_0_mint = market.token_0_mint;
+    price_oracle.token_1_mint = market.token_1_mint;
     price_oracle.token_0_oracle = token_0_oracle;
     price_oracle.token_1_oracle = token_1_oracle;
     price_oracle.last_update = 0;
@@ -134,6 +140,7 @@ pub fn initialize_token_price_oracle(
     price_oracle.token_1_confidence = 0;
     price_oracle.token_0_status = OracleStatus::Inactive;
     price_oracle.token_1_status = OracleStatus::Inactive;
+    price_oracle._padding = [0; 6];
     price_oracle._reserved = [0; 128];
     
     msg!("Initialized token price oracle for pool {}", price_oracle.pool);

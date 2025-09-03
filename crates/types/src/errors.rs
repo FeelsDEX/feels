@@ -49,13 +49,14 @@ pub enum FeelsProtocolError {
     #[error("Invalid sequence: expected {expected}, got {received}")]
     InvalidSequence { expected: u64, received: u64 },
     
+    /// Local coefficients have expired
+    #[error("Local coefficients expired at {expired_at}, current time {current_time}")]
+    LocalCoefficientsExpired { expired_at: i64, current_time: i64 },
+    
     /// Field commitment hash mismatch
     #[error("Hash mismatch: expected {expected:?}, computed {computed:?}")]
     HashMismatch { expected: [u8; 32], computed: [u8; 32] },
     
-    /// Local coefficients expired
-    #[error("Local coefficients expired at {expired_at}")]
-    LocalCoefficientsExpired { expired_at: i64 },
     
     /// Position out of bounds
     #[error("Position out of bounds: {position:?} not in valid range")]

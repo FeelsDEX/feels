@@ -2,17 +2,24 @@
 
 This document specifies the trust‑minimized verification rules for a single provider and the policy controls the chain enforces for updates, fees, and safety limits. The verification system implements cryptographic proofs and economic bounds to maintain security while enabling efficient off-chain computation of complex market physics.
 
-## Symbols
+## Symbol Table
 
-- $S, T, L$: Domain value functions; $\tau$: protocol buffer.
-- $w_{S,i}, w_{T,d}, w_{L,i}$: Component weights within domains (each set sums to 1).
-- $I_S, I_T, I_L$: Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$.
-- $\kappa$: Price‑improvement clamp; $\eta$: rebate participation fraction.
-- $\alpha$: Safety coefficient for leverage bounds.
-- $D_{\text{TWAP}}$: Depth over TWAP window; $W_{\text{length}}$: window length factor; $L_{\text{notional}}$: leverage notional.
-- $\sigma_{\min}, \sigma_{\max}$: Volatility bounds (annualized).
-- Policy caps: `MAX_SURCHARGE_BPS`, `MAX_INSTANTANEOUS_FEE`, `REBATE_CAP`, `MAX_FEE` (global fee bound in commitments).
-- Sequence numbers: strictly increasing per update; timestamps subject to freshness and cadence limits.
+| Symbol | Description |
+|--------|-------------|
+| $S, T, L$ | Domain value functions |
+| $\tau$ | Protocol buffer |
+| $w_{S,i}, w_{T,d}, w_{L,i}$ | Component weights within domains (each set sums to 1) |
+| $I_S, I_T, I_L$ | Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$ |
+| $\kappa$ | Price‑improvement clamp |
+| $\eta$ | Rebate participation fraction |
+| $\alpha$ | Safety coefficient for leverage bounds |
+| $D_{\text{TWAP}}$ | Depth over TWAP window |
+| $W_{\text{length}}$ | Window length factor |
+| $L_{\text{notional}}$ | Leverage notional |
+| $\sigma_{\min}, \sigma_{\max}$ | Volatility bounds (annualized) |
+| `MAX_SURCHARGE_BPS`, `MAX_INSTANTANEOUS_FEE` | Policy caps |
+| `REBATE_CAP`, `MAX_FEE` | Global fee bound in commitments |
+| Sequence numbers | Strictly increasing per update; timestamps subject to freshness and cadence limits |
 
 ## Trust-Minimized Provider Architecture
 
@@ -118,6 +125,8 @@ $$\text{fee} \leq f_{\text{global}}(\text{bounds}, \text{proof}) \leq \text{MAX\
 $$\text{rebate} \leq r_{\text{global}}(\text{bounds}, \text{proof}) \leq \text{REBATE\_CAP}$$
 
 Where global bound functions provide conservative upper limits that are always safe even if local approximations contain errors.
+
+Note on routing vs. segmentation: Even though routes are bounded in hops by the FeelsSOL hub, large trades can still require many segments within a hop. Mode B keeps on‑chain compute predictable by verifying a few inclusion proofs plus global bounds instead of recomputing every segment exactly.
 
 ### Commitment Lifecycle Management
 Validates commitment updates via signature, freshness, approximation bounds, and state consistency checks.
@@ -297,3 +306,22 @@ The system maintains these invariants under all conditions:
 3. **Temporal ordering**: All state transitions respect causal ordering via sequence numbers  
 4. **Cryptographic integrity**: All commitments remain unforgeable and verifiable
 5. **Graceful degradation**: System continues operating safely even with provider failures
+#### Routing and Segmentation Limits
+- **Route bound**: `MAX_ROUTE_HOPS = 2` (Token↔Token routes as $A \to \text{FeelsSOL} \to B$; Entry/Exit $\text{JitoSOL} \leftrightarrow \text{FeelsSOL}$; FeelsSOL↔Position single hop; Position↔Position default via hub).
+- **Segmentation cap**: `MAX_SEGMENTS_PER_HOP` and/or `MAX_SEGMENTS_PER_TRADE` caps to bound worst‑case compute.
+
+### Route Validation Example
+Validates that a proposed route complies with hop and hub constraints.
+```rust
+fn is_route_allowed(route: &[PoolId]) -> bool {
+    // 1. Hop bound
+    if route.len() > MAX_ROUTE_HOPS { return false; }
+
+    // 2. Hub constraint: all spot legs include FeelsSOL as one side
+    for pool in route {
+        if !pool.is_feelssol_pair() { return false; }
+    }
+
+    true
+}
+```

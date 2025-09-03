@@ -43,3 +43,8 @@ pub const MAX_HOOKS_PER_POOL: usize = 8; // Maximum hooks per pool
 
 // Liquidity Constants
 pub const MAX_LIQUIDITY_DELTA: i128 = i128::MAX / 2; // Half of max to leave room for operations
+
+// Routing Constants
+pub const MAX_ROUTE_HOPS: usize = 2; // Maximum number of hops in any route (hub-and-spoke bound)
+pub const MAX_SEGMENTS_PER_HOP: usize = 10; // Maximum segments within a single hop
+pub const MAX_SEGMENTS_PER_TRADE: usize = 20; // Maximum total segments across all hops

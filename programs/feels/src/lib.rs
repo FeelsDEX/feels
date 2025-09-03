@@ -54,6 +54,20 @@ pub use instructions::{
     MarketConfigParams,
     FieldCommitmentUpdate,
     PoolUpdateParams,
+    InitializeKeeperRegistry,
+    AddKeeper,
+    RemoveKeeper,
+    AddKeeperParams,
+    RemoveKeeperParams,
+    InitializePoolStatus,
+    EnforceFees,
+    EnforceFeesParams,
+    EnforceFeesResult,
+    TokenCreateParams,
+    TokenCreateResult,
+    CreateToken,
+    CleanupTickArrayParams,
+    CleanupTickArrayResult,
 };
 
 // Re-export Duration from state
@@ -137,51 +151,6 @@ pub struct InitializeFeelsSOL<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[derive(Accounts)]
-#[instruction(ticker: String, name: String, symbol: String, decimals: u8, initial_supply: u64)]
-pub struct CreateToken<'info> {
-    /// New token mint to create
-    #[account(
-        init,
-        payer = authority,
-        mint::decimals = decimals,
-        mint::authority = authority,
-        mint::freeze_authority = authority,
-    )]
-    pub token_mint: InterfaceAccount<'info, Mint>,
-
-    /// Token metadata account to store ticker, name, symbol
-    #[account(
-        init,
-        payer = authority,
-        space = TokenMetadata::SIZE,
-        seeds = [
-            b"token_metadata",
-            token_mint.key().as_ref()
-        ],
-        bump
-    )]
-    pub token_metadata: Account<'info, TokenMetadata>,
-
-    /// Authority's token account for initial mint
-    #[account(
-        init_if_needed,
-        payer = authority,
-        associated_token::mint = token_mint,
-        associated_token::authority = authority,
-    )]
-    pub authority_token_account: InterfaceAccount<'info, TokenAccount>,
-
-    /// Token create authority (becomes mint authority)
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    /// Required programs
-    pub token_program: Program<'info, Token2022>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
-}
 
 #[derive(Accounts)]
 pub struct InitializeMarket<'info> {
@@ -527,7 +496,6 @@ pub struct CleanupTickArrayV2<'info> {
 #[program]
 pub mod feels {
     use super::*;
-    use crate::instructions::market_initialize;
 
     /// Initialize the protocol state
     pub fn initialize_feels(
@@ -552,6 +520,15 @@ pub mod feels {
         protocol_state.initialized_at = Clock::get()?.unix_timestamp;
         
         Ok(())
+    }
+
+    /// Unified order handler for ALL trading operations
+    /// This is the single entry point for swaps, position transitions, liquidity, and limit orders
+    pub fn order<'info>(
+        ctx: Context<'_, '_, 'info, 'info, Order<'info>>,
+        params: crate::instructions::OrderParams,
+    ) -> Result<crate::instructions::OrderResult> {
+        crate::instructions::order_handler(ctx, params)
     }
 
     /// Initialize FeelsSOL wrapper token
@@ -581,41 +558,20 @@ pub mod feels {
         Ok(())
     }
 
-    /// Create a new token
-    pub fn create_token(
-        ctx: Context<CreateToken>,
-        ticker: String,
-        name: String,
-        symbol: String,
-        _decimals: u8,
-        _initial_supply: u64,
-    ) -> Result<()> {
-        // Initialize token metadata
-        let metadata = &mut ctx.accounts.token_metadata;
-        metadata.mint = ctx.accounts.token_mint.key();
-        metadata.ticker = ticker;
-        metadata.name = name;
-        metadata.symbol = symbol;
-        metadata.authority = ctx.accounts.authority.key();
-        metadata.created_at = Clock::get()?.unix_timestamp;
-        metadata._reserved = [0; 64];
-        
-        Ok(())
-    }
 
     /// Initialize a new market with market field and buffer accounts
     pub fn initialize_market<'info>(
         ctx: Context<'_, '_, 'info, 'info, InitializeMarket<'info>>,
         params: InitializeMarketParams,
     ) -> Result<InitializeMarketResult> {
-        market_initialize::initialize_market(ctx, params)
+        crate::instructions::market_initialize::initialize_market(ctx, params)
     }
     
     /// Initialize the keeper registry
     pub fn initialize_keeper_registry(
         ctx: Context<InitializeKeeperRegistry>
     ) -> Result<()> {
-        instructions::initialize_keeper_registry(ctx)
+        crate::instructions::keeper_registry::initialize_keeper_registry(ctx)
     }
     
     /// Add a keeper to the registry
@@ -623,7 +579,7 @@ pub mod feels {
         ctx: Context<AddKeeper>,
         params: AddKeeperParams,
     ) -> Result<()> {
-        instructions::add_keeper(ctx, params)
+        crate::instructions::keeper_registry::add_keeper(ctx, params)
     }
     
     /// Remove a keeper from the registry
@@ -631,6 +587,51 @@ pub mod feels {
         ctx: Context<RemoveKeeper>,
         params: RemoveKeeperParams,
     ) -> Result<()> {
-        instructions::remove_keeper(ctx, params)
+        crate::instructions::keeper_registry::remove_keeper(ctx, params)
     }
+    
+    // Temporarily commented to fix build issues
+    // TODO: Re-enable these once we fix the import issues
+    
+    /*
+    
+    /// Initialize pool status for fee enforcement
+    pub fn initialize_pool_status(
+        ctx: Context<InitializePoolStatus>,
+    ) -> Result<()> {
+        enforce_fees::initialize_pool_status(ctx)
+    }
+    
+    /// Enforce fee policy on pools
+    pub fn enforce_fees<'info>(
+        ctx: Context<'_, '_, 'info, 'info, EnforceFees<'info>>,
+        params: EnforceFeesParams,
+    ) -> Result<EnforceFeesResult> {
+        enforce_fees::handler(ctx, params)
+    }
+    
+    /// Update market configuration
+    pub fn update_market<'info>(
+        ctx: Context<'_, '_, 'info, 'info, market_update::MarketUpdate<'info>>,
+        operation: MarketOperation,
+    ) -> Result<()> {
+        market_update::handler(ctx, operation)
+    }
+    
+    /// Create a new token
+    pub fn create_token<'info>(
+        ctx: Context<'_, '_, 'info, 'info, CreateToken<'info>>,
+        params: TokenCreateParams,
+    ) -> Result<TokenCreateResult> {
+        token::handler(ctx, params)
+    }
+    
+    /// Cleanup tick array
+    pub fn cleanup_tick_array(
+        ctx: Context<cleanup::CleanupTickArray>,
+        params: cleanup::CleanupTickArrayParams,
+    ) -> Result<cleanup::CleanupTickArrayResult> {
+        cleanup::cleanup_tick_array(ctx, params)
+    }
+    */
 }

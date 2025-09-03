@@ -28,6 +28,9 @@ pub struct EmergencyFlags {
     /// Emergency mode active (0 = false, 1 = true)
     pub emergency_mode: u8,
     
+    /// Padding to align to 8-byte boundary
+    pub _padding: [u8; 2],
+    
     /// Time emergency was activated
     pub emergency_activated_at: i64,
     
@@ -42,7 +45,7 @@ pub struct EmergencyFlags {
 }
 
 impl EmergencyFlags {
-    pub const SIZE: usize = 32 + 32 + 1 + 1 + 1 + 1 + 1 + 1 + 8 + 64 + 8 + 128;
+    pub const SIZE: usize = 32 + 32 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 8 + 64 + 8 + 128;
     
     /// Check if any operations are paused
     pub fn is_operational(&self) -> bool {
@@ -127,6 +130,7 @@ pub fn initialize_emergency_flags(
     flags.pause_rebates = 0;
     flags.force_max_fees = 0;
     flags.emergency_mode = 0;
+    flags._padding = [0; 2];
     flags.emergency_activated_at = 0;
     flags.emergency_reason = [0; 64];
     flags._reserved_flags = [0; 8];

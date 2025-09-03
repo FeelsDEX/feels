@@ -13,7 +13,7 @@ pub struct InitializeKeeperRegistry<'info> {
     /// Protocol state to ensure proper initialization order
     #[account(
         seeds = [b"protocol"],
-        bump = protocol.bump,
+        bump,
         has_one = authority,
     )]
     pub protocol: Account<'info, ProtocolState>,
@@ -40,7 +40,7 @@ pub fn initialize_keeper_registry(ctx: Context<InitializeKeeperRegistry>) -> Res
     
     // Initialize arrays
     keeper_registry.keepers = [Pubkey::default(); 32];
-    keeper_registry.keeper_active = [false; 32];
+    keeper_registry.keeper_active = [0; 32];
     keeper_registry.keeper_added_at = [0; 32];
     keeper_registry._reserved = [0; 256];
     

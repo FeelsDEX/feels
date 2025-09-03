@@ -1,60 +1,72 @@
-/// Core business logic for markets, orders, ticks, and positions.
-/// These modules handle the fundamental operations of the AMM.
+/// Core business logic - Unified order execution with thermodynamic physics
+/// The OrderManager uses StateContext for state abstraction while delegating
+/// physics calculations to specialized modules
 
-pub mod order;
-pub mod tick;
-pub mod position_manager;
-pub mod event;
-pub mod hook;
-pub mod fallback_mode;
-pub mod field_update;
-pub mod field_verification;
-pub mod concentrated_liquidity;
-pub mod instantaneous_fee;
-pub mod leverage_safety;
-pub mod conservation_check;
-pub mod work_calculation;
-pub mod pool_discovery;
+// Unified order and state management with physics integration
+pub mod order_manager;  // Unified order manager with thermodynamic physics
+pub mod state_access;
 
-// Re-export commonly used items
-pub use order::{
-    OrderManager, OrderState, OrderStep, OrderRoute, RoutingLogic,
-    SecureOrderManager, OracleTwapWindow, get_oracle_from_remaining,
-    get_oracle_data_from_remaining,
-    // 3D Order components
-    OrderManager3D, DimensionWeights, Liquidity3D, PriceImpact3D, OrderType,
+// Thermodynamic physics modules (CRITICAL - DO NOT DELETE)
+pub mod work_calculation;      // Work-based fee calculations
+pub mod instantaneous_fee;     // Fee/rebate determination
+pub mod conservation_check;    // Conservation law enforcement
+pub mod field_update;          // Market field calculations (S,T,L)
+pub mod field_verification;    // Keeper update verification
+pub mod leverage_safety;       // Leverage bounds and safety
+pub mod fallback_mode;        // Degraded operation handling
+
+// Core AMM logic
+pub mod concentrated_liquidity; // Concentrated liquidity math
+pub mod tick;                  // Tick management
+pub mod position_manager;      // Position lifecycle
+
+// Supporting modules
+pub mod event;                 // Event emission
+pub mod hook;                  // Hook system
+pub mod pool_discovery;        // Pool finding
+pub mod order;                 // Legacy order types
+
+// Re-export unified components
+pub use order_manager::{
+    OrderManager, SwapResult, PositionResult, LiquidityResult, LimitOrderResult,
 };
 
-pub use tick::{
-    TickManager,
+// PhysicsOrderManager functionality now merged into OrderManager
+
+pub use state_access::{
+    StateContext, MarketStateAccess, TickStateAccess, PositionStateAccess, BufferStateAccess,
 };
 
-pub use position_manager::{
-    create_position_with_rebase,
-};
-
-pub use fallback_mode::{
-    FallbackModeManager, FallbackContext, FallbackEvaluation,
-    OperationalMode, EmergencyActions,
-    should_use_fallback_mode, get_fee_parameters, log_fallback_status,
-};
-
+// Re-export thermodynamic components
 pub use work_calculation::{
-    WorkResult, Position3D, PathSegment,
-    calculate_path_work, calculate_work_from_field,
-    work_to_fee, work_qualifies_for_rebate,
+    WorkResult, calculate_path_work, work_to_fee,
+};
+
+pub use instantaneous_fee::{
+    calculate_instantaneous_fee, calculate_rebate_amount,
+    InstantaneousFeeParams, InstantaneousFeeResult,
 };
 
 pub use conservation_check::{
-    ConservationProof, ConservationCheckResult,
-    BufferConservationContext, BufferConservationProof,
-    RebaseOperationType, DomainActivity,
-    verify_conservation, verify_conservation_with_buffer,
-    calculate_buffer_fee_share, build_buffer_conservation_proof,
+    ConservationProof, verify_conservation,
 };
 
-// Path integration removed - now using keeper analytics
-
-pub use pool_discovery::{
-    PoolDiscovery, PoolInfo,
+pub use field_update::{
+    update_market_field_data, FieldUpdateContext,
 };
+
+pub use field_verification::{
+    verify_field_commitment, FieldCommitment, FieldUpdateMode,
+};
+
+pub use leverage_safety::{
+    LeverageLimits, check_leverage_safety,
+};
+
+pub use fallback_mode::{
+    FallbackModeManager, OperationalMode,
+};
+
+// Re-export other commonly used items
+pub use event::*;
+pub use hook::*;

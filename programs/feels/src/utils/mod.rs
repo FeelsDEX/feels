@@ -14,6 +14,8 @@ pub mod cpi_helpers;           // Cross-Program Invocation helpers
 pub mod deterministic_seed;    // PDA seed generation and derivation
 pub mod error_handling;        // Error handling utilities
 pub mod instruction_pattern;   // Standardized instruction handler patterns
+pub mod routing;               // Routing validation and hub constraint enforcement
+pub mod segment_validation;    // Segment count validation and caps enforcement
 pub mod vault_balance;         // SPL token vault balance queries
 pub mod math;                  // Unified mathematics module
 pub mod security;              // Centralized security utilities and macros

@@ -2,19 +2,28 @@
 
 This document describes the continuous mechanism for settling time‑value and funding flows using exact exponentials and conservation within each subdomain, including the role of the buffer $\tau$. The rebasing system maintains strict value conservation while allowing organic growth and contraction of market positions through thermodynamically consistent rebalancing.
 
-## Symbols
+## Symbol Table
 
-- $r$: Annualized rate; $\Delta t$: elapsed time (seconds); $\text{year}$: seconds per year; $dt$: time in years.
-- $g$: Multiplicative growth factor $e^{r\,dt}$.
-- $w_i$: Snapshot participation weights; $g_i$: multiplicative growth factors.
-- $g_A, g_D, g_\tau$: Deposit, debt, and buffer growth factors.
-- $w_A, w_D, w_\tau^{(\text{time})}$: Weights for deposits, debt, and buffer (sum to 1 in time subdomain).
-- $\tau$: Protocol buffer; $\zeta_{spot}, \zeta_{time}, \zeta_{leverage}$: Fee distribution weights (bps, sum to 10,000).
-- $\text{skew}$: Directional imbalance in $[-1,1]$ (used for funding dynamics).
- - $\rho_T(d)$: Time‑domain risk $= \sigma_{\text{rate}}\,\sqrt{d}$ (dimensionless).
- - $\rho_L$: Leverage‑domain risk $= \sigma_{\text{leverage}}\,|\text{skew}|$ (dimensionless).
- - $d$: Duration bucket (years); $T_{\text{lend}}(d), T_{\text{borrow}}(d)$: lending/borrowing notionals.
- - $\sigma_{\text{rate}}$: Annualized interest‑rate volatility; $\sigma_{\text{leverage}}$: annualized position volatility.
+| Symbol | Description |
+|--------|-------------|
+| $r$ | Annualized rate |
+| $\Delta t$ | Elapsed time (seconds) |
+| $\text{year}$ | Seconds per year |
+| $dt$ | Time in years |
+| $g$ | Multiplicative growth factor $e^{r\,dt}$ |
+| $w_i$ | Snapshot participation weights |
+| $g_i$ | Multiplicative growth factors |
+| $g_A, g_D, g_\tau$ | Deposit, debt, and buffer growth factors |
+| $w_A, w_D, w_\tau^{(\text{time})}$ | Weights for deposits, debt, and buffer (sum to 1 in time subdomain) |
+| $\tau$ | Protocol buffer |
+| $\zeta_{spot}, \zeta_{time}, \zeta_{leverage}$ | Fee distribution weights (bps, sum to 10,000) |
+| $\text{skew}$ | Directional imbalance in $[-1,1]$ (used for funding dynamics) |
+| $\rho_T(d)$ | Time‑domain risk $= \sigma_{\text{rate}}\,\sqrt{d}$ (dimensionless) |
+| $\rho_L$ | Leverage‑domain risk $= \sigma_{\text{leverage}}\,|\text{skew}|$ (dimensionless) |
+| $d$ | Duration bucket (years) |
+| $T_{\text{lend}}(d), T_{\text{borrow}}(d)$ | Lending/borrowing notionals |
+| $\sigma_{\text{rate}}$ | Annualized interest‑rate volatility |
+| $\sigma_{\text{leverage}}$ | Annualized position volatility |
 
 ## Thermodynamic Growth Framework
 

@@ -6,6 +6,7 @@
 use anchor_lang::prelude::*;
 use crate::error::FeelsProtocolError;
 use crate::state::market_field::{MarketField, WorkCalculationParams};
+use crate::utils::math::safe;
 // Note: ln_q64 calculations are performed off-chain in the keeper
 // On-chain code receives pre-computed work values
 
@@ -110,11 +111,11 @@ fn ln_q64(x: u128) -> Result<i128> {
     let z3 = ((z2 as i128) * (z as i128)) >> 64; // z³ in Q64
     let z4 = ((z3 as i128) * (z as i128)) >> 64; // z⁴ in Q64
     
-    // Calculate terms with proper scaling
+    // Calculate terms with proper scaling using safe operations
     let term1 = z;
-    let term2 = z2 >> 1;  // z²/2
-    let term3 = z3 / 3;   // z³/3
-    let term4 = z4 >> 2;  // z⁴/4
+    let term2 = safe::safe_shr_u128(z2 as u128, 1)? as i128;  // z²/2
+    let term3 = safe::div_i128(z3, 3)?;   // z³/3
+    let term4 = safe::safe_shr_u128(z4 as u128, 2)? as i128;  // z⁴/4
     
     // Sum terms with alternating signs
     let ln_normalized = term1 - term2 + term3 - term4;
@@ -143,13 +144,15 @@ fn calculate_ln_ratio_fixed_point(a: u128, b: u128) -> Result<i128> {
         .ok_or(FeelsProtocolError::MathOverflow.into())
 }
 
-/// Apply weight to value (same as original)
+/// Apply weight to value using safe operations
 fn apply_weight(value: i128, weight: u64) -> Result<i128> {
-    // weight is in basis points, convert to fixed point
-    let weight_fp = (weight as i128 * (1i128 << 64)) / 10000;
+    // weight is in basis points, convert to fixed point using safe operations
+    let numerator = safe::mul_i128(weight as i128, safe::safe_shl_u128(1, 64)? as i128)?;
+    let weight_fp = safe::div_i128(numerator, 10000)?;
     
-    // Multiply and scale back
-    let result = (value.saturating_mul(weight_fp)) >> 64;
+    // Multiply and scale back using safe operations
+    let product = safe::mul_i128(value, weight_fp)?;
+    let result = safe::safe_shr_u128(product as u128, 64)? as i128;
     
     Ok(result)
 }

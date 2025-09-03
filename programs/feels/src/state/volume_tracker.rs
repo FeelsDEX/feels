@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 /// Volume tracking for lending and borrowing activities
 #[account(zero_copy)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct VolumeTracker {
     /// Pool this tracker serves
     pub pool: Pubkey,
@@ -40,7 +40,7 @@ pub struct VolumeTracker {
 }
 
 impl VolumeTracker {
-    pub const SIZE: usize = 32 + 8 + 16 + 16 + 16 + 16 + 16 + 16 + 16 + 16 + 8 + 8 + 8 + 8 + 8 + 128;
+    pub const SIZE: usize = 32 + 8 + (16 * 8) + 8 + (8 * 4) + 128;
     
     /// Record lending activity
     pub fn record_lending(&mut self, token_0_amount: u64, token_1_amount: u64) {

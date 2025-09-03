@@ -11,6 +11,9 @@ pub struct VolatilityOracle {
     /// Oracle provider (e.g., Pyth, Switchboard)
     pub oracle_provider: Pubkey,
     
+    /// Price feed address (e.g., Pyth price account)
+    pub price_feed: Pubkey,
+    
     /// Last update timestamp
     pub last_update: i64,
     
@@ -23,20 +26,20 @@ pub struct VolatilityOracle {
     /// 7day volatility (basis points)
     pub volatility_7d_bps: u64,
     
+    /// Recent observations for validation
+    pub observations: [VolatilityObservation; 24],
+    
     /// Confidence level (0-100)
     pub confidence: u8,
     
     /// Oracle status
     pub status: OracleStatus,
     
-    /// Price feed address (e.g., Pyth price account)
-    pub price_feed: Pubkey,
-    
-    /// Recent observations for validation
-    pub observations: [VolatilityObservation; 24],
-    
     /// Number of valid observations
     pub observation_count: u8,
+    
+    /// Padding for alignment
+    pub _padding: [u8; 5],
     
     /// Reserved for future use
     pub _reserved: [u8; 128],
@@ -55,7 +58,7 @@ unsafe impl bytemuck::Pod for OracleStatus {}
 unsafe impl bytemuck::Zeroable for OracleStatus {}
 
 impl VolatilityOracle {
-    pub const SIZE: usize = 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 32 + (12 * 24) + 1 + 128;
+    pub const SIZE: usize = 32 + 32 + 32 + 8 + 8 + 8 + 8 + (16 * 24) + 1 + 1 + 1 + 5 + 128;
     
     /// Check if oracle data is fresh
     pub fn is_fresh(&self, current_time: i64, max_age: i64) -> bool {
@@ -86,6 +89,7 @@ impl VolatilityOracle {
         VolatilityObservation {
             timestamp: self.last_update,
             log_return_squared,
+            _padding: 0,
         }
     }
 }
@@ -135,8 +139,9 @@ pub fn initialize_volatility_oracle(
     volatility_oracle.volatility_7d_bps = 0;
     volatility_oracle.confidence = 0;
     volatility_oracle.status = OracleStatus::Inactive;
-    volatility_oracle.observations = [VolatilityObservation { timestamp: 0, log_return_squared: 0 }; 24];
+    volatility_oracle.observations = [VolatilityObservation { timestamp: 0, log_return_squared: 0, _padding: 0 }; 24];
     volatility_oracle.observation_count = 0;
+    volatility_oracle._padding = [0; 5];
     volatility_oracle._reserved = [0; 128];
     
     msg!("Initialized volatility oracle for pool {}", volatility_oracle.pool);

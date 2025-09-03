@@ -245,36 +245,34 @@ pub struct CreatePoolResult {
 // Route and Path Types
 // ============================================================================
 
-/// Trading route through one or more pools
+/// Trading route through hub-constrained pools (max 2 hops)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TradingRoute {
-    /// Sequence of pools to trade through
+    /// Pools in the route (1 or 2, always including FeelsSOL)
     pub pools: Vec<Pubkey>,
-    /// Expected input amount
+    /// Token being traded in
+    pub token_in: Pubkey,
+    /// Token being traded out
+    pub token_out: Pubkey,
+    /// Input amount
     pub amount_in: u64,
     /// Expected output amount
     pub amount_out: u64,
-    /// Minimum acceptable output (slippage protection)
-    pub min_amount_out: u64,
     /// Total fees across all hops
     pub total_fees: u64,
-    /// Price impact across route
-    pub price_impact: u64,  // basis points
-    /// Estimated work for the route
-    pub estimated_work: i128,
 }
 
-/// Single step in a trading route
+/// Single hop in a hub-constrained route
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RouteStep {
+    /// Pool for this hop (must include FeelsSOL as one side)
     pub pool: Pubkey,
+    /// Tokens for this hop
     pub token_in: Pubkey,
     pub token_out: Pubkey,
+    /// Amounts for this hop
     pub amount_in: u64,
     pub amount_out: u64,
-    pub fee: u64,
-    pub sqrt_price_before: u128,
-    pub sqrt_price_after: u128,
 }
 
 // ============================================================================

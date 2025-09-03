@@ -31,6 +31,18 @@ pub enum SdkError {
 
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
+    
+    #[error("Invalid pool: {0}")]
+    InvalidPool(String),
+    
+    #[error("Invalid route: {0}")]
+    InvalidRoute(String),
+    
+    #[error("No route found between tokens")]
+    NoRouteFound,
+    
+    #[error("Pool not found")]
+    PoolNotFound,
 }
 
 pub type SdkResult<T> = Result<T, SdkError>;

@@ -2,18 +2,26 @@
 
 This document explains how trades are priced from the change in potential along the executed path, how that change converts to fee basis points, how rebates are bounded, and how the chain verifies a single provider's updates. The fee structure implements work-based pricing where uphill moves (against equilibrium) pay fees and downhill moves (toward equilibrium) can earn rebates.
 
-## Symbols
+## Symbol Table
 
-- $S, T, L$: Domain value functions; $\hat{w}_s, \hat{w}_t, \hat{w}_l$: normalized domain weights (sum to 1).
-- $P$: Market state summarizing $(S,T,L)$; $V(P)$: potential at state $P$.
-- $W$: Work $= V(P_2)-V(P_1)$; $W_{\uparrow}$, $W_{\downarrow}$: uphill/downhill components.
-- $\Pi_{in}, \Pi_{out}$: Marginal price maps (input‑token and output‑token per unit work).
-- $\eta$: Rebate participation fraction in $[0,1]$; $\kappa$: price‑improvement clamp in $(0,1]$.
-- `amount_in`: User pre‑fee input; `base_bps`: base fee in basis points.
-- `dyn_bps`: Dynamic surcharge (bps); `MAX_SURCHARGE_BPS`, `MAX_INSTANTANEOUS_FEE`: policy caps.
-- $\tau$: Protocol buffer sourcing rebates and absorbing fees.
-- $w_{S,i}, w_{T,d}, w_{L,i}$: Component weights within spot/time/leverage domains (each set sums to 1).
-- $I_S, I_T, I_L$: Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$.
+| Symbol | Description |
+|--------|-------------|
+| $S, T, L$ | Domain value functions |
+| $\hat{w}_s, \hat{w}_t, \hat{w}_l$ | Normalized domain weights (sum to 1) |
+| $P$ | Market state summarizing $(S,T,L)$ |
+| $V(P)$ | Potential at state $P$ |
+| $W$ | Work $= V(P_2)-V(P_1)$ |
+| $W_{\uparrow}, W_{\downarrow}$ | Uphill/downhill components of work |
+| $\Pi_{in}, \Pi_{out}$ | Marginal price maps (input‑token and output‑token per unit work) |
+| $\eta$ | Rebate participation fraction in $[0,1]$ |
+| $\kappa$ | Price‑improvement clamp in $(0,1]$ |
+| `amount_in` | User pre‑fee input |
+| `base_bps` | Base fee in basis points |
+| `dyn_bps` | Dynamic surcharge (bps) |
+| `MAX_SURCHARGE_BPS`, `MAX_INSTANTANEOUS_FEE` | Policy caps |
+| $\tau$ | Protocol buffer sourcing rebates and absorbing fees |
+| $w_{S,i}, w_{T,d}, w_{L,i}$ | Component weights within spot/time/leverage domains (each set sums to 1) |
+| $I_S, I_T, I_L$ | Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$ |
 
 ## Work Computation and Fee Derivation
 
@@ -30,6 +38,11 @@ where $V(P) = -\hat{w}_s \ln S - \hat{w}_t \ln T - \hat{w}_l \ln L$ is the poten
 We convert work to prices using marginal maps along the executed path: $\Pi_{in}(P)$ in input‑token units per unit of work (for fees) and $\Pi_{out}(P)$ in output‑token units per unit of work (for rebates). For segmented trades, contributions are computed per segment and split into uphill/downhill parts:
 
 $$\text{Total Work} = \sum_{i} W_i,\; W_i = V(P_{i+1}) - V(P_i),\; W_{\uparrow} = \sum_i \max(W_i,0),\; W_{\downarrow} = -\sum_i \min(W_i,0)$$
+
+## Routing Bound and Segmentation
+
+- Hub‑and‑spoke routing via FeelsSOL bounds token‑to‑token paths to at most two hops ($A \to \text{FeelsSOL} \to B$). Entry/exit is $\text{JitoSOL} \leftrightarrow \text{FeelsSOL}$, and FeelsSOL↔Position is a single hop.
+- “Segmented trades” refers to splitting a single hop into size‑based segments along the bonding curve; segmentation is independent of hop count. Large trades may use many segments even with 1–2 hops.
 
 ## Pool-Type Base Fees and Dynamic Components
 
@@ -81,7 +94,7 @@ Price improvement is the output gain relative to a base‑fee‑only baseline fo
 
 ## Large Trades and Segmentation
 
-For large trades, segment work is evaluated per step and aggregated into $W_{\uparrow}$ and $W_{\downarrow}$; marginal price maps are evaluated locally (or verified via commitments) and integrated accordingly. Two verification options are available:
+For large trades, per‑segment work is evaluated within each hop and aggregated into $W_{\uparrow}$ and $W_{\downarrow}$; marginal price maps are evaluated locally (or verified via commitments) and integrated accordingly. Two verification options are available:
 
 ### Option A: Deterministic Recomputation
 Recomputes the necessary quantities deterministically from posted scalars.

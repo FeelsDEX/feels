@@ -227,6 +227,9 @@ pub enum FeelsError {
     #[msg("Tick array index out of bounds")]
     TickArrayIndexOutOfBounds,
     
+    #[msg("Invalid tick index")]
+    InvalidTickIndex,
+    
     // Additional error variants for compatibility
     #[msg("Math underflow")]
     MathUnderflow,
@@ -284,6 +287,25 @@ pub enum FeelsError {
     
     #[msg("Oracle data is stale")]
     StaleOracle,
+    
+    // ========================================================================
+    // Routing Errors
+    // ========================================================================
+    
+    #[msg("Route exceeds maximum allowed hops")]
+    RouteTooLong,
+    
+    #[msg("Invalid pool in route - must include FeelsSOL")]
+    InvalidRoutePool,
+    
+    #[msg("Route segments exceed maximum allowed")]
+    TooManySegments,
+    
+    #[msg("Invalid entry/exit pairing - must use JitoSOL <-> FeelsSOL")]
+    InvalidEntryExitPairing,
+    
+    #[msg("Invalid expiration time")]
+    InvalidExpiration,
 }
 
 impl FeelsError {
@@ -354,6 +376,24 @@ impl FeelsError {
     pub fn price_deviation(deviation_bps: u32, max_bps: u32) -> Self {
         msg!("Price deviation {}bps exceeds max {}bps", deviation_bps, max_bps);
         FeelsError::OraclePriceDeviation
+    }
+    
+    /// Helper for route too long error with hop count
+    pub fn route_too_long(hops: usize, max_hops: usize) -> Self {
+        msg!("Route has {} hops, maximum allowed is {}", hops, max_hops);
+        FeelsError::RouteTooLong
+    }
+    
+    /// Helper for invalid route pool error
+    pub fn invalid_route_pool(pool: &str) -> Self {
+        msg!("Invalid pool in route: {} - must include FeelsSOL", pool);
+        FeelsError::InvalidRoutePool
+    }
+    
+    /// Helper for too many segments error
+    pub fn too_many_segments(segments: usize, max_segments: usize) -> Self {
+        msg!("Route has {} segments, maximum allowed is {}", segments, max_segments);
+        FeelsError::TooManySegments
     }
 }
 

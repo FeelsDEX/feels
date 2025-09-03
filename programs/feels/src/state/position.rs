@@ -11,6 +11,7 @@
 use anchor_lang::prelude::*;
 use crate::state::duration::Duration;
 use crate::state::rebase::RebaseCheckpoint;
+use crate::utils::math::safe;
 
 // ============================================================================
 // Tick Position NFT Structure
@@ -117,17 +118,23 @@ impl TickPositionMetadata {
     /// Calculate redenomination priority based on 3D dimensions
     pub fn redenomination_priority(&self, current_tick: i32) -> u64 {
         // Higher leverage = higher priority for losses
-        let leverage_score = self.leverage / 1_000; // Scale down to reasonable numbers
+        let leverage_score = safe::div_u64(self.leverage, 1_000).unwrap_or(0);
         
         // Shorter duration = higher priority (less committed)
         let duration_score = self.duration.protection_priority() as u64;
         
         // Further from current price = lower priority
-        let mid_tick = (self.tick_lower + self.tick_upper) / 2;
+        // Use safe addition for tick calculation
+        let mid_tick = safe::add_i128(self.tick_lower as i128, self.tick_upper as i128)
+            .map(|sum| (sum / 2) as i32)
+            .unwrap_or((self.tick_lower + self.tick_upper) / 2);
+        
         let tick_distance = ((current_tick - mid_tick).abs() as u64).saturating_add(1); // Avoid div by 0
         
-        // Combined priority: leverage × duration / distance
-        leverage_score.saturating_mul(duration_score) / tick_distance
+        // Combined priority: leverage × duration / distance using safe math
+        safe::mul_u64(leverage_score, duration_score)
+            .and_then(|numerator| safe::div_u64(numerator, tick_distance))
+            .unwrap_or(0)
     }
     
     /// Apply virtual rebasing to get current position value

@@ -90,6 +90,7 @@ keypairs/
 *.bak
 *.backup
 scratch/
+*.txt
 
 # ==================================
 # Project Specific

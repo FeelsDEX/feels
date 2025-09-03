@@ -50,6 +50,13 @@ pub fn initialize_market<'info>(
     // Phase 1: Validation
     msg!("Phase 1: Validating inputs");
     
+    // Validate pool includes FeelsSOL as one side (centralized check)
+    crate::utils::routing::validate_pool_includes_feelssol(
+        &ctx.accounts.token_0_mint.key(),
+        &ctx.accounts.token_1_mint.key(),
+        &ctx.accounts.feelssol.feels_mint,
+    )?;
+    
     // Basic market parameter validation
     require!(params.initial_spot > 0, FeelsProtocolError::InvalidAmount);
     

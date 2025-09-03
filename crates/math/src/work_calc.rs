@@ -278,7 +278,9 @@ fn calculate_segment_work_quadratic(
             
             // Quadratic work: W = c0 * Δx + c1 * Δx²
             let linear_term = (coeffs.c0_s * delta_q64) >> 64;
-            let quadratic_term = (coeffs.c1_s * delta_q64 * delta_q64) >> 128;
+            // For Q64 * Q64 multiplication, we need to divide by 2^128
+            // Split into two shifts to avoid overflow
+            let quadratic_term = ((coeffs.c1_s * delta_q64) >> 64) * (delta_q64 >> 64);
             let spot_work = linear_term + quadratic_term;
             
             Ok(SegmentWorkResult {

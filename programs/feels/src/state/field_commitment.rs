@@ -3,6 +3,7 @@
 
 use anchor_lang::prelude::*;
 use crate::error::FeelsProtocolError;
+use crate::utils::math::safe;
 
 // ============================================================================
 // Field Commitment Structure
@@ -289,20 +290,35 @@ impl RouteSegment {
         
         // Spot quadratic: c0_s * dx + 0.5 * c1_s * dx^2
         if field.c0_s != 0 || field.c1_s != 0 {
-            let dx = (self.end_s as i128) - (self.start_s as i128);
-            correction += field.c0_s * dx + field.c1_s * dx * dx / 2;
+            let dx = safe::sub_i128(self.end_s as i128, self.start_s as i128)?;
+            let linear_term = safe::mul_i128(field.c0_s, dx)?;
+            let quadratic_term = safe::div_i128(
+                safe::mul_i128(field.c1_s, safe::mul_i128(dx, dx)?)?,
+                2
+            )?;
+            correction = safe::add_i128(correction, safe::add_i128(linear_term, quadratic_term)?)?;
         }
         
         // Time quadratic: c0_t * dt + 0.5 * c1_t * dt^2
         if field.c0_t != 0 || field.c1_t != 0 {
-            let dt = (self.end_t as i128) - (self.start_t as i128);
-            correction += field.c0_t * dt + field.c1_t * dt * dt / 2;
+            let dt = safe::sub_i128(self.end_t as i128, self.start_t as i128)?;
+            let linear_term = safe::mul_i128(field.c0_t, dt)?;
+            let quadratic_term = safe::div_i128(
+                safe::mul_i128(field.c1_t, safe::mul_i128(dt, dt)?)?,
+                2
+            )?;
+            correction = safe::add_i128(correction, safe::add_i128(linear_term, quadratic_term)?)?;
         }
         
         // Leverage quadratic: c0_l * dl + 0.5 * c1_l * dl^2
         if field.c0_l != 0 || field.c1_l != 0 {
-            let dl = (self.end_l as i128) - (self.start_l as i128);
-            correction += field.c0_l * dl + field.c1_l * dl * dl / 2;
+            let dl = safe::sub_i128(self.end_l as i128, self.start_l as i128)?;
+            let linear_term = safe::mul_i128(field.c0_l, dl)?;
+            let quadratic_term = safe::div_i128(
+                safe::mul_i128(field.c1_l, safe::mul_i128(dl, dl)?)?,
+                2
+            )?;
+            correction = safe::add_i128(correction, safe::add_i128(linear_term, quadratic_term)?)?;
         }
         
         Ok(correction)

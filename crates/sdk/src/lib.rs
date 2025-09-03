@@ -19,12 +19,16 @@ pub mod proof_builder;
 pub mod rebate_calculator;
 pub mod work_calculator;
 pub mod instructions;
+pub mod router;
+pub mod router_advanced;
 
 pub use client::*;
 pub use config::*;
 pub use utils::*;
 pub use errors::*;
 pub use types::*;
+pub use router::{HubRouter, Route, PoolInfo};
+pub use router_advanced::{AdvancedRouter, RouteQuote, PoolReserves};
 
 // Re-export shared types and math
 pub use feels_types::*;

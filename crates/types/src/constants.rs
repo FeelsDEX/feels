@@ -10,8 +10,9 @@ pub const Q64: u128 = 1u128 << 64;
 /// Q128 lower half (64 bits)
 pub const Q128_LO: u128 = 1u128 << 64;
 
-/// Q128 upper half (128 bits)  
-pub const Q128_HI: u128 = 1u128 << 128;
+/// Q128 upper half (would be 2^128, but that overflows u128)
+/// This represents the maximum value for u128
+pub const Q128_HI: u128 = u128::MAX;
 
 /// Maximum value for u128 calculations
 pub const U128_MAX: u128 = u128::MAX;
