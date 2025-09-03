@@ -3,12 +3,14 @@ pub mod create_token;
 pub mod deposit;
 pub mod initialize;
 pub mod update_protocol;
+pub mod withdraw;
 
 pub use authority_transfer::*;
 pub use create_token::*;
 pub use deposit::*;
 pub use initialize::*;
 pub use update_protocol::*;
+pub use withdraw::*;
 
 pub const MAX_PROTOCOL_FEE_RATE: u16 = 5000; // 50%
 pub const MAX_POOL_FEE_RATE: u16 = 10000; // 100%

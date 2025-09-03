@@ -1,6 +1,6 @@
 pub mod authority_transfer;
 pub mod create_token;
-pub mod deposit;
+pub mod deposit_withdraw;
 pub mod initialize;
 pub mod update_protocol;
 
