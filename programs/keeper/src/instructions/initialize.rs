@@ -32,10 +32,8 @@ pub fn initialize_feels_keeper(
     keeper.authority = ctx.accounts.authority.key();
 
     // Validate rates are not zero
-    require!(
-        feelssol_to_lst_rate_numerator != 0 && feelssol_to_lst_rate_denominator != 0,
-        KeeperError::ZeroRate
-    );
+    require_gt!(feelssol_to_lst_rate_numerator, 0, KeeperError::ZeroRate);
+    require_gt!(feelssol_to_lst_rate_denominator, 0, KeeperError::ZeroRate);
 
     keeper.feelssol_to_lst_rate_numerator = feelssol_to_lst_rate_numerator;
     keeper.feelssol_to_lst_rate_denominator = feelssol_to_lst_rate_denominator;
