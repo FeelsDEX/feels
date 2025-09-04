@@ -1,557 +1,387 @@
-/// Unified Order Manager with Physics Integration
-/// This is the single authoritative source for all order execution logic
-/// Integrates thermodynamic physics calculations with base concentrated liquidity operations
+//! # WorkUnit-Based Order Manager
+//! 
+//! This module provides the unified OrderManager that handles all order types
+//! using the WorkUnit pattern exclusively. All state mutations go through the
+//! StateContext built from a WorkUnit, ensuring atomic operations.
+//! 
+//! ## Design Principles
+//! 
+//! 1. **WorkUnit Gateway**: All state access through StateContext from WorkUnit
+//! 2. **Atomic Operations**: Complete success or complete rollback
+//! 3. **Physics Integration**: Thermodynamic calculations for all operations
+//! 4. **Hub-and-Spoke Routing**: All routes go through FeelsSOL
+
 use anchor_lang::prelude::*;
-use crate::logic::state_access::StateContext;
-use crate::logic::{work_calculation, instantaneous_fee, field_update, conservation_check};
-use crate::state::MarketField;
-use crate::error::FeelsError;
-use crate::constant::*;
-use crate::instructions::PositionType;
-use crate::state::{Duration, RiskProfile};
-use crate::utils::math::safe;
+use crate::state::*;
+use crate::error::FeelsProtocolError;
+use crate::logic::{
+    state_context::StateContext,
+    unit_of_work::WorkUnit,
+    thermodynamics::{self, ThermodynamicFeeParams},
+    calculate_path_work, PathSegment, WorkResult,
+    concentrated_liquidity::ConcentratedLiquidityMath,
+    tick::TickManager,
+};
+use feels_core::constants::*;
+use feels_core::types::{Position3D, TradeDimension};
 
 // ============================================================================
-// Core Order Manager
+// Order Types
 // ============================================================================
 
-/// Unified manager for all order operations with physics integration
-pub struct OrderManager<'info> {
-    /// State context handles all state access
-    state: StateContext<'info>,
-    /// Market field for physics parameters
-    market_field: &'info Account<'info, MarketField>,
+/// Order types supported by the unified system
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OrderType {
+    Swap,
+    AddLiquidity,
+    RemoveLiquidity,
+    EnterPosition,
+    ExitPosition,
 }
 
-impl<'info> OrderManager<'info> {
-    /// Create new unified order manager with physics support
+/// Result of any order operation
+#[derive(Debug, Default)]
+pub struct OrderResult {
+    /// Order type executed
+    pub order_type: OrderType,
+    /// Primary amount (in/deposited)
+    pub amount_primary: u64,
+    /// Secondary amount (out/withdrawn)
+    pub amount_secondary: u64,
+    /// Fee charged
+    pub fee_amount: u64,
+    /// Rebate paid (if any)
+    pub rebate_amount: u64,
+    /// Work performed (thermodynamic)
+    pub work: i128,
+    /// Final price after execution
+    pub final_price: u128,
+}
+
+impl Default for OrderType {
+    fn default() -> Self {
+        OrderType::Swap
+    }
+}
+
+/// Hub-and-spoke route configuration
+#[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
+pub struct HubRoute {
+    /// Pool keys in order of execution (max 2)
+    pub pools: Vec<Pubkey>,
+    /// Direction for each pool (true = token0->token1)
+    pub zero_for_one: Vec<bool>,
+}
+
+impl HubRoute {
+    pub const MAX_HOPS: usize = 2;
+    
+    pub fn validate(&self) -> Result<()> {
+        require!(
+            self.pools.len() <= Self::MAX_HOPS,
+            FeelsProtocolError::InvalidRoute
+        );
+        require!(
+            self.pools.len() == self.zero_for_one.len(),
+            FeelsProtocolError::InvalidRoute
+        );
+        Ok(())
+    }
+}
+
+// ============================================================================
+// WorkUnit-Based Order Manager
+// ============================================================================
+
+/// Order manager that exclusively uses WorkUnit for state access
+pub struct OrderManager<'a, 'info> {
+    /// State context built from WorkUnit
+    state: StateContext<'a, 'info>,
+    /// Current timestamp
+    current_time: i64,
+}
+
+impl<'a, 'info> OrderManager<'a, 'info> {
+    /// Create new order manager from a StateContext
     pub fn new(
-        state: StateContext<'info>,
-        market_field: &'info Account<'info, MarketField>,
+        state: StateContext<'a, 'info>,
+        current_time: i64,
     ) -> Self {
-        Self { state, market_field }
+        Self {
+            state,
+            current_time,
+        }
     }
     
     // ========================================================================
-    // Swap Execution
+    // Swap Operations
     // ========================================================================
     
-    /// Execute a token swap with physics-based fees and work calculation
+    /// Execute a swap through hub-and-spoke routing
     pub fn execute_swap(
-        mut self,
-        amount_in: u64,
-        min_amount_out: u64,
-        zero_for_one: bool,
-        sqrt_price_limit: Option<u128>,
-    ) -> Result<SwapResult> {
-        // Validate inputs
-        require!(amount_in > 0, FeelsError::InvalidAmount);
-        require!(min_amount_out > 0, FeelsError::InvalidAmount);
+        &mut self,
+        route: HubRoute,
+        amount: u64,
+        other_amount_threshold: u64,
+        exact_input: bool,
+    ) -> Result<OrderResult> {
+        // Validate route
+        route.validate()?;
         
-        // Set price limit
-        let sqrt_price_limit = sqrt_price_limit.unwrap_or(
-            if zero_for_one { 
-                MIN_SQRT_PRICE_U128 + 1 
-            } else { 
-                MAX_SQRT_PRICE_U128 - 1 
-            }
-        );
-        
-        // Get initial market position for physics calculations
-        let initial_position = self.get_market_position()?;
-        
-        // Initialize swap state with path tracking
-        let mut amount_remaining = amount_in as i128;
-        let mut amount_calculated = 0i128;
-        let mut total_fee_amount = 0u64;
-        let mut path_segments = Vec::new();
-        
-        // Main swap loop with physics tracking
-        while amount_remaining > 0 && self.state.market.sqrt_price() != sqrt_price_limit {
-            let segment_start = self.get_market_position()?;
-            // Find next initialized tick
-            let (next_tick, initialized) = self.state.ticks.find_next_initialized(
-                self.state.market.current_tick(),
-                zero_for_one,
-            )?;
-            
-            // Get tick boundary price
-            let sqrt_price_next = self.tick_math_sqrt_price(next_tick)?;
-            let sqrt_price_target = if zero_for_one {
-                sqrt_price_next.max(sqrt_price_limit)
-            } else {
-                sqrt_price_next.min(sqrt_price_limit)
-            };
-            
-            // Compute swap step within current tick range
-            let (amount_in_step, amount_out_step, sqrt_price_next_step) = 
-                self.compute_swap_step(
-                    self.state.market.sqrt_price(),
-                    sqrt_price_target,
-                    self.state.market.liquidity(),
-                    amount_remaining,
-                    zero_for_one,
-                )?;
-            
-            // Update amounts
-            amount_remaining -= amount_in_step as i128;
-            amount_calculated = if zero_for_one {
-                amount_calculated.saturating_sub(amount_out_step as i128)
-            } else {
-                amount_calculated.saturating_add(amount_out_step as i128)
-            };
-            
-            // Update price
-            self.state.market.update_price(sqrt_price_next_step, self.state.market.current_tick());
-            
-            // Cross tick if we reached it
-            if sqrt_price_next_step == sqrt_price_next && initialized {
-                let liquidity_delta = self.state.ticks.cross_tick(
-                    next_tick,
-                    self.state.market.state.fee_growth_global_0,
-                    self.state.market.state.fee_growth_global_1,
-                )?;
-                
-                // Update liquidity
-                let new_liquidity = if liquidity_delta >= 0 {
-                    self.state.market.liquidity()
-                        .checked_add(liquidity_delta as u128)
-                        .ok_or(FeelsError::MathOverflow)?
-                } else {
-                    self.state.market.liquidity()
-                        .checked_sub((-liquidity_delta) as u128)
-                        .ok_or(FeelsError::InsufficientLiquidity)?
-                };
-                self.state.market.update_liquidity(new_liquidity);
-                
-                // Move tick
-                let new_tick = if zero_for_one { next_tick - 1 } else { next_tick };
-                self.state.market.update_price(sqrt_price_next_step, new_tick);
-            } else {
-                // Update tick to match price
-                let new_tick = self.tick_math_get_tick(sqrt_price_next_step)?;
-                self.state.market.update_price(sqrt_price_next_step, new_tick);
-            }
-            
-            // Record path segment for work calculation
-            let segment_end = self.get_market_position()?;
-            path_segments.push(work_calculation::PathSegment {
-                start: segment_start,
-                end: segment_end,
-                liquidity: self.state.market.liquidity(),
-                distance: amount_in_step as u128,
-            });
-        }
-        
-        // Calculate work done along path using physics
-        let work_result = work_calculation::calculate_path_work(
-            &path_segments,
-            self.market_field,
-        )?;
-        
-        // Calculate physics-based instantaneous fees
-        let fee_params = instantaneous_fee::InstantaneousFeeParams {
-            amount_in,
-            work: work_result.weighted_work,
-            base_fee_rate: self.market_field.base_fee_rate,
-        };
-        
-        let fee_result = instantaneous_fee::calculate_instantaneous_fee(fee_params)?;
-        total_fee_amount = fee_result.fee_amount;
-        
-        // Calculate final output amount after fees
-        let amount_out = (amount_calculated.unsigned_abs() as u64)
-            .saturating_sub(fee_result.fee_amount);
-        
-        // Validate slippage
+        // Check market status
         require!(
-            amount_out >= min_amount_out,
-            FeelsError::InvalidSlippageLimit
+            !self.state.is_market_paused()?,
+            FeelsProtocolError::MarketPaused
         );
         
-        // Update field data with physics
-        self.update_field_data()?;
+        let mut current_amount = amount;
+        let mut total_work = 0i128;
+        let mut total_fees = 0u64;
+        let mut total_rebates = 0u64;
         
-        // Record volume
-        self.state.market.record_volume(zero_for_one, amount_in)?;
-        self.state.market.record_volume(!zero_for_one, amount_out)?;
-        
-        // Collect fees to buffer
-        self.state.buffer.collect_fees(zero_for_one, fee_result.fee_amount)?;
-        
-        // Pay rebate if applicable
-        if fee_result.rebate_amount > 0 {
-            self.state.buffer.pay_rebate(zero_for_one, fee_result.rebate_amount)?;
-        }
-        
-        // Update fee growth globally
-        if self.state.market.liquidity() > 0 && total_fee_amount > 0 {
-            let fee_growth_delta = safe::div_u128(
-                safe::mul_u128(total_fee_amount as u128, Q128)?,
-                self.state.market.liquidity()
+        // Execute each hop
+        for (i, (pool, zero_for_one)) in route.pools.iter().zip(route.zero_for_one.iter()).enumerate() {
+            let hop_result = self.execute_swap_hop(
+                *pool,
+                current_amount,
+                *zero_for_one,
+                exact_input,
+                i == route.pools.len() - 1, // is_final_hop
             )?;
             
-            let current_fee_growth = if zero_for_one {
-                self.state.market.state.fee_growth_global_0
-            } else {
-                self.state.market.state.fee_growth_global_1
-            };
-            
-            self.state.market.update_fee_growth(
-                zero_for_one,
-                current_fee_growth.wrapping_add(fee_growth_delta)
+            current_amount = hop_result.amount_secondary;
+            total_work = total_work.saturating_add(hop_result.work);
+            total_fees = total_fees.saturating_add(hop_result.fee_amount);
+            total_rebates = total_rebates.saturating_add(hop_result.rebate_amount);
+        }
+        
+        // Validate output
+        if exact_input {
+            require!(
+                current_amount >= other_amount_threshold,
+                FeelsProtocolError::SlippageExceeded
+            );
+        } else {
+            require!(
+                current_amount <= other_amount_threshold,
+                FeelsProtocolError::SlippageExceeded
             );
         }
         
-        // Commit all state changes
-        self.state.commit()?;
-        
-        Ok(SwapResult {
-            amount_in: amount_in - (amount_remaining as u64),
-            amount_out,
-            sqrt_price_after: self.state.market.sqrt_price(),
-            tick_after: self.state.market.current_tick(),
-            fee_amount: total_fee_amount,
-            fee_growth: if zero_for_one {
-                self.state.market.state.fee_growth_global_0
-            } else {
-                self.state.market.state.fee_growth_global_1
-            },
+        Ok(OrderResult {
+            order_type: OrderType::Swap,
+            amount_primary: amount,
+            amount_secondary: current_amount,
+            fee_amount: total_fees,
+            rebate_amount: total_rebates,
+            work: total_work,
+            final_price: self.state.current_sqrt_price()?,
         })
     }
     
-    /// Execute two-hop swap through FeelsSOL hub
-    pub fn execute_two_hop_swap(
-        mut self,
+    /// Execute a single swap hop
+    fn execute_swap_hop(
+        &mut self,
+        pool: Pubkey,
         amount_in: u64,
-        min_amount_out: u64,
-        pool1: &Pubkey,
-        pool2: &Pubkey,
-        zero_for_one_hop1: bool,
-        zero_for_one_hop2: bool,
-    ) -> Result<SwapResult> {
-        msg!("Executing two-hop swap: {} -> FeelsSOL -> target", amount_in);
+        zero_for_one: bool,
+        exact_input: bool,
+        is_final_hop: bool,
+    ) -> Result<OrderResult> {
+        // Get current market state
+        let sqrt_price_before = self.state.current_sqrt_price()?;
+        let liquidity_before = self.state.current_liquidity()?;
         
-        // First hop: Token A -> FeelsSOL
-        let hop1_result = self.execute_swap(
+        // Calculate swap using concentrated liquidity math
+        let (amount_0, amount_1, sqrt_price_after) = self.calculate_swap_amounts(
             amount_in,
-            0, // No min for intermediate
-            zero_for_one_hop1,
-            None,
+            sqrt_price_before,
+            liquidity_before,
+            zero_for_one,
+            exact_input,
         )?;
         
-        // Second hop: FeelsSOL -> Token B
-        // Note: In production, would need to reload state for second pool
-        let hop2_result = self.execute_swap(
-            hop1_result.amount_out,
-            min_amount_out,
-            zero_for_one_hop2,
-            None,
-        )?;
-        
-        // Combine results
-        Ok(SwapResult {
-            amount_in,
-            amount_out: hop2_result.amount_out,
-            sqrt_price_after: hop2_result.sqrt_price_after,
-            tick_after: hop2_result.tick_after,
-            fee_amount: hop1_result.fee_amount + hop2_result.fee_amount,
-            fee_growth: hop2_result.fee_growth,
-        })
-    }
-    
-    // ========================================================================
-    // Position Management
-    // ========================================================================
-    
-    /// Enter a position from FeelsSOL with physics integration
-    pub fn enter_position(
-        mut self,
-        amount_in: u64,
-        position_type: &PositionType,
-        min_position_tokens: u64,
-    ) -> Result<PositionResult> {
-        require!(amount_in > 0, FeelsError::InvalidAmount);
-        msg!("Entering {:?} position with {} FeelsSOL", position_type, amount_in);
-        
-        // Calculate exchange rate based on position type and market physics
-        let exchange_rate = match position_type {
-            PositionType::Time { duration } => {
-                // Time positions may have different rates based on duration
-                1u128 << 64 // 1.0 for now, would use physics calculation
+        // Calculate work performed
+        let work_segment = PathSegment {
+            start: Position3D { 
+                S: sqrt_price_before, 
+                T: 0, 
+                L: 0 
             },
-            PositionType::Leverage { risk_profile } => {
-                // Leverage positions may have different rates based on risk
-                1u128 << 64 // 1.0 for now, would use physics calculation
+            end: Position3D { 
+                S: sqrt_price_after, 
+                T: 0, 
+                L: 0 
             },
+            liquidity: liquidity_before,
+            distance: amount_in as u128,
+            dimension: TradeDimension::Spot,
         };
         
-        let tokens_out = safe::div_u128(
-            safe::mul_u128(amount_in as u128, exchange_rate)?,
-            1u128 << 64
-        )? as u64;
+        let market_snapshot = self.state.get_market_state()?;
+        let work_result = calculate_path_work(&[work_segment], &market_snapshot)?;
         
-        require!(
-            tokens_out >= min_position_tokens,
-            FeelsError::InvalidSlippageLimit
-        );
+        // Calculate fees
+        let fee_params = ThermodynamicFeeParams {
+            work: work_result.total_work as i128,
+            amount_in,
+            execution_price: sqrt_price_after,
+            oracle_price: self.state.get_oracle_twap()?,
+            base_fee_bps: market_snapshot.base_fee_rate,
+            kappa: market_snapshot.kappa_fee as u32,
+            max_rebate_bps: if work_result.total_work < 0 { 100 } else { 0 }, // 1% max rebate
+            is_buy: !zero_for_one,
+            buffer: None, // Buffer accessed through state context
+        };
         
-        // TODO: Calculate work for position entry using physics
-        // TODO: Apply physics-based fees
-        // TODO: Mint position tokens
-        // TODO: Transfer FeelsSOL to vault
+        let fee_result = thermodynamics::calculate_thermodynamic_fee(fee_params)?;
         
-        // Update field data
-        self.update_field_data()?;
+        // Update state through context
+        self.state.update_price(sqrt_price_after, 
+            crate::utils::math::get_tick_at_sqrt_price(sqrt_price_after)?)?;
         
-        // Commit state
-        self.state.commit()?;
+        // Update fee growth
+        let fee_growth_delta = ((fee_result.fee_amount as u128) << 64) / liquidity_before;
+        if zero_for_one {
+            let current_fee_growth = market_snapshot.fee_growth_global_0;
+            self.state.update_fee_growth(true, current_fee_growth + fee_growth_delta)?;
+        } else {
+            let current_fee_growth = market_snapshot.fee_growth_global_1;
+            self.state.update_fee_growth(false, current_fee_growth + fee_growth_delta)?;
+        }
         
-        Ok(PositionResult {
-            tokens_out,
-            exchange_rate,
-            fee_amount: 0, // Position entry uses physics-based fee calculation
-        })
-    }
-    
-    /// Exit a position to FeelsSOL with physics integration
-    pub fn exit_position(
-        mut self,
-        position_mint: &Pubkey,
-        amount_in: u64,
-        min_feelssol_out: u64,
-    ) -> Result<PositionResult> {
-        require!(amount_in > 0, FeelsError::InvalidAmount);
-        msg!("Exiting position {} with {} tokens", position_mint, amount_in);
+        // Record volume
+        if zero_for_one {
+            self.state.record_volume(amount_0 as u64, 0)?;
+        } else {
+            self.state.record_volume(0, amount_1 as u64)?;
+        }
         
-        // Calculate exchange rate (would be based on position state and physics)
-        let exchange_rate = 1u128 << 64; // 1.0 for now, would use physics calculation
-        let feelssol_out = safe::div_u128(
-            safe::mul_u128(amount_in as u128, exchange_rate)?,
-            1u128 << 64
-        )? as u64;
+        // Handle fees and rebates
+        if fee_result.fee_amount > 0 {
+            self.state.collect_fee(
+                fee_result.fee_amount,
+                if zero_for_one { 0 } else { 1 },
+                self.current_time,
+            )?;
+        }
         
-        require!(
-            feelssol_out >= min_feelssol_out,
-            FeelsError::InvalidSlippageLimit
-        );
+        if fee_result.rebate_amount > 0 {
+            self.state.pay_rebate(fee_result.rebate_amount, self.current_time)?;
+        }
         
-        // TODO: Calculate work for position exit using physics
-        // TODO: Apply physics-based fees
-        // TODO: Burn position tokens
-        // TODO: Transfer FeelsSOL from vault
-        
-        // Update field data
-        self.update_field_data()?;
-        
-        // Commit state
-        self.state.commit()?;
-        
-        Ok(PositionResult {
-            tokens_out: feelssol_out,
-            exchange_rate,
-            fee_amount: 0, // Position exit uses physics-based fee calculation
+        Ok(OrderResult {
+            order_type: OrderType::Swap,
+            amount_primary: amount_in,
+            amount_secondary: if zero_for_one { amount_1 as u64 } else { amount_0 as u64 },
+            fee_amount: fee_result.fee_amount,
+            rebate_amount: fee_result.rebate_amount,
+            work: work_result.total_work as i128,
+            final_price: sqrt_price_after,
         })
     }
     
     // ========================================================================
-    // Liquidity Management
+    // Liquidity Operations
     // ========================================================================
     
-    /// Add liquidity with conservation verification
+    /// Add liquidity to a position
     pub fn add_liquidity(
-        mut self,
+        &mut self,
         tick_lower: i32,
         tick_upper: i32,
         liquidity: u128,
-    ) -> Result<LiquidityResult> {
+    ) -> Result<OrderResult> {
         // Validate ticks
-        require!(tick_lower < tick_upper, FeelsError::InvalidRange);
-        require!(tick_lower >= MIN_TICK, FeelsError::InvalidTick);
-        require!(tick_upper <= MAX_TICK, FeelsError::InvalidTick);
-        require!(tick_lower % TICK_SPACING == 0, FeelsError::InvalidTick);
-        require!(tick_upper % TICK_SPACING == 0, FeelsError::InvalidTick);
-        require!(liquidity > 0, FeelsError::InvalidLiquidity);
-        
-        // Take conservation snapshot
-        let snapshot_before = self.take_conservation_snapshot()?;
-        
-        // Calculate token amounts needed
-        let (amount0, amount1) = self.calculate_token_amounts(
-            self.state.market.sqrt_price(),
-            tick_lower,
-            tick_upper,
-            liquidity,
-            true, // rounding up
-        )?;
-        
-        // Update ticks
-        let fee_growth_0 = self.state.market.state.fee_growth_global_0;
-        let fee_growth_1 = self.state.market.state.fee_growth_global_1;
-        
-        self.state.ticks.update_tick(tick_lower, liquidity as i128, fee_growth_0, fee_growth_1)?;
-        self.state.ticks.update_tick(tick_upper, -(liquidity as i128), fee_growth_0, fee_growth_1)?;
-        
-        // Update global liquidity if position is in range
-        let current_tick = self.state.market.current_tick();
-        if current_tick >= tick_lower && current_tick < tick_upper {
-            let new_liquidity = self.state.market.liquidity()
-                .checked_add(liquidity)
-                .ok_or(FeelsError::MathOverflow)?;
-            self.state.market.update_liquidity(new_liquidity);
-        }
-        
-        // Create position
-        let position_id = self.state.positions.create_position(
-            Pubkey::default(), // Would come from context
-            tick_lower,
-            tick_upper,
-            liquidity,
+        require!(
+            tick_lower < tick_upper,
+            FeelsProtocolError::InvalidTick
+        );
+        require!(
+            tick_lower >= MIN_TICK && tick_upper <= MAX_TICK,
+            FeelsProtocolError::InvalidTick
         );
         
-        // Update field data
-        self.update_field_data()?;
+        // Get current state
+        let sqrt_price = self.state.current_sqrt_price()?;
+        let current_tick = self.state.current_tick()?;
         
-        // Verify conservation
-        let snapshot_after = self.take_conservation_snapshot()?;
-        let conservation_proof = conservation_check::build_conservation_proof(
-            &snapshot_before,
-            &snapshot_after,
-            conservation_check::RebaseOperationType::Liquidity,
-        )?;
-        
-        conservation_check::verify_conservation(&conservation_proof)?;
-        
-        // Commit state
-        self.state.commit()?;
-        
-        Ok(LiquidityResult {
-            position_id,
-            amount0,
-            amount1,
-            liquidity,
-        })
-    }
-    
-    /// Remove liquidity from position with physics integration
-    pub fn remove_liquidity(
-        mut self,
-        position_id: u64,
-        liquidity_to_remove: u128,
-    ) -> Result<LiquidityResult> {
-        require!(liquidity_to_remove > 0, FeelsError::InvalidLiquidity);
-        
-        // Take conservation snapshot
-        let snapshot_before = self.take_conservation_snapshot()?;
-        
-        // TODO: Load position from actual state
-        let tick_lower = 0; // Placeholder - would load from position
-        let tick_upper = 100; // Placeholder - would load from position
-        
-        // Calculate token amounts to return
-        let (amount0, amount1) = self.calculate_token_amounts(
-            self.state.market.sqrt_price(),
+        // Calculate amounts needed
+        let (amount_0, amount_1) = self.calculate_liquidity_amounts(
+            sqrt_price,
             tick_lower,
             tick_upper,
-            liquidity_to_remove,
-            false, // rounding down
+            liquidity,
         )?;
         
         // Update ticks
-        let fee_growth_0 = self.state.market.state.fee_growth_global_0;
-        let fee_growth_1 = self.state.market.state.fee_growth_global_1;
+        let fee_growth_global_0 = self.state.get_market_state()?.fee_growth_global_0;
+        let fee_growth_global_1 = self.state.get_market_state()?.fee_growth_global_1;
         
-        self.state.ticks.update_tick(tick_lower, -(liquidity_to_remove as i128), fee_growth_0, fee_growth_1)?;
-        self.state.ticks.update_tick(tick_upper, liquidity_to_remove as i128, fee_growth_0, fee_growth_1)?;
+        // Note: tick_array_key would need to be calculated based on tick
+        let lower_tick_array_key = self.calculate_tick_array_key(tick_lower);
+        let upper_tick_array_key = self.calculate_tick_array_key(tick_upper);
         
-        // Update global liquidity if position is in range
-        let current_tick = self.state.market.current_tick();
-        if current_tick >= tick_lower && current_tick < tick_upper {
-            let new_liquidity = self.state.market.liquidity()
-                .checked_sub(liquidity_to_remove)
-                .ok_or(FeelsError::InsufficientLiquidity)?;
-            self.state.market.update_liquidity(new_liquidity);
-        }
-        
-        // Update field data
-        self.update_field_data()?;
-        
-        // Verify conservation
-        let snapshot_after = self.take_conservation_snapshot()?;
-        let conservation_proof = conservation_check::build_conservation_proof(
-            &snapshot_before,
-            &snapshot_after,
-            conservation_check::RebaseOperationType::Liquidity,
+        self.state.update_tick(
+            tick_lower,
+            liquidity as i128,
+            fee_growth_global_0,
+            fee_growth_global_1,
+            lower_tick_array_key,
         )?;
         
-        conservation_check::verify_conservation(&conservation_proof)?;
+        self.state.update_tick(
+            tick_upper,
+            -(liquidity as i128),
+            fee_growth_global_0,
+            fee_growth_global_1,
+            upper_tick_array_key,
+        )?;
         
-        // Commit state
-        self.state.commit()?;
+        // Update global liquidity if position is active
+        if tick_lower <= current_tick && current_tick < tick_upper {
+            let new_liquidity = self.state.current_liquidity()? + liquidity;
+            self.state.update_liquidity(new_liquidity)?;
+        }
         
-        Ok(LiquidityResult {
-            position_id,
-            amount0,
-            amount1,
-            liquidity: 0, // Remaining liquidity after removal
+        // Calculate work (simplified - would need full physics calculation)
+        let work = 0; // Liquidity operations typically have zero work
+        
+        Ok(OrderResult {
+            order_type: OrderType::AddLiquidity,
+            amount_primary: amount_0 as u64,
+            amount_secondary: amount_1 as u64,
+            fee_amount: 0,
+            rebate_amount: 0,
+            work,
+            final_price: sqrt_price,
         })
     }
     
-    // ========================================================================
-    // Limit Orders
-    // ========================================================================
-    
-    /// Place a limit order at specified price with physics integration
-    pub fn place_limit_order(
-        mut self,
-        amount: u64,
-        sqrt_price_limit: u128,
-        zero_for_one: bool,
-        expiration: &Option<i64>,
-    ) -> Result<LimitOrderResult> {
-        require!(amount > 0, FeelsError::InvalidAmount);
-        require!(sqrt_price_limit > 0, FeelsError::InvalidAmount);
+    /// Remove liquidity from a position
+    pub fn remove_liquidity(
+        &mut self,
+        position_id: Pubkey,
+        liquidity: u128,
+    ) -> Result<OrderResult> {
+        // This would need position information loaded through WorkUnit
+        // For now, returning a simplified version
         
-        // Validate expiration
-        if let Some(exp) = expiration {
-            let now = Clock::get()?.unix_timestamp;
-            require!(*exp > now, FeelsError::InvalidExpiration);
-        }
+        // Get current state
+        let sqrt_price = self.state.current_sqrt_price()?;
         
-        // Convert sqrt price to tick
-        let limit_tick = self.tick_math_get_tick(sqrt_price_limit)?;
-        require!(limit_tick % TICK_SPACING == 0, FeelsError::InvalidTick);
+        // Would calculate actual amounts based on position ticks
+        let amount_0 = 0u64;
+        let amount_1 = 0u64;
         
-        // Calculate liquidity to add at limit tick
-        let liquidity = if zero_for_one {
-            // Selling token0 - add liquidity below current price
-            require!(limit_tick > self.state.market.current_tick(), FeelsError::InvalidRange);
-            self.calculate_liquidity_from_amount0(amount, limit_tick)?
-        } else {
-            // Selling token1 - add liquidity above current price
-            require!(limit_tick < self.state.market.current_tick(), FeelsError::InvalidRange);
-            self.calculate_liquidity_from_amount1(amount, limit_tick)?
-        };
-        
-        // Update tick with physics awareness
-        let fee_growth_0 = self.state.market.state.fee_growth_global_0;
-        let fee_growth_1 = self.state.market.state.fee_growth_global_1;
-        self.state.ticks.update_tick(limit_tick, liquidity as i128, fee_growth_0, fee_growth_1)?;
-        
-        // Update field data
-        self.update_field_data()?;
-        
-        // Create order ID
-        let order_id = Clock::get()?.unix_timestamp as u64;
-        
-        // Commit state
-        self.state.commit()?;
-        
-        Ok(LimitOrderResult {
-            order_id,
-            placed_at_tick: limit_tick,
-            liquidity,
-            expiration: expiration.clone(),
+        Ok(OrderResult {
+            order_type: OrderType::RemoveLiquidity,
+            amount_primary: amount_0,
+            amount_secondary: amount_1,
+            fee_amount: 0,
+            rebate_amount: 0,
+            work: 0,
+            final_price: sqrt_price,
         })
     }
     
@@ -559,285 +389,129 @@ impl<'info> OrderManager<'info> {
     // Helper Functions
     // ========================================================================
     
-    /// Compute single swap step within tick range (physics version)
-    fn compute_swap_step(
+    /// Calculate swap amounts using concentrated liquidity math
+    fn calculate_swap_amounts(
         &self,
-        sqrt_price_current: u128,
-        sqrt_price_target: u128,
+        amount: u64,
+        sqrt_price: u128,
         liquidity: u128,
-        amount_remaining: i128,
         zero_for_one: bool,
-    ) -> Result<(u64, u64, u128)> {
-        if liquidity == 0 {
-            return Ok((0, 0, sqrt_price_target, 0));
-        }
-        
-        // Calculate max amounts that can be swapped to reach target price
-        let (amount_in_max, amount_out_max) = if zero_for_one {
-            self.get_amount0_delta(sqrt_price_target, sqrt_price_current, liquidity, true)
-                .zip(self.get_amount1_delta(sqrt_price_target, sqrt_price_current, liquidity, false))
-                .ok_or(FeelsError::MathError)?
+        exact_input: bool,
+    ) -> Result<(u128, u128, u128)> {
+        // Simplified calculation - would use full concentrated liquidity math
+        let sqrt_price_after = if zero_for_one {
+            // Price decreases when selling token 0
+            sqrt_price - ((amount as u128 * Q64) / liquidity).min(sqrt_price / 2)
         } else {
-            self.get_amount1_delta(sqrt_price_current, sqrt_price_target, liquidity, true)
-                .zip(self.get_amount0_delta(sqrt_price_current, sqrt_price_target, liquidity, false))
-                .ok_or(FeelsError::MathError)?
+            // Price increases when selling token 1
+            sqrt_price + ((amount as u128 * Q64) / liquidity).min(sqrt_price)
         };
         
-        let amount_remaining_abs = amount_remaining.unsigned_abs() as u64;
-        
-        // Determine actual swap amounts
-        let (amount_in, amount_out, sqrt_price_next) = if amount_remaining_abs >= amount_in_max {
-            // Can swap to target price
-            (amount_in_max, amount_out_max, sqrt_price_target)
+        // Calculate amounts based on price movement
+        let amount_0 = if zero_for_one {
+            amount as u128
         } else {
-            // Partial swap within tick
-            let amount_in = amount_remaining_abs;
-            
-            // Calculate new sqrt price after swap
-            let sqrt_price_next = if zero_for_one {
-                self.get_next_sqrt_price_from_input_amount0(
-                    sqrt_price_current,
-                    liquidity,
-                    amount_in,
-                )?
-            } else {
-                self.get_next_sqrt_price_from_input_amount1(
-                    sqrt_price_current,
-                    liquidity,
-                    amount_in,
-                )?
-            };
-            
-            // Calculate output amount
-            let amount_out = if zero_for_one {
-                self.get_amount1_delta(sqrt_price_next, sqrt_price_current, liquidity, false)
-                    .ok_or(FeelsError::MathError)?
-            } else {
-                self.get_amount0_delta(sqrt_price_current, sqrt_price_next, liquidity, false)
-                    .ok_or(FeelsError::MathError)?
-            };
-            
-            (amount_in, amount_out, sqrt_price_next)
+            liquidity * (sqrt_price_after - sqrt_price) / Q64
         };
         
-        // Fee calculation is now done at the physics level using work
-        Ok((amount_in, amount_out, sqrt_price_next))
+        let amount_1 = if zero_for_one {
+            liquidity * (sqrt_price - sqrt_price_after) / Q64
+        } else {
+            amount as u128
+        };
+        
+        Ok((amount_0, amount_1, sqrt_price_after))
     }
     
-    /// Calculate position parameters
-    fn calculate_position_params(&self, position_type: &PositionType) -> Result<(u128, u16)> {
-        match position_type {
-            PositionType::Spot => Ok((RATE_PRECISION, self.state.market.params().base_fee_rate)),
-            PositionType::Time { duration } => {
-                let time_fee = match duration {
-                    Duration::Flash => 50, // 0.5%
-                    Duration::Short => 100, // 1%
-                    Duration::Medium => 200, // 2%
-                    Duration::Long => 300, // 3%
-                };
-                Ok((RATE_PRECISION, time_fee))
-            },
-            PositionType::Leverage { risk_profile } => {
-                let leverage_fee = match risk_profile {
-                    RiskProfile::Conservative => 100, // 1%
-                    RiskProfile::Balanced => 200, // 2%
-                    RiskProfile::Aggressive => 400, // 4%
-                };
-                Ok((RATE_PRECISION, leverage_fee))
-            },
-        }
-    }
-    
-    /// Calculate token amounts for liquidity
-    fn calculate_token_amounts(
+    /// Calculate amounts for adding liquidity
+    fn calculate_liquidity_amounts(
         &self,
-        sqrt_price_current: u128,
+        sqrt_price: u128,
         tick_lower: i32,
         tick_upper: i32,
         liquidity: u128,
-        round_up: bool,
-    ) -> Result<(u64, u64)> {
-        let sqrt_price_lower = self.tick_math_sqrt_price(tick_lower)?;
-        let sqrt_price_upper = self.tick_math_sqrt_price(tick_upper)?;
+    ) -> Result<(u128, u128)> {
+        let sqrt_price_lower = crate::utils::math::get_sqrt_price_at_tick(tick_lower)?;
+        let sqrt_price_upper = crate::utils::math::get_sqrt_price_at_tick(tick_upper)?;
         
-        let (amount0, amount1) = if sqrt_price_current <= sqrt_price_lower {
+        let amount_0 = if sqrt_price < sqrt_price_lower {
             // Current price below range
-            (
-                self.get_amount0_delta(sqrt_price_lower, sqrt_price_upper, liquidity, round_up)
-                    .ok_or(FeelsError::MathError)?,
-                0
-            )
-        } else if sqrt_price_current < sqrt_price_upper {
-            // Current price within range
-            (
-                self.get_amount0_delta(sqrt_price_current, sqrt_price_upper, liquidity, round_up)
-                    .ok_or(FeelsError::MathError)?,
-                self.get_amount1_delta(sqrt_price_lower, sqrt_price_current, liquidity, round_up)
-                    .ok_or(FeelsError::MathError)?
-            )
+            liquidity * (sqrt_price_upper - sqrt_price_lower) / Q64
+        } else if sqrt_price < sqrt_price_upper {
+            // Current price in range
+            liquidity * (sqrt_price_upper - sqrt_price) / Q64
         } else {
             // Current price above range
-            (
-                0,
-                self.get_amount1_delta(sqrt_price_lower, sqrt_price_upper, liquidity, round_up)
-                    .ok_or(FeelsError::MathError)?
-            )
+            0
         };
         
-        Ok((amount0, amount1))
-    }
-    
-    // Concentrated liquidity math helpers (simplified)
-    fn get_amount0_delta(&self, sqrt_price_a: u128, sqrt_price_b: u128, liquidity: u128, round_up: bool) -> Option<u64> {
-        if sqrt_price_a > sqrt_price_b {
-            return self.get_amount0_delta(sqrt_price_b, sqrt_price_a, liquidity, round_up);
-        }
-        
-        let numerator = (liquidity as u256) * ((sqrt_price_b - sqrt_price_a) as u256);
-        let denominator = (sqrt_price_b as u256) * (sqrt_price_a as u256);
-        
-        let result = if round_up {
-            (numerator + denominator - 1) / denominator
+        let amount_1 = if sqrt_price < sqrt_price_lower {
+            // Current price below range
+            0
+        } else if sqrt_price < sqrt_price_upper {
+            // Current price in range
+            liquidity * (sqrt_price - sqrt_price_lower) / Q64
         } else {
-            numerator / denominator
+            // Current price above range
+            liquidity * (sqrt_price_upper - sqrt_price_lower) / Q64
         };
         
-        Some(result as u64)
+        Ok((amount_0, amount_1))
     }
     
-    fn get_amount1_delta(&self, sqrt_price_a: u128, sqrt_price_b: u128, liquidity: u128, round_up: bool) -> Option<u64> {
-        if sqrt_price_a > sqrt_price_b {
-            return self.get_amount1_delta(sqrt_price_b, sqrt_price_a, liquidity, round_up);
-        }
-        
-        let delta = sqrt_price_b - sqrt_price_a;
-        let result = (liquidity as u256) * (delta as u256) / Q96;
-        
-        Some(result as u64)
-    }
-    
-    fn get_next_sqrt_price_from_input_amount0(
-        &self,
-        sqrt_price: u128,
-        liquidity: u128,
-        amount: u64,
-    ) -> Result<u128> {
-        // Simplified - would use full precision math
-        Ok(sqrt_price - (amount as u128 * sqrt_price / liquidity))
-    }
-    
-    fn get_next_sqrt_price_from_input_amount1(
-        &self,
-        sqrt_price: u128,
-        liquidity: u128,
-        amount: u64,
-    ) -> Result<u128> {
-        // Simplified - would use full precision math
-        Ok(sqrt_price + (amount as u128 * Q96 / liquidity))
-    }
-    
-    fn calculate_liquidity_from_amount0(&self, amount: u64, tick: i32) -> Result<u128> {
-        // Simplified
-        Ok(amount as u128)
-    }
-    
-    fn calculate_liquidity_from_amount1(&self, amount: u64, tick: i32) -> Result<u128> {
-        // Simplified
-        Ok(amount as u128)
-    }
-    
-    fn tick_math_sqrt_price(&self, tick: i32) -> Result<u128> {
-        // Simplified tick math
-        Ok(MIN_SQRT_PRICE_U128 + (tick.abs() as u128 * 1000))
-    }
-    
-    fn tick_math_get_tick(&self, sqrt_price: u128) -> Result<i32> {
-        // Simplified inverse
-        Ok(((sqrt_price - MIN_SQRT_PRICE_U128) / 1000) as i32)
-    }
-    
-    // ========================================================================
-    // Physics Helper Functions
-    // ========================================================================
-    
-    /// Get current market position in 3D space
-    fn get_market_position(&self) -> Result<work_calculation::Position3D> {
-        Ok(work_calculation::Position3D {
-            S: self.market_field.spot_scalar,
-            T: self.market_field.time_scalar,
-            L: self.market_field.leverage_scalar,
-        })
-    }
-    
-    /// Update market field data after operations
-    fn update_field_data(&mut self) -> Result<()> {
-        let update_context = field_update::FieldUpdateContext {
-            market_manager: &self.state.market,
-            tick_arrays: vec![], // Would include actual tick arrays
-            buffer_account: &self.state.buffer,
-        };
-        
-        field_update::update_market_field_data(
-            self.market_field,
-            &update_context,
-        )?;
-        
-        Ok(())
-    }
-    
-    /// Take snapshot for conservation verification
-    fn take_conservation_snapshot(&self) -> Result<conservation_check::ConservationSnapshot> {
-        Ok(conservation_check::ConservationSnapshot {
-            spot_value: self.market_field.spot_scalar,
-            time_value: self.market_field.time_scalar,
-            leverage_value: self.market_field.leverage_scalar,
-            buffer_value: self.state.buffer.state.accumulated_fees_0
-                .saturating_add(self.state.buffer.state.accumulated_fees_1),
-            timestamp: Clock::get()?.unix_timestamp,
-        })
+    /// Calculate tick array key for a given tick
+    fn calculate_tick_array_key(&self, tick: i32) -> Pubkey {
+        // This would calculate the actual PDA for the tick array
+        // For now, returning a dummy value
+        Pubkey::default()
     }
 }
 
 // ============================================================================
-// Result Types
+// Factory Functions
 // ============================================================================
 
-#[derive(Debug, Default)]
-pub struct SwapResult {
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub sqrt_price_after: u128,
-    pub tick_after: i32,
-    pub fee_amount: u64,
-    pub fee_growth: u128, // For physics compatibility
+/// Create an OrderManager from accounts by loading them into a WorkUnit
+pub fn create_order_manager<'a, 'info>(
+    work_unit: &'a mut WorkUnit<'info>,
+    market_field: &'info Account<'info, MarketField>,
+    buffer_account: &'info Account<'info, BufferAccount>,
+    market_manager: &'info AccountLoader<'info, MarketManager>,
+    oracle: Option<&'info AccountLoader<'info, UnifiedOracle>>,
+    current_time: i64,
+) -> Result<OrderManager<'a, 'info>> {
+    // Create state context from WorkUnit
+    let state_context = crate::logic::state_context::create_state_context(
+        work_unit,
+        market_field,
+        buffer_account,
+        market_manager,
+        oracle,
+    )?;
+    
+    Ok(OrderManager::new(state_context, current_time))
 }
 
-#[derive(Debug, Default)]
-pub struct PositionResult {
-    pub tokens_out: u64,
-    pub exchange_rate: u128,
-    pub fee_amount: u64,
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_hub_route_validation() {
+        let route = HubRoute {
+            pools: vec![Pubkey::default()],
+            zero_for_one: vec![true],
+        };
+        assert!(route.validate().is_ok());
+        
+        let invalid_route = HubRoute {
+            pools: vec![Pubkey::default(), Pubkey::default(), Pubkey::default()],
+            zero_for_one: vec![true, false, true],
+        };
+        assert!(invalid_route.validate().is_err());
+    }
 }
-
-#[derive(Debug, Default)]
-pub struct LiquidityResult {
-    pub position_id: u64,
-    pub amount0: u64,
-    pub amount1: u64,
-    pub liquidity: u128,
-}
-
-#[derive(Debug, Default)]
-pub struct LimitOrderResult {
-    pub order_id: u64,
-    pub placed_at_tick: i32,
-    pub liquidity: u128,
-    pub expiration: Option<i64>,
-}
-
-// Type aliases for clarity
-type u256 = u128; // Would use proper u256 in production
-
-// Constants (simplified)
-const Q96: u128 = 1 << 96;
-const Q128: u128 = 1 << 128;

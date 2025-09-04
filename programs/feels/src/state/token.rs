@@ -44,6 +44,58 @@ impl TokenMetadata {
 }
 
 // ============================================================================
+// Position Token Metadata
+// ============================================================================
+
+/// Metadata for position tokens (Time/Leverage)
+#[account]
+pub struct PositionToken {
+    /// Type of position: "standard", "time", or "leverage"
+    pub position_type: String,
+    
+    /// Position token mint
+    pub position_mint: Pubkey,
+    
+    /// FeelsSOL mint backing
+    pub feelssol_mint: Pubkey,
+    
+    /// FeelsSOL vault holding backing
+    pub feelssol_vault: Pubkey,
+    
+    /// Total supply of position tokens
+    pub total_supply: u64,
+    
+    /// Total FeelsSOL backing
+    pub feelssol_backing: u64,
+    
+    /// Exchange rate (position tokens per FeelsSOL, Q32)
+    pub exchange_rate: u64,
+    
+    /// Last update timestamp
+    pub last_update: i64,
+    
+    /// PDA bump
+    pub bump: u8,
+    
+    /// Reserved for future use
+    pub _reserved: [u8; 63],
+}
+
+impl PositionToken {
+    pub const SIZE: usize = 8 + // discriminator
+        4 + 16 + // position_type (max 16 chars + length)
+        32 + // position_mint
+        32 + // feelssol_mint
+        32 + // feelssol_vault
+        8 + // total_supply
+        8 + // feelssol_backing
+        8 + // exchange_rate
+        8 + // last_update
+        1 + // bump
+        63; // reserved
+}
+
+// ============================================================================
 // FeelsSOL Wrapper
 // ============================================================================
 

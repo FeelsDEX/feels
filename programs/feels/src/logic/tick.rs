@@ -6,7 +6,6 @@ use anchor_lang::prelude::*;
 use crate::state::{FeelsProtocolError, Tick, TickArray, TickPositionMetadata, MarketManager};
 use crate::utils::{add_liquidity_delta, safe_add_i128, safe_sub_i128, FeeGrowthMath};
 use crate::utils::{MAX_LIQUIDITY_DELTA, TICK_ARRAY_SIZE, MIN_TICK, MAX_TICK};
-// use crate::utils::bitmap::multi_word_bitmap;
 
 // Unified tick management interface is defined below
 
@@ -359,7 +358,7 @@ impl TickArrayManager {
         start_tick_index: i32,
         program_id: &Pubkey,
     ) -> (Pubkey, u8) {
-        crate::utils::CanonicalSeeds::derive_tick_array_pda(pool, start_tick_index, program_id)
+        crate::state::pda::derive_tick_array_pda(pool, start_tick_index, program_id)
     }
     
     /// Check if a tick array is initialized
@@ -1260,7 +1259,7 @@ impl TickManager {
     ) -> Result<(&'info AccountInfo<'info>, usize)> {
         // Calculate which tick array contains this tick
         let tick_spacing = market_manager.tick_spacing as i32;
-        let ticks_per_array = crate::constant::TICK_ARRAY_SIZE as i32 * tick_spacing;
+        let ticks_per_array = feels_core::constants::TICK_ARRAY_SIZE as i32 * tick_spacing;
         let start_tick = (tick_index / ticks_per_array) * ticks_per_array;
 
         // Try router first if available
@@ -1277,12 +1276,9 @@ impl TickManager {
         }
 
         // Fall back to searching remaining_accounts by PDA derivation
-        let (expected_key, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                market_manager.market.as_ref(),
-                &start_tick.to_le_bytes(),
-            ],
+        let (expected_key, _) = crate::state::derive_tick_array_pda(
+            &market_manager.market,
+            start_tick,
             program_id,
         );
 
@@ -1297,7 +1293,7 @@ impl TickManager {
 
     /// Find tick array index in router
     fn find_tick_array_in_router(router: &TickArrayRouter, start_tick: i32) -> Option<usize> {
-        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+        for i in 0..feels_core::constants::MAX_ROUTER_ARRAYS {
             if (router.active_bitmap & (1 << i)) != 0 && router.start_indices[i] == start_tick {
                 return Some(i);
             }
@@ -1312,23 +1308,6 @@ impl TickManager {
     /// Update bitmap in MarketManager - the ONLY way to modify tick array bitmap
     // Removed duplicate - see line 883 for the implementation
     
-    /// Bridge method for MarketField-based operations - MIGRATION PATH
-    /// This allows gradual migration from MarketField to MarketManager
-    /// TODO: Remove once all operations use MarketManager directly
-    pub fn update_bitmap_via_field(
-        _market_field: &mut crate::state::MarketField,
-        _start_tick: i32,
-        _initialized: bool,
-    ) -> Result<()> {
-        // ARCHITECTURAL NOTE: MarketField doesn't contain bitmap data
-        // Bitmap updates are handled through MarketManager in CleanupTickArrayV2
-        // This function is kept for backward compatibility only
-        
-        msg!("DEPRECATION WARNING: update_bitmap_via_field called - migrate to MarketManager");
-        Ok(())
-    }
-
-    // Removed duplicate - see line 892 for the implementation
 
     // ------------------------------------------------------------------------
     // Unified Fee Growth Operations (SINGLE SOURCE OF TRUTH)
@@ -1417,7 +1396,7 @@ impl TickManager {
         Self::update_tick_array_bitmap(market_manager, start_tick, true)?;
 
         // Then try to add to router for fast access
-        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+        for i in 0..feels_core::constants::MAX_ROUTER_ARRAYS {
             if (router.active_bitmap & (1 << i)) == 0 {
                 // Found empty slot
                 router.tick_arrays[i] = tick_array_key;
@@ -1442,7 +1421,7 @@ impl TickManager {
         Self::update_tick_array_bitmap(market_manager, start_tick, false)?;
 
         // Then remove from router
-        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+        for i in 0..feels_core::constants::MAX_ROUTER_ARRAYS {
             if router.start_indices[i] == start_tick {
                 router.tick_arrays[i] = Pubkey::default();
                 router.start_indices[i] = i32::MIN;
@@ -1460,7 +1439,7 @@ impl TickManager {
         router: &TickArrayRouter,
         market_manager: &MarketManager,
     ) -> Result<bool> {
-        for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+        for i in 0..feels_core::constants::MAX_ROUTER_ARRAYS {
             if (router.active_bitmap & (1 << i)) != 0 {
                 let start_tick = router.start_indices[i];
                 if !Self::is_tick_array_initialized(market_manager, start_tick) {
@@ -1486,7 +1465,7 @@ impl TickManager {
         
         // Check router consistency if provided
         if let Some(router) = router {
-            for i in 0..crate::constant::MAX_ROUTER_ARRAYS {
+            for i in 0..feels_core::constants::MAX_ROUTER_ARRAYS {
                 if router.is_slot_active(i) {
                     let start_tick = router.start_indices[i];
                     
@@ -1615,7 +1594,7 @@ pub fn initialize_router(
         let start_tick = current_array_start + i * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
 
         // Derive tick array PDA using helper
-        let (tick_array_pda, _) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
+        let (tick_array_pda, _) = crate::state::pda::derive_tick_array_pda(
             &ctx.accounts.market_manager.key(),
             start_tick,
             ctx.program_id,
@@ -1676,7 +1655,7 @@ pub fn update_router_arrays(
         let start_tick = current_array_start + i * TICK_ARRAY_SIZE as i32 * tick_spacing as i32;
 
         // Derive tick array PDA using helper
-        let (tick_array_pda, _) = crate::utils::CanonicalSeeds::derive_tick_array_pda(
+        let (tick_array_pda, _) = crate::state::pda::derive_tick_array_pda(
             &ctx.accounts.market_manager.key(),
             start_tick,
             ctx.program_id,

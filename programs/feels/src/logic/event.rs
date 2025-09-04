@@ -1,9 +1,22 @@
-use crate::logic::OrderRoute;
 use crate::state::duration::Duration;
+use crate::logic::order_system::HubRoute;
 /// Centralized event definitions and aggregation utilities for protocol analytics and monitoring.
 /// Contains all protocol event structures and aggregation logic for TWAP/VWAP calculations,
 /// volume tracking, and rate analytics. Essential for off-chain indexing and analysis.
 use anchor_lang::prelude::*;
+
+// ============================================================================
+// Event Data Types
+// ============================================================================
+
+/// Hook data for event emission
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct HookData {
+    pub pre_swap_price: u128,
+    pub post_swap_price: u128,
+    pub price_impact_bps: u16,
+    pub volume: u64,
+}
 
 // ============================================================================
 // Core Event Infrastructure
@@ -128,7 +141,7 @@ pub struct PoolInitialized {
     pub token_1_mint: Pubkey,
     pub fee_rate: u16,
     pub tick_spacing: i16,
-    pub initial_sqrt_rate: u128,
+    pub initial_sqrt_price: u128,
     pub authority: Pubkey,
     pub feelssol_mint: Pubkey,
     pub timestamp: i64,
@@ -180,8 +193,8 @@ pub struct SwapEvent {
     pub protocol_fee: u64,
     
     // Market impact
-    pub sqrt_rate_before: u128,
-    pub sqrt_rate_after: u128,
+    pub sqrt_price_before: u128,
+    pub sqrt_price_after: u128,
     pub tick_before: i32,
     pub tick_after: i32,
     
@@ -213,10 +226,10 @@ pub struct CrossTokenSwapEvent {
     pub token_out: Pubkey,
     pub amount_in: u64,
     pub amount_out: u64,
-    pub route: OrderRoute,
+    pub route: HubRoute,
     pub intermediate_amount: Option<u64>,    // For two-hop swaps
-    pub sqrt_rate_after_hop1: Option<u128>,  // Rate after first hop
-    pub sqrt_rate_after_final: u128,         // Final rate state
+    pub sqrt_price_after_hop1: Option<u128>,  // Rate after first hop
+    pub sqrt_price_after_final: u128,         // Final rate state
     pub tick_after_hop1: Option<i32>,        // Tick after first hop
     pub tick_after_final: i32,               // Final tick state
     pub total_fees_paid: u64,                // Sum of all fees across hops
@@ -227,9 +240,10 @@ pub struct CrossTokenSwapEvent {
 
 impl EventBase for CrossTokenSwapEvent {
     fn pool(&self) -> Pubkey {
-        match self.route {
-            OrderRoute::Direct(pool) => pool,
-            OrderRoute::TwoHop(pool1, _pool2) => pool1, // Return first pool
+        if self.route.pools.is_empty() {
+            Pubkey::default()
+        } else {
+            self.route.pools[0] // Return first pool
         }
     }
     fn timestamp(&self) -> i64 {
@@ -519,7 +533,7 @@ pub struct EventAggregator;
 /// Rate data point for TWAP calculation
 #[derive(Clone, Debug)]
 pub struct PricePoint {
-    pub sqrt_rate: u128,
+    pub sqrt_price: u128,
     pub timestamp: i64,
     pub liquidity: u128,
 }
@@ -540,8 +554,8 @@ pub struct SwapEventData {
     pub zero_for_one: bool,
     pub amount_in: u64,
     pub amount_out: u64,
-    pub sqrt_rate_before: u128,
-    pub sqrt_rate_after: u128,
+    pub sqrt_price_before: u128,
+    pub sqrt_price_after: u128,
     pub timestamp: i64,
 }
 
@@ -610,7 +624,7 @@ impl EventAggregator {
             if time_weight > 0 {
                 // Weight the rate by time duration
                 // Use saturating math to prevent overflow
-                let weighted_price = current_point.sqrt_rate.saturating_mul(time_weight as u128);
+                let weighted_price = current_point.sqrt_price.saturating_mul(time_weight as u128);
                 weighted_sum = weighted_sum.saturating_add(weighted_price);
                 total_weight = total_weight.saturating_add(time_weight);
             }
@@ -634,11 +648,11 @@ impl EventAggregator {
 
         for trade in trades {
             // Use the geometric mean of sqrt rates as the trade rate
-            let avg_sqrt_rate = (trade.sqrt_rate_before + trade.sqrt_rate_after) / 2;
+            let avg_sqrt_price = (trade.sqrt_price_before + trade.sqrt_price_after) / 2;
             let volume = trade.amount_in as u128;
 
             volume_weighted_sum =
-                volume_weighted_sum.saturating_add(avg_sqrt_rate.saturating_mul(volume));
+                volume_weighted_sum.saturating_add(avg_sqrt_price.saturating_mul(volume));
             total_volume = total_volume.saturating_add(volume);
         }
 
@@ -967,8 +981,8 @@ impl EventHelpers {
         amount_out: u64,
         fee: u64,
         protocol_fee: u64,
-        sqrt_rate_before: u128,
-        sqrt_rate_after: u128,
+        sqrt_price_before: u128,
+        sqrt_price_after: u128,
         tick_before: i32,
         tick_after: i32,
         work_computed: i128,
@@ -984,8 +998,8 @@ impl EventHelpers {
             amount_out,
             fee,
             protocol_fee,
-            sqrt_rate_before,
-            sqrt_rate_after,
+            sqrt_price_before,
+            sqrt_price_after,
             tick_before,
             tick_after,
             work_computed,

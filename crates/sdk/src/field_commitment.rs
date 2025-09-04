@@ -1,8 +1,8 @@
 /// Field commitment data structures and utilities for SDK.
 /// Uses types from feels_types crate to avoid duplication.
 
-// Re-export from shared types
-pub use feels_types::{FieldCommitmentData, LocalCoefficients};
+// Re-export from feels-core
+pub use feels_core::types::field::{FieldCommitmentData, LocalCoefficients};
 
 impl FieldCommitmentData {
     /// Check if commitment is still valid
@@ -12,8 +12,8 @@ impl FieldCommitmentData {
     }
     
     /// Convert to market field data for work calculator
-    pub fn to_market_field_data(&self) -> feels_types::MarketFieldData {
-        feels_types::MarketFieldData {
+    pub fn to_market_field_data(&self) -> feels_core::types::market::extended::MarketFieldData {
+        feels_core::types::market::extended::MarketFieldData {
             S: self.S,
             T: self.T,
             L: self.L,

@@ -5,7 +5,9 @@
 
 use anchor_lang::prelude::*;
 use borsh::{BorshSerialize, BorshDeserialize};
-use crate::constant::MAX_HOOKS_PER_POOL;
+
+/// Maximum hooks per pool (protocol-level extensibility)
+pub const MAX_HOOKS_PER_POOL: usize = 8;
 
 // ============================================================================
 // Event and Stage Definitions (Bitmasks for Gas Efficiency)

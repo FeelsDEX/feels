@@ -195,7 +195,7 @@ impl<'info> ScopedSecurityGuard<'info> {
 pub fn validate_swap_params(
     amount_in: u64,
     min_amount_out: u64,
-    sqrt_rate_limit: Option<u128>,
+    sqrt_price_limit: Option<u128>,
 ) -> Result<()> {
     require!(
         amount_in > 0,
@@ -207,7 +207,7 @@ pub fn validate_swap_params(
         FeelsProtocolError::InvalidParameter
     );
     
-    if let Some(limit) = sqrt_rate_limit {
+    if let Some(limit) = sqrt_price_limit {
         require!(
             limit > 0,
             FeelsProtocolError::InvalidParameter
@@ -234,7 +234,7 @@ pub fn validate_liquidity_params(
     );
     
     // Check tick bounds
-    use crate::constant::{MIN_TICK, MAX_TICK};
+    use feels_core::constants::{MIN_TICK, MAX_TICK};
     validate_bounds(tick_lower, MIN_TICK, MAX_TICK, "tick_lower")?;
     validate_bounds(tick_upper, MIN_TICK, MAX_TICK, "tick_upper")?;
     

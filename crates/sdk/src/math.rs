@@ -15,6 +15,8 @@ use anchor_lang::prelude::*;
 use fixed::types::I64F64;
 use micromath::F32Ext;
 use num_traits::{Zero, One};
+// Import constants from feels-core
+use feels_core::constants::{Q64, BPS_DENOMINATOR};
 
 /// Fixed-point number type
 pub type FixedPoint = I64F64;
@@ -91,7 +93,7 @@ pub fn calculate_exact_rebase_factor(
     time_elapsed: i64,
     seconds_per_year: i64,
 ) -> Result<FixedPoint> {
-    const BPS_DENOMINATOR: u64 = 10_000;
+    // Use imported BPS_DENOMINATOR
     
     // Calculate exponent: rate * time / (bps * seconds_per_year)
     let rate_fp = FixedPoint::from_num(rate_bps) / FixedPoint::from_num(BPS_DENOMINATOR);
@@ -115,7 +117,7 @@ pub fn compute_lending_rebase_factors(
     buffer_weight: u32,
 ) -> Result<(u128, u128, u128, i64)> {
     const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
-    const Q64: u128 = 1 << 64;
+    // Use imported Q64
     
     // Compute exact exponential factors
     let g_lender_fp = calculate_exact_rebase_factor(lender_rate_bps, time_elapsed, SECONDS_PER_YEAR)?;
@@ -161,7 +163,7 @@ pub fn compute_leverage_rebase_factors(
     short_weight: u32,
 ) -> Result<(u128, u128, i64)> {
     const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
-    const Q64: u128 = 1 << 64;
+    // Use imported Q64
     
     // For leverage, one side gains what the other loses
     // If funding_rate > 0: longs pay shorts
@@ -303,7 +305,7 @@ pub fn solve_weight_rebase(
     domain_values: &[u128; 4], // [S, T, L, tau] current values
     fix_spot: bool, // If true, h_S = 1 for price continuity
 ) -> Result<([u128; 4], i64)> {
-    const Q64: u128 = 1 << 64;
+    // Use imported Q64
     const MAX_ITERATIONS: usize = 50;
     const TOLERANCE: f64 = 1e-10;
     

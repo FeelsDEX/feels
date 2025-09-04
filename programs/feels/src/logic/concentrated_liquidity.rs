@@ -1,16 +1,16 @@
 /// Core mathematical operations for concentrated liquidity positions and swaps.
 /// Calculates token amounts from liquidity, liquidity from token amounts, and
-/// rate movements during swaps. Implements Uniswap V3 math with Q64.96 precision
-/// for accurate pricing across the full range of possible token ratios.
+/// price movements during swaps. Implements concentrated liquidity math with Q64
+/// fixed-point precision for accurate pricing across all token ratios.
 use anchor_lang::prelude::*;
 use crate::state::FeelsProtocolError;
-use crate::utils::math::amm::{
+use feels_core::math::{
     get_amount_0_delta, get_amount_1_delta,
-    get_next_sqrt_rate_from_amount_0_rounding_up,
-    get_next_sqrt_rate_from_amount_1_rounding_down,
+    get_next_sqrt_price_from_amount_0_rounding_up,
+    get_next_sqrt_price_from_amount_1_rounding_down,
     get_liquidity_for_amount_0, get_liquidity_for_amount_1,
 };
-use crate::constant::{MAX_SQRT_RATE_X64, MIN_SQRT_RATE_X64};
+use feels_core::constants::{MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
 
 // ============================================================================
 // Concentrated Liquidity Math Implementation
@@ -107,31 +107,31 @@ impl ConcentratedLiquidityMath {
         }
     }
 
-    /// Calculate the next sqrt rate after a swap
+    /// Calculate the next sqrt price after a swap
     /// This is used during swap execution to update pool state
-    pub fn get_next_sqrt_rate_from_input(
+    pub fn get_next_sqrt_price_from_input(
         sqrt_price: u128,
         liquidity: u128,
         amount_in: u64,
         zero_for_one: bool,
     ) -> Result<u128> {
-        // Validate upper bounds for sqrt_rate
+        // Validate upper bounds for sqrt_price
         require!(
-            (MIN_SQRT_RATE_X64..=MAX_SQRT_RATE_X64).contains(&sqrt_price),
-            FeelsProtocolError::RateOutOfBounds
+            (MIN_SQRT_PRICE_X64..=MAX_SQRT_PRICE_X64).contains(&sqrt_price),
+            FeelsProtocolError::PriceOutOfBounds
         );
         require!(liquidity > 0, FeelsProtocolError::InsufficientLiquidity);
         require!(amount_in > 0, FeelsProtocolError::InvalidAmount);
 
         if zero_for_one {
-            get_next_sqrt_rate_from_amount_0_rounding_up(
+            get_next_sqrt_price_from_amount_0_rounding_up(
                 sqrt_price,
                 liquidity,
                 amount_in,
                 true,
             )
         } else {
-            get_next_sqrt_rate_from_amount_1_rounding_down(
+            get_next_sqrt_price_from_amount_1_rounding_down(
                 sqrt_price,
                 liquidity,
                 amount_in,
@@ -140,30 +140,30 @@ impl ConcentratedLiquidityMath {
         }
     }
 
-    /// Calculate the next sqrt rate from output amount
-    pub fn get_next_sqrt_rate_from_output(
+    /// Calculate the next sqrt price from output amount
+    pub fn get_next_sqrt_price_from_output(
         sqrt_price: u128,
         liquidity: u128,
         amount_out: u64,
         zero_for_one: bool,
     ) -> Result<u128> {
-        // Validate upper bounds for sqrt_rate (same as input version)
+        // Validate upper bounds for sqrt_price (same as input version)
         require!(
-            (MIN_SQRT_RATE_X64..=MAX_SQRT_RATE_X64).contains(&sqrt_price),
-            FeelsProtocolError::RateOutOfBounds
+            (MIN_SQRT_PRICE_X64..=MAX_SQRT_PRICE_X64).contains(&sqrt_price),
+            FeelsProtocolError::PriceOutOfBounds
         );
         require!(liquidity > 0, FeelsProtocolError::InsufficientLiquidity);
         require!(amount_out > 0, FeelsProtocolError::InvalidAmount);
 
         if zero_for_one {
-            get_next_sqrt_rate_from_amount_1_rounding_down(
+            get_next_sqrt_price_from_amount_1_rounding_down(
                 sqrt_price,
                 liquidity,
                 amount_out,
                 false,
             )
         } else {
-            get_next_sqrt_rate_from_amount_0_rounding_up(
+            get_next_sqrt_price_from_amount_0_rounding_up(
                 sqrt_price,
                 liquidity,
                 amount_out,
@@ -211,16 +211,16 @@ pub struct ConcentratedLiquidityManager;
 impl ConcentratedLiquidityManager {
     /// Calculate liquidity from token amounts
     pub fn calculate_liquidity_from_amounts(
-        sqrt_rate_current: u128,
-        sqrt_rate_lower: u128,
-        sqrt_rate_upper: u128,
+        sqrt_price_current: u128,
+        sqrt_price_lower: u128,
+        sqrt_price_upper: u128,
         amount_0: u64,
         amount_1: u64,
     ) -> Result<u128> {
         ConcentratedLiquidityMath::get_concentrated_liquidity_for_amounts(
-            sqrt_rate_current,
-            sqrt_rate_lower,
-            sqrt_rate_upper,
+            sqrt_price_current,
+            sqrt_price_lower,
+            sqrt_price_upper,
             amount_0,
             amount_1,
         )

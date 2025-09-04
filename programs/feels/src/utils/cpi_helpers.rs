@@ -5,8 +5,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_2022::Transfer;
-// use crate::state::MarketField; // Unused import
-use crate::utils::deterministic_seed::CanonicalSeeds;
+use crate::state::pda::get_pool_seeds;
 
 // ============================================================================
 // Unified Transfer Parameters
@@ -52,7 +51,7 @@ impl<'info> TransferParams<'info> {
         pool: &crate::state::MarketManager,
         pool_bump: u8,
     ) -> Self {
-        let pool_seeds = CanonicalSeeds::get_pool_seeds(
+        let pool_seeds = get_pool_seeds(
             &pool.token_0_mint,
             &pool.token_1_mint,
             pool.fee_rate,
@@ -189,7 +188,7 @@ pub fn transfer_from_pool_to_user<'info>(
     pool_bump: u8,
 ) -> Result<()> {
     // Get pool seeds for PDA signing
-    let pool_seeds = CanonicalSeeds::get_pool_seeds(
+    let pool_seeds = get_pool_seeds(
         &pool.token_0_mint,
         &pool.token_1_mint,
         pool.fee_rate,
@@ -221,7 +220,7 @@ pub fn transfer_from_pool<'info>(
     pool_bump: u8,
 ) -> Result<()> {
     // Get pool seeds for PDA signing
-    let pool_seeds = CanonicalSeeds::get_pool_seeds(
+    let pool_seeds = get_pool_seeds(
         &pool.token_0_mint,
         &pool.token_1_mint,
         pool.fee_rate,
@@ -506,7 +505,7 @@ pub fn execute_two_hop_swap<'info>(
     )?;
 
     // Step 2: Transfer intermediate token from pool 1 to pool 2
-    let pool_1_seeds = CanonicalSeeds::get_pool_seeds(
+    let pool_1_seeds = get_pool_seeds(
         &pool_1.token_0_mint,
         &pool_1.token_1_mint,
         pool_1.fee_rate,

@@ -2,8 +2,22 @@
 /// All operations go through the single order instruction with hub-and-spoke routing
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, signature::Signature};
 use feels::{OrderParams, CreateOrderParams, OrderType, PositionType};
+
+// ============================================================================
+// Swap Result Types
+// ============================================================================
+
+/// Result of a swap operation
+#[derive(Debug, Clone)]
+pub struct SwapResult {
+    pub amount_in: u64,
+    pub amount_out: u64,
+    pub fee_amount: u64,
+    pub price_after: u128,
+    pub signature: Signature,
+}
 
 // ============================================================================
 // Token Swaps

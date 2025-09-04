@@ -2,6 +2,19 @@ use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
 
+// ============================================================================
+// Token Types
+// ============================================================================
+
+/// Token account information
+#[derive(Debug, Clone)]
+pub struct TokenAccountInfo {
+    pub pubkey: Pubkey,
+    pub mint: Pubkey,
+    pub owner: Pubkey,
+    pub amount: u64,
+}
+
 /// Build instruction to create a new token using Token-2022
 #[allow(clippy::too_many_arguments)]
 pub fn create_token(

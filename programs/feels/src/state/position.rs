@@ -1,81 +1,276 @@
-/// Represents individual liquidity positions as NFTs with concentrated liquidity metadata.
-/// Tracks position boundaries (tick range), liquidity amount, accumulated fees, and ownership.
-/// Each position earns fees proportional to its share of in-range liquidity during swaps.
-/// NFT representation enables positions to be transferred, composed, and integrated with DeFi.
-///
-/// TODO: Future optimization - compress historical position data:
-/// - Keep only active position data in NFT metadata
-/// - Archive closed/withdrawn positions to merkle tree
-/// - Generate proofs for historical fee claims
-/// - Enable gas-free position queries via RPC
+//! # Position State - Consolidated Position and Leverage Management
+//! 
+//! This module consolidates all position-related state structures:
+//! - NFT-based liquidity positions with concentrated liquidity
+//! - Leverage parameters and protection curves
+//! - Risk profiles and position tracking
+//! - Fee accumulation and duration dimensions
+//! 
+//! ## Position Model
+//! 
+//! Positions in Feels are NFT-represented liquidity contributions that:
+//! - Define a tick range for concentrated liquidity
+//! - Track accumulated fees proportional to in-range time
+//! - Support continuous leverage with protection curves
+//! - Include time dimensions for the 3D thermodynamic model
+
 use anchor_lang::prelude::*;
-use crate::state::duration::Duration;
+use bytemuck::{Pod, Zeroable};
+use crate::error::FeelsProtocolError;
 use crate::state::rebase::RebaseCheckpoint;
 use crate::utils::math::safe;
+
+// ============================================================================
+// Leverage System - Protection Curves and Risk Management
+// ============================================================================
+
+/// Protection curve type identifier
+#[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
+#[repr(C)]
+pub struct ProtectionCurveType {
+    pub curve_type: u8, // 0 = Linear, 1 = Exponential, 2 = Piecewise
+    pub _padding: [u8; 7],
+}
+
+impl ProtectionCurveType {
+    pub const LINEAR: u8 = 0;
+    pub const EXPONENTIAL: u8 = 1;
+    pub const PIECEWISE: u8 = 2;
+}
+
+/// Protection curve data (union-like structure for zero-copy)
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+#[repr(C)]
+pub struct ProtectionCurveData {
+    pub decay_rate: u64, // For exponential
+    pub points: [[u64; 2]; 8], // For piecewise (leverage, protection) pairs
+}
+
+/// Leverage parameters for continuous leverage system
+#[derive(Default, Debug, Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+pub struct LeverageParameters {
+    /// Maximum leverage allowed in this pool (6 decimals, e.g., 3000000 = 3x)
+    pub max_leverage: u64,
+    /// Current dynamic ceiling based on market conditions
+    pub current_ceiling: u64,
+    /// Protection curve type
+    pub protection_curve_type: ProtectionCurveType,
+    /// Protection curve data
+    pub protection_curve_data: ProtectionCurveData,
+    /// Last time ceiling was updated
+    pub last_ceiling_update: u64,
+    /// Padding for alignment
+    pub _padding: [u8; 8],
+}
+
+impl LeverageParameters {
+    /// Calculate protection level for given leverage
+    pub fn calculate_protection(&self, leverage: u64) -> Result<u64> {
+        match self.protection_curve_type.curve_type {
+            ProtectionCurveType::LINEAR => {
+                // Linear decay: protection = max_protection * (1 - leverage/max_leverage)
+                let max_protection = 10000; // 100% in basis points
+                if leverage >= self.max_leverage {
+                    return Ok(0);
+                }
+                let ratio = (leverage * 10000) / self.max_leverage;
+                Ok(max_protection.saturating_sub(ratio))
+            }
+            ProtectionCurveType::EXPONENTIAL => {
+                // Exponential decay using decay_rate
+                // protection = max_protection * exp(-decay_rate * leverage)
+                // Simplified approximation for on-chain
+                let decay = (leverage * self.protection_curve_data.decay_rate) / 1_000_000;
+                let protection = 10000_u64.saturating_sub(decay.min(10000));
+                Ok(protection)
+            }
+            ProtectionCurveType::PIECEWISE => {
+                // Interpolate between points
+                let points = &self.protection_curve_data.points;
+                for i in 0..7 {
+                    if leverage <= points[i][0] {
+                        if i == 0 {
+                            return Ok(points[0][1]);
+                        }
+                        // Linear interpolation between points[i-1] and points[i]
+                        let x0 = points[i-1][0];
+                        let y0 = points[i-1][1];
+                        let x1 = points[i][0];
+                        let y1 = points[i][1];
+                        
+                        if x1 == x0 {
+                            return Ok(y1);
+                        }
+                        
+                        let interpolated = y0 + ((leverage - x0) * (y1 - y0)) / (x1 - x0);
+                        return Ok(interpolated);
+                    }
+                }
+                Ok(points[7][1])
+            }
+            _ => Err(FeelsProtocolError::InvalidProtectionCurve.into()),
+        }
+    }
+    
+    /// Check if leverage is within allowed bounds
+    pub fn is_leverage_allowed(&self, leverage: u64) -> bool {
+        leverage <= self.current_ceiling && leverage <= self.max_leverage
+    }
+}
+
+// ============================================================================
+// Duration Tracking for Time Dimension
+// ============================================================================
+
+/// Duration categories for position time commitments
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+pub enum DurationType {
+    Flash,      // Single transaction
+    Swap,       // Single block
+    Daily,      // 1 day commitment
+    Weekly,     // 7 day commitment
+    Monthly,    // 30 day commitment
+    Perpetual,  // No maturity
+}
+
+impl Default for DurationType {
+    fn default() -> Self {
+        DurationType::Perpetual
+    }
+}
+
+/// Duration tracking for time-weighted operations
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
+pub struct Duration {
+    /// Duration type
+    pub duration_type: DurationType,
+    
+    /// Start slot
+    pub start_slot: u64,
+    
+    /// End slot (0 for perpetual)
+    pub end_slot: u64,
+}
+
+impl Duration {
+    /// Check if duration has expired
+    pub fn is_expired(&self, current_slot: u64) -> bool {
+        self.end_slot > 0 && current_slot > self.end_slot
+    }
+    
+    /// Get remaining slots
+    pub fn remaining_slots(&self, current_slot: u64) -> u64 {
+        if self.end_slot == 0 || current_slot >= self.end_slot {
+            0
+        } else {
+            self.end_slot - current_slot
+        }
+    }
+}
 
 // ============================================================================
 // Tick Position NFT Structure
 // ============================================================================
 
+/// **TickPositionMetadata - NFT-based Concentrated Liquidity Position**
+/// 
+/// Each position is represented as an NFT that tracks:
+/// - Liquidity provided within a tick range
+/// - Accumulated fees from in-range trading
+/// - Leverage parameters for capital efficiency
+/// - Time dimensions for the 3D model
+/// 
+/// The NFT representation enables:
+/// - Transfer of positions between wallets
+/// - Composability with other DeFi protocols
+/// - Automated position management via programs
 #[account]
 pub struct TickPositionMetadata {
-    // Tick Position identification
+    // ========== Position Identification ==========
+    
+    /// Market this position belongs to
     pub market: Pubkey,
-    pub pool: Pubkey, // Alias for market for compatibility
+    
+    /// Pool identifier (alias for market for compatibility)
+    pub pool: Pubkey,
+    
+    /// NFT mint representing this position
     pub tick_position_mint: Pubkey,
+    
+    /// Current owner of the position
     pub owner: Pubkey,
 
-    // Range definition
+    // ========== Range Definition ==========
+    
+    /// Lower tick boundary
     pub tick_lower: i32,
+    
+    /// Upper tick boundary
     pub tick_upper: i32,
 
-    // Liquidity tracking
+    // ========== Liquidity Tracking ==========
+    
+    /// Base liquidity amount (before leverage)
     pub liquidity: u128,
 
-    // Fee tracking (using [u64; 4] to represent u256)
-    pub fee_growth_inside_last_0: [u64; 4],
-    pub fee_growth_inside_last_1: [u64; 4],
+    // ========== Fee Tracking ==========
+    
+    /// Fee growth inside position at last update (token 0)
+    pub fee_growth_inside_last_0: [u64; 4], // u256 as [u64; 4]
+    
+    /// Fee growth inside position at last update (token 1)
+    pub fee_growth_inside_last_1: [u64; 4], // u256 as [u64; 4]
+    
+    /// Uncollected fees owed (token 0)
     pub tokens_owed_0: u64,
+    
+    /// Uncollected fees owed (token 1)
     pub tokens_owed_1: u64,
 
-    // Phase 2: Continuous leverage support
-    pub leverage: u64,              // 6 decimals (1_000_000 = 1x, 3_000_000 = 3x)
-    pub risk_profile_hash: [u8; 8], // Hash of risk profile parameters for verification
+    // ========== Leverage Support ==========
     
-    // Phase 3: Duration dimension for 3D model
-    pub duration: Duration, // Time commitment (Flash, Swap, Weekly, etc.)
-    pub creation_slot: u64,               // When position was created
-    pub maturity_slot: u64,               // When position matures (0 for perpetual)
+    /// Leverage multiplier (6 decimals: 1_000_000 = 1x, 3_000_000 = 3x)
+    pub leverage: u64,
+    
+    /// Hash of risk profile parameters for verification
+    pub risk_profile_hash: [u8; 8],
+    
+    // ========== Time Dimension ==========
+    
+    /// Time commitment for this position
+    pub duration: Duration,
+    
+    /// Slot when position was created
+    pub creation_slot: u64,
+    
+    /// Slot when position matures (0 for perpetual)
+    pub maturity_slot: u64,
 
-    // Virtual rebasing checkpoint
+    // ========== Rebasing Support ==========
+    
+    /// Virtual rebasing checkpoint for fee calculations
     pub rebase_checkpoint: RebaseCheckpoint,
 
-    // Reserved for future extensions
+    // ========== Reserved Space ==========
+    
+    /// Reserved for future extensions
     pub _reserved: [u8; 31],
 }
 
 impl TickPositionMetadata {
-    // Size breakdown for clarity and maintainability
-    const DISCRIMINATOR_SIZE: usize = 8;
-    const IDENTIFICATION_SIZE: usize = 32 * 3; // pool, tick_position_mint, owner
-    const RANGE_SIZE: usize = 4 * 2; // tick_lower, tick_upper
-    const LIQUIDITY_SIZE: usize = 16; // liquidity (u128)
-    const FEE_TRACKING_SIZE: usize = 32 * 2 + 8 * 2; // fee_growth_inside_last + tokens_owed
-    const LEVERAGE_SIZE: usize = 8 + 8; // leverage + risk_profile_hash
-    const DURATION_SIZE: usize = 1 + 8 + 8; // duration enum + creation_slot + maturity_slot
-    const REBASE_CHECKPOINT_SIZE: usize = 16 + 16 + 16 + 8; // index_0 + index_1 + funding_index + timestamp
-    const RESERVED_SIZE: usize = 31; // reserved for future upgrades
-
-    pub const SIZE: usize = Self::DISCRIMINATOR_SIZE
-        + Self::IDENTIFICATION_SIZE
-        + Self::RANGE_SIZE
-        + Self::LIQUIDITY_SIZE
-        + Self::FEE_TRACKING_SIZE
-        + Self::LEVERAGE_SIZE
-        + Self::DURATION_SIZE
-        + Self::REBASE_CHECKPOINT_SIZE
-        + Self::RESERVED_SIZE; // Total: 318 bytes
-
+    // Size constants for account allocation
+    pub const SIZE: usize = 8 +     // discriminator
+        32 * 4 +                     // pubkeys (market, pool, mint, owner)
+        4 * 2 +                      // tick range
+        16 +                         // liquidity
+        32 * 2 + 8 * 2 +            // fee tracking
+        8 + 8 +                      // leverage data
+        1 + 8 + 8 +                  // duration enum + slots
+        8 + 8 +                      // time tracking
+        16 + 16 + 16 + 8 +          // rebase checkpoint
+        31;                          // reserved
+    
     /// Calculate hash for risk profile verification
     pub fn calculate_risk_profile_hash(leverage: u64, protection_factor: u64) -> [u8; 8] {
         use anchor_lang::solana_program::hash::hash;
@@ -93,75 +288,144 @@ impl TickPositionMetadata {
 
     /// Get effective liquidity considering leverage
     pub fn effective_liquidity(&self) -> Result<u128> {
+        if !self.is_leveraged() {
+            return Ok(self.liquidity);
+        }
+        
         // Calculate leveraged liquidity safely
-        let leverage_factor = self.leverage.checked_div(1_000_000).unwrap_or(1);
-        self.liquidity
-            .checked_mul(leverage_factor as u128)
-            .ok_or(error!(crate::state::FeelsProtocolError::MathOverflow))
-    }
-    
-    /// Check if position has matured
-    pub fn is_matured(&self, current_slot: u64) -> bool {
-        use crate::state::duration::Duration;
-        if self.duration == Duration::Swap {
-            return true; // Swap positions are always "mature" (no lock)
-        }
-        
-        if self.maturity_slot == 0 {
-            // Perpetual positions
-            return true;
-        }
-        
-        current_slot >= self.maturity_slot
-    }
-    
-    /// Calculate redenomination priority based on 3D dimensions
-    pub fn redenomination_priority(&self, current_tick: i32) -> u64 {
-        // Higher leverage = higher priority for losses
-        let leverage_score = safe::div_u64(self.leverage, 1_000).unwrap_or(0);
-        
-        // Shorter duration = higher priority (less committed)
-        let duration_score = self.duration.protection_priority() as u64;
-        
-        // Further from current price = lower priority
-        // Use safe addition for tick calculation
-        let mid_tick = safe::add_i128(self.tick_lower as i128, self.tick_upper as i128)
-            .map(|sum| (sum / 2) as i32)
-            .unwrap_or((self.tick_lower + self.tick_upper) / 2);
-        
-        let tick_distance = ((current_tick - mid_tick).abs() as u64).saturating_add(1); // Avoid div by 0
-        
-        // Combined priority: leverage × duration / distance using safe math
-        safe::mul_u64(leverage_score, duration_score)
-            .and_then(|numerator| safe::div_u64(numerator, tick_distance))
-            .unwrap_or(0)
-    }
-    
-    /// Apply virtual rebasing to get current position value
-    pub fn apply_virtual_rebase(
-        &self,
-        base_value_0: u64,
-        base_value_1: u64,
-        rebase_accumulator: &crate::state::rebase::RebaseAccumulator,
-    ) -> Result<(u64, u64)> {
-        crate::state::rebase::apply_position_rebase(
-            base_value_0,
-            base_value_1,
-            &self.rebase_checkpoint,
-            rebase_accumulator,
-            self.is_leveraged(),
-            true, // Assume long for now, would need to track this
+        safe::mul_div_u128(
+            self.liquidity,
+            self.leverage as u128,
+            1_000_000 // Leverage decimals
         )
     }
+
+    /// Check if position is in range
+    pub fn is_in_range(&self, current_tick: i32) -> bool {
+        current_tick >= self.tick_lower && current_tick < self.tick_upper
+    }
+
+    /// Check if position has matured
+    pub fn has_matured(&self, current_slot: u64) -> bool {
+        self.maturity_slot > 0 && current_slot >= self.maturity_slot
+    }
+
+    /// Calculate position value including uncollected fees
+    pub fn total_value(&self, token_0_price: u64, token_1_price: u64) -> Result<u128> {
+        let fee_value_0 = safe::mul_u64(self.tokens_owed_0, token_0_price)?;
+        let fee_value_1 = safe::mul_u64(self.tokens_owed_1, token_1_price)?;
+        
+        // Note: Would also include liquidity value calculation
+        // based on current tick and price
+        Ok((fee_value_0 + fee_value_1) as u128)
+    }
+}
+
+// ============================================================================
+// Position Manager State
+// ============================================================================
+
+/// Global position tracking for a market
+#[account]
+pub struct PositionManager {
+    /// Market this manages positions for
+    pub market: Pubkey,
     
-    /// Update checkpoint after claiming yield
-    pub fn update_rebase_checkpoint(
-        &mut self,
-        rebase_accumulator: &crate::state::rebase::RebaseAccumulator,
-    ) {
-        self.rebase_checkpoint = crate::state::rebase::create_checkpoint(
-            rebase_accumulator,
-            true, // Assume long for now
+    /// Total positions created
+    pub total_positions: u64,
+    
+    /// Total active positions
+    pub active_positions: u64,
+    
+    /// Total liquidity across all positions
+    pub total_liquidity: u128,
+    
+    /// Total leveraged liquidity
+    pub total_leveraged_liquidity: u128,
+    
+    /// Leverage parameters for this market
+    pub leverage_params: LeverageParameters,
+    
+    /// Fee tier for position creation
+    pub position_creation_fee: u64,
+    
+    /// Authority for parameter updates
+    pub authority: Pubkey,
+    
+    /// Reserved space
+    pub _reserved: [u8; 128],
+}
+
+impl PositionManager {
+    pub const LEN: usize = 8 +      // discriminator
+        32 +                         // market
+        8 + 8 +                      // position counts
+        16 + 16 +                    // liquidity totals
+        88 +                         // leverage params
+        8 +                          // creation fee
+        32 +                         // authority
+        128;                         // reserved
+    
+    /// Update leverage ceiling based on market conditions
+    pub fn update_leverage_ceiling(&mut self, new_ceiling: u64, current_time: u64) -> Result<()> {
+        require!(
+            new_ceiling <= self.leverage_params.max_leverage,
+            FeelsProtocolError::LeverageTooHigh
+        );
+        
+        self.leverage_params.current_ceiling = new_ceiling;
+        self.leverage_params.last_ceiling_update = current_time;
+        
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Calculate fee growth inside a position's tick range
+pub fn calculate_fee_growth_inside(
+    tick_lower: i32,
+    tick_upper: i32,
+    current_tick: i32,
+    fee_growth_global: [u64; 4],
+    fee_growth_outside_lower: [u64; 4],
+    fee_growth_outside_upper: [u64; 4],
+) -> [u64; 4] {
+    // Implementation would handle the complex fee growth calculation
+    // based on whether current tick is inside/outside the range
+    // This is a placeholder
+    fee_growth_global
+}
+
+/// Validate position parameters
+pub fn validate_position(
+    tick_lower: i32,
+    tick_upper: i32,
+    liquidity: u128,
+    leverage: u64,
+    leverage_params: &LeverageParameters,
+) -> Result<()> {
+    // Validate tick range
+    require!(
+        tick_lower < tick_upper,
+        FeelsProtocolError::InvalidTickRange
+    );
+    
+    // Validate liquidity
+    require!(
+        liquidity > 0,
+        FeelsProtocolError::ZeroLiquidity
+    );
+    
+    // Validate leverage
+    if leverage > 1_000_000 {
+        require!(
+            leverage_params.is_leverage_allowed(leverage),
+            FeelsProtocolError::LeverageTooHigh
         );
     }
+    
+    Ok(())
 }

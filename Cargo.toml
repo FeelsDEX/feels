@@ -2,10 +2,9 @@
 resolver = "2"
 members = [
     "programs/feels",
-    "crates/types",
-    "crates/math", 
     "crates/sdk",
     "crates/keeper",
+    "crates/feels-core",
     "simulation",
 ]
 
@@ -13,9 +12,11 @@ members = [
 anchor-lang = "0.29.0"
 anchor-client = "0.29.0"
 anchor-spl = "0.29.0"
-solana-program = "1.18.26"
-solana-sdk = "1.18.26"
-solana-client = "1.18.26"
+solana-program = "=1.18.26"
+solana-sdk = "=1.18.26"
+solana-client = "=1.18.26"
+# Force older version to avoid Rust 1.85 requirement
+base64ct = "=1.6.0"
 borsh = "0.10"
 bytemuck = "1.14"
 spl-token = "4.0.0"
@@ -25,8 +26,7 @@ spl-associated-token-account = "2.3.0"
 integer-sqrt = "0.1"
 
 # Shared protocol crates
-feels-types = { path = "crates/types" }
-feels-math = { path = "crates/math" }
+feels-core = { path = "crates/feels-core" }
 
 # Common dependencies
 serde = { version = "1.0", features = ["derive"] }

@@ -274,9 +274,24 @@ pub fn build_optimality_gap_proof(
 // ============================================================================
 
 fn calculate_potential_value(position: &[u128; 3]) -> i128 {
-    // Simplified potential calculation
-    // V = ln(S) + ln(T) + ln(L) in real implementation
-    (position[0] as i128 + position[1] as i128 + position[2] as i128) / 3
+    use feels_core::math::fixed_point::ln_q64;
+    use feels_core::constants::Q64;
+    
+    // V = -ŵₛ ln(S) - ŵₜ ln(T) - ŵₗ ln(L)
+    // For simplicity, using equal weights (1/3 each)
+    let weight = Q64 / 3; // Equal weights in Q64 format
+    
+    // Calculate ln for each dimension
+    let ln_s = ln_q64(position[0]).unwrap_or(0);
+    let ln_t = ln_q64(position[1]).unwrap_or(0);
+    let ln_l = ln_q64(position[2]).unwrap_or(0);
+    
+    // Apply weights and sum (negative because potential is -w*ln(x))
+    let weighted_s = -(ln_s as i128 * weight as i128 / Q64 as i128);
+    let weighted_t = -(ln_t as i128 * weight as i128 / Q64 as i128);
+    let weighted_l = -(ln_l as i128 * weight as i128 / Q64 as i128);
+    
+    weighted_s + weighted_t + weighted_l
 }
 
 fn calculate_convex_bound(position: &[u128; 3], center: &[u128; 3]) -> i128 {

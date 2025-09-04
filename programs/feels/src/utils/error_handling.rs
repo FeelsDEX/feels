@@ -5,7 +5,6 @@
 
 use anchor_lang::prelude::*;
 use crate::error::FeelsProtocolError;
-// use spl_math::precise_number::PreciseNumber; // Commented out due to global allocator conflict
 
 // ============================================================================
 // Type Definitions
@@ -85,30 +84,6 @@ impl ErrorHandling {
         }
     }
 
-    /*
-    /// Validate fee calculations with precision handling
-    pub fn calculate_fee_safe(amount: u64, fee_rate: u16) -> Result<u64> {
-        require!(fee_rate <= 10000, FeelsProtocolError::InvalidParameter); // Max 100%
-
-        // Use PreciseNumber for exact calculation
-        let amount_precise = PreciseNumber::new(amount as u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-        let fee_rate_precise = PreciseNumber::new(fee_rate as u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-        let divisor_precise = PreciseNumber::new(10000u128)
-            .ok_or(FeelsProtocolError::MathOverflow)?;
-
-        let fee_precise = amount_precise
-            .checked_mul(&fee_rate_precise)
-            .ok_or(FeelsProtocolError::MathOverflow)?
-            .checked_div(&divisor_precise)
-            .ok_or(FeelsProtocolError::DivisionByZero)?;
-
-        let fee = fee_precise.to_imprecise().ok_or(FeelsProtocolError::MathOverflow)?;
-        fee.try_into()
-            .map_err(|_| FeelsProtocolError::MathOverflow.into())
-    }
-    */
 
     /// Validate fee calculations with precision handling (simplified version without PreciseNumber)
     pub fn calculate_fee_safe(amount: u64, fee_rate: u16) -> Result<u64> {

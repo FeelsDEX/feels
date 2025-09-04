@@ -19,8 +19,14 @@ use crate::field_computation::FieldComputer;
 use crate::config::{KeeperConfig, MarketConfig};
 use crate::hysteresis_controller::{HysteresisController, DomainWeights};
 
-// Use shared types
-use feels_types::{MarketState, FieldCommitmentData, FeelsResult, FeelsProtocolError};
+// Use shared types from feels-core
+use feels_core::{
+    types::{
+        field::FieldCommitmentData,
+        market::extended::MarketState,
+    },
+    errors::extended::{ExtendedResult as FeelsResult, ExtendedError as FeelsProtocolError},
+};
 
 /// Main keeper service that manages off-chain field computation and updates
 pub struct Keeper {

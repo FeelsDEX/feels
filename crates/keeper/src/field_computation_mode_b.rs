@@ -3,7 +3,13 @@
 use solana_sdk::pubkey::Pubkey;
 use serde::{Serialize, Deserialize};
 
-use feels_types::{MarketState, FieldCommitmentData, FeelsResult};
+use feels_core::{
+    types::{
+        field::FieldCommitmentData,
+        market::extended::MarketState,
+    },
+    errors::extended::ExtendedResult as FeelsResult,
+};
 use crate::field_computation::{FieldComputer, KeeperUpdateParams};
 
 /// Mode B specific structures for local approximations

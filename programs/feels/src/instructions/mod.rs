@@ -1,61 +1,81 @@
-/// Instruction module organizing all protocol operations into logical groups.
-/// Initialization instructions set up protocol and pool infrastructure,
-/// liquidity instructions manage LP positions, trading instructions handle swaps,
-/// and administrative instructions manage protocol configuration and maintenance.
-/// Instructions are consolidated into coherent functional groups for better organization.
+//! # Instruction Handlers
+//! 
+//! Entry points for 3D thermodynamic AMM operations:
+//! 
+//! 1. **Market**: Initialize and update markets with unified configuration
+//! 2. **Order**: Universal trading handler for all order types (swaps, liquidity, positions)
+//! 3. **Maintenance**: Keeper operations, cleanups, rebases, and system maintenance
+//! 4. **Token**: Asset creation and management
+//! 
+//! All operations calculate work W = V(P₂) - V(P₁) and enforce conservation.
 
-// Market operations
-pub mod market_initialize;  // Initialize new markets
-pub mod market_update;      // Unified market management (config, keeper updates, field updates)
+// ============================================================================
+// INSTRUCTION MODULES
+// ============================================================================
 
-// Order System - ALL operations go through unified order handler
-pub mod order;              // Unified order system with hub-and-spoke routing
+/// Operation trait framework for modular handlers
+pub mod operation;
 
-// Fee enforcement
-pub mod enforce_fees;       // Fee policy enforcement and pool status management
+/// Market operations for consolidated Market account
+pub mod market;
 
-// Asset management
+/// Order handler using consolidated Market account
+pub mod order;
+
+/// Maintenance operations: keeper registry, cleanup, rebases
+pub mod maintenance;
+
+/// Token management
 pub mod token;
 
-// Rebase operations (temporarily disabled due to compilation issues)
-// pub mod apply_rebase;
+// ============================================================================
+// PUBLIC API EXPORTS
+// ============================================================================
 
-// Maintenance operations
-pub mod cleanup;
-
-// Keeper management
-pub mod keeper_registry;
-
-// Security examples (for documentation) - removed feature gate to prevent warning
-// #[cfg(feature = "security-examples")]
-// pub mod security_example;
-
-// Re-export functions and types
-pub use market_initialize::{initialize_market, InitializeMarketParams, InitializeMarketResult};
-pub use market_update::{
-    handler as market_update_handler, 
-    MarketOperation, MarketConfigParams, FieldCommitmentUpdate, PoolUpdateParams,
-    WeightConfig, RiskConfig, BufferConfig, FreshnessConfig,
-    MarketUpdate,
+// Market operations
+pub use market::{
+    // Initialization
+    initialize_market,
+    InitializeMarket,
+    InitializeMarketParams,
+    
+    // Updates
+    update_market,
+    UpdateMarket,
+    UpdateMarketParams,
+    
+    // Pause/Unpause
+    pause_market,
+    unpause_market,
+    PauseMarket,
+    UnpauseMarket,
 };
-pub use token::{handler as token_create_handler, TokenCreateParams, TokenCreateResult, CreateToken};
-pub use cleanup::{cleanup_tick_array, CleanupTickArrayParams, CleanupTickArrayResult};
+
+// Order operations
 pub use order::{
     handler as order_handler,
-    OrderParams, CreateOrderParams, ModifyOrderParams,
-    OrderResult, CreateOrderResult, ModifyOrderResult, 
-    OrderType, PositionType, OrderModification, OrderUpdateParams,
-};
-pub use enforce_fees::{
-    handler as enforce_fees_handler, 
-    initialize_pool_status,
-    EnforceFeesParams, EnforceFeesResult,
-    EnforceFees, InitializePoolStatus,
-};
-// pub use apply_rebase::{handler as apply_rebase_handler, RebaseOperation, ApplyRebase};
-pub use keeper_registry::{
-    initialize_keeper_registry, add_keeper, remove_keeper,
-    InitializeKeeperRegistry, AddKeeper, RemoveKeeper,
-    AddKeeperParams, RemoveKeeperParams,
+    UnifiedOrder as Order,
+    OrderParams,
+    OrderResult,
+    OrderType,
+    PositionType,
 };
 
+// Maintenance operations
+pub use maintenance::{
+    handler as maintenance_handler,
+    MaintenanceOperation,
+    RebaseType,
+    PoolOperationalStatus,
+    KeeperRegistry,
+    PoolStatus,
+    MaintenanceAccounts,
+};
+
+// Token operations
+pub use token::{
+    handler as token_create_handler,
+    TokenCreateParams,
+    TokenCreateResult,
+    CreateToken,
+};

@@ -1,8 +1,11 @@
 /// Protocol numeraire system for unified value measurement across all dimensions.
 /// All values in the market physics model are measured in a single numeraire N
 /// using internal protocol TWAPs, avoiding external oracle dependencies.
+/// 
+/// Role: Numeraire conversion (OracleRole::Numeraire) - NOT a primary price source.
+/// Depends on off-chain TWAP calculations submitted via numeraire_twap module.
+/// Uses internal TWAP oracle as data source but requires off-chain computation.
 use anchor_lang::prelude::*;
-// use std::collections::BTreeMap; // Unused import
 use crate::error::FeelsProtocolError;
 
 // ============================================================================

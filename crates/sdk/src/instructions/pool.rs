@@ -1,6 +1,38 @@
 use anchor_lang::prelude::*;
 use anchor_lang::InstructionData;
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, system_program, signature::Signature};
+
+// ============================================================================
+// Pool Result Types
+// ============================================================================
+
+/// Result of a pool creation operation
+#[derive(Debug, Clone)]
+pub struct PoolCreationResult {
+    pub pool_pubkey: Pubkey,
+    pub vault_0: Pubkey,
+    pub vault_1: Pubkey,
+    pub signature: Signature,
+}
+
+/// Result of a pool creation operation (alias)
+pub type CreatePoolResult = PoolCreationResult;
+
+/// Pool information
+#[derive(Debug, Clone)]
+pub struct PoolInfo {
+    pub pubkey: Pubkey,
+    pub token_0_mint: Pubkey,
+    pub token_1_mint: Pubkey,
+    pub token_0_vault: Pubkey,
+    pub token_1_vault: Pubkey,
+    pub fee_rate: u16,
+    pub protocol_fee_rate: u16,
+    pub liquidity: u128,
+    pub sqrt_price: u128,
+    pub current_tick: i32,
+    pub tick_spacing: i32,
+}
 
 /// Build instruction to initialize a pool
 #[allow(clippy::too_many_arguments)]

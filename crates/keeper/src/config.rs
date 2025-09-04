@@ -1,6 +1,6 @@
 use std::fs;
 use serde::{Deserialize, Serialize};
-use feels_types::{FeelsResult, FeelsProtocolError};
+use feels_core::errors::extended::{ExtendedResult as FeelsResult, ExtendedError as FeelsProtocolError};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 

@@ -6,8 +6,7 @@ description = "Off-chain keeper for Feels Protocol market physics computation"
 
 [dependencies]
 # Shared protocol crates
-feels-types = { workspace = true }
-feels-math = { workspace = true }
+feels-core = { workspace = true, features = ["client", "advanced"] }
 
 # Core dependencies
 tokio = { workspace = true }

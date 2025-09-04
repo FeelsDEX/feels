@@ -3,7 +3,7 @@
 use anchor_lang::prelude::*;
 use crate::state::*;
 use crate::error::FeelsError;
-use crate::constant::*;
+use feels_core::constants::*;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -35,6 +35,36 @@ impl<'info> StateContext<'info> {
             ticks: TickStateAccess::new(tick_arrays)?,
             positions: PositionStateAccess::new(),
             buffer: BufferStateAccess::new(buffer_account),
+        })
+    }
+    
+    /// Create new state context from WorkUnit - integrates with unit of work pattern
+    pub fn new_from_work_unit(
+        work_unit: &mut crate::logic::WorkUnit<'info>,
+        tick_arrays: Vec<AccountLoader<'info, TickArray>>,
+    ) -> Result<Self> {
+        // Extract the market state from work unit
+        let market_state = work_unit.get_market_state()?;
+        let market_field = work_unit.get_market_field()?;
+        
+        // Create market state access with pending changes from work unit
+        let market_access = MarketStateAccess {
+            field: market_field,
+            manager_loader: work_unit.market_manager.clone(),
+            state: market_state.clone(),
+            modified: work_unit.has_market_changes(),
+        };
+        
+        // Create tick state access that will track changes through work unit
+        let tick_access = TickStateAccess::new(tick_arrays)?;
+        
+        // Buffer access can be created normally
+        let buffer_access = BufferStateAccess::new(work_unit.circular_buffer.clone());
+        
+        Ok(Self {
+            market: market_access,
+            ticks: tick_access,
+            buffer: buffer_access,
         })
     }
     
@@ -216,28 +246,59 @@ impl<'info> TickStateAccess<'info> {
         Ok(array.ticks[offset].clone())
     }
     
-    /// Find next initialized tick
+    /// Find next initialized tick using bitmap-optimized search
     pub fn find_next_initialized(
         &self,
         current: i32,
         search_down: bool,
     ) -> Result<(i32, bool)> {
-        // Simplified - would use bitmap search
-        let step = if search_down { -1 } else { 1 };
-        let mut tick = current + step;
-        
-        // Search within reasonable bounds
-        let search_limit = 100; // Would be smarter in production
-        for _ in 0..search_limit {
-            if let Ok(tick_data) = self.get_tick(tick) {
-                if tick_data.initialized {
-                    return Ok((tick, true));
+        // First check current array if we have it
+        let array_start = self.get_array_start(current);
+        if let Some(array_loader) = self.arrays.get(&array_start) {
+            let array = array_loader.load()?;
+            
+            // Build a bitmap for this array for efficient search
+            let mut bitmap = 0u64;
+            let offset = (current - array_start) as usize;
+            
+            // Set bits for initialized ticks
+            for (i, tick) in array.ticks.iter().enumerate() {
+                if tick.initialized {
+                    bitmap |= 1u64 << i;
                 }
             }
-            tick += step;
+            
+            // Use bitmap to find next initialized tick
+            if search_down {
+                // Search for previous set bit
+                if offset > 0 {
+                    let mask = (1u64 << offset) - 1;
+                    let masked = bitmap & mask;
+                    if masked != 0 {
+                        let bit_pos = 63 - masked.leading_zeros() as usize;
+                        return Ok((array_start + bit_pos as i32, true));
+                    }
+                }
+            } else {
+                // Search for next set bit
+                if offset < TICK_ARRAY_SIZE - 1 {
+                    let mask = u64::MAX << (offset + 1);
+                    let masked = bitmap & mask;
+                    if masked != 0 {
+                        let bit_pos = masked.trailing_zeros() as usize;
+                        return Ok((array_start + bit_pos as i32, true));
+                    }
+                }
+            }
         }
         
-        Ok((tick, false))
+        // If not found in current array, we need to search other arrays
+        // Return boundary to signal continuation needed
+        if search_down {
+            Ok((array_start - 1, false))
+        } else {
+            Ok((array_start + TICK_ARRAY_SIZE as i32, false))
+        }
     }
     
     /// Update tick liquidity

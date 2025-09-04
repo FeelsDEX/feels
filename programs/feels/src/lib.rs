@@ -1,14 +1,21 @@
 
-/// Feels Protocol - Concentrated Liquidity AMM
-/// A next-generation automated market maker implementing concentrated liquidity positions
-/// with advanced features like hooks, Token-2022 support, and oracle rate feeds.
-/// Built on Solana for high-performance decentralized trading.
+//! # Feels Protocol - 3D Thermodynamic AMM
+//! 
+//! Unified AMM implementing thermodynamic market physics across three dimensions:
+//! - **Spot (S)**: Token exchange
+//! - **Time (T)**: Duration/lending markets  
+//! - **Leverage (L)**: Risk-scaled positions
+//! 
+//! Core mechanics:
+//! - Market state: P = (S,T,L) with potential V(P) = -Σ ŵᵢ ln(i)
+//! - Work-based fees: W = V(P₂) - V(P₁) 
+//! - Hub architecture: All pairs include FeelsSOL for 2-hop routing
+//! - Conservation law: Σ wᵢ ln(gᵢ) = 0
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_2022::Token2022;
 use anchor_spl::token_interface::{Mint, TokenAccount};
 
-pub mod constant;
 pub mod error;
 pub mod instructions;
 pub mod logic;
@@ -26,7 +33,7 @@ pub use error::{FeelsError, FeelsProtocolError};
 // Import all state types explicitly
 use state::{
     // Core types
-    MarketField,
+    Market, // Unified market account
     BufferAccount,
     ProtocolState,
     TickArray,
@@ -39,7 +46,6 @@ use state::{
     TwapOracle,
     // Tick management
     TickArrayRouter,
-    MarketManager,
 };
 
 // Re-export instruction types for SDK
@@ -68,6 +74,18 @@ pub use instructions::{
     CreateToken,
     CleanupTickArrayParams,
     CleanupTickArrayResult,
+    // Entry/Exit types
+    EnterProtocol,
+    ExitProtocol,
+    EnterProtocolParams,
+    ExitProtocolParams,
+    EntryExitResult,
+    // Position flow types
+    EnterPosition,
+    ExitPosition,
+    EnterPositionParams,
+    ExitPositionParams,
+    PositionFlowResult,
 };
 
 // Re-export Duration from state
@@ -82,7 +100,7 @@ pub use state::duration::Duration;
 
 declare_id!("Fee1sProtoco11111111111111111111111111111111");
 
-// Legacy protocol initialization contexts - may need updating to work with market physics
+// Protocol initialization contexts
 #[derive(Accounts)]
 pub struct InitializeFeels<'info> {
     /// Protocol state account
@@ -154,11 +172,11 @@ pub struct InitializeFeelsSOL<'info> {
 
 #[derive(Accounts)]
 pub struct InitializeMarket<'info> {
-    /// Market field account storing the physics state
+    /// Unified market account storing all state
     #[account(
         init,
         payer = authority,
-        space = MarketField::SIZE,
+        space = Market::LEN,
         seeds = [
             b"market",
             token_0_mint.key().as_ref(),
@@ -166,16 +184,16 @@ pub struct InitializeMarket<'info> {
         ],
         bump
     )]
-    pub market_field: Account<'info, MarketField>,
+    pub market: Account<'info, Market>,
 
     /// Buffer account for fee collection and rebates
     #[account(
         init,
         payer = authority,
-        space = BufferAccount::SIZE,
+        space = BufferAccount::LEN,
         seeds = [
             b"buffer",
-            market_field.key().as_ref(),
+            market.key().as_ref(),
         ],
         bump
     )]
@@ -200,10 +218,10 @@ pub struct InitializeMarket<'info> {
         init,
         payer = authority,
         token::mint = token_0_mint,
-        token::authority = market_field,
+        token::authority = market,
         seeds = [
             b"vault",
-            market_field.key().as_ref(),
+            market.key().as_ref(),
             token_0_mint.key().as_ref(),
         ],
         bump
@@ -215,10 +233,10 @@ pub struct InitializeMarket<'info> {
         init,
         payer = authority,
         token::mint = token_1_mint,
-        token::authority = market_field,
+        token::authority = market,
         seeds = [
             b"vault",
-            market_field.key().as_ref(),
+            market.key().as_ref(),
             token_1_mint.key().as_ref(),
         ],
         bump
@@ -230,7 +248,7 @@ pub struct InitializeMarket<'info> {
         init,
         payer = authority,
         space = 8 + std::mem::size_of::<TwapOracle>(),
-        seeds = [b"twap", market_field.key().as_ref()],
+        seeds = [b"twap", market.key().as_ref()],
         bump
     )]
     pub twap_oracle: AccountLoader<'info, TwapOracle>,
@@ -240,7 +258,7 @@ pub struct InitializeMarket<'info> {
         init,
         payer = authority,
         space = 8 + std::mem::size_of::<MarketDataSource>(),
-        seeds = [b"data_source", market_field.key().as_ref()],
+        seeds = [b"data_source", market.key().as_ref()],
         bump
     )]
     pub market_data_source: AccountLoader<'info, MarketDataSource>,
@@ -268,14 +286,14 @@ pub struct InitializeMarket<'info> {
 /// Market configuration context
 #[derive(Accounts)]
 pub struct ConfigureMarket<'info> {
-    /// Market field to configure
+    /// Market to configure
     #[account(mut)]
-    pub market_field: Account<'info, MarketField>,
+    pub market: Account<'info, Market>,
     
     /// Buffer account (optional, for rebate configuration)
     #[account(
         mut,
-        seeds = [b"buffer", market_field.key().as_ref()],
+        seeds = [b"buffer", market.key().as_ref()],
         bump,
     )]
     pub buffer_account: Option<Account<'info, BufferAccount>>,
@@ -293,22 +311,14 @@ pub struct ConfigureMarket<'info> {
 /// Context for executing orders through the physics engine
 #[derive(Accounts)]
 pub struct Order<'info> {
-    /// Market field account containing physics state
+    /// Unified market account
     #[account(mut)]
-    pub market_field: Account<'info, MarketField>,
-    
-    /// Market manager for AMM operations
-    #[account(
-        mut,
-        seeds = [b"manager", market_field.key().as_ref()],
-        bump
-    )]
-    pub market_manager: AccountLoader<'info, MarketManager>,
+    pub market: Account<'info, Market>,
     
     /// Buffer account for fees and rebates
     #[account(
         mut,
-        seeds = [b"buffer", market_field.key().as_ref()],
+        seeds = [b"buffer", market.key().as_ref()],
         bump
     )]
     pub buffer_account: Account<'info, BufferAccount>,
@@ -328,7 +338,7 @@ pub struct Order<'info> {
     /// Market's token 0 vault
     #[account(
         mut,
-        seeds = [b"vault", market_field.key().as_ref(), user_token_0.mint.as_ref()],
+        seeds = [b"vault", market.key().as_ref(), user_token_0.mint.as_ref()],
         bump
     )]
     pub market_token_0: InterfaceAccount<'info, TokenAccount>,
@@ -336,7 +346,7 @@ pub struct Order<'info> {
     /// Market's token 1 vault
     #[account(
         mut,
-        seeds = [b"vault", market_field.key().as_ref(), user_token_1.mint.as_ref()],
+        seeds = [b"vault", market.key().as_ref(), user_token_1.mint.as_ref()],
         bump
     )]
     pub market_token_1: InterfaceAccount<'info, TokenAccount>,
@@ -350,7 +360,7 @@ pub struct Order<'info> {
     // Optional accounts for advanced features
     /// Tick array router for efficient tick access
     #[account(
-        seeds = [b"router", market_field.key().as_ref()],
+        seeds = [b"router", market.key().as_ref()],
         bump,
     )]
     pub tick_array_router: Option<Account<'info, TickArrayRouter>>,
@@ -360,22 +370,14 @@ pub struct Order<'info> {
 /// Context for modifying positions (liquidity orders)
 #[derive(Accounts)]
 pub struct OrderModify<'info> {
-    /// Market field account
+    /// Unified market account
     #[account(mut)]
-    pub market_field: Account<'info, MarketField>,
-    
-    /// Market manager for AMM operations
-    #[account(
-        mut,
-        seeds = [b"manager", market_field.key().as_ref()],
-        bump
-    )]
-    pub market_manager: AccountLoader<'info, MarketManager>,
+    pub market: Account<'info, Market>,
     
     /// Buffer account
     #[account(
         mut,
-        seeds = [b"buffer", market_field.key().as_ref()],
+        seeds = [b"buffer", market.key().as_ref()],
         bump
     )]
     pub buffer_account: Account<'info, BufferAccount>,
@@ -386,7 +388,7 @@ pub struct OrderModify<'info> {
     /// Position metadata (for liquidity orders)
     #[account(
         mut,
-        constraint = position.market == market_field.key() @ FeelsProtocolError::InvalidMarket,
+        constraint = position.market == market.key() @ FeelsProtocolError::InvalidMarket,
         constraint = position.owner == owner.key() @ FeelsProtocolError::InvalidOwner,
     )]
     pub position: Account<'info, TickPositionMetadata>,
@@ -410,7 +412,7 @@ pub struct OrderModify<'info> {
 #[derive(Accounts)]
 pub struct CleanupEmptyTickArray<'info> {
     #[account(mut)]
-    pub market_field: Account<'info, MarketField>,
+    pub market: Account<'info, Market>,
 
     #[account(
         mut,
@@ -426,15 +428,7 @@ pub struct CleanupEmptyTickArray<'info> {
 #[derive(Accounts)]
 pub struct CleanupTickArrayV2<'info> {
     #[account(mut)]
-    pub market_field: Account<'info, MarketField>,
-    
-    /// Market manager for bitmap updates
-    #[account(
-        mut,
-        seeds = [b"manager", market_field.key().as_ref()],
-        bump
-    )]
-    pub market_manager: AccountLoader<'info, MarketManager>,
+    pub market: Account<'info, Market>,
 
     /// The tick array to cleanup (will be closed)
     /// CHECK: Validated in handler
@@ -467,37 +461,12 @@ pub struct CleanupTickArrayV2<'info> {
 
 
 
-// Feels Protocol - Unified 3D Order System
-// 
-// All trading and liquidity operations are unified under a single 3D order model
-// that combines rate, duration, and leverage dimensions. This ensures consistent
-// execution paths for fees, hooks, and risk management.
-// 
-// # Core Trading Instructions
-// 
-// - `order`: Universal entry point for ALL trading operations
-//   - OrderType::Immediate for swaps (spot and leveraged)
-//   - OrderType::Liquidity for adding/removing liquidity  
-//   - OrderType::Limit for limit orders
-// 
-// - `order_compute`: Pre-compute required accounts for complex orders
-// - `order_modify`: Modify existing orders (leverage, duration, etc.)
-// - `redenominate`: Handle leveraged position redenomination
-// 
-// # Why Unified?
-// 
-// The unified order system ensures:
-// 1. Consistent fee calculation across all operations
-// 2. Proper hook execution for all trade types
-// 3. Unified risk management and leverage handling
-// 4. Simplified client integration
-// 5. Better composability for complex operations
-// Temporarily simplify #[program] module to isolate issue
+// Unified 3D order system handles all operations through single entry point
 #[program]
 pub mod feels {
     use super::*;
 
-    /// Initialize the protocol state
+    /// Initialize protocol with global parameters and treasury
     pub fn initialize_feels(
         ctx: Context<InitializeFeels>,
         treasury: Pubkey,
@@ -522,8 +491,8 @@ pub mod feels {
         Ok(())
     }
 
-    /// Unified order handler for ALL trading operations
-    /// This is the single entry point for swaps, position transitions, liquidity, and limit orders
+    /// Order handler for all market operations.
+    /// Calculates thermodynamic work W = V(P₂) - V(P₁) for fees/rebates
     pub fn order<'info>(
         ctx: Context<'_, '_, 'info, 'info, Order<'info>>,
         params: crate::instructions::OrderParams,
@@ -531,7 +500,43 @@ pub mod feels {
         crate::instructions::order_handler(ctx, params)
     }
 
-    /// Initialize FeelsSOL wrapper token
+    /// Enter protocol by converting JitoSOL to FeelsSOL.
+    /// Validates single-hop entry flow and applies work-based fees.
+    pub fn enter_protocol(
+        ctx: Context<crate::instructions::EnterProtocol>,
+        params: crate::instructions::EnterProtocolParams,
+    ) -> Result<crate::instructions::EntryExitResult> {
+        crate::instructions::enter_protocol_handler(ctx, params)
+    }
+
+    /// Exit protocol by converting FeelsSOL to JitoSOL.
+    /// Validates single-hop exit flow and applies work-based fees.
+    pub fn exit_protocol(
+        ctx: Context<crate::instructions::ExitProtocol>,
+        params: crate::instructions::ExitProtocolParams,
+    ) -> Result<crate::instructions::EntryExitResult> {
+        crate::instructions::exit_protocol_handler(ctx, params)
+    }
+
+    /// Enter a position by converting FeelsSOL to position tokens.
+    /// Mints position tokens and transfers FeelsSOL to vault.
+    pub fn enter_position(
+        ctx: Context<crate::instructions::EnterPosition>,
+        params: crate::instructions::EnterPositionParams,
+    ) -> Result<crate::instructions::PositionFlowResult> {
+        crate::instructions::enter_position_handler(ctx, params)
+    }
+
+    /// Exit a position by converting position tokens to FeelsSOL.
+    /// Burns position tokens and transfers FeelsSOL from vault.
+    pub fn exit_position(
+        ctx: Context<crate::instructions::ExitPosition>,
+        params: crate::instructions::ExitPositionParams,
+    ) -> Result<crate::instructions::PositionFlowResult> {
+        crate::instructions::exit_position_handler(ctx, params)
+    }
+
+    /// Initialize FeelsSOL hub token for universal routing
     pub fn initialize_feelssol(
         ctx: Context<InitializeFeelsSOL>,
         _decimals: u8,
@@ -559,12 +564,13 @@ pub mod feels {
     }
 
 
-    /// Initialize a new market with market field and buffer accounts
+    /// Initialize market with (S,T,L) state, buffer, and oracles.
+    /// Requires one token to be FeelsSOL
     pub fn initialize_market<'info>(
         ctx: Context<'_, '_, 'info, 'info, InitializeMarket<'info>>,
         params: InitializeMarketParams,
-    ) -> Result<InitializeMarketResult> {
-        crate::instructions::market_initialize::initialize_market(ctx, params)
+    ) -> Result<()> {
+        crate::instructions::initialize_market(ctx, params)
     }
     
     /// Initialize the keeper registry

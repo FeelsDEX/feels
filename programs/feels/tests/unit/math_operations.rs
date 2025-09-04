@@ -513,68 +513,7 @@ mod math_unit_tests {
     // Rounding and Precision Tests
     // ============================================================================
 
-    // Tests commented out - mul_shr was removed in favor of Orca's implementation
-    // #[test]
-    // fn test_mul_shr_rounding() {
-    //     use crate::utils::TickMath;
-    //
-    //     let x = 1000u128;
-    //     let y = 3u128;
-    //     let offset = 1;
-    //
-    //     // Test rounding down: (1000 * 3) >> 1 = 3000 >> 1 = 1500
-    //     let result_down = TickMath::mul_shr(x, y, offset).unwrap();
-    //     assert_eq!(result_down, 1500);
-    //
-    //     // Test with remainder to check rounding up behavior
-    //     let x = 1001u128; // This will create a remainder when shifted
-    //     let result_up = TickMath::mul_shr(x, y, offset);
-    //     let result_down = TickMath::mul_shr(x, y, offset);
-    //
-    //     // Up should be >= Down (may be equal if no remainder)
-    //     if let (Some(up), Some(down)) = (result_up, result_down) {
-    //         assert!(up >= down);
-    //     }
-    // }
 
-    // Tests commented out - shl_div and mul_shr were removed in favor of Orca's implementation
-    // #[test]
-    // fn test_shl_div_rounding() {
-    //     use crate::utils::TickMath;
-    //
-    //     let x = 1000u128;
-    //     let y = 3u128;
-    //     let offset = 1;
-    //
-    //     // Test basic division: (1000 << 1) / 3 = 2000 / 3 = 666.666...
-    //     let result_down = TickMath::shl_div(x, offset, y).unwrap();
-    //     let result_up = TickMath::shl_div(x, offset, y).unwrap();
-    //
-    //     assert_eq!(result_down, 666); // Floor
-    //     assert_eq!(result_up, 667);   // Ceiling
-    // }
-
-    // #[test]
-    // fn test_precision_with_remainders() {
-    //     use crate::utils::TickMath;
-    //
-    //     // Test rounding behavior with remainders
-    //     let x = 7u128;
-    //     let y = 2u128;
-    //     let offset = 1;
-    //
-    //     // 7 * 2 = 14, 14 >> 1 = 7 (exact)
-    //     let result_down = TickMath::mul_shr(x, y, offset).unwrap();
-    //     let result_up = TickMath::mul_shr(x, y, offset).unwrap();
-    //     assert_eq!(result_down, 7);
-    //     assert_eq!(result_up, 7);
-    //
-    //     // Test with remainder: 15 / 2 = 7.5
-    //     let result_down = TickMath::shl_div(15u128, 0, 2u128).unwrap();
-    //     let result_up = TickMath::shl_div(15u128, 0, 2u128).unwrap();
-    //     assert_eq!(result_down, 7);
-    //     assert_eq!(result_up, 8);
-    // }
 
     // ============================================================================
     // Liquidity Math Tests
@@ -932,69 +871,9 @@ mod math_unit_tests {
     // Precision and Rounding Properties
     // ============================================================================
 
-    // Test commented out - mul_shr and shl_div were removed in favor of Orca's implementation
-    // #[test]
-    // fn test_rounding_properties() {
-    //     use crate::utils::TickMath;
-    //
-    //     // Property: Rounding up should always be >= rounding down
-    //     let x = 1001u128;
-    //     let y = 3u128;
-    //     let offset = 1;
-    //
-    //     let result_up = TickMath::mul_shr(x, y, offset);
-    //     let result_down = TickMath::mul_shr(x, y, offset);
-    //
-    //     if let (Some(up), Some(down)) = (result_up, result_down) {
-    //         assert!(up >= down, "Rounding up should be >= rounding down");
-    //     }
-    //
-    //     // Property: Division rounding should maintain consistency
-    //     let div_up = TickMath::shl_div(15u128, 0, 2u128);
-    //     let div_down = TickMath::shl_div(15u128, 0, 2u128);
-    //
-    //     assert_eq!(div_up, Some(8), "15/2 rounded up should be 8");
-    //     assert_eq!(div_down, Some(7), "15/2 rounded down should be 7");
-    // }
-
     // ============================================================================
     // Overflow Detection Properties (from security tests)
     // ============================================================================
-
-    // Tests commented out - these functions were removed in favor of ruint library
-    // #[test]
-    // fn test_add_u256_overflow_detection() {
-    //     // Property: add_u256 should return error on overflow
-    //     let max_val = u256_to_words(U256::MAX);
-    //     let one = u128_to_u256(1);
-    //
-    //     let result = add_u256(max_val, one);
-    //     assert!(result.is_err(), "Should detect addition overflow");
-    // }
-
-    // #[test]
-    // fn test_sub_u256_underflow_detection() {
-    //     // Property: sub_u256 should return error on underflow
-    //     let zero = u256_to_words(U256::ZERO);
-    //     let one = u128_to_u256(1);
-    //
-    //     let result = sub_u256(zero, one);
-    //     assert!(result.is_err(), "Should detect subtraction underflow");
-    // }
-
-    // #[test]
-    // fn test_calculate_percentage_overflow_protection() {
-    //     // Property: Type truncation should include overflow checking
-    //     let result = calculate_percentage_bp(u64::MAX as u128, 10000);
-    //     // This might overflow when calculating intermediate values
-    //     if result.is_err() {
-    //         // Expected behavior - overflow detected
-    //         // Test passes when overflow is detected
-    //     } else {
-    //         // If no overflow, result should be valid
-    //         assert!(result.unwrap() <= u64::MAX as u128);
-    //     }
-    // }
 
     #[test]
     #[allow(clippy::assertions_on_constants)]
@@ -1038,10 +917,10 @@ mod math_unit_tests {
         let sqrt_price_pos = TickMath::get_sqrt_ratio_at_tick(1000).unwrap();
         let sqrt_price_zero = TickMath::get_sqrt_ratio_at_tick(0).unwrap();
 
-        // These should NOT be the old hardcoded values
-        assert_ne!(sqrt_price_neg, 1u128 << 64); // Old negative stub
-        assert_ne!(sqrt_price_pos, 10u128 << 64); // Old positive stub
-        assert_ne!(sqrt_price_zero, 5u128 << 64); // Old zero stub
+        // These should NOT be hardcoded values
+        assert_ne!(sqrt_price_neg, 1u128 << 64);
+        assert_ne!(sqrt_price_pos, 10u128 << 64);
+        assert_ne!(sqrt_price_zero, 5u128 << 64);
 
         // Should be proper mathematical values
         assert!(sqrt_price_neg < sqrt_price_zero);

@@ -70,7 +70,7 @@ pub struct RebaseCheckpoint {
 /// Weight rebase parameters for domain weight changes
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct WeightRebaseParams {
-    /// Old domain weights (basis points)
+    /// Previous domain weights (basis points)
     pub old_weights: DomainWeights,
     
     /// New domain weights (basis points)
@@ -80,14 +80,8 @@ pub struct WeightRebaseParams {
     pub domain_values: DomainValues,
 }
 
-/// Domain weights structure
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
-pub struct DomainWeights {
-    pub w_s: u32,   // Spot weight
-    pub w_t: u32,   // Time weight
-    pub w_l: u32,   // Leverage weight
-    pub w_tau: u32, // Buffer weight
-}
+// Use DomainWeights from market_state module
+use super::market_state::DomainWeights;
 
 /// Domain values in numeraire
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
@@ -109,8 +103,8 @@ pub const REBASE_INDEX_SCALE: u128 = 1 << 64;
 /// Seconds per year for rate calculations
 pub const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
 
-/// Basis points denominator
-pub const BPS_DENOMINATOR: u64 = 10_000;
+// Use BPS_DENOMINATOR from constants module
+use feels_core::constants::BPS_DENOMINATOR;
 
 // ============================================================================
 // Implementation

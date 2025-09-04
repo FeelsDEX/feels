@@ -1,15 +1,110 @@
-/// Hierarchical error system for the Feels Protocol
-/// 
-/// Uses parameterized errors with context to reduce the number of variants
-/// while providing detailed error information.
+//! # Thermodynamic AMM Error System
+//! 
+//! Comprehensive error handling for the Feels Protocol's 3D market physics implementation.
+//! Errors are organized around the core thermodynamic concepts and market operations:
+//! 
+//! ## Error Categories - Physics-Focused Organization
+//! 
+//! ### **1. Thermodynamic Violations**
+//! - **Conservation Law Errors**: When Σ wᵢ ln(gᵢ) ≠ 0 
+//! - **Work Calculation Errors**: Issues in W = V(P₂) - V(P₁) computation
+//! - **Field Evolution Errors**: Problems in (S,T,L) scalar updates
+//! - **Physics Math Errors**: Overflow/underflow in thermodynamic calculations
+//! 
+//! ### **2. Hub-and-Spoke Routing Violations**
+//! - **Route Constraint Errors**: Violations of max-2-hop routing rules
+//! - **Hub Token Errors**: Non-FeelsSOL routes where FeelsSOL is required
+//! - **Entry/Exit Violations**: JitoSOL ↔ FeelsSOL pairing requirements
+//! 
+//! ### **3. Market State & Safety**
+//! - **Leverage Safety Errors**: L-dimension risk management violations
+//! - **Oracle & Staleness**: Time-based data validity issues  
+//! - **Rate-of-Change Limits**: Excessive market state transitions
+//! - **Buffer & Rebate Errors**: Fee collection and rebate capacity issues
+//! 
+//! ### **4. Standard AMM Operations**
+//! - **Liquidity Math Errors**: Concentrated liquidity calculation issues
+//! - **Tick Management Errors**: Discrete price level violations
+//! - **Access Control Errors**: Unauthorized operations and ownership
+//! 
+//! The error system provides contextual helpers to make debugging physics-related
+//! issues easier, with detailed logging for complex thermodynamic calculations.
+
 use anchor_lang::prelude::*;
 
-/// Main protocol error enum with hierarchical categories
+/// Main protocol error enum organized around thermodynamic concepts
 #[error_code]
 pub enum FeelsError {
     // ========================================================================
-    // Validation Errors: Input validation and constraint violations
+    // 1. THERMODYNAMIC VIOLATIONS - Physics Model Constraint Errors
     // ========================================================================
+    // Errors related to conservation laws, work calculations, and field evolution
+    
+    #[msg("Conservation law violation: Σ wᵢ ln(gᵢ) ≠ 0")]
+    ConservationViolation,
+    
+    #[msg("Invalid work calculation in thermodynamic transition")]
+    InvalidWorkCalculation,
+    
+    #[msg("Field evolution rate exceeds safety bounds")]
+    ExcessiveFieldChange,
+    
+    #[msg("Invalid update mode for field commitment")]
+    InvalidUpdateMode,
+    
+    // ========================================================================
+    // 2. HUB-AND-SPOKE ROUTING VIOLATIONS
+    // ========================================================================
+    // Errors enforcing the hub-and-spoke architecture constraints
+    
+    #[msg("Route exceeds maximum allowed hops")]
+    RouteTooLong,
+    
+    #[msg("Invalid pool in route - must include FeelsSOL")]
+    InvalidRoutePool,
+    
+    #[msg("Route segments exceed maximum allowed")]
+    TooManySegments,
+    
+    #[msg("Invalid entry/exit pairing - must use JitoSOL <-> FeelsSOL")]
+    InvalidEntryExitPairing,
+    
+    // ========================================================================
+    // 3. MARKET STATE & SAFETY VIOLATIONS
+    // ========================================================================
+    // Errors related to leverage safety, oracle staleness, and rate limits
+    
+    #[msg("Data staleness violation")]
+    StaleData,
+    
+    #[msg("Update frequency violation")]
+    UpdateTooFrequent,
+    
+    #[msg("Commitment expired")]
+    CommitmentExpired,
+    
+    #[msg("Oracle data is stale")]
+    StaleOracle,
+    
+    #[msg("Oracle price deviation")]
+    OraclePriceDeviation,
+    
+    #[msg("Market conditions prevent leverage")]
+    MarketConditionsPreventLeverage,
+    
+    #[msg("Insufficient buffer")]
+    InsufficientBuffer,
+    
+    #[msg("Excessive change")]
+    ExcessiveChange,
+    
+    #[msg("Price manipulation detected")]
+    PriceManipulationDetected,
+    
+    // ========================================================================
+    // 4. GENERAL VALIDATION ERRORS
+    // ========================================================================
+    // Basic input validation and constraint violations
     
     #[msg("Validation error occurred")]
     ValidationError,
@@ -178,8 +273,8 @@ pub enum FeelsError {
     #[msg("Stale price")]
     StalePrice,
     
-    #[msg("Rate out of bounds")]
-    RateOutOfBounds,
+    #[msg("Price out of bounds")]
+    PriceOutOfBounds,
     
     #[msg("Insufficient observations")]
     InsufficientObservations,

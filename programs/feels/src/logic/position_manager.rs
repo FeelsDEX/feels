@@ -4,6 +4,7 @@ use anchor_lang::prelude::*;
 use crate::state::{TickPositionMetadata, RebaseAccumulator, MarketManager};
 use crate::state::rebase::{create_checkpoint, apply_position_rebase};
 use crate::state::duration::Duration;
+use crate::error::FeelsProtocolError;
 
 // ============================================================================
 // Position Creation with Rebasing
@@ -67,7 +68,7 @@ pub fn calculate_position_value_with_yield(
     // Calculate base position value from liquidity
     let sqrt_price_lower = sqrt_price_from_tick(position.tick_lower)?;
     let sqrt_price_upper = sqrt_price_from_tick(position.tick_upper)?;
-    let current_sqrt_price = manager.current_sqrt_rate;
+    let current_sqrt_price = manager.sqrt_price;
     
     let (base_value_0, base_value_1) = if current_sqrt_price <= sqrt_price_lower {
         // Position is entirely in token 1
@@ -156,26 +157,9 @@ fn calculate_maturity_slot(current_slot: u64, duration: Duration) -> u64 {
 }
 
 fn sqrt_price_from_tick(tick: i32) -> Result<u128> {
-    // Simplified calculation - in production use proper tick math
-    let tick_abs = tick.abs() as u32;
-    let base = 1_000_100u128; // ~1.0001
-    let mut sqrt_price = 1u128 << 64; // Q64.64 format
-    
-    for _ in 0..tick_abs {
-        // Use safe math for critical price calculations
-        let temp = crate::utils::math::safe::mul_u128(sqrt_price, base)?;
-        sqrt_price = crate::utils::math::safe::div_u128(temp, 1_000_000)?;
-    }
-    
-    if tick < 0 {
-        // Use u256 to avoid overflow - use safe Q128 constant
-        let numerator = crate::constant::Q128_SAFE;
-        let denominator = crate::utils::U256::from(sqrt_price);
-        let result: crate::utils::U256 = numerator / denominator;
-        sqrt_price = result.try_into().unwrap_or(0u128);
-    }
-    
-    Ok(sqrt_price)
+    // Use proper tick math from feels-core
+    feels_core::math::get_sqrt_price_at_tick(tick)
+        .map_err(|_| FeelsProtocolError::InvalidTick.into())
 }
 
 fn calculate_token_a_amount(
@@ -183,17 +167,15 @@ fn calculate_token_a_amount(
     sqrt_price_lower: u128,
     sqrt_price_upper: u128,
 ) -> Result<u64> {
-    // amount_0 = liquidity * (1/sqrt_lower - 1/sqrt_upper)
-    // Using Q64 precision with safe division to prevent overflow and panics
-    let q64 = crate::constant::Q64;
-    let inv_lower = crate::utils::math::safe::div_u128(q64, sqrt_price_lower)?;
-    let inv_upper = crate::utils::math::safe::div_u128(q64, sqrt_price_upper)?;
-    let delta = crate::utils::math::safe::sub_u128(inv_lower, inv_upper)?;
+    // Use feels-core liquidity math
+    let amount = feels_core::math::get_amount_0_delta(
+        sqrt_price_lower,
+        sqrt_price_upper,
+        liquidity,
+        false, // round down
+    ).map_err(|_| FeelsProtocolError::MathOverflow)?;
     
-    // Safe multiplication and shift down from Q64
-    let result = crate::utils::math::safe::mul_u128(liquidity, delta)?;
-    let shifted = crate::utils::math::safe::safe_shr_u128(result, 64)?;
-    Ok(shifted.min(u64::MAX as u128) as u64)
+    Ok(amount.min(u64::MAX as u128) as u64)
 }
 
 fn calculate_token_b_amount(
@@ -201,10 +183,13 @@ fn calculate_token_b_amount(
     sqrt_price_lower: u128,
     sqrt_price_upper: u128,
 ) -> Result<u64> {
-    // amount_1 = liquidity * (sqrt_upper - sqrt_lower) - use safe math for bit shift
-    let delta = sqrt_price_upper.saturating_sub(sqrt_price_lower);
-    let product = crate::utils::math::safe::mul_u128(liquidity, delta)?;
-    let result = crate::utils::math::safe::safe_shr_u128(product, 64)?;
+    // Use feels-core liquidity math
+    let amount = feels_core::math::get_amount_1_delta(
+        sqrt_price_lower,
+        sqrt_price_upper,
+        liquidity,
+        false, // round down
+    ).map_err(|_| FeelsProtocolError::MathOverflow)?;
     
-    Ok(result.min(u64::MAX as u128) as u64)
+    Ok(amount.min(u64::MAX as u128) as u64)
 }

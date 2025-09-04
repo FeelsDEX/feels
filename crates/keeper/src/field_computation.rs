@@ -1,12 +1,21 @@
 use solana_sdk::pubkey::Pubkey;
 use serde::{Serialize, Deserialize};
 
-// Use shared types instead of duplicating them
-use feels_types::{
-    MarketState, FieldCommitmentData, FeelsResult, FeelsProtocolError,
-    Position3D, Gradient3D, Hessian3D,
+// Use shared types from feels-core
+use feels_core::{
+    types::{
+        field::{FieldCommitmentData, advanced::{Position3D, Gradient3D, Hessian3D}},
+        market::extended::MarketState,
+    },
+    errors::extended::{ExtendedResult as FeelsResult, ExtendedError as FeelsProtocolError},
+    math::safe_math::{safe_add_u128, safe_mul_u128, safe_div_u128},
+    oracle::{TWAPOracle, VolatilityOracle},
+    physics::{
+        field::advanced::compute_field_commitment,
+        work::advanced::{calculate_work_logarithmic, LocalCoefficients},
+        conservation::advanced::{calculate_growth_factors, ConservationWeights},
+    },
 };
-use feels_math::{safe_add_u128, safe_mul_u128, safe_div_u128};
 
 use crate::hysteresis_controller::StressComponents;
 
@@ -26,6 +35,13 @@ struct CachedField {
     market_state_hash: u64,
 }
 
+impl CachedField {
+    fn is_stale(&self, current_time: i64) -> bool {
+        // Consider cache stale after 5 minutes
+        (current_time - self.computed_at) > 300
+    }
+}
+
 // 3D types now imported from feels_types
 
 impl FieldComputer {
@@ -36,6 +52,51 @@ impl FieldComputer {
         }
     }
 
+    /// Compute field commitment from market state
+    pub fn compute_field(&mut self, market_state: &MarketState) -> FeelsResult<FieldCommitmentData> {
+        // Check cache first
+        if let Some(cached) = self.get_cached_field(&market_state.market_pubkey) {
+            if !cached.is_stale(market_state.last_update_ts) {
+                return Ok(cached.field_data);
+            }
+        }
+        
+        // Create oracles from market state
+        let mut twap_oracle = TWAPOracle::new();
+        let mut volatility_oracle = VolatilityOracle::new();
+        
+        // Populate TWAP oracle with recent prices
+        twap_oracle.observe_price(
+            market_state.current_sqrt_price,
+            market_state.total_volume_0,
+            market_state.total_volume_1,
+            market_state.last_update_ts,
+        ).map_err(|e| FeelsProtocolError::Core(e))?;
+        
+        // Update volatility
+        // Convert sqrt price (Q64) to price (Q64)
+        let sqrt_price = market_state.current_sqrt_price;
+        let price = safe_div_u128(
+            safe_mul_u128(sqrt_price, sqrt_price)?,
+            feels_core::constants::Q64
+        )?;
+        volatility_oracle.update_volatility(price, market_state.last_update_ts)
+            .map_err(|e| FeelsProtocolError::Core(e))?;
+        
+        // Compute field commitment
+        let field = compute_field_commitment(
+            &twap_oracle,
+            &volatility_oracle,
+            market_state.last_update_ts,
+            market_state.base_fee_bps.unwrap_or(30),
+        ).map_err(|e| FeelsProtocolError::Core(e))?;
+        
+        // Cache the result
+        self.cache_field(&market_state.market_pubkey, field.clone());
+        
+        Ok(field)
+    }
+    
     /// Compute stress components from market state
     pub fn compute_stress_components(&self, market_state: &MarketState) -> FeelsResult<StressComponents> {
         // Spot stress: |price - twap| / twap × 10000
@@ -408,6 +469,19 @@ impl FieldComputer {
         let stress = (fee_growth_delta >> 54) as u64; // Scale down from Q64 to bps
         
         Ok(stress.min(10000)) // Cap at 100%
+    }
+    
+    fn get_cached_field(&self, market_pubkey: &Pubkey) -> Option<&CachedField> {
+        self.field_cache.get(market_pubkey)
+    }
+    
+    fn cache_field(&mut self, market_pubkey: &Pubkey, field: FieldCommitmentData) {
+        let cached = CachedField {
+            field_data: field.clone(),
+            computed_at: field.snapshot_ts,
+            market_state_hash: 0, // Would compute actual hash
+        };
+        self.field_cache.insert(*market_pubkey, cached);
     }
 }
 

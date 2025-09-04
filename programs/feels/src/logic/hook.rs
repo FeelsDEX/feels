@@ -10,25 +10,18 @@ use crate::state::{
     EventData, MessageData, HookPermission, FeelsProtocolError,
 };
 
-// Re-export hook constants for convenience
+// Re-export all hook constants from state module - single source of truth
 pub use crate::state::{
+    // Event constants
     EVENT_POOL_INITIALIZED, EVENT_RATE_UPDATED, EVENT_LIQUIDITY_CHANGED,
-    EVENT_TICK_CHANGED, EVENT_ORDER_CREATED, EVENT_ORDER_FILLED,
-    EVENT_REBASE_APPLIED, EVENT_LEVERAGE_ADJUSTED,
+    EVENT_FEES_COLLECTED, EVENT_TICK_CROSSED, EVENT_TICK_ACTIVATED, 
+    EVENT_TICK_DEACTIVATED, EVENT_POSITION_OPENED, EVENT_POSITION_MODIFIED,
+    EVENT_POSITION_CLOSED, EVENT_SWAP_EXECUTED, EVENT_ORDER_CREATED,
+    EVENT_ORDER_FILLED, EVENT_ORDER_MODIFIED, EVENT_REDENOMINATION,
+    EVENT_TICK_CHANGED, EVENT_REBASE_APPLIED, EVENT_LEVERAGE_ADJUSTED,
+    // Stage constants
     STAGE_VALIDATE, STAGE_PRE_EXECUTE, STAGE_POST_EXECUTE, STAGE_ASYNC,
 };
-
-// Define missing event constants locally
-pub const EVENT_FEES_COLLECTED: u32 = 0x08;
-pub const EVENT_TICK_CROSSED: u32 = 0x09;
-pub const EVENT_TICK_ACTIVATED: u32 = 0x0A;
-pub const EVENT_TICK_DEACTIVATED: u32 = 0x0B;
-pub const EVENT_POSITION_OPENED: u32 = 0x0C;
-pub const EVENT_POSITION_MODIFIED: u32 = 0x0D;
-pub const EVENT_POSITION_CLOSED: u32 = 0x0E;
-pub const EVENT_SWAP_EXECUTED: u32 = 0x0F;
-pub const EVENT_ORDER_MODIFIED: u32 = 0x10;
-pub const EVENT_REDENOMINATION: u32 = 0x11;
 
 // Import the state HookContext for serialization
 use crate::state::{HookContext as StateHookContext};

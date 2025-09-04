@@ -3,7 +3,24 @@
 
 use anchor_lang::prelude::*;
 use integer_sqrt::IntegerSquareRoot;
-use feels_types::{FeelsResult, FeelsProtocolError, Q64, BPS_DENOMINATOR, MarketFieldData, TradeDimension};
+use feels_core::{
+    errors::extended::{ExtendedError as FeelsProtocolError, ExtendedResult as FeelsResult},
+    constants::{Q64, BPS_DENOMINATOR},
+    types::{
+        market::extended::MarketFieldData,
+        field::TradeDimension,
+        Position3D, PathSegment as CorePathSegment, WorkResult as CoreWorkResult,
+    },
+    physics::{
+        work::{
+            calculate_path_work as core_calculate_path_work,
+            calculate_detailed_work,
+            advanced::{calculate_work_logarithmic, LocalCoefficients},
+        },
+        potential::{MarketField, calculate_potential_linear},
+    },
+    math::fixed_point::ln_q64,
+};
 
 // Import field commitment type
 use crate::field_commitment::FieldCommitmentData;
@@ -25,7 +42,49 @@ pub struct PathWorkParams {
     pub field_commitment: Option<FieldCommitmentData>,
 }
 
-// MarketFieldData now imported from feels_types
+impl MarketFieldData {
+    /// Convert to MarketField for physics calculations
+    fn to_market_field(&self) -> MarketField {
+        use feels_core::types::DomainWeights;
+        
+        MarketField {
+            S: self.S,
+            T: self.T,
+            L: self.L,
+            weights: DomainWeights {
+                w_s: self.w_s,
+                w_t: self.w_t,
+                w_l: self.w_l,
+                w_tau: self.w_tau,
+            },
+            sigma_price: self.sigma_price,
+            sigma_rate: self.sigma_rate,
+            sigma_leverage: self.sigma_leverage,
+        }
+    }
+}
+
+impl FieldCommitmentData {
+    /// Convert to MarketField for physics calculations
+    fn to_market_field(&self) -> MarketField {
+        use feels_core::types::DomainWeights;
+        
+        MarketField {
+            S: self.S,
+            T: self.T,
+            L: self.L,
+            weights: DomainWeights {
+                w_s: self.w_s,
+                w_t: self.w_t,
+                w_l: self.w_l,
+                w_tau: self.w_tau,
+            },
+            sigma_price: self.sigma_price,
+            sigma_rate: self.sigma_rate,
+            sigma_leverage: self.sigma_leverage,
+        }
+    }
+}
 
 /// Path segment representing a single swap step
 #[derive(Clone, Debug)]
@@ -42,7 +101,53 @@ pub struct PathSegment {
     pub dimension: TradeDimension,
 }
 
-// TradeDimension now imported from feels_types
+/// Convert SDK PathSegment to Core PathSegment
+fn convert_to_core_segment(segment: &PathSegment, field: &MarketFieldData) -> Result<CorePathSegment, String> {
+    // Calculate 3D positions from reserves
+    let start = calculate_position_3d(
+        segment.reserve_0_start,
+        segment.reserve_1_start,
+        field,
+    )?;
+    
+    let end = calculate_position_3d(
+        segment.reserve_0_end,
+        segment.reserve_1_end,
+        field,
+    )?;
+    
+    // Calculate distance (simplified - Euclidean in 3D space)
+    let ds = if end.S > start.S { end.S - start.S } else { start.S - end.S };
+    let dt = if end.T > start.T { end.T - start.T } else { start.T - end.T };
+    let dl = if end.L > start.L { end.L - start.L } else { start.L - end.L };
+    
+    let distance = ((ds*ds + dt*dt + dl*dl) as f64).sqrt() as u128;
+    
+    Ok(CorePathSegment {
+        start,
+        end,
+        distance,
+        dimension: segment.dimension.clone(),
+    })
+}
+
+/// Calculate 3D position from reserves
+fn calculate_position_3d(
+    reserve_0: u128,
+    reserve_1: u128,
+    field: &MarketFieldData,
+) -> Result<Position3D, String> {
+    // Spot dimension: geometric mean of reserves
+    let s = sqrt_u128(reserve_0 * reserve_1)?;
+    
+    // Time dimension: placeholder (would use duration metrics)
+    let t = field.T;
+    
+    // Leverage dimension: placeholder (would use leverage metrics)
+    let l = field.L;
+    
+    Ok(Position3D::new(s, t, l))
+}
 
 /// Result of work calculation
 #[derive(Clone, Debug)]
@@ -62,42 +167,37 @@ pub struct WorkResult {
 
 /// Calculate work for a complete path
 pub fn calculate_path_work(params: &PathWorkParams) -> Result<WorkResult, String> {
-    // Use field commitment data if available, otherwise fallback to basic field data
-    let field_data = if let Some(commitment) = &params.field_commitment {
-        commitment.to_market_field_data()
+    // Convert to MarketField for physics calculations
+    let market_field = if let Some(commitment) = &params.field_commitment {
+        commitment.to_market_field()
     } else {
-        params.field.clone()
+        params.field.to_market_field()
     };
     
-    let mut segment_work = Vec::new();
-    let mut total_work = 0i128;
+    // Convert PathSegments to CorePathSegments
+    let core_segments: Vec<CorePathSegment> = params.segments.iter()
+        .map(|s| convert_to_core_segment(s, &params.field))
+        .collect::<Result<Vec<_>, _>>()?;
     
-    // Get normalized weights
-    let (w_hat_s, w_hat_t, w_hat_l) = get_hat_weights(&field_data);
+    // Use feels-core's detailed work calculator
+    let base_fee_bps = params.field_commitment
+        .as_ref()
+        .map(|c| c.base_fee_bps as u16)
+        .unwrap_or(30);
     
-    // Calculate work for each segment
-    for segment in &params.segments {
-        let work = if let Some(commitment) = &params.field_commitment {
-            // Use enhanced calculation with local coefficients if available
-            calculate_segment_work_enhanced(segment, commitment, w_hat_s, w_hat_t, w_hat_l)?
-        } else {
-            calculate_segment_work(segment, &field_data, w_hat_s, w_hat_t, w_hat_l)?
-        };
-        segment_work.push(work);
-        total_work = total_work.saturating_add(work);
-    }
-    
-    // Map work to fee
-    let estimated_fee = map_work_to_fee(total_work, &field_data)?;
-    
-    // Calculate max rebate (capped by tau)
-    let max_rebate = calculate_max_rebate(total_work, &field_data)?;
+    let detailed_result = calculate_detailed_work(
+        &core_segments,
+        &market_field,
+        base_fee_bps,
+        200, // max surcharge bps
+        5000, // 50% rebate participation
+    ).map_err(|e| format!("Work calculation error: {:?}", e))?;
     
     Ok(WorkResult {
-        total_work,
-        segment_work,
-        estimated_fee,
-        max_rebate,
+        total_work: detailed_result.basic.net_work,
+        segment_work: detailed_result.segment_works,
+        estimated_fee: detailed_result.estimated_fee_bps,
+        max_rebate: detailed_result.max_rebate_bps,
     })
 }
 
@@ -253,39 +353,20 @@ fn calculate_max_rebate(work: i128, field: &MarketFieldData) -> Result<u64, Stri
 
 /// Calculate natural logarithm ratio ln(a/b)
 fn ln_ratio(a: u128, b: u128) -> Result<i128, String> {
-    // Simplified implementation
-    // In production, would use proper fixed-point ln
-    
     if a == b {
         return Ok(0);
     }
     
+    // Use feels-core's fixed-point logarithm
     if a > b {
-        // Positive ln
+        // Positive ln(a/b)
         let ratio = (a * Q64) / b;
-        ln_approximation(ratio)
+        ln_q64(ratio).map_err(|e| format!("Logarithm error: {:?}", e))
     } else {
-        // Negative ln
+        // Negative ln(a/b) = -ln(b/a)
         let ratio = (b * Q64) / a;
-        ln_approximation(ratio).map(|v| -v)
+        ln_q64(ratio).map(|v| -v).map_err(|e| format!("Logarithm error: {:?}", e))
     }
-}
-
-/// Approximate ln(x) for x in fixed point
-fn ln_approximation(x: u128) -> Result<i128, String> {
-    // Taylor series approximation around x=1
-    // ln(x) ≈ (x-1) - (x-1)²/2 + (x-1)³/3 - ...
-    
-    if x == Q64 {
-        return Ok(0);
-    }
-    
-    // For simplicity, use first-order approximation
-    // ln(x) ≈ x - 1 for x near 1
-    let x_minus_one = (x as i128) - (Q64 as i128);
-    
-    // Scale down for reasonable range
-    Ok(x_minus_one)
 }
 
 /// Integer square root using the integer-sqrt crate

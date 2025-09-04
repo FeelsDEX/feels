@@ -5,7 +5,7 @@
 /// Also includes 3D tick encoding for the unified order model.
 
 use anchor_lang::prelude::*;
-use crate::constant::{MAX_ROUTER_ARRAYS, TICK_ARRAY_SIZE};
+use feels_core::constants::{MAX_ROUTER_ARRAYS, TICK_ARRAY_SIZE};
 use crate::utils::bitmap::{u8_bitmap, bit_encoding};
 
 // ============================================================================
@@ -190,10 +190,13 @@ pub struct InitializeRouter<'info> {
         init,
         payer = authority,
         space = TickArrayRouter::SIZE,
-        seeds = [b"router", market_manager.key().as_ref()],
+        seeds = [b"router", market_field.key().as_ref()],
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
+
+    /// Market field that owns this router
+    pub market_field: Account<'info, super::MarketField>,
 
     #[account(mut)]
     pub market_manager: AccountLoader<'info, super::MarketManager>,
@@ -208,10 +211,13 @@ pub struct InitializeRouter<'info> {
 pub struct UpdateRouter<'info> {
     #[account(
         mut,
-        seeds = [b"router", market_manager.key().as_ref()],
+        seeds = [b"router", market_field.key().as_ref()],
         bump
     )]
     pub router: Account<'info, TickArrayRouter>,
+
+    /// Market field that owns this router
+    pub market_field: Account<'info, super::MarketField>,
 
     pub market_manager: AccountLoader<'info, super::MarketManager>,
 

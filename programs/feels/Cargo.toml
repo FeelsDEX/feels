@@ -49,6 +49,9 @@ integer-sqrt = { workspace = true }
 # Orca Whirlpools core for battle-tested tick math
 orca_whirlpools_core = { version = "2.0.0", default-features = false }
 
+# Feels Core - shared logic between on-chain and off-chain
+feels-core = { path = "../../crates/feels-core", features = ["anchor"] }
+
 [dev-dependencies]
 getrandom = { version = "0.2.16", features = ["custom"] }
 # Integration test dependencies disabled due to yanked solana_rbpf

@@ -4,10 +4,10 @@
 use anchor_lang::prelude::*;
 use crate::state::{
     FeelsProtocolError, FeesPolicy, FieldCommitment, MarketField,
-    BufferAccount, TwapOracle, VolatilityObservation,
+    BufferAccount, UnifiedOracle, VolatilityObservation,
 };
 use crate::logic::instantaneous_fee::calculate_fallback_fees;
-use crate::constant::{Q64, BASIS_POINTS_DENOMINATOR as BPS_DENOMINATOR};
+use feels_core::constants::{Q64, BASIS_POINTS_DENOMINATOR as BPS_DENOMINATOR};
 
 // ============================================================================
 // Fallback State
@@ -30,7 +30,7 @@ pub struct FallbackContext<'a> {
     pub market_field: &'a MarketField,
     pub fees_policy: &'a FeesPolicy,
     pub buffer: &'a BufferAccount,
-    pub twap_oracle: &'a TwapOracle,
+    pub twap_oracle: &'a UnifiedOracle,
     pub volatility_oracle: Option<&'a crate::state::VolatilityOracle>,
     pub current_time: i64,
 }

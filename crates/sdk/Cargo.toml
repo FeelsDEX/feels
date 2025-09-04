@@ -10,11 +10,10 @@ categories = ["api-bindings", "cryptography::cryptocurrencies"]
 
 [dependencies]
 # Shared protocol crates
-feels-types = { workspace = true }
-feels-math = { workspace = true }
+feels-core = { workspace = true, features = ["client", "advanced"] }
 
 # Anchor and Solana dependencies
-anchor-client = { workspace = true, features = ["async"] }
+anchor-client = { workspace = true }
 anchor-lang = { workspace = true }
 anchor-spl = { workspace = true }
 solana-sdk = { workspace = true }
@@ -37,7 +36,7 @@ integer-sqrt = { workspace = true }
 # feels = { path = "../../programs/feels", features = ["no-entrypoint"] }
 
 [dev-dependencies]
-solana-program-test = "1.18.26"
+# solana-program-test = "1.18.26"
 
 [[example]]
 name = "sdk_basic_usage"

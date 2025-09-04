@@ -2,12 +2,8 @@
 /// Provides client-side calculation of rebates based on work and price improvement.
 
 use anchor_lang::prelude::*;
-
-/// Fixed-point Q64 constant
-pub const Q64: u128 = 1u128 << 64;
-
-/// Basis points denominator
-pub const BPS_DENOMINATOR: u64 = 10_000;
+// Import constants from feels-core
+use feels_core::constants::{Q64, BPS_DENOMINATOR};
 
 // ============================================================================
 // Rebate Calculation
