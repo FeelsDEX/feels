@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{events::FeelsKeepersInitialized, state::Keeper};
+use crate::{error::KeeperError, events::FeelsKeepersInitialized, state::Keeper};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -30,6 +30,13 @@ pub fn initialize_feels_keeper(
 ) -> Result<()> {
     let keeper = &mut ctx.accounts.keeper;
     keeper.authority = ctx.accounts.authority.key();
+
+    // Validate rates are not zero
+    require!(
+        feelssol_to_lst_rate_numerator != 0 && feelssol_to_lst_rate_denominator != 0,
+        KeeperError::ZeroRate
+    );
+
     keeper.feelssol_to_lst_rate_numerator = feelssol_to_lst_rate_numerator;
     keeper.feelssol_to_lst_rate_denominator = feelssol_to_lst_rate_denominator;
 
