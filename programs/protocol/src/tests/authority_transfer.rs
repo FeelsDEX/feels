@@ -1,17 +1,15 @@
 use anchor_lang::{prelude::Pubkey, solana_program::system_instruction::transfer};
-use feels_test_utils::{to_sdk_instruction, TestApp};
+use feels_test_utils::{constants::PROTOCOL_PROGRAM_PATH, to_sdk_instruction, TestApp};
 use solana_sdk::signature::Signer;
 
 use crate::{
-    error::ProtocolError,
-    instructions::AUTHORITY_TRANSFER_DELAY,
-    state::protocol::ProtocolState,
-    tests::{InstructionBuilder, PROGRAM_PATH},
+    error::ProtocolError, instructions::AUTHORITY_TRANSFER_DELAY, state::protocol::ProtocolState,
+    tests::InstructionBuilder,
 };
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
@@ -38,7 +36,7 @@ async fn test_initiate_authority_transfer_success() {
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_fails_invalid_authority() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let fake_authority = solana_sdk::signer::keypair::Keypair::new();
@@ -76,7 +74,7 @@ async fn test_initiate_authority_transfer_fails_invalid_authority() {
 
 #[tokio::test]
 async fn test_initiate_authority_transfer_fails_pending_exists() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority1 = solana_sdk::signer::keypair::Keypair::new();
     let new_authority2 = solana_sdk::signer::keypair::Keypair::new();
@@ -114,7 +112,7 @@ async fn test_initiate_authority_transfer_fails_pending_exists() {
 
 #[tokio::test]
 async fn test_cancel_authority_transfer_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
@@ -146,7 +144,7 @@ async fn test_cancel_authority_transfer_success() {
 
 #[tokio::test]
 async fn test_cancel_authority_transfer_fails_no_pending() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     // Initialize protocol first
@@ -172,7 +170,7 @@ async fn test_cancel_authority_transfer_fails_no_pending() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
@@ -215,7 +213,7 @@ async fn test_accept_authority_transfer_success() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_delay_not_met() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());
@@ -256,7 +254,7 @@ async fn test_accept_authority_transfer_fails_delay_not_met() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_wrong_signer() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let wrong_signer = solana_sdk::signer::keypair::Keypair::new();
@@ -303,7 +301,7 @@ async fn test_accept_authority_transfer_fails_wrong_signer() {
 
 #[tokio::test]
 async fn test_accept_authority_transfer_fails_no_pending() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let new_authority = solana_sdk::signer::keypair::Keypair::new();
     let new_authority_pubkey = Pubkey::from(new_authority.pubkey().to_bytes());

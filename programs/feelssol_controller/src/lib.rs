@@ -22,15 +22,10 @@ pub mod feelssol_controller {
     pub fn initialize(
         ctx: Context<Initialize>,
         underlying_mint: Pubkey,
-        underlying_stake_pool: Pubkey,
+        keeper: Pubkey,
         feels_protocol: Pubkey,
     ) -> Result<()> {
-        instructions::initialize_feelssol(
-            ctx,
-            underlying_mint,
-            underlying_stake_pool,
-            feels_protocol,
-        )
+        instructions::initialize_feelssol(ctx, underlying_mint, keeper, feels_protocol)
     }
 
     /// Deposit underlying LST assets to get feelsSOL

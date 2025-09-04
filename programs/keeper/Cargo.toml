@@ -1,13 +1,13 @@
 [package]
-name        = "feelssol-controller"
-description = "Controller for feelsSOL token"
+name        = "feels-keeper"
+description = "Program responsible for storing and updating core protocol information"
 version     = { workspace = true }
 authors     = { workspace = true }
 edition     = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name       = "feelssol_controller"
+name       = "feels_keeper"
 
 [features]
 default        = []
@@ -18,12 +18,9 @@ no-log-ix-name = []
 idl-build      = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang  = { workspace = true, features = ["init-if-needed"] }
-anchor-spl   = { workspace = true }
-feels-keeper = { path = "../keeper", features = ["no-entrypoint"] }
+anchor-lang = { workspace = true }
+anchor-spl  = { workspace = true }
 
 [dev-dependencies]
 feels-test-utils = { workspace = true }
-solana-sdk       = { workspace = true }
 tokio            = { workspace = true }
-feels-protocol   = { path = "../protocol", features = ["no-entrypoint"] }

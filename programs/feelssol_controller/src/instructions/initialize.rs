@@ -38,12 +38,12 @@ pub struct Initialize<'info> {
 pub fn initialize_feelssol(
     ctx: Context<Initialize>,
     underlying_mint: Pubkey,
-    underlying_stake_pool: Pubkey,
+    keeper: Pubkey,
     feels_protocol: Pubkey,
 ) -> Result<()> {
     let feelssol = &mut ctx.accounts.feelssol;
     feelssol.underlying_mint = underlying_mint;
-    feelssol.underlying_stake_pool = underlying_stake_pool;
+    feelssol.keeper = keeper;
     feelssol.feels_mint = ctx.accounts.feels_mint.key();
     feelssol.total_wrapped = 0;
     feelssol.feels_protocol = feels_protocol;

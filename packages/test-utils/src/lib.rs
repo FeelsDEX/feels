@@ -8,6 +8,9 @@ use solana_sdk::{
 };
 use std::fs;
 
+pub mod constants;
+pub mod helpers;
+
 pub struct TestApp {
     pub context: ProgramTestContext,
 }

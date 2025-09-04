@@ -1,5 +1,4 @@
 use crate::{error::FeelsSolError, events::DepositEvent, state::FeelsSolController};
-use ::borsh::BorshDeserialize;
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -7,7 +6,7 @@ use anchor_spl::{
     token_2022::{self, MintTo, Token2022},
     token_interface::{Mint, TokenAccount},
 };
-use spl_stake_pool::state::StakePool;
+use feels_keeper::state::Keeper;
 
 #[derive(Accounts)]
 pub struct Deposit<'info> {
@@ -57,9 +56,8 @@ pub struct Deposit<'info> {
     )]
     pub underlying_mint: InterfaceAccount<'info, Mint>,
 
-    #[account(address = feelssol.underlying_stake_pool)]
-    /// CHECK: Stake pool address is validated against the controller state
-    pub stake_pool: AccountInfo<'info>,
+    #[account(address = feelssol.keeper)]
+    pub keeper: Account<'info, Keeper>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -97,17 +95,13 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         FeelsSolError::InsufficientBalance
     );
 
-    // Get stake pool data directly for proper calculation
-    let stake_pool_data = ctx.accounts.stake_pool.try_borrow_data()?;
-    let stake_pool = StakePool::deserialize(&mut &stake_pool_data[..])?;
-
-    // Calculate the SOL equivalent using proper precision
-    // We want: (amount * total_lamports) / pool_token_supply
-    // But we need to be careful about overflow
+    // Calculate the feelsSOL amount to return
+    // Using inverse rate: if feelsSOL→LST rate is num/denom, then LST→feelsSOL rate is denom/num
+    // Formula: (LST_amount × denom) ÷ num = feelsSOL_amount
     let output_amount = (amount as u128)
-        .checked_mul(stake_pool.total_lamports as u128)
+        .checked_mul(ctx.accounts.keeper.feelssol_to_lst_rate_denominator as u128)
         .ok_or(FeelsSolError::MathOverflow)?
-        .checked_div(stake_pool.pool_token_supply as u128)
+        .checked_div(ctx.accounts.keeper.feelssol_to_lst_rate_numerator as u128)
         .ok_or(FeelsSolError::MathOverflow)?
         .try_into()
         .map_err(|_| FeelsSolError::MathOverflow)?;

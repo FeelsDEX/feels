@@ -4,9 +4,13 @@
 target/*
 !target/deploy/
 target/deploy/*
+
+# Don't ignore the keypairs
 !target/deploy/feels_protocol-keypair.json
 !target/deploy/feels_token_factory-keypair.json
 !target/deploy/feelssol_controller-keypair.json
+!target/deploy/feels_keeper-keypair.json
+
 **/*.rs.bk
 node_modules
 test-ledger
