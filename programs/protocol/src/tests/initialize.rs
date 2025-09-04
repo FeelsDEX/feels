@@ -2,13 +2,13 @@ use crate::{
     error::ProtocolError,
     instructions::{MAX_POOL_FEE_RATE, MAX_PROTOCOL_FEE_RATE},
     state::{protocol::ProtocolState, treasury::Treasury},
-    tests::{InstructionBuilder, PROGRAM_PATH},
+    tests::InstructionBuilder,
 };
-use feels_test_utils::{to_sdk_instruction, TestApp};
+use feels_test_utils::{constants::PROTOCOL_PROGRAM_PATH, to_sdk_instruction, TestApp};
 
 #[tokio::test]
 async fn test_initialize_protocol_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, protocol_pda, treasury_pda) =
@@ -41,7 +41,7 @@ async fn test_initialize_protocol_success() {
 
 #[tokio::test]
 async fn test_initialize_protocol_fee_too_high() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 6000, 10000);
@@ -60,7 +60,7 @@ async fn test_initialize_protocol_fee_too_high() {
 
 #[tokio::test]
 async fn test_initialize_max_pool_fee_too_high() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 15000);
@@ -79,7 +79,7 @@ async fn test_initialize_max_pool_fee_too_high() {
 
 #[tokio::test]
 async fn test_initialize_edge_case_values() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, protocol_pda, _) =
@@ -96,7 +96,7 @@ async fn test_initialize_edge_case_values() {
 
 #[tokio::test]
 async fn test_initialize_zero_fees() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 0, 0);

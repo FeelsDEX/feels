@@ -1916,7 +1916,9 @@ dependencies = [
 name = "feels-test-utils"
 version = "0.1.0"
 dependencies = [
+ "anchor-client",
  "anchor-lang",
+ "anchor-spl",
  "solana-address",
  "solana-clock 3.0.0",
  "solana-program-test",

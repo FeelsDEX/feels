@@ -1,12 +1,9 @@
 pub mod initialize;
 
 use anchor_lang::{prelude::*, system_program, InstructionData};
-
-const PROGRAM_PATH: &str = "../../target/deploy/feels_token_factory.so";
+use feels_test_utils::constants::FACTORY_PDA_SEED;
 
 pub struct InstructionBuilder;
-
-const FACTORY_PDA_SEED: &[u8] = b"factory";
 
 impl InstructionBuilder {
     pub fn initialize(

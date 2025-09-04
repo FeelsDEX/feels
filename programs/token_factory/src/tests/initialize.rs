@@ -1,13 +1,10 @@
-use crate::{
-    state::TokenFactory,
-    tests::{InstructionBuilder, PROGRAM_PATH},
-};
+use crate::{state::TokenFactory, tests::InstructionBuilder};
 
-use feels_test_utils::{to_sdk_instruction, TestApp};
+use feels_test_utils::{constants::FACTORY_PROGRAM_PATH, to_sdk_instruction, TestApp};
 
 #[tokio::test]
 async fn test_initialize_feels_token_factory_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), FACTORY_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, factory_pda) =

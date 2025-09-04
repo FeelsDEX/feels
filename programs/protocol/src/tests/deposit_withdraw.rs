@@ -20,17 +20,18 @@ use anchor_spl::{
     token_2022::spl_token_2022::{self},
 };
 
+use feels_test_utils::{
+    constants::{
+        FEELSSOL_CONTROLLER_KEYPAIR_PATH, FEELSSOL_PDA_SEED, FEELS_PRIVATE_KEY, JITOSOL_MINT,
+        JITO_STAKE_POOL, PROTOCOL_KEYPAIR_PATH, PROTOCOL_PDA_SEED, TEST_KEYPAIR_PATH,
+        TREASURY_PDA_SEED, VAULT_PDA_SEED,
+    },
+    helpers::{get_token2022_balance, get_token_balance},
+};
 use feelssol_controller::{error::FeelsSolError, state::FeelsSolController};
 use spl_stake_pool::{instruction::deposit_sol, state::StakePool};
 
-use crate::{
-    accounts,
-    tests::{
-        get_token2022_balance, get_token_balance, FEELSSOL_CONTROLLER_KEYPAIR_PATH,
-        FEELSSOL_PDA_SEED, FEELS_PRIVATE_KEY, JITOSOL_MINT, JITO_STAKE_POOL, PROTOCOL_KEYPAIR_PATH,
-        PROTOCOL_PDA_SEED, TEST_KEYPAIR_PATH, TREASURY_PDA_SEED, VAULT_PDA_SEED,
-    },
-};
+use crate::accounts;
 
 struct TestComponents {
     payer: Keypair,

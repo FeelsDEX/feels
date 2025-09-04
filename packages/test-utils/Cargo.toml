@@ -11,3 +11,5 @@ solana-program-test = { workspace = true }
 solana-sdk          = { workspace = true }
 solana-address      = { workspace = true }
 solana-clock        = { workspace = true }
+anchor-client       = { workspace = true }
+anchor-spl          = { workspace = true }

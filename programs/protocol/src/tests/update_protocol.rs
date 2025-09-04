@@ -1,16 +1,12 @@
 use anchor_lang::{prelude::Pubkey, solana_program::system_instruction::transfer};
-use feels_test_utils::{to_sdk_instruction, TestApp};
+use feels_test_utils::{constants::PROTOCOL_PROGRAM_PATH, to_sdk_instruction, TestApp};
 use solana_sdk::signature::Signer;
 
-use crate::{
-    error::ProtocolError,
-    state::protocol::ProtocolState,
-    tests::{InstructionBuilder, PROGRAM_PATH},
-};
+use crate::{error::ProtocolError, state::protocol::ProtocolState, tests::InstructionBuilder};
 
 #[tokio::test]
 async fn test_update_protocol_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, protocol_pda, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
@@ -40,7 +36,7 @@ async fn test_update_protocol_success() {
 
 #[tokio::test]
 async fn test_update_protocol_fails_invalid_authority() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);
@@ -87,7 +83,7 @@ async fn test_update_protocol_fails_invalid_authority() {
 
 #[tokio::test]
 async fn test_update_protocol_fails_invalid_fees() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), PROTOCOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
 
     let (instruction, _, _) = InstructionBuilder::initialize(&payer_pubkey, 2000, 10000);

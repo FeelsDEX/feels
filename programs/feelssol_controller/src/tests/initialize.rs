@@ -1,15 +1,15 @@
-use crate::{
-    state::FeelsSolController,
-    tests::{InstructionBuilder, FEELS_PRIVATE_KEY, JITOSOL_MINT, JITO_STAKE_POOL, PROGRAM_PATH},
-};
+use crate::{state::FeelsSolController, tests::InstructionBuilder};
 use anchor_lang::prelude::Pubkey;
 use anchor_spl::token_interface::Mint;
-use feels_test_utils::{to_sdk_instruction, TestApp};
+use feels_test_utils::{
+    constants::{FEELSSOL_PROGRAM_PATH, FEELS_PRIVATE_KEY, JITOSOL_MINT, JITO_STAKE_POOL},
+    to_sdk_instruction, TestApp,
+};
 use solana_sdk::signer::{SeedDerivable, Signer};
 
 #[tokio::test]
 async fn test_initialize_feelssol_controller_success() {
-    let mut app = TestApp::new_with_program(crate::id(), PROGRAM_PATH).await;
+    let mut app = TestApp::new_with_program(crate::id(), FEELSSOL_PROGRAM_PATH).await;
     let payer_pubkey = app.payer_pubkey();
     let token_mint = solana_sdk::signature::Keypair::from_seed(&FEELS_PRIVATE_KEY).unwrap();
     let token_mint_pubkey = Pubkey::from(token_mint.pubkey().to_bytes());
