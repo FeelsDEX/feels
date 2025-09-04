@@ -20,8 +20,8 @@ use anchor_spl::{
 };
 use feels_test_utils::{
     constants::{
-        FACTORY_KEYPAIR_PATH, FACTORY_PDA_SEED, PROTOCOL_KEYPAIR_PATH, PROTOCOL_PDA_SEED,
-        PROTOCOL_PROGRAM_PATH, TEST_KEYPAIR_PATH, TREASURY_PDA_SEED,
+        FACTORY_KEYPAIR_PATH, FACTORY_PDA_SEED, FACTORY_PROGRAM_PATH, PROTOCOL_KEYPAIR_PATH,
+        PROTOCOL_PDA_SEED, PROTOCOL_PROGRAM_PATH, TEST_KEYPAIR_PATH, TREASURY_PDA_SEED,
     },
     to_sdk_instruction, TestApp,
 };
@@ -34,7 +34,7 @@ use crate::{accounts, error::ProtocolError, tests::InstructionBuilder};
 async fn deploy_protocol_and_factory() -> (TestApp, Pubkey, Pubkey, Pubkey) {
     let mut app = TestApp::new_with_programs(vec![
         (crate::id(), PROTOCOL_PROGRAM_PATH),
-        (feels_token_factory::id(), PROTOCOL_PROGRAM_PATH),
+        (feels_token_factory::id(), FACTORY_PROGRAM_PATH),
     ])
     .await;
 

@@ -1897,6 +1897,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835a3dc7d1ec9e75e2b5fb4ba75396837112d2060b03f7d43bc1897c7f7211da"
 
 [[package]]
+name = "feels-keeper"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "feels-test-utils",
+ "tokio",
+]
+
+[[package]]
 name = "feels-protocol"
 version = "0.1.0"
 dependencies = [
@@ -1904,6 +1914,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "borsh 1.5.7",
+ "feels-keeper",
  "feels-test-utils",
  "feels-token-factory",
  "feelssol-controller",
@@ -1943,11 +1954,10 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "borsh 1.5.7",
+ "feels-keeper",
  "feels-protocol",
  "feels-test-utils",
  "solana-sdk 3.0.0",
- "spl-stake-pool",
  "tokio",
 ]
 

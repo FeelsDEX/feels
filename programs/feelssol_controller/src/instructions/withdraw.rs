@@ -1,5 +1,4 @@
 use crate::{error::FeelsSolError, events::WithdrawEvent, state::FeelsSolController};
-use ::borsh::BorshDeserialize;
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -7,7 +6,7 @@ use anchor_spl::{
     token_2022::{self, Burn, Token2022},
     token_interface::{Mint, TokenAccount},
 };
-use spl_stake_pool::state::StakePool;
+use feels_keeper::state::Keeper;
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
@@ -55,9 +54,8 @@ pub struct Withdraw<'info> {
     )]
     pub underlying_mint: InterfaceAccount<'info, Mint>,
 
-    #[account(address = feelssol.underlying_stake_pool)]
-    /// CHECK: Stake pool address is validated against the controller state
-    pub stake_pool: AccountInfo<'info>,
+    #[account(address = feelssol.keeper)]
+    pub keeper: Account<'info, Keeper>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -95,17 +93,11 @@ pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         FeelsSolError::InsufficientBalance
     );
 
-    // Get stake pool data directly for proper calculation
-    let stake_pool_data = ctx.accounts.stake_pool.try_borrow_data()?;
-    let stake_pool = StakePool::deserialize(&mut &stake_pool_data[..])?;
-
-    // Calculate the LST amount to return using proper precision
-    // We want: (amount * pool_token_supply) / total_lamports
-    // This is the inverse of the deposit calculation
+    // Calculate the LST amount to return
     let output_amount = (amount as u128)
-        .checked_mul(stake_pool.pool_token_supply as u128)
+        .checked_mul(ctx.accounts.keeper.feelssol_to_lst_rate_numerator as u128)
         .ok_or(FeelsSolError::MathOverflow)?
-        .checked_div(stake_pool.total_lamports as u128)
+        .checked_div(ctx.accounts.keeper.feelssol_to_lst_rate_denominator as u128)
         .ok_or(FeelsSolError::MathOverflow)?
         .try_into()
         .map_err(|_| FeelsSolError::MathOverflow)?;

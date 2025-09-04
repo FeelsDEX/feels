@@ -50,7 +50,7 @@ pub struct Deposit<'info> {
     pub underlying_mint: InterfaceAccount<'info, Mint>,
 
     /// CHECK: Stake pool account, validated by the FeelsSOL program
-    pub stake_pool: AccountInfo<'info>,
+    pub keeper: AccountInfo<'info>,
 
     #[account(mut)]
     pub user: Signer<'info>,
@@ -86,7 +86,7 @@ pub fn deposit_via_feelssol_controller(ctx: Context<Deposit>, amount: u64) -> Re
         user_feelssol: ctx.accounts.user_feelssol.to_account_info(),
         lst_vault: ctx.accounts.lst_vault.to_account_info(),
         underlying_mint: ctx.accounts.underlying_mint.to_account_info(),
-        stake_pool: ctx.accounts.stake_pool.to_account_info(),
+        keeper: ctx.accounts.keeper.to_account_info(),
         user: ctx.accounts.user.to_account_info(),
         token_program: ctx.accounts.token_program.to_account_info(),
         token_2022_program: ctx.accounts.token_2022_program.to_account_info(),
