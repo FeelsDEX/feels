@@ -8,8 +8,6 @@ pub struct TokenFactoryInitialized {
 #[event]
 pub struct TokenCreated {
     pub mint: Pubkey,
-    pub name: String,
-    pub symbol: String,
     pub decimals: u8,
     pub initial_supply: u64,
 }

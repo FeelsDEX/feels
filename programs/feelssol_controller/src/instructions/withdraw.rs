@@ -2,8 +2,7 @@ use crate::{error::FeelsSolError, events::WithdrawEvent, state::FeelsSolControll
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Token},
-    token_2022::{self, Burn, Token2022},
+    token::{burn, transfer, Burn, Token, Transfer},
     token_interface::{Mint, TokenAccount},
 };
 use feels_keeper::state::Keeper;
@@ -36,7 +35,7 @@ pub struct Withdraw<'info> {
         mut,
         associated_token::mint = feels_mint,
         associated_token::authority = user,
-        associated_token::token_program = token_2022_program
+        associated_token::token_program = token_program
     )]
     pub user_feelssol: InterfaceAccount<'info, TokenAccount>,
 
@@ -63,8 +62,6 @@ pub struct Withdraw<'info> {
     /// SPL Token program (for LST transfers like JitoSOL)
     pub token_program: Program<'info, Token>,
 
-    /// Token2022 program (for FeelsSOL burning)
-    pub token_2022_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -104,14 +101,14 @@ pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
 
     // Burn FeelsSOL tokens from user
     let burn_ctx = CpiContext::new(
-        ctx.accounts.token_2022_program.to_account_info(),
+        ctx.accounts.token_program.to_account_info(),
         Burn {
             mint: ctx.accounts.feels_mint.to_account_info(),
             from: ctx.accounts.user_feelssol.to_account_info(),
             authority: ctx.accounts.user.to_account_info(),
         },
     );
-    token_2022::burn(burn_ctx, amount)?;
+    burn(burn_ctx, amount)?;
 
     // Transfer LST tokens from vault to user
     let seeds = &[b"feelssol".as_ref(), &[ctx.bumps.feelssol]];
@@ -119,14 +116,14 @@ pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
 
     let transfer_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
-        token::Transfer {
+        Transfer {
             from: ctx.accounts.lst_vault.to_account_info(),
             to: ctx.accounts.user_lst.to_account_info(),
             authority: ctx.accounts.feelssol.to_account_info(),
         },
         signer_seeds,
     );
-    token::transfer(transfer_ctx, output_amount)?;
+    transfer(transfer_ctx, output_amount)?;
 
     // Update the amount of LST wrapped
     let new_total = ctx

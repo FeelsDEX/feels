@@ -1,7 +1,7 @@
 pub mod initialize;
 
 use anchor_lang::{prelude::*, system_program, InstructionData};
-use anchor_spl::token_2022::spl_token_2022;
+use anchor_spl::token::spl_token;
 use feels_test_utils::constants::FEELSSOL_PDA_SEED;
 
 pub struct InstructionBuilder;
@@ -25,7 +25,7 @@ impl InstructionBuilder {
             feels_mint: token_mint_pubkey,
             payer: *payer,
             system_program: system_program::ID,
-            token_program: spl_token_2022::ID,
+            token_program: spl_token::ID,
             rent: anchor_lang::solana_program::sysvar::rent::ID,
         };
 

@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token_2022::Token2022};
+use anchor_spl::{associated_token::AssociatedToken, token::Token};
 
 // Import your token factory for CPI
 use feels_token_factory::cpi::{
@@ -9,7 +9,7 @@ use feels_token_factory::cpi::{
 use crate::{error::ProtocolError, state::protocol::ProtocolState};
 
 #[derive(Accounts)]
-#[instruction(symbol: String, name: String, uri: String, decimals: u8, initial_supply: u64)]
+#[instruction(decimals: u8, initial_supply: u64)]
 pub struct CreateToken<'info> {
     #[account(
         mut,
@@ -46,7 +46,7 @@ pub struct CreateToken<'info> {
     /// CHECK: This is checked via constraint
     pub token_factory: UncheckedAccount<'info>,
 
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -59,9 +59,6 @@ pub struct CreateToken<'info> {
 
 pub fn create_token_via_factory(
     ctx: Context<CreateToken>,
-    symbol: String,
-    name: String,
-    uri: String,
     decimals: u8,
     initial_supply: u64,
 ) -> Result<()> {
@@ -91,7 +88,7 @@ pub fn create_token_via_factory(
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
     // Make the CPI call to the token factory
-    token_factory_create_token(cpi_ctx, symbol, name, uri, decimals, initial_supply)?;
+    token_factory_create_token(cpi_ctx, decimals, initial_supply)?;
 
     Ok(())
 }

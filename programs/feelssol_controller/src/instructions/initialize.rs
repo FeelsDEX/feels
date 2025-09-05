@@ -1,6 +1,6 @@
 use crate::{events::FeelsSolInitialized, state::FeelsSolController};
 use anchor_lang::prelude::*;
-use anchor_spl::{token_2022::Token2022, token_interface::Mint};
+use anchor_spl::{token::Token, token_interface::Mint};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -30,7 +30,7 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }

@@ -2,7 +2,6 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::Token,
-    token_2022::Token2022,
     token_interface::{Mint, TokenAccount},
 };
 // Import the feelsSOL controller for CPI
@@ -53,11 +52,7 @@ pub struct Withdraw<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// SPL Token program (for LST transfers)
     pub token_program: Program<'info, Token>,
-
-    /// Token2022 program (for FeelsSOL burning)
-    pub token_2022_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -86,7 +81,6 @@ pub fn withdraw_via_feelssol_controller(ctx: Context<Withdraw>, amount: u64) -> 
         keeper: ctx.accounts.keeper.to_account_info(),
         user: ctx.accounts.user.to_account_info(),
         token_program: ctx.accounts.token_program.to_account_info(),
-        token_2022_program: ctx.accounts.token_2022_program.to_account_info(),
         associated_token_program: ctx.accounts.associated_token_program.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
         rent: ctx.accounts.rent.to_account_info(),
