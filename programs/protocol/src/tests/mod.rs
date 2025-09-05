@@ -5,7 +5,7 @@ pub mod initialize;
 pub mod update_protocol;
 
 use anchor_lang::{prelude::*, system_program, InstructionData};
-use anchor_spl::{associated_token::spl_associated_token_account, token_2022::spl_token_2022};
+use anchor_spl::{associated_token::spl_associated_token_account, token::spl_token};
 use feels_test_utils::constants::{FACTORY_PDA_SEED, PROTOCOL_PDA_SEED, TREASURY_PDA_SEED};
 
 pub struct InstructionBuilder;
@@ -138,9 +138,6 @@ impl InstructionBuilder {
         token_mint: &Pubkey,
         recipient: &Pubkey,
         payer: &Pubkey,
-        symbol: String,
-        name: String,
-        uri: String,
         decimals: u8,
         initial_supply: u64,
         invalid_factory: bool,
@@ -160,7 +157,7 @@ impl InstructionBuilder {
             spl_associated_token_account::get_associated_token_address_with_program_id(
                 recipient,
                 token_mint,
-                &spl_token_2022::id(),
+                &spl_token::id(),
             );
 
         let accounts = crate::accounts::CreateToken {
@@ -175,7 +172,7 @@ impl InstructionBuilder {
             } else {
                 factory_program_id
             },
-            token_program: anchor_spl::token_2022::ID,
+            token_program: anchor_spl::token::ID,
             associated_token_program: anchor_spl::associated_token::ID,
             system_program: anchor_lang::system_program::ID,
             rent: anchor_lang::solana_program::sysvar::rent::ID,
@@ -186,9 +183,6 @@ impl InstructionBuilder {
             program_id,
             accounts: accounts.to_account_metas(None),
             data: crate::instruction::CreateToken {
-                symbol,
-                name,
-                uri,
                 decimals,
                 initial_supply,
             }

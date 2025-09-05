@@ -2,8 +2,7 @@ use crate::{error::FeelsSolError, events::DepositEvent, state::FeelsSolControlle
 use anchor_lang::{prelude::*, solana_program::sysvar::instructions::get_instruction_relative};
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Token},
-    token_2022::{self, MintTo, Token2022},
+    token::{mint_to, transfer, MintTo, Token, Transfer},
     token_interface::{Mint, TokenAccount},
 };
 use feels_keeper::state::Keeper;
@@ -37,7 +36,7 @@ pub struct Deposit<'info> {
         payer = user,
         associated_token::mint = feels_mint,
         associated_token::authority = user,
-        associated_token::token_program = token_2022_program
+        associated_token::token_program = token_program
     )]
     pub user_feelssol: InterfaceAccount<'info, TokenAccount>,
 
@@ -62,11 +61,7 @@ pub struct Deposit<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
-    /// SPL Token program (for LST transfers like JitoSOL)
     pub token_program: Program<'info, Token>,
-
-    /// Token2022 program (for FeelsSOL minting)
-    pub token_2022_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
@@ -109,20 +104,20 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     // Transfer input tokens from user to program vault
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
-        token::Transfer {
+        Transfer {
             from: ctx.accounts.user_lst.to_account_info(),
             to: ctx.accounts.lst_vault.to_account_info(),
             authority: ctx.accounts.user.to_account_info(),
         },
     );
-    token::transfer(transfer_ctx, amount)?;
+    transfer(transfer_ctx, amount)?;
 
     // Mint output tokens to user
     let seeds = &[b"feelssol".as_ref(), &[ctx.bumps.feelssol]];
     let signer_seeds = &[&seeds[..]];
 
     let mint_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_2022_program.to_account_info(),
+        ctx.accounts.token_program.to_account_info(),
         MintTo {
             mint: ctx.accounts.feels_mint.to_account_info(),
             to: ctx.accounts.user_feelssol.to_account_info(),
@@ -130,7 +125,7 @@ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         },
         signer_seeds,
     );
-    token_2022::mint_to(mint_ctx, output_amount)?;
+    mint_to(mint_ctx, output_amount)?;
 
     // Update the amount of LST wrapped
     let new_total = ctx

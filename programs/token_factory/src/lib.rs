@@ -8,7 +8,6 @@ pub mod instructions;
 pub mod state;
 #[cfg(test)]
 mod tests;
-pub mod token_validate;
 
 use instructions::*;
 
@@ -27,12 +26,9 @@ pub mod feels_token_factory {
     /// Create a token
     pub fn create_token(
         ctx: Context<CreateToken>,
-        symbol: String,
-        name: String,
-        uri: String,
         decimals: u8,
         initial_supply: u64,
     ) -> Result<()> {
-        instructions::create_token(ctx, symbol, name, uri, decimals, initial_supply)
+        instructions::create_token(ctx, decimals, initial_supply)
     }
 }

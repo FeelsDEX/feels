@@ -16,7 +16,6 @@ use anchor_spl::{
         spl_associated_token_account,
     },
     token::spl_token,
-    token_2022::spl_token_2022::{self},
 };
 
 use ::borsh::BorshDeserialize;
@@ -26,7 +25,7 @@ use feels_test_utils::{
         JITO_STAKE_POOL, KEEPER_KEYPAIR_PATH, KEEPER_PDA_SEED, PROTOCOL_KEYPAIR_PATH,
         PROTOCOL_PDA_SEED, TEST_KEYPAIR_PATH, TREASURY_PDA_SEED, VAULT_PDA_SEED,
     },
-    helpers::{get_token2022_balance, get_token_balance},
+    helpers::get_token_balance,
 };
 use feelssol_controller::{error::FeelsSolError, state::FeelsSolController};
 use spl_stake_pool::{instruction::deposit_sol, state::StakePool};
@@ -191,7 +190,7 @@ fn deploy_protocol_and_controller_on_test_validator(
             feelssol: feelssol_pda,
             feels_mint: feelssol_mint_pubkey,
             payer: protocol.payer(),
-            token_program: spl_token_2022::id(),
+            token_program: spl_token::id(),
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
         })
@@ -304,7 +303,7 @@ fn test_full_flow_deposit_withdraw_success() {
     let user_feelssol_account = get_associated_token_address_with_program_id(
         &test_components.user_pubkey(),
         &feelssol_mint,
-        &spl_token_2022::id(),
+        &spl_token::id(),
     );
 
     let deposit_amount = jitosol_received / 2; // Deposit half of the jitoSOL received
@@ -330,7 +329,6 @@ fn test_full_flow_deposit_withdraw_success() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -352,7 +350,7 @@ fn test_full_flow_deposit_withdraw_success() {
     assert_eq!(total_wrapped_after, total_wrapped_before + deposit_amount);
 
     let user_initial_feelssol_balance =
-        get_token2022_balance(&protocol_program, &user_feelssol_account);
+        get_token_balance(&protocol_program, &user_feelssol_account);
 
     // Should have received half of the deposited amount in feelsSOL (2:1 rate)
     assert_eq!(user_initial_feelssol_balance, deposit_amount / 2);
@@ -374,7 +372,6 @@ fn test_full_flow_deposit_withdraw_success() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -390,7 +387,7 @@ fn test_full_flow_deposit_withdraw_success() {
     let vault_balance_after = get_token_balance(&protocol_program, &vault_pda);
     assert_eq!(vault_balance_after, vault_balance_before + deposit_amount);
 
-    let user_feelssol_balance = get_token2022_balance(&protocol_program, &user_feelssol_account);
+    let user_feelssol_balance = get_token_balance(&protocol_program, &user_feelssol_account);
     assert_eq!(
         user_feelssol_balance,
         user_initial_feelssol_balance + (deposit_amount / 2)
@@ -401,7 +398,7 @@ fn test_full_flow_deposit_withdraw_success() {
 
     // Get FeelsSOL balance before withdraw
     let user_feelssol_balance_before_withdraw =
-        get_token2022_balance(&protocol_program, &user_feelssol_account);
+        get_token_balance(&protocol_program, &user_feelssol_account);
 
     let user_lst_balance_before = get_token_balance(&protocol_program, &user_jitosol_account);
 
@@ -425,7 +422,6 @@ fn test_full_flow_deposit_withdraw_success() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -463,7 +459,7 @@ fn test_full_flow_deposit_withdraw_success() {
 
     // Some feelssol should have been burned
     let user_feelssol_balance_after_withdraw =
-        get_token2022_balance(&protocol_program, &user_feelssol_account);
+        get_token_balance(&protocol_program, &user_feelssol_account);
     assert!(user_feelssol_balance_after_withdraw < user_feelssol_balance_before_withdraw);
 
     // Trying to withdraw more than available balance should fail
@@ -482,7 +478,6 @@ fn test_full_flow_deposit_withdraw_success() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -516,7 +511,6 @@ fn test_full_flow_deposit_withdraw_success() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -560,7 +554,7 @@ fn test_deposit_fails_zero_amount() {
     let user_feelssol_account = get_associated_token_address_with_program_id(
         &test_components.user_pubkey(),
         &feelssol_mint,
-        &spl_token_2022::id(),
+        &spl_token::id(),
     );
 
     let result = protocol_program
@@ -577,7 +571,6 @@ fn test_deposit_fails_zero_amount() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
@@ -621,7 +614,7 @@ fn test_deposit_fails_not_enough_lst() {
     let user_feelssol_account = get_associated_token_address_with_program_id(
         &test_components.user_pubkey(),
         &feelssol_mint,
-        &spl_token_2022::id(),
+        &spl_token::id(),
     );
 
     let result = protocol_program
@@ -638,7 +631,6 @@ fn test_deposit_fails_not_enough_lst() {
             keeper: keeper_pda,
             user: test_components.user_pubkey(),
             token_program: spl_token::ID,
-            token_2022_program: spl_token_2022::ID,
             associated_token_program: associated_token::ID,
             system_program: system_program::ID,
             rent: sysvar::rent::ID,
