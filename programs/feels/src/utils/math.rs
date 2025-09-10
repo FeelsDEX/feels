@@ -1,146 +1,303 @@
-//! # Mathematics Module - Thermodynamic AMM Calculations
+//! Math utilities for the protocol
 //!
-//! This module re-exports mathematical operations from the `feels-core` crate,
-//! which returns anchor-compatible Result types when compiled with the "anchor" feature.
+//! Contains liquidity calculations, safe math operations, and tick/price conversions.
 //!
-//! ## **Re-exported from feels-core**
+//! IMPORTANT: Rounding Direction Convention
+//! ----------------------------------------
+//! To protect the protocol from being drained by rounding errors:
 //! 
-//! ### Safe Arithmetic Operations
-//! - **Basic Operations**: add/sub/mul/div for u64, u128, i128 with overflow protection
-//! - **Advanced Math**: mul_div operations using U256 intermediates, shift operations
-//! - **Liquidity Delta**: add/sub_liquidity_delta for signed liquidity changes
-//! - **Utilities**: sqrt functions, percentage calculations, safe price conversions
+//! 1. When calculating amount_out (output to user):
+//!    - ALWAYS round DOWN (truncate)
+//!    - This ensures users receive at most what they deserve
 //!
-//! ### AMM Mathematics  
-//! - **Tick Math**: get_sqrt_price_at_tick, get_tick_at_sqrt_price conversions
-//! - **Liquidity Math**: get_amount_0/1_delta, get_liquidity_for_amount_0/1
-//! - **Big Integer**: U256 type and mul_div operations with Rounding modes
+//! 2. When calculating amount_in (input from user):
+//!    - ALWAYS round UP (ceiling)
+//!    - This ensures users pay at least what is required
 //!
-//! ### Fee Mathematics
-//! - **Fee Growth**: calculate_fee_growth_q64 with Q64 precision
-//! - **Fee Tracking**: fee_growth_words conversions and wrapping subtraction
+//! 3. When calculating fees:
+//!    - ALWAYS round UP
+//!    - This ensures the protocol collects at least the minimum fee
 //!
-//! All mathematical operations maintain bit-identical results between on-chain
-//! and off-chain components through the shared feels-core implementation.
+//! The Orca Whirlpools core functions handle this correctly with the
+//! `round_up` parameter in try_get_amount_delta_* functions.
 
-// Re-export commonly used types
-pub use num_traits::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv, Zero, One};
+use anchor_lang::prelude::*;
+use crate::error::FeelsError;
+use ethnum::U256;
+use orca_whirlpools_core::{tick_index_to_sqrt_price, sqrt_price_to_tick_index, U128};
+use crate::logic::SwapDirection;
 
-// Re-export all math functions directly from feels-core
-// The "anchor" feature ensures CoreResult<T> is compatible with anchor_lang::Result<T>
-pub use feels_core::math::*;
+/// Ceiling division for u64: (a * b + c - 1) / c
+/// Always rounds UP to ensure minimum fee collection
+pub fn mul_div_ceil_u64(a: u64, b: u64, c: u64) -> Result<u64> {
+    if c == 0 {
+        return Err(FeelsError::DivisionByZero.into());
+    }
+    
+    // Check for overflow in a * b
+    let product = (a as u128)
+        .checked_mul(b as u128)
+        .ok_or(FeelsError::MathOverflow)?;
+    
+    // Add (c - 1) for ceiling effect, then divide
+    let result = product
+        .checked_add(c as u128 - 1)
+        .ok_or(FeelsError::MathOverflow)?
+        .checked_div(c as u128)
+        .ok_or(FeelsError::DivisionByZero)?;
+    
+    // Check if result fits in u64
+    if result > u64::MAX as u128 {
+        return Err(FeelsError::MathOverflow.into());
+    }
+    
+    Ok(result as u64)
+}
 
-// Create a safe module that re-exports the safe_* functions for the naming pattern used in on-chain code
-pub mod safe {
-    pub use super::{
-        safe_add_u64 as add_u64,
-        safe_sub_u64 as sub_u64, 
-        safe_mul_u64 as mul_u64,
-        safe_div_u64 as div_u64,
-        safe_add_u128 as add_u128,
-        safe_sub_u128 as sub_u128,
-        safe_mul_u128 as mul_u128, 
-        safe_div_u128 as div_u128,
-        safe_add_i128 as add_i128,
-        safe_sub_i128 as sub_i128,
-        safe_mul_i128 as mul_i128,
-        safe_div_i128 as div_i128,
-        safe_shl_u128 as shl_u128,
-        safe_shr_u128 as shr_u128,
-        safe_mul_div_u64 as mul_div_u64,
-        safe_mul_div_u128 as mul_div_u128,
-        safe_add_liquidity_delta as add_liquidity_delta,
-        safe_sub_liquidity_delta as sub_liquidity_delta,
-        safe_calculate_percentage as calculate_percentage,
-        safe_sqrt_price_to_price as sqrt_price_to_price_safe,
-        sqrt_u64,
-        sqrt_u128,
+/// Calculate fee amount with ceiling rounding
+/// Ensures minimum fee of 1 for any non-zero amount and fee rate
+pub fn calculate_fee_ceil(amount: u64, fee_bps: u16) -> Result<u64> {
+    if amount == 0 || fee_bps == 0 {
+        return Ok(0);
+    }
+    
+    // Calculate fee with ceiling: (amount * fee_bps + 9999) / 10000
+    mul_div_ceil_u64(amount, fee_bps as u64, 10000)
+}
+
+/// Simple square root for u128 (Newton's method)
+#[allow(dead_code)]
+fn sqrt_u128(n: u128) -> Result<u128> {
+    if n == 0 {
+        return Ok(0);
+    }
+    
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    
+    Ok(x)
+}
+
+/// Compute liquidity from amounts and price range
+/// 
+/// This implements the Uniswap V3 formula for computing liquidity
+/// from token amounts given a price range.
+/// 
+/// NOTE: This function uses U256 for intermediate calculations to avoid
+/// overflow when multiplying large sqrt prices. This is acceptable since
+/// liquidity_from_amounts is NOT in the hot path (only called during
+/// position opening, not during swaps). The hot paths (compute_swap_step
+/// and delta calculations) use u128 exclusively to minimize BPF overhead.
+pub fn liquidity_from_amounts(
+    sqrt_p: u128,
+    sqrt_pl: u128,
+    sqrt_pu: u128,
+    amount0: u64,
+    amount1: u64,
+) -> Result<u128> {
+    require!(sqrt_pl < sqrt_pu, FeelsError::InvalidPrice);
+    
+    // If current price is below range, only amount0 matters
+    if sqrt_p <= sqrt_pl {
+        // L = amount0 * sqrt_pl * sqrt_pu / (sqrt_pu - sqrt_pl) / Q64
+        let numerator = U256::from(amount0) * U256::from(sqrt_pl) * U256::from(sqrt_pu);
+        let denominator = U256::from(sqrt_pu - sqrt_pl);
+        let liquidity: U256 = (numerator / denominator) >> 64;
+        return Ok(u128::try_from(liquidity.min(U256::from(u128::MAX))).unwrap_or(u128::MAX));
+    }
+    
+    // If current price is above range, only amount1 matters
+    if sqrt_p >= sqrt_pu {
+        // L = amount1 * Q64 / (sqrt_pu - sqrt_pl)
+        let numerator = U256::from(amount1) << 64;
+        let denominator = U256::from(sqrt_pu - sqrt_pl);
+        let liquidity: U256 = numerator / denominator;
+        return Ok(u128::try_from(liquidity.min(U256::from(u128::MAX))).unwrap_or(u128::MAX));
+    }
+    
+    // Current price is within range, calculate both L0 and L1 and take minimum
+    
+    // L0 = amount0 * sqrt_p * sqrt_pu / (sqrt_pu - sqrt_p) / Q64
+    let l0 = if amount0 > 0 && sqrt_p < sqrt_pu {
+        let numerator = U256::from(amount0) * U256::from(sqrt_p) * U256::from(sqrt_pu);
+        let denominator = U256::from(sqrt_pu - sqrt_p);
+        (numerator / denominator) >> 64
+    } else {
+        U256::MAX
     };
+    
+    // L1 = amount1 * Q64 / (sqrt_p - sqrt_pl)
+    let l1 = if amount1 > 0 && sqrt_p > sqrt_pl {
+        let numerator = U256::from(amount1) << 64;
+        let denominator = U256::from(sqrt_p - sqrt_pl);
+        numerator / denominator
+    } else {
+        U256::MAX
+    };
+    
+    // Take minimum of L0 and L1
+    let liquidity = l0.min(l1);
+    Ok(u128::try_from(liquidity.min(U256::from(u128::MAX))).unwrap_or(u128::MAX))
 }
 
-// ============================================================================
-// Fee Types and Calculations
-// ============================================================================
-
-/// Breakdown of fee calculation components
-#[derive(Clone, Debug)]
-pub struct FeeBreakdown {
-    pub base_fee: u64,
-    pub work_surcharge: u64,
-    pub total_fee: u64,
-    pub rebate_amount: u64,
+/// Convert tick index to sqrt price with consistent error handling
+pub fn sqrt_price_from_tick(tick: i32) -> Result<u128> {
+    Ok(tick_index_to_sqrt_price(tick))
 }
 
-impl FeeBreakdown {
-    pub fn new(base_fee: u64, work_surcharge: u64, rebate_amount: u64) -> Self {
-        let total_before_rebate = base_fee.saturating_add(work_surcharge);
-        Self {
-            base_fee,
-            work_surcharge,
-            total_fee: total_before_rebate.saturating_sub(rebate_amount),
-            rebate_amount,
+/// Convert sqrt price to tick index with consistent error handling
+pub fn tick_from_sqrt_price(sqrt_price: u128) -> Result<i32> {
+    Ok(sqrt_price_to_tick_index(U128::from(sqrt_price)))
+}
+
+/// Apply liquidity net when crossing a tick
+/// 
+/// Returns the new liquidity after applying the net change based on direction
+pub fn apply_liquidity_net(
+    direction: SwapDirection,
+    current_liquidity: u128,
+    liquidity_net: i128,
+) -> Result<u128> {
+    match direction {
+        SwapDirection::ZeroForOne => {
+            // Moving down - subtract liquidity when crossing from left to right
+            if liquidity_net >= 0 {
+                current_liquidity.checked_sub(liquidity_net as u128)
+                    .ok_or(FeelsError::MathOverflow.into())
+            } else {
+                current_liquidity.checked_add((-liquidity_net) as u128)
+                    .ok_or(FeelsError::MathOverflow.into())
+            }
+        }
+        SwapDirection::OneForZero => {
+            // Moving up - add liquidity when crossing from right to left
+            if liquidity_net >= 0 {
+                current_liquidity.checked_add(liquidity_net as u128)
+                    .ok_or(FeelsError::MathOverflow.into())
+            } else {
+                current_liquidity.checked_sub((-liquidity_net) as u128)
+                    .ok_or(FeelsError::MathOverflow.into())
+            }
         }
     }
 }
 
-/// Fee configuration structure
-#[derive(Clone, Debug)]
-pub struct FeeConfig {
-    pub base_fee_rate: u16, // in basis points
-    pub max_surcharge_bps: u16, // in basis points
-    pub max_instantaneous_fee: u16, // in basis points
+/// Add liquidity to the current liquidity (used when opening positions)
+/// 
+/// Ensures consistent overflow checking across the codebase
+pub fn add_liquidity(
+    current_liquidity: u128,
+    liquidity_delta: u128,
+) -> Result<u128> {
+    current_liquidity.checked_add(liquidity_delta)
+        .ok_or(FeelsError::MathOverflow.into())
 }
 
-impl Default for FeeConfig {
-    fn default() -> Self {
-        Self {
-            base_fee_rate: 30, // 0.3%
-            max_surcharge_bps: 100, // 1% max dynamic surcharge
-            max_instantaneous_fee: 250, // 2.5% total cap
+/// Subtract liquidity from the current liquidity (used when closing positions)
+/// 
+/// Ensures consistent underflow checking across the codebase
+pub fn subtract_liquidity(
+    current_liquidity: u128,
+    liquidity_delta: u128,
+) -> Result<u128> {
+    current_liquidity.checked_sub(liquidity_delta)
+        .ok_or(FeelsError::MathOverflow.into())
+}
+
+/// Safe math operations with explicit rounding
+pub mod safe {
+    use super::*;
+    
+    pub fn add_u64(a: u64, b: u64) -> Result<u64> {
+        a.checked_add(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn sub_u64(a: u64, b: u64) -> Result<u64> {
+        a.checked_sub(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn mul_u64(a: u64, b: u64) -> Result<u64> {
+        a.checked_mul(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn div_u64(a: u64, b: u64) -> Result<u64> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
         }
-    }
-}
-
-// ============================================================================
-// Fee Growth Calculations (Q64 Native)
-// ============================================================================
-
-pub mod fee_math {
-    use crate::error::FeelsProtocolError;
-    use anchor_lang::prelude::*;
-
-    /// Calculate fee growth using native Q64 precision and library operations
-    pub fn calculate_fee_growth_q64(fee_amount: u64, liquidity: u128) -> Result<[u64; 4]> {
-        feels_core::math::calculate_fee_growth_q64(fee_amount, liquidity)
-            .map_err(|_| FeelsProtocolError::InvalidLiquidity.into())
-    }
-}
-
-// ============================================================================
-// Fee Growth Math - Re-exported from feels-core
-// ============================================================================
-
-/// Fee growth math utilities for tick operations
-pub struct FeeGrowthMath;
-
-impl FeeGrowthMath {
-    /// Convert [u64; 4] fee growth to u128 (using lower 128 bits)
-    pub fn words_to_u128(words: [u64; 4]) -> u128 {
-        feels_core::math::fee_growth_words_to_u128(words)
+        Ok(a / b)
     }
     
-    /// Convert u128 to [u64; 4] fee growth
-    pub fn u128_to_words(value: u128) -> [u64; 4] {
-        feels_core::math::fee_growth_u128_to_words(value)
+    /// Division with ceiling (round up) for u64
+    /// Used when calculating amount_in or fees to favor the protocol
+    pub fn div_ceil_u64(a: u64, b: u64) -> Result<u64> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
+        }
+        // ceiling division: (a + b - 1) / b
+        let sum = a.checked_add(b - 1).ok_or(FeelsError::MathOverflow)?;
+        Ok(sum / b)
     }
     
-    /// Subtract fee growth values with overflow handling (u128 version)
-    pub fn sub_fee_growth(a: u128, b: u128) -> Result<u128, FeelsProtocolError> {
-        Ok(feels_core::math::sub_fee_growth(a, b))
+    /// Division with floor (round down) for u64  
+    /// Used when calculating amount_out to favor the protocol
+    pub fn div_floor_u64(a: u64, b: u64) -> Result<u64> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
+        }
+        Ok(a / b) // Standard division already floors
     }
     
-    /// Subtract fee growth values with overflow handling ([u64; 4] version)
-    pub fn sub_fee_growth_words(a: [u64; 4], b: [u64; 4]) -> Result<[u64; 4], FeelsProtocolError> {
-        Ok(feels_core::math::sub_fee_growth_words(a, b))
+    // u128 safe math operations for Buffer fee counters
+    pub fn add_u128(a: u128, b: u128) -> Result<u128> {
+        a.checked_add(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn sub_u128(a: u128, b: u128) -> Result<u128> {
+        a.checked_sub(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn mul_u128(a: u128, b: u128) -> Result<u128> {
+        a.checked_mul(b).ok_or(FeelsError::MathOverflow.into())
+    }
+    
+    pub fn div_u128(a: u128, b: u128) -> Result<u128> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
+        }
+        Ok(a / b)
+    }
+    
+    /// Division with ceiling (round up) for u128
+    /// Used when calculating amount_in or fees to favor the protocol
+    pub fn div_ceil_u128(a: u128, b: u128) -> Result<u128> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
+        }
+        // ceiling division: (a + b - 1) / b
+        let sum = a.checked_add(b - 1).ok_or(FeelsError::MathOverflow)?;
+        Ok(sum / b)
+    }
+    
+    /// Division with floor (round down) for u128
+    /// Used when calculating amount_out to favor the protocol
+    pub fn div_floor_u128(a: u128, b: u128) -> Result<u128> {
+        if b == 0 {
+            return Err(FeelsError::DivisionByZero.into());
+        }
+        Ok(a / b) // Standard division already floors
+    }
+    
+    /// Calculate fee amount with ceiling (round up)
+    /// Ensures protocol always collects at least the minimum fee
+    pub fn calculate_fee_ceil(amount: u64, fee_bps: u16) -> Result<u64> {
+        let fee_amount = (amount as u128)
+            .checked_mul(fee_bps as u128)
+            .ok_or(FeelsError::MathOverflow)?;
+        div_ceil_u128(fee_amount, 10000).map(|v| v as u64)
     }
 }

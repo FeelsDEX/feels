@@ -1,81 +1,45 @@
-//! # Instruction Handlers
-//! 
-//! Entry points for 3D thermodynamic AMM operations:
-//! 
-//! 1. **Market**: Initialize and update markets with unified configuration
-//! 2. **Order**: Universal trading handler for all order types (swaps, liquidity, positions)
-//! 3. **Maintenance**: Keeper operations, cleanups, rebases, and system maintenance
-//! 4. **Token**: Asset creation and management
-//! 
-//! All operations calculate work W = V(P₂) - V(P₁) and enforce conservation.
+//! Instruction handlers
+//!
+//! Re-export everything from instructions to satisfy Anchor program macro
 
-// ============================================================================
-// INSTRUCTION MODULES
-// ============================================================================
+#![allow(ambiguous_glob_reexports)]
 
-/// Operation trait framework for modular handlers
-pub mod operation;
+pub mod enter_feelssol;
+pub use enter_feelssol::*;
 
-/// Market operations for consolidated Market account
-pub mod market;
+pub mod exit_feelssol;
+pub use exit_feelssol::*;
 
-/// Order handler using consolidated Market account
-pub mod order;
+pub mod swap;
+pub use swap::*;
 
-/// Maintenance operations: keeper registry, cleanup, rebases
-pub mod maintenance;
+pub mod open_position;
+pub use open_position::*;
 
-/// Token management
-pub mod token;
+pub mod close_position;
+pub use close_position::*;
 
-// ============================================================================
-// PUBLIC API EXPORTS
-// ============================================================================
+pub mod collect_fees;
+pub use collect_fees::*;
 
-// Market operations
-pub use market::{
-    // Initialization
-    initialize_market,
-    InitializeMarket,
-    InitializeMarketParams,
-    
-    // Updates
-    update_market,
-    UpdateMarket,
-    UpdateMarketParams,
-    
-    // Pause/Unpause
-    pause_market,
-    unpause_market,
-    PauseMarket,
-    UnpauseMarket,
-};
+pub mod mint_token;
+pub use mint_token::*;
 
-// Order operations
-pub use order::{
-    handler as order_handler,
-    UnifiedOrder as Order,
-    OrderParams,
-    OrderResult,
-    OrderType,
-    PositionType,
-};
+pub mod deploy_initial_liquidity;
+pub use deploy_initial_liquidity::*;
 
-// Maintenance operations
-pub use maintenance::{
-    handler as maintenance_handler,
-    MaintenanceOperation,
-    RebaseType,
-    PoolOperationalStatus,
-    KeeperRegistry,
-    PoolStatus,
-    MaintenanceAccounts,
-};
+pub mod open_position_with_metadata;
+pub use open_position_with_metadata::*;
 
-// Token operations
-pub use token::{
-    handler as token_create_handler,
-    TokenCreateParams,
-    TokenCreateResult,
-    CreateToken,
-};
+pub mod close_position_with_metadata;
+pub use close_position_with_metadata::*;
+
+pub mod update_position_fee_lower;
+pub use update_position_fee_lower::*;
+
+pub mod update_position_fee_upper;
+pub use update_position_fee_upper::*;
+
+pub mod initialize_market;
+pub use initialize_market::*;
+

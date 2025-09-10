@@ -1,0 +1,32 @@
+[package]
+name = "feels-jupiter-adapter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]  # Not cdylib - this is not meant for BPF deployment
+name = "feels_jupiter_adapter"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+feels = { path = "../feels", features = ["cpi"] }
+jupiter-amm-interface = "0.6.0"
+solana-program = { workspace = true }
+anyhow = "1.0"
+spl-token = { workspace = true }
+bytemuck = { workspace = true }
+rust_decimal = "1.0"
+ahash = "0.8"
+# Fix getrandom for BPF
+getrandom = { version = "0.2", features = ["custom"] }

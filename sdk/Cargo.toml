@@ -1,0 +1,52 @@
+[package]
+name = "feels-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "SDK for interacting with the Feels protocol on Solana"
+license = "MIT"
+repository = "https://github.com/timewave/feels-solana"
+keywords = ["solana", "sdk", "amm", "defi", "client"]
+categories = ["api-bindings", "cryptography::cryptocurrencies"]
+
+[features]
+default = ["advanced"]
+advanced = []
+
+[dependencies]
+# Shared protocol crates
+# feels-core = { workspace = true, features = ["client", "advanced"] }
+
+# Anchor and Solana dependencies
+anchor-client = { workspace = true }
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+solana-program = { workspace = true }
+spl-token = { workspace = true }
+spl-associated-token-account = { workspace = true }
+
+# Common dependencies
+tokio = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+borsh = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+integer-sqrt = { workspace = true }
+fixed = "1.24"
+num-traits = "0.2"
+
+# Import the Feels program types
+feels = { path = "../programs/feels", features = ["no-entrypoint"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "complete_flow"
+path = "examples/complete_flow.rs"
