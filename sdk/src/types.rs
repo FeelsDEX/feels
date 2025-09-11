@@ -2,11 +2,7 @@
 
 use anchor_lang::prelude::*;
 
-/// Parameters for initializing a market
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct InitializeMarketParams {
-    pub base_fee_bps: u16,
-}
+// InitializeMarketParams is now defined in instructions.rs
 
 /// Route type for swaps
 #[derive(Clone, Copy, Debug, PartialEq)]

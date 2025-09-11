@@ -1,1 +1,1 @@
-// pub mod test_swap; // Temporarily disabled - needs test infrastructure
+pub mod test_swap; // Temporarily disabled - needs test infrastructure

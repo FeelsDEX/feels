@@ -92,7 +92,7 @@ use feels_sdk::{HubRouter, instructions::*};
 let router = HubRouter::new(FEELSSOL_MINT);
 
 // Find route
-let route = router.find_route(&TOKEN_A, &TOKEN_B)?;
+let route = router.find_route(&token_0, &token_1)?;
 
 // Build swap instructions
 let ixs = hub_swap(

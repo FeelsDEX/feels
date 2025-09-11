@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 /// Feels Protocol Jupiter Adapter
 /// 
 /// This crate provides the Jupiter AMM interface implementation for Feels Protocol

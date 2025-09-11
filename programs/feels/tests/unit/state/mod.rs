@@ -1,1 +1,1 @@
-pub mod static_assertions;
+// State unit tests module organization

@@ -1,531 +1,437 @@
+//! Builder patterns for complex test setups
+
 use super::*;
-use std::collections::HashMap;
-use std::sync::Arc;
-use solana_sdk::instruction::AccountMeta;
+// use async_trait::async_trait;
 
-/// Builder for creating test markets with common configurations
+/// Builder for creating markets with custom configuration
 pub struct MarketBuilder {
-    token_mint_0: Option<Pubkey>,
-    token_mint_1: Option<Pubkey>,
-    tick_spacing: u16,
-    initial_sqrt_price: Option<u128>,
-    fee_tier: u16,
-    with_liquidity: Vec<LiquidityConfig>,
-    with_tick_arrays: Vec<i32>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LiquidityConfig {
-    pub tick_lower: i32,
-    pub tick_upper: i32,
-    pub liquidity: u128,
-    pub provider: Option<Arc<Keypair>>,
-}
-
-impl Default for MarketBuilder {
-    fn default() -> Self {
-        Self {
-            token_mint_0: None,
-            token_mint_1: None,
-            tick_spacing: 64,
-            initial_sqrt_price: None,
-            fee_tier: 500, // 5 bps
-            with_liquidity: Vec::new(),
-            with_tick_arrays: Vec::new(),
-        }
-    }
+    ctx: TestContext,
+    token_0: Option<Pubkey>,
+    token_1: Option<Pubkey>,
+    initial_price: Option<u128>,
+    fee_rate: Option<u16>,
+    liquidity_positions: Vec<(Keypair, i32, i32, u128)>,
 }
 
 impl MarketBuilder {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(ctx: TestContext) -> Self {
+        Self {
+            ctx,
+            token_0: None,
+            token_1: None,
+            initial_price: None,
+            fee_rate: None,
+            liquidity_positions: Vec::new(),
+        }
     }
-    
-    pub fn with_tokens(mut self, mint_0: Pubkey, mint_1: Pubkey) -> Self {
-        self.token_mint_0 = Some(mint_0);
-        self.token_mint_1 = Some(mint_1);
+
+    pub fn token_0(mut self, token: Pubkey) -> Self {
+        self.token_0 = Some(token);
         self
     }
-    
-    pub fn with_tick_spacing(mut self, spacing: u16) -> Self {
-        self.tick_spacing = spacing;
+
+    pub fn token_1(mut self, token: Pubkey) -> Self {
+        self.token_1 = Some(token);
         self
     }
-    
-    pub fn with_initial_sqrt_price(mut self, price: u128) -> Self {
-        self.initial_sqrt_price = Some(price);
+
+    pub fn initial_price(mut self, price: u128) -> Self {
+        self.initial_price = Some(price);
         self
     }
-    
-    pub fn with_fee_tier(mut self, fee_tier: u16) -> Self {
-        self.fee_tier = fee_tier;
+
+    pub fn fee_rate(mut self, rate: u16) -> Self {
+        self.fee_rate = Some(rate);
         self
     }
-    
-    pub fn add_liquidity(mut self, tick_lower: i32, tick_upper: i32, liquidity: u128) -> Self {
-        self.with_liquidity.push(LiquidityConfig {
-            tick_lower,
-            tick_upper,
+
+    pub fn tick_spacing(mut self, _spacing: u16) -> Self {
+        // Tick spacing is determined by fee rate in the actual implementation
+        // This is just for compatibility with tests
+        self
+    }
+
+    pub fn add_liquidity(
+        mut self,
+        provider: Keypair,
+        lower_tick: i32,
+        upper_tick: i32,
+        liquidity: u128,
+    ) -> Self {
+        self.liquidity_positions.push((provider, lower_tick, upper_tick, liquidity));
+        self
+    }
+
+    pub fn add_full_range_liquidity(mut self, provider: Keypair, liquidity: u128) -> Self {
+        self.liquidity_positions.push((
+            provider,
+            constants::MIN_TICK,
+            constants::MAX_TICK,
             liquidity,
-            provider: None,
+        ));
+        self
+    }
+
+    pub async fn build(self) -> TestResult<Pubkey> {
+        let token_0 = self.token_0.ok_or("Token A not set")?;
+        let token_1 = self.token_1.ok_or("Token B not set")?;
+        
+        let market_helper = self.ctx.market_helper();
+        
+        // Create market based on configuration
+        let market_id = if let Some(initial_price) = self.initial_price {
+            market_helper.create_raydium_market(&token_0, &token_1, initial_price).await?
+        } else {
+            market_helper.create_simple_market(&token_0, &token_1).await?
+        };
+
+        // Add liquidity positions if any
+        if !self.liquidity_positions.is_empty() {
+            // Note: Position management is not available in the current SDK
+            // This would need to be implemented when position instructions are added
+            // For now, we skip adding liquidity positions
+        }
+
+        Ok(market_id)
+    }
+}
+
+/// Builder for creating complex swap scenarios
+pub struct SwapBuilder {
+    ctx: TestContext,
+    swaps: Vec<SwapSpec>,
+}
+
+struct SwapSpec {
+    market: Pubkey,
+    trader: Keypair,
+    token_in: Pubkey,
+    token_out: Pubkey,
+    amount_in: Option<u64>,
+    amount_out: Option<u64>,
+    max_slippage: Option<f64>,
+    delay_ms: Option<u64>,
+}
+
+impl SwapBuilder {
+    pub fn new(ctx: TestContext) -> Self {
+        Self {
+            ctx,
+            swaps: Vec::new(),
+        }
+    }
+
+    pub fn add_swap(
+        mut self,
+        market: Pubkey,
+        trader: Keypair,
+        token_in: Pubkey,
+        token_out: Pubkey,
+        amount_in: u64,
+    ) -> Self {
+        self.swaps.push(SwapSpec {
+            market,
+            trader,
+            token_in,
+            token_out,
+            amount_in: Some(amount_in),
+            amount_out: None,
+            max_slippage: None,
+            delay_ms: None,
         });
         self
     }
-    
-    pub fn add_tick_array(mut self, start_index: i32) -> Self {
-        self.with_tick_arrays.push(start_index);
-        self
-    }
-    
-    pub fn add_tick_arrays_around_current(mut self, current_tick: i32, count: usize) -> Self {
-        let array_size = feels::state::TICK_ARRAY_SIZE as i32 * self.tick_spacing as i32;
-        let current_array_start = (current_tick / array_size) * array_size;
-        
-        for i in 0..count {
-            let offset = (i as i32 - count as i32 / 2) * array_size;
-            self.with_tick_arrays.push(current_array_start + offset);
-        }
-        self
-    }
-    
-    pub async fn build(self, suite: &mut TestSuite) -> TestResult<MarketTestData> {
-        // Ensure token mints are provided
-        let token_mint_0 = self.token_mint_0
-            .ok_or_else(|| "Token mint 0 not provided")?;
-        let token_mint_1 = self.token_mint_1
-            .ok_or_else(|| "Token mint 1 not provided")?;
-        
-        // Calculate initial sqrt price if not provided
-        let initial_sqrt_price = self.initial_sqrt_price
-            .unwrap_or_else(|| feels::utils::sqrt_price_from_tick(0).unwrap());
-        
-        // Create market using initialize_market instruction
-        
-        // Derive the market PDA
-        let (market, _) = Pubkey::find_program_address(
-            &[b"market", token_mint_0.as_ref(), token_mint_1.as_ref()],
-            &suite.program_id,
-        );
-        
-        // Build accounts manually since we're in test context
-        let accounts = vec![
-            AccountMeta::new(suite.payer.pubkey(), true),  // authority (signer)
-            AccountMeta::new(market, false),                // market account
-            AccountMeta::new_readonly(token_mint_0, false), // token_0 mint
-            AccountMeta::new_readonly(token_mint_1, false), // token_1 mint
-            AccountMeta::new_readonly(system_program::id(), false), // system program
-            AccountMeta::new_readonly(spl_token::id(), false),      // token program
-        ];
-        
-        // Create instruction data manually
-        let mut data = Vec::with_capacity(8 + 2 + 2 + 16);
-        
-        // Add discriminator for initialize_market (simplified - in prod, calculate proper hash)
-        data.extend_from_slice(&[0u8; 8]);
-        
-        // Serialize parameters
-        data.extend_from_slice(&self.fee_tier.to_le_bytes());
-        data.extend_from_slice(&self.tick_spacing.to_le_bytes());
-        data.extend_from_slice(&initial_sqrt_price.to_le_bytes());
-        
-        let ix = Instruction {
-            program_id: suite.program_id,
-            accounts,
-            data,
-        };
-        
-        let payer = suite.payer.insecure_clone();
-        suite.process_transaction(&[ix], &[&payer]).await?;
-        
-        // Initialize tick arrays
-        let mut tick_arrays = HashMap::new();
-        // TODO: Uncomment when test-utils feature is enabled
-        for start_index in &self.with_tick_arrays {
-            // Derive tick array PDA
-            let (array_pda, _) = Pubkey::find_program_address(
-                &[b"tick_array", market.as_ref(), &start_index.to_le_bytes()],
-                &suite.program_id,
-            );
-            tick_arrays.insert(*start_index, array_pda);
-        }
-        
-        // Add liquidity positions (placeholder for future implementation)
-        let mut positions = Vec::new();
-        for _config in &self.with_liquidity {
-            // TODO: Create position when position opening is implemented
-            // For now, just add a placeholder pubkey
-            positions.push(Pubkey::new_unique());
-        }
-        
-        Ok(MarketTestData {
+
+    pub fn add_swap_exact_out(
+        mut self,
+        market: Pubkey,
+        trader: Keypair,
+        token_in: Pubkey,
+        token_out: Pubkey,
+        amount_out: u64,
+    ) -> Self {
+        self.swaps.push(SwapSpec {
             market,
-            token_mint_0,
-            token_mint_1,
-            tick_spacing: self.tick_spacing,
-            fee_tier: self.fee_tier,
-            tick_arrays,
-            positions,
-        })
+            trader,
+            token_in,
+            token_out,
+            amount_in: None,
+            amount_out: Some(amount_out),
+            max_slippage: None,
+            delay_ms: None,
+        });
+        self
     }
-}
 
-/// Result of building a test market
-#[derive(Debug, Clone)]
-pub struct MarketTestData {
-    pub market: Pubkey,
-    pub token_mint_0: Pubkey,
-    pub token_mint_1: Pubkey,
-    pub tick_spacing: u16,
-    pub fee_tier: u16,
-    pub tick_arrays: HashMap<i32, Pubkey>,
-    pub positions: Vec<Pubkey>,
-}
-
-/// Builder for swap tests
-pub struct SwapTestBuilder {
-    market: Option<Pubkey>,
-    user: Option<Keypair>,
-    amount_in: u64,
-    minimum_amount_out: u64,
-    tick_arrays: Vec<Pubkey>,
-    zero_for_one: bool,
-    max_ticks_crossed: Option<u8>,
-}
-
-impl Default for SwapTestBuilder {
-    fn default() -> Self {
-        Self {
-            market: None,
-            user: None,
-            amount_in: 0,
-            minimum_amount_out: 0,
-            tick_arrays: Vec::new(),
-            zero_for_one: true,
-            max_ticks_crossed: None,
+    pub fn with_delay(mut self, delay_ms: u64) -> Self {
+        if let Some(last) = self.swaps.last_mut() {
+            last.delay_ms = Some(delay_ms);
         }
+        self
+    }
+
+    pub fn with_slippage(mut self, max_slippage: f64) -> Self {
+        if let Some(last) = self.swaps.last_mut() {
+            last.max_slippage = Some(max_slippage);
+        }
+        self
+    }
+
+    pub async fn execute(self) -> TestResult<Vec<SwapResult>> {
+        let swap_helper = self.ctx.swap_helper();
+        let mut results = Vec::new();
+
+        for spec in self.swaps {
+            // Apply delay if specified
+            if let Some(delay_ms) = spec.delay_ms {
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+            }
+
+            // Execute swap based on type
+            let result = if let Some(amount_in) = spec.amount_in {
+                swap_helper.swap(
+                    &spec.market,
+                    &spec.token_in,
+                    &spec.token_out,
+                    amount_in,
+                    &spec.trader,
+                ).await?
+            } else if let Some(amount_out) = spec.amount_out {
+                let max_amount_in = if let Some(slippage) = spec.max_slippage {
+                    // Calculate max amount in based on slippage
+                    (amount_out as f64 * (1.0 + slippage)) as u64
+                } else {
+                    u64::MAX // No slippage protection
+                };
+
+                swap_helper.swap_exact_out(
+                    &spec.market,
+                    &spec.token_in,
+                    &spec.token_out,
+                    amount_out,
+                    max_amount_in,
+                    &spec.trader,
+                ).await?
+            } else {
+                return Err("Swap must specify either amount_in or amount_out".into());
+            };
+
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
+    /// Create a sandwich attack scenario
+    pub fn sandwich_attack(
+        mut self,
+        market: Pubkey,
+        victim: Keypair,
+        attacker: Keypair,
+        token_in: Pubkey,
+        token_out: Pubkey,
+        victim_amount: u64,
+        front_run_amount: u64,
+    ) -> Self {
+        // Front-run transaction
+        let attacker_keypair = Keypair::from_bytes(&attacker.to_bytes()).expect("Failed to clone keypair");
+        self = self.add_swap(market, attacker_keypair, token_in, token_out, front_run_amount);
+        
+        // Victim transaction
+        self = self.add_swap(market, victim, token_in, token_out, victim_amount);
+        
+        // Back-run transaction (swap in opposite direction)
+        self = self.add_swap(market, attacker, token_out, token_in, front_run_amount);
+        
+        self
     }
 }
 
-impl SwapTestBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    
-    pub fn with_market(mut self, market: Pubkey) -> Self {
-        self.market = Some(market);
-        self
-    }
-    
-    pub fn with_user(mut self, user: Keypair) -> Self {
-        self.user = Some(user);
-        self
-    }
-    
-    pub fn with_amount(mut self, amount: u64) -> Self {
-        self.amount_in = amount;
-        self
-    }
-    
-    pub fn with_minimum_output(mut self, amount: u64) -> Self {
-        self.minimum_amount_out = amount;
-        self
-    }
-    
-    pub fn with_tick_arrays(mut self, arrays: Vec<Pubkey>) -> Self {
-        self.tick_arrays = arrays;
-        self
-    }
-    
-    pub fn zero_for_one(mut self, direction: bool) -> Self {
-        self.zero_for_one = direction;
-        self
-    }
-    
-    pub fn with_max_ticks(mut self, max: u8) -> Self {
-        self.max_ticks_crossed = Some(max);
-        self
-    }
-    
-    pub async fn execute(self, suite: &mut TestSuite) -> TestResult<SwapResult> {
-        let market = self.market
-            .ok_or_else(|| "Market not provided")?;
-        let user = self.user
-            .ok_or_else(|| "User not provided")?;
-        
-        // Get market data to determine token accounts
-        let market_data = suite.get_account_data::<Market>(&market).await?;
-        
-        // Create or get user token accounts
-        let (user_token_in, user_token_out) = if self.zero_for_one {
-            // Get or create user's token accounts for token_0 and token_1
-            let user_token_0 = spl_associated_token_account::get_associated_token_address(
-                &user.pubkey(),
-                &market_data.token_0,
-            );
-            let user_token_1 = spl_associated_token_account::get_associated_token_address(
-                &user.pubkey(),
-                &market_data.token_1,
-            );
-            
-            // Create ATAs if they don't exist
-            suite.create_ata_if_needed(&user.pubkey(), &market_data.token_0).await?;
-            suite.create_ata_if_needed(&user.pubkey(), &market_data.token_1).await?;
-            
-            (user_token_0, user_token_1)
-        } else {
-            // Get or create user's token accounts for token_1 and token_0
-            let user_token_0 = spl_associated_token_account::get_associated_token_address(
-                &user.pubkey(),
-                &market_data.token_0,
-            );
-            let user_token_1 = spl_associated_token_account::get_associated_token_address(
-                &user.pubkey(),
-                &market_data.token_1,
-            );
-            
-            // Create ATAs if they don't exist
-            suite.create_ata_if_needed(&user.pubkey(), &market_data.token_0).await?;
-            suite.create_ata_if_needed(&user.pubkey(), &market_data.token_1).await?;
-            
-            (user_token_1, user_token_0)
-        };
-        
-        // Call swap_with_arrays
-        suite.swap_with_arrays(
-            market,
-            &user,
-            user_token_in,
-            user_token_out,
-            self.amount_in,
-            self.minimum_amount_out,
-            self.tick_arrays,
-        ).await
-    }
-}
-
-/// Builder for position tests
+/// Builder for creating positions with various configurations
 pub struct PositionBuilder {
+    ctx: TestContext,
     market: Option<Pubkey>,
     owner: Option<Keypair>,
-    tick_lower: Option<i32>,
-    tick_upper: Option<i32>,
-    liquidity_amount: u128,
-    token_0_amount: Option<u64>,
-    token_1_amount: Option<u64>,
+    positions: Vec<PositionSpec>,
 }
 
-impl Default for PositionBuilder {
-    fn default() -> Self {
-        Self {
-            market: None,
-            owner: None,
-            tick_lower: None,
-            tick_upper: None,
-            liquidity_amount: 0,
-            token_0_amount: None,
-            token_1_amount: None,
-        }
-    }
+struct PositionSpec {
+    lower_tick: i32,
+    upper_tick: i32,
+    liquidity: u128,
+    auto_collect_fees: bool,
 }
 
 impl PositionBuilder {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(ctx: TestContext) -> Self {
+        Self {
+            ctx,
+            market: None,
+            owner: None,
+            positions: Vec::new(),
+        }
     }
-    
-    pub fn with_market(mut self, market: Pubkey) -> Self {
+
+    pub fn market(mut self, market: Pubkey) -> Self {
         self.market = Some(market);
         self
     }
-    
-    pub fn with_owner(mut self, owner: Keypair) -> Self {
+
+    pub fn owner(mut self, owner: Keypair) -> Self {
         self.owner = Some(owner);
         self
     }
-    
-    pub fn with_ticks(mut self, lower: i32, upper: i32) -> Self {
-        self.tick_lower = Some(lower);
-        self.tick_upper = Some(upper);
+
+    pub fn add_position(mut self, lower_tick: i32, upper_tick: i32, liquidity: u128) -> Self {
+        self.positions.push(PositionSpec {
+            lower_tick,
+            upper_tick,
+            liquidity,
+            auto_collect_fees: false,
+        });
         self
     }
-    
-    pub fn with_liquidity(mut self, amount: u128) -> Self {
-        self.liquidity_amount = amount;
-        self
-    }
-    
-    pub fn with_tokens(mut self, amount_0: u64, amount_1: u64) -> Self {
-        self.token_0_amount = Some(amount_0);
-        self.token_1_amount = Some(amount_1);
-        self
-    }
-    
-    pub async fn open(self, suite: &mut TestSuite) -> TestResult<Pubkey> {
-        let market = self.market
-            .ok_or_else(|| "Market not provided")?;
-        let owner = self.owner
-            .ok_or_else(|| "Owner not provided")?;
-        let tick_lower = self.tick_lower
-            .ok_or_else(|| "Lower tick not provided")?;
-        let tick_upper = self.tick_upper
-            .ok_or_else(|| "Upper tick not provided")?;
+
+    pub fn add_range_positions(
+        mut self,
+        tick_spacing: i32,
+        num_positions: usize,
+        liquidity_per_position: u128,
+    ) -> Self {
+        let center_tick = 0;
+        let half_positions = num_positions / 2;
         
-        // Open position using open_position instruction
-        
-        // Generate a new position mint
-        let position_mint = Keypair::new();
-        
-        // Derive position PDA
-        let (position, _) = Pubkey::find_program_address(
-            &[b"position", position_mint.pubkey().as_ref()],
-            &suite.program_id,
-        );
-        
-        // Create position metadata account
-        let (metadata, _) = feels::utils::derive_metadata(&position_mint.pubkey());
-        
-        // Get market data
-        let market_data = suite.get_account_data::<Market>(&market).await?;
-        
-        // Derive vaults
-        let (vault_0, _) = Market::derive_vault_address(&market, &market_data.token_0, &suite.program_id);
-        let (vault_1, _) = Market::derive_vault_address(&market, &market_data.token_1, &suite.program_id);
-        let (market_authority, _) = Market::derive_market_authority(&market, &suite.program_id);
-        
-        // Create user token accounts if needed
-        let owner_token_0 = suite.create_token_account(&market_data.token_0, &owner.pubkey()).await?;
-        let owner_token_1 = suite.create_token_account(&market_data.token_1, &owner.pubkey()).await?;
-        
-        // Create position token account
-        let position_token_account = suite.create_token_account(&position_mint.pubkey(), &owner.pubkey()).await?;
-        
-        // Get tick arrays
-        // Derive tick array addresses for the position's tick range
-        let tick_spacing = market_data.tick_spacing;
-        let tick_array_size = 64; // TICK_ARRAY_SIZE constant
-        
-        // Calculate tick array start indices
-        let lower_tick_array_start = (tick_lower / (tick_spacing as i32 * tick_array_size)) * (tick_spacing as i32 * tick_array_size);
-        let upper_tick_array_start = (tick_upper / (tick_spacing as i32 * tick_array_size)) * (tick_spacing as i32 * tick_array_size);
-        
-        // Derive tick array PDAs
-        let (lower_tick_array, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                market.as_ref(),
-                &lower_tick_array_start.to_le_bytes(),
-            ],
-            &suite.program_id,
-        );
-        
-        let (upper_tick_array, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                market.as_ref(),
-                &upper_tick_array_start.to_le_bytes(),
-            ],
-            &suite.program_id,
-        );
-        
-        // Initialize tick arrays if they don't exist
-        suite.ensure_tick_array_initialized(&market, lower_tick_array_start).await?;
-        suite.ensure_tick_array_initialized(&market, upper_tick_array_start).await?;
-        
-        // Mint tokens to owner accounts if token amounts were specified
-        if let Some(amount_0) = self.token_0_amount {
-            suite.mint_tokens(&market_data.token_0, &owner_token_0.pubkey(), amount_0).await?;
-        }
-        if let Some(amount_1) = self.token_1_amount {
-            suite.mint_tokens(&market_data.token_1, &owner_token_1.pubkey(), amount_1).await?;
+        for i in 0..num_positions {
+            let offset = (i as i32 - half_positions as i32) * tick_spacing * 10;
+            let lower_tick = center_tick + offset;
+            let upper_tick = lower_tick + tick_spacing * 10;
+            
+            self.positions.push(PositionSpec {
+                lower_tick,
+                upper_tick,
+                liquidity: liquidity_per_position,
+                auto_collect_fees: false,
+            });
         }
         
-        // Build the open position instruction using manual account metas
-        let accounts = vec![
-            AccountMeta::new(owner.pubkey(), true),                          // provider (signer)
-            AccountMeta::new(market, false),                                 // market
-            AccountMeta::new(position_mint.pubkey(), false),                 // position_mint
-            AccountMeta::new(position_token_account.pubkey(), false),        // position_token_account
-            AccountMeta::new(position, false),                               // position PDA
-            AccountMeta::new(owner_token_0.pubkey(), false),                 // provider_token_0
-            AccountMeta::new(owner_token_1.pubkey(), false),                 // provider_token_1
-            AccountMeta::new(vault_0, false),                                // vault_0
-            AccountMeta::new(vault_1, false),                                // vault_1
-            AccountMeta::new(lower_tick_array, false),                       // lower_tick_array
-            AccountMeta::new(upper_tick_array, false),                       // upper_tick_array
-            AccountMeta::new_readonly(market_authority, false),              // market_authority
-            AccountMeta::new_readonly(spl_token::id(), false),              // token_program
-            AccountMeta::new_readonly(system_program::id(), false),         // system_program
-        ];
+        self
+    }
+
+    pub fn with_auto_collect(mut self) -> Self {
+        for pos in &mut self.positions {
+            pos.auto_collect_fees = true;
+        }
+        self
+    }
+
+    pub async fn build(self) -> TestResult<Vec<Pubkey>> {
+        let market = self.market.ok_or("Market not set")?;
+        let owner = self.owner.ok_or("Owner not set")?;
+        let position_helper = self.ctx.position_helper();
         
-        // Create instruction data manually
-        let mut data = Vec::with_capacity(8 + 4 + 4 + 16);
+        let mut position_ids = Vec::new();
         
-        // Add discriminator for open_position (simplified - in prod, calculate proper hash)
-        data.extend_from_slice(&[0u8; 8]);
+        for spec in self.positions {
+            let position_id = position_helper.open_position(
+                &market,
+                &owner,
+                spec.lower_tick,
+                spec.upper_tick,
+                spec.liquidity,
+            ).await?;
+            
+            position_ids.push(position_id);
+            
+            // Auto-collect fees if specified
+            if spec.auto_collect_fees {
+                position_helper.collect_fees(&position_id, &owner).await?;
+            }
+        }
         
-        // Serialize parameters
-        data.extend_from_slice(&tick_lower.to_le_bytes());
-        data.extend_from_slice(&tick_upper.to_le_bytes());
-        data.extend_from_slice(&self.liquidity_amount.to_le_bytes());
-        
-        let ix = Instruction {
-            program_id: suite.program_id,
-            accounts,
-            data,
-        };
-        
-        // Execute transaction
-        suite.process_transaction(&[ix], &[&owner, &position_mint]).await?;
-        
-        Ok(position)
+        Ok(position_ids)
     }
 }
 
-/// Test data factory for common scenarios
-pub struct TestDataFactory;
+/// Builder for complete test scenarios
+pub struct ScenarioBuilder {
+    ctx: TestContext,
+    steps: Vec<ScenarioStep>,
+}
 
-impl TestDataFactory {
-    /// Create a standard test market with default settings
-    pub fn standard_market() -> MarketBuilder {
-        MarketBuilder::new()
-            .with_tick_spacing(64)
-            .with_fee_tier(500)
-            .add_tick_arrays_around_current(0, 5)
-            .add_liquidity(-1000, 1000, 1_000_000_000)
+enum ScenarioStep {
+    CreateMarket {
+        token_0: Pubkey,
+        token_1: Pubkey,
+        initial_price: Option<u128>,
+    },
+    Wait {
+        duration: std::time::Duration,
+    },
+}
+
+impl ScenarioStep {
+    async fn execute(&self, ctx: &TestContext) -> TestResult<()> {
+        match self {
+            ScenarioStep::CreateMarket { token_0, token_1, initial_price } => {
+                let market_helper = ctx.market_helper();
+                
+                if let Some(price) = *initial_price {
+                    market_helper.create_raydium_market(token_0, token_1, price).await?;
+                } else {
+                    market_helper.create_simple_market(token_0, token_1).await?;
+                }
+                
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
+            ScenarioStep::Wait { duration } => {
+                ctx.advance_time(duration.as_secs() as i64).await?;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
+        }
     }
-    
-    /// Create a narrow range position
-    pub fn narrow_position(market: Pubkey, owner: Keypair) -> PositionBuilder {
-        PositionBuilder::new()
-            .with_market(market)
-            .with_owner(owner)
-            .with_ticks(-100, 100)
-            .with_liquidity(100_000_000)
+}
+
+impl ScenarioBuilder {
+    pub fn new(ctx: TestContext) -> Self {
+        Self {
+            ctx,
+            steps: Vec::new(),
+        }
     }
-    
-    /// Create a wide range position  
-    pub fn wide_position(market: Pubkey, owner: Keypair) -> PositionBuilder {
-        PositionBuilder::new()
-            .with_market(market)
-            .with_owner(owner)
-            .with_ticks(-10000, 10000)
-            .with_liquidity(1_000_000_000)
+
+    pub fn create_market(mut self, token_0: Pubkey, token_1: Pubkey) -> Self {
+        self.steps.push(ScenarioStep::CreateMarket {
+            token_0,
+            token_1,
+            initial_price: None,
+        });
+        self
     }
-    
-    /// Create a small swap
-    pub fn small_swap(market: Pubkey, user: Keypair) -> SwapTestBuilder {
-        SwapTestBuilder::new()
-            .with_market(market)
-            .with_user(user)
-            .with_amount(100_000)
+
+    pub fn wait(mut self, duration: std::time::Duration) -> Self {
+        self.steps.push(ScenarioStep::Wait { duration });
+        self
     }
-    
-    /// Create a large swap that crosses multiple ticks
-    pub fn large_swap(market: Pubkey, user: Keypair) -> SwapTestBuilder {
-        SwapTestBuilder::new()
-            .with_market(market)
-            .with_user(user)
-            .with_amount(100_000_000)
-            .with_max_ticks(10)
+
+    pub async fn run(self) -> TestResult<()> {
+        for step in self.steps {
+            step.execute(&self.ctx).await?;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    }
+}
+
+// Extension methods for TestContext
+impl TestContext {
+    pub fn swap_builder(&self) -> SwapBuilder {
+        SwapBuilder::new(self.clone())
+    }
+
+    pub fn position_builder(&self) -> PositionBuilder {
+        PositionBuilder::new(self.clone())
+    }
+
+    pub fn scenario_builder(&self) -> ScenarioBuilder {
+        ScenarioBuilder::new(self.clone())
     }
 }

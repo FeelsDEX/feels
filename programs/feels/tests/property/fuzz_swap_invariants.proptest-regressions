@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9945bcfd60c436f2853b0161f4abcfa1ea2b6b0a3b8448020a19d0569bdec504 # shrinks to initial_tick = 1, tick_spacing = 1, num_arrays_to_cross = 1, swap_amount_multiplier = 1
+cc 01ebb3711648fa365dc094c74a212231d463f169ecece014ec88578c231bd0a9 # shrinks to initial_sqrt_price = 87912580926922490212171, bound_lower_tick = -100001, bound_upper_tick = 100000, huge_swap_amount = 4611686018427387903, zero_for_one = false

@@ -7,7 +7,6 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::{NUM_TRANCHES, TICK_RANGE_PER_TRANCHE},
     error::FeelsError,
-    utils::sqrt_price_from_tick,
 };
 
 /// Bonding curve configuration

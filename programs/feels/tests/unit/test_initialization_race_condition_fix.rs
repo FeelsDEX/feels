@@ -4,16 +4,13 @@
 //! against race condition attacks where an attacker tries to hijack
 //! the market initialization process.
 
-use feels::state::Market;
-use feels::error::FeelsError;
+use crate::common::*;
+use feels::state::{Market, TokenType, TokenOrigin, PolicyV1};
 use anchor_lang::prelude::*;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_race_condition_attack_scenario() {
+#[tokio::test]
+async fn test_race_condition_attack_scenario() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         // Scenario: Alice initializes market, Bob tries to initialize vaults
         
         // Stage 1: Alice calls initialize_market
@@ -41,10 +38,13 @@ mod tests {
         // Alice can still initialize vaults successfully
         assert_eq!(alice, market.authority);
         // Alice's call would succeed because she matches market.authority
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    #[test]
-    fn test_legitimate_three_stage_flow() {
+#[tokio::test]
+async fn test_legitimate_three_stage_flow() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         // Test the legitimate use case: same user does all three stages
         let creator = Pubkey::new_unique();
         let mut market = create_test_market();
@@ -78,10 +78,13 @@ mod tests {
         assert_ne!(market.vault_0_bump, 0);
         assert_ne!(market.vault_1_bump, 0);
         assert_ne!(market.oracle, Pubkey::default());
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    #[test]
-    fn test_authority_validation_stages() {
+#[tokio::test]
+async fn test_authority_validation_stages() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         let creator = Pubkey::new_unique();
         let attacker = Pubkey::new_unique();
         let market = create_test_market_with_authority(creator);
@@ -95,10 +98,13 @@ mod tests {
         // Stage 3: initialize_oracle  
         assert_eq!(market.authority, creator); // Creator check passes
         assert_ne!(market.authority, attacker); // Attacker check fails
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    #[test]
-    fn test_sequential_initialization_requirements() {
+#[tokio::test]
+async fn test_sequential_initialization_requirements() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         let creator = Pubkey::new_unique();
         let mut market = create_test_market_with_authority(creator);
         
@@ -126,10 +132,13 @@ mod tests {
         // Attempting to initialize oracle again should fail
         market.oracle = Pubkey::new_unique(); // Oracle already set
         assert_ne!(market.oracle, Pubkey::default()); // Would cause OracleAlreadyInitialized
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    #[test]
-    fn test_multiple_attacker_scenarios() {
+#[tokio::test]
+async fn test_multiple_attacker_scenarios() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         let creator = Pubkey::new_unique();
         let attacker_1 = Pubkey::new_unique();
         let attacker_2 = Pubkey::new_unique();
@@ -146,10 +155,13 @@ mod tests {
         
         // Only the original creator can proceed
         assert_eq!(market.authority, creator);
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    #[test]
-    fn test_pda_consistency_after_fix() {
+#[tokio::test]
+async fn test_pda_consistency_after_fix() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
         // Test that the fix doesn't break PDA derivation consistency
         let creator = Pubkey::new_unique();
         let market = create_test_market_with_authority(creator);
@@ -169,10 +181,12 @@ mod tests {
         // So PDA derivation remains predictable and deterministic
         assert_eq!(market.authority, creator); // Authority is stored
         // Market PDA itself is still deterministic from token addresses
-    }
+        
+        Ok::<(), Box<dyn std::error::Error>>(())
+}
     
-    // Helper functions
-    fn create_test_market() -> Market {
+// Helper functions
+fn create_test_market() -> Market {
         Market {
             version: 1,
             is_initialized: false,
@@ -180,6 +194,10 @@ mod tests {
             token_0: Pubkey::new_unique(),
             token_1: Pubkey::new_unique(),
             feelssol_mint: Pubkey::new_unique(),
+            token_0_type: TokenType::Spl,
+            token_1_type: TokenType::Spl,
+            token_0_origin: TokenOrigin::ProtocolMinted,
+            token_1_origin: TokenOrigin::ProtocolMinted,
             sqrt_price: 1 << 64,
             liquidity: 0,
             current_tick: 0,
@@ -196,19 +214,19 @@ mod tests {
             epoch_number: 0,
             oracle: Pubkey::default(),
             oracle_bump: 0,
-            policy: feels::state::PolicyV1::default(),
+            policy: PolicyV1::default(),
             market_authority_bump: 0,
             vault_0_bump: 0,
             vault_1_bump: 0,
             reentrancy_guard: false,
-            _reserved: [0; 3],
+            initial_liquidity_deployed: false,
+            _reserved: [0; 31],
         }
     }
-    
-    fn create_test_market_with_authority(authority: Pubkey) -> Market {
+
+fn create_test_market_with_authority(authority: Pubkey) -> Market {
         let mut market = create_test_market();
         market.authority = authority;
         market.is_initialized = true;
         market
     }
-}

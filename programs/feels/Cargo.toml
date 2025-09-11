@@ -23,6 +23,7 @@ custom-heap = []
 custom-panic = []
 no-idl = []
 no-log-ix-name = []
+test-utils = []
 
 [dependencies]
 anchor-lang = { workspace = true, features = ["init-if-needed"] }
@@ -34,6 +35,8 @@ spl-token = { workspace = true }
 spl-token-2022 = { workspace = true }
 spl-token-metadata-interface = { workspace = true }
 spl-associated-token-account = { workspace = true }
+mpl-token-metadata = { version = "5.1.1", default-features = false }
+ethnum = { version = "1.5.0", default-features = false }
 # spl-math = { version = "0.3.0" } # Commented out due to global allocator conflict
 # ruint = { version = "1.10.1", default-features = false }
 fixed = { version = "1.28", default-features = false, features = ["serde", "num-traits"] }
@@ -49,15 +52,18 @@ integer-sqrt = { workspace = true }
 # Orca Whirlpools core for battle-tested tick math
 orca_whirlpools_core = { version = "2.0.0", default-features = false }
 
-# Feels Core - shared logic between on-chain and off-chain
-feels-core = { path = "../../crates/feels-core", features = ["anchor"] }
-
 [dev-dependencies]
 getrandom = { version = "0.2.16", features = ["custom"] }
-# Integration test dependencies disabled due to yanked solana_rbpf
-# solana-program-test = { workspace = true }
-# solana-sdk = { workspace = true }
-# tokio = { workspace = true }
+# Integration test dependencies
+solana-program-test = { workspace = true }
+solana-sdk = { workspace = true }
+tokio = { workspace = true }
+proptest = "1.0"
+static_assertions = "1.1"
+anyhow = { workspace = true }
+feels-sdk = { path = "../../sdk" }
+async-trait = "0.1"
+solana-client = { workspace = true }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)', 'cfg(target_os, values("solana"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)', 'cfg(target_os, values("solana"))', 'cfg(feature, values("telemetry", "size-checks"))'] }

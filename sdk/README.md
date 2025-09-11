@@ -75,8 +75,8 @@ let mut router = HubRouter::new(feelssol_mint);
 // Add pool (must include FeelsSOL)
 router.add_pool(PoolInfo {
     address: pool_address,
-    token_a: usdc_mint,
-    token_b: feelssol_mint,
+    token_0: usdc_mint,
+    token_1: feelssol_mint,
     fee_rate: 30, // 0.3%
 })?;
 
@@ -148,7 +148,7 @@ let (market, bump) = find_market_address(&token_0, &token_1);
 let (buffer, bump) = find_buffer_address(&market);
 
 // Sort tokens for consistent ordering
-let (sorted_0, sorted_1) = sort_tokens(token_a, token_b);
+let (sorted_0, sorted_1) = sort_tokens(token_0, token_1);
 ```
 
 ## Error Handling
@@ -156,7 +156,7 @@ let (sorted_0, sorted_1) = sort_tokens(token_a, token_b);
 The SDK provides comprehensive error types:
 
 ```rust
-match client.swap(...).await {
+match client.swap(...) {
     Ok(sig) => println!("Success: {}", sig),
     Err(SdkError::SlippageExceeded { expected, actual }) => {
         println!("Slippage too high: {} vs {}", expected, actual);

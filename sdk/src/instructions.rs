@@ -4,13 +4,17 @@ use anchor_lang::prelude::*;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{find_market_address, find_buffer_address, find_vault_address, find_vault_authority_address};
+use crate::{find_market_address, find_buffer_address, find_vault_address, find_vault_authority_address, error::SdkError};
+
+type Result<T> = std::result::Result<T, SdkError>;
 
 // Instruction discriminators (8-byte sighashes)
 const ENTER_FEELSSOL_DISCRIMINATOR: [u8; 8] = [0xc7, 0xcd, 0x31, 0xad, 0x51, 0x32, 0xba, 0x7e]; 
 const EXIT_FEELSSOL_DISCRIMINATOR: [u8; 8] = [0x69, 0x76, 0xa8, 0x94, 0x3d, 0x98, 0x03, 0xaf];
 const SWAP_DISCRIMINATOR: [u8; 8] = [0xf8, 0xc6, 0x9e, 0x91, 0xe1, 0x75, 0x87, 0xc8];
 const INITIALIZE_MARKET_DISCRIMINATOR: [u8; 8] = [0x23, 0x23, 0xbd, 0xc1, 0x9b, 0x30, 0xaa, 0xcb];
+const MINT_TOKEN_DISCRIMINATOR: [u8; 8] = [0xac, 0x89, 0xb7, 0x0e, 0xcf, 0x6e, 0xea, 0x38];
+const DEPLOY_INITIAL_LIQUIDITY_DISCRIMINATOR: [u8; 8] = [0x9f, 0xf7, 0xd1, 0x43, 0xb6, 0x5f, 0x8a, 0x2d];
 
 // Instruction data types
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -59,11 +63,36 @@ impl SwapInstructionData {
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct InitializeMarketInstructionData {
+// Match the program's expected structure
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct PositionCommitment {
+    pub tick_lower: i32,
+    pub tick_upper: i32,
+    pub liquidity: u128,
+    pub position_mint: Pubkey,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct InitialLiquidityCommitment {
+    pub token_0_amount: u64,
+    pub token_1_amount: u64,
+    pub deployer: Pubkey,
+    pub deploy_by: i64,
+    pub position_commitments: Vec<PositionCommitment>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct InitializeMarketParams {
     pub base_fee_bps: u16,
     pub tick_spacing: u16,
     pub initial_sqrt_price: u128,
+    pub liquidity_commitment: InitialLiquidityCommitment,
+    pub initial_buy_feelssol_amount: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct InitializeMarketInstructionData {
+    pub params: InitializeMarketParams,
 }
 
 impl InitializeMarketInstructionData {
@@ -203,93 +232,87 @@ pub fn initialize_market(
     base_fee_bps: u16,
     tick_spacing: u16,
     initial_sqrt_price: u128,
+    initial_buy_feelssol_amount: u64,
+    creator_feelssol: Option<Pubkey>,
+    creator_token_out: Option<Pubkey>,
 ) -> Result<Instruction> {
     let (market, _) = find_market_address(&token_0, &token_1);
     let (buffer, _) = find_buffer_address(&market);
+    let (oracle, _) = Pubkey::find_program_address(
+        &[b"oracle", market.as_ref()],
+        &crate::program_id(),
+    );
     let (vault_0, _) = find_vault_address(&market, &token_0);
     let (vault_1, _) = find_vault_address(&market, &token_1);
-    let (buffer_vault_0, _) = Pubkey::find_program_address(
-        &[b"buffer_vault", buffer.as_ref(), token_0.as_ref()],
+    let (market_authority, _) = Pubkey::find_program_address(
+        &[b"authority", market.as_ref()],
         &crate::program_id(),
     );
-    let (buffer_vault_1, _) = Pubkey::find_program_address(
-        &[b"buffer_vault", buffer.as_ref(), token_1.as_ref()],
-        &crate::program_id(),
-    );
-    let (vault_authority, _) = find_vault_authority_address(&market);
-    let (buffer_authority, _) = Pubkey::find_program_address(
-        &[b"buffer_authority", buffer.as_ref()],
-        &crate::program_id(),
-    );
+    
+    // Protocol token accounts - these can be dummy accounts if token is FeelsSOL
+    let protocol_token_0 = if token_0 == feelssol_mint {
+        solana_sdk::system_program::id() // Use system program as dummy account for FeelsSOL
+    } else {
+        let (protocol_token_0, _) = Pubkey::find_program_address(
+            &[b"protocol_token", token_0.as_ref()],
+            &crate::program_id(),
+        );
+        protocol_token_0
+    };
+    
+    let protocol_token_1 = if token_1 == feelssol_mint {
+        solana_sdk::system_program::id() // Use system program as dummy account for FeelsSOL
+    } else {
+        let (protocol_token_1, _) = Pubkey::find_program_address(
+            &[b"protocol_token", token_1.as_ref()],
+            &crate::program_id(),
+        );
+        protocol_token_1
+    };
+    
+    // Use dummy accounts if not doing initial buy
+    let creator_feelssol_account = creator_feelssol.unwrap_or(solana_sdk::system_program::id());
+    let creator_token_out_account = creator_token_out.unwrap_or(solana_sdk::system_program::id());
     
     Ok(Instruction {
         program_id: crate::program_id(),
         accounts: vec![
             AccountMeta::new(authority, true),
-            AccountMeta::new(market, false),
-            AccountMeta::new(buffer, false),
             AccountMeta::new_readonly(token_0, false),
             AccountMeta::new_readonly(token_1, false),
-            AccountMeta::new_readonly(feelssol_mint, false),
-            AccountMeta::new(vault_0, false),
-            AccountMeta::new(vault_1, false),
-            AccountMeta::new(buffer_vault_0, false),
-            AccountMeta::new(buffer_vault_1, false),
-            AccountMeta::new_readonly(vault_authority, false),
-            AccountMeta::new_readonly(buffer_authority, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::id(), false),
-        ],
-        data: InitializeMarketInstructionData {
-            base_fee_bps,
-            tick_spacing,
-            initial_sqrt_price,
-        }.data(),
-    })
-}
-
-/// Build place floor liquidity instruction
-pub fn place_floor_liquidity(
-    caller: Pubkey,
-    market: Pubkey,
-    token_0_mint: Pubkey,
-    token_1_mint: Pubkey,
-) -> Result<Instruction> {
-    let (buffer, _) = find_buffer_address(&market);
-    let (vault_0, _) = find_vault_address(&market, &token_0_mint);
-    let (vault_1, _) = find_vault_address(&market, &token_1_mint);
-    
-    let (buffer_vault_0, _) = Pubkey::find_program_address(
-        &[b"buffer_vault", buffer.as_ref(), token_0_mint.as_ref()],
-        &crate::program_id(),
-    );
-    
-    let (buffer_vault_1, _) = Pubkey::find_program_address(
-        &[b"buffer_vault", buffer.as_ref(), token_1_mint.as_ref()],
-        &crate::program_id(),
-    );
-    
-    let (buffer_authority, _) = Pubkey::find_program_address(
-        &[b"buffer_authority", buffer.as_ref()],
-        &crate::program_id(),
-    );
-    
-    Ok(Instruction {
-        program_id: crate::program_id(),
-        accounts: vec![
-            AccountMeta::new_readonly(caller, true),
             AccountMeta::new(market, false),
             AccountMeta::new(buffer, false),
+            AccountMeta::new(oracle, false),
             AccountMeta::new(vault_0, false),
             AccountMeta::new(vault_1, false),
-            AccountMeta::new(buffer_vault_0, false),
-            AccountMeta::new(buffer_vault_1, false),
-            AccountMeta::new_readonly(buffer_authority, false),
+            AccountMeta::new_readonly(market_authority, false),
+            AccountMeta::new_readonly(feelssol_mint, false),
+            AccountMeta::new_readonly(protocol_token_0, false),
+            AccountMeta::new_readonly(protocol_token_1, false),
+            AccountMeta::new(creator_feelssol_account, false),
+            AccountMeta::new(creator_token_out_account, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::id(), false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
         ],
-        data: vec![0; 8], // Placeholder discriminator for place_floor_liquidity
+        data: InitializeMarketInstructionData {
+            params: InitializeMarketParams {
+                base_fee_bps,
+                tick_spacing,
+                initial_sqrt_price,
+                liquidity_commitment: InitialLiquidityCommitment {
+                    token_0_amount: 0,
+                    token_1_amount: 0,
+                    deployer: authority,
+                    deploy_by: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64 + 3600, // 1 hour from now
+                    position_commitments: vec![],
+                },
+                initial_buy_feelssol_amount,
+            }
+        }.data(),
     })
 }
 
@@ -321,10 +344,187 @@ pub mod instruction {
     
     #[derive(AnchorSerialize, AnchorDeserialize)]
     pub struct InitializeMarket {
-        pub params: crate::types::InitializeMarketParams,
+        pub params: super::InitializeMarketParams,
     }
     
     
     #[derive(AnchorSerialize, AnchorDeserialize)]
     pub struct PlaceFloorLiquidity {}
+    
+    #[derive(AnchorSerialize, AnchorDeserialize)]
+    pub struct MintToken {
+        pub params: MintTokenParams,
+    }
+}
+
+// Re-export types from the program
+pub use feels::instructions::MintTokenParams;
+
+// Instruction data structure for mint_token
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct MintTokenInstructionData {
+    pub params: MintTokenParams,
+}
+
+impl MintTokenInstructionData {
+    fn data(&self) -> Vec<u8> {
+        let mut data = MINT_TOKEN_DISCRIMINATOR.to_vec();
+        data.extend_from_slice(&self.try_to_vec().unwrap());
+        data
+    }
+}
+
+// Deploy initial liquidity types
+#[derive(Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct DeployInitialLiquidityParams {
+    /// Number of ticks between each stair step
+    pub tick_step_size: i32,
+    /// Optional initial buy amount in FeelsSOL (0 = no initial buy)
+    pub initial_buy_feelssol_amount: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct DeployInitialLiquidityInstructionData {
+    pub params: DeployInitialLiquidityParams,
+}
+
+impl DeployInitialLiquidityInstructionData {
+    fn data(&self) -> Vec<u8> {
+        let mut data = DEPLOY_INITIAL_LIQUIDITY_DISCRIMINATOR.to_vec();
+        data.extend_from_slice(&self.try_to_vec().unwrap());
+        data
+    }
+}
+
+/// Build deploy_initial_liquidity instruction
+pub fn deploy_initial_liquidity(
+    deployer: Pubkey,
+    market: Pubkey,
+    token_0: Pubkey,
+    token_1: Pubkey,
+    feelssol_mint: Pubkey,
+    tick_step_size: i32,
+    initial_buy_feelssol_amount: u64,
+    deployer_feelssol: Option<Pubkey>,
+    deployer_token_out: Option<Pubkey>,
+) -> Result<Instruction> {
+    let (buffer, _) = find_buffer_address(&market);
+    let (vault_0, _) = find_vault_address(&market, &token_0);
+    let (vault_1, _) = find_vault_address(&market, &token_1);
+    let (market_authority, _) = find_vault_authority_address(&market);
+    
+    // Derive buffer authority and vaults
+    let (buffer_authority, _) = Pubkey::find_program_address(
+        &[b"buffer_authority", buffer.as_ref()],
+        &crate::program_id(),
+    );
+    
+    let buffer_token_vault = if token_0 != feelssol_mint {
+        spl_associated_token_account::get_associated_token_address(&buffer_authority, &token_0)
+    } else {
+        spl_associated_token_account::get_associated_token_address(&buffer_authority, &token_1)
+    };
+    
+    let buffer_feelssol_vault = spl_associated_token_account::get_associated_token_address(
+        &buffer_authority,
+        &feelssol_mint,
+    );
+    
+    // Use provided accounts or dummy accounts for initial buy
+    let deployer_feelssol_account = deployer_feelssol.unwrap_or(solana_sdk::system_program::id());
+    let deployer_token_out_account = deployer_token_out.unwrap_or(solana_sdk::system_program::id());
+    
+    let accounts = vec![
+        AccountMeta::new(deployer, true),
+        AccountMeta::new(market, false),
+        AccountMeta::new(deployer_feelssol_account, false),
+        AccountMeta::new(deployer_token_out_account, false),
+        AccountMeta::new(vault_0, false),
+        AccountMeta::new(vault_1, false),
+        AccountMeta::new_readonly(market_authority, false),
+        AccountMeta::new(buffer, false),
+        AccountMeta::new(buffer_token_vault, false),
+        AccountMeta::new(buffer_feelssol_vault, false),
+        AccountMeta::new_readonly(buffer_authority, false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+    ];
+    
+    Ok(Instruction {
+        program_id: crate::program_id(),
+        accounts,
+        data: DeployInitialLiquidityInstructionData {
+            params: DeployInitialLiquidityParams {
+                tick_step_size,
+                initial_buy_feelssol_amount,
+            }
+        }.data(),
+    })
+}
+
+/// Build mint_token instruction
+pub fn mint_token(
+    creator: Pubkey,
+    token_mint: Pubkey,
+    feelssol_mint: Pubkey,
+    params: MintTokenParams,
+) -> Result<Instruction> {
+    // Derive PDAs
+    let (buffer, _) = Pubkey::find_program_address(
+        &[b"buffer", token_mint.as_ref()],
+        &crate::program_id(),
+    );
+    
+    let (buffer_authority, _) = Pubkey::find_program_address(
+        &[b"buffer_authority", buffer.as_ref()],
+        &crate::program_id(),
+    );
+    
+    let (protocol_token, _) = Pubkey::find_program_address(
+        &[b"protocol_token", token_mint.as_ref()],
+        &crate::program_id(),
+    );
+    
+    // Get buffer token vault
+    let buffer_token_vault = spl_associated_token_account::get_associated_token_address(
+        &buffer_authority,
+        &token_mint,
+    );
+    
+    // Get buffer feelssol vault
+    let buffer_feelssol_vault = spl_associated_token_account::get_associated_token_address(
+        &buffer_authority,
+        &feelssol_mint,
+    );
+    
+    // Get metadata account
+    let metadata = Pubkey::find_program_address(
+        &[
+            b"metadata",
+            mpl_token_metadata::ID.as_ref(),
+            token_mint.as_ref(),
+        ],
+        &mpl_token_metadata::ID,
+    ).0;
+    
+    Ok(Instruction {
+        program_id: crate::program_id(),
+        accounts: vec![
+            AccountMeta::new(creator, true),
+            AccountMeta::new(token_mint, true),
+            AccountMeta::new(buffer, false),
+            AccountMeta::new(buffer_token_vault, false),
+            AccountMeta::new(buffer_feelssol_vault, false),
+            AccountMeta::new_readonly(buffer_authority, false),
+            AccountMeta::new_readonly(feelssol_mint, false),
+            AccountMeta::new(protocol_token, false),
+            AccountMeta::new(metadata, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(mpl_token_metadata::ID, false),
+        ],
+        data: MintTokenInstructionData { params }.data(),
+    })
 }

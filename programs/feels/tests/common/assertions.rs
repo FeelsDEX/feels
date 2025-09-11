@@ -1,5 +1,27 @@
 use super::*;
 
+/// Test data structure for market operations
+pub struct MarketTestData {
+    pub market: Market,
+    pub liquidity_before: u128,
+    pub liquidity_after: u128,
+    pub sqrt_price_before: u128,
+    pub sqrt_price_after: u128,
+}
+
+/// Result data structure for swap operations
+pub struct SwapResult {
+    pub amount_in: u64,
+    pub amount_out: u64,
+    pub fee_amount: u64,
+    pub price_before: u128,
+    pub price_after: u128,
+    pub fee_growth_0_before: u128,
+    pub fee_growth_0_after: u128,
+    pub fee_growth_1_before: u128,
+    pub fee_growth_1_after: u128,
+}
+
 /// Common assertions for market state
 pub trait MarketAssertions {
     fn assert_liquidity_conserved(&self, before: u128, after: u128);

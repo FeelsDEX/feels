@@ -1,8 +1,8 @@
 //! Update position fee accrual for lower tick
 //! 
-//! SECURITY: This instruction updates fee accrual for the lower tick only.
-//! Combined with update_position_fee_upper, it allows fee collection for 
-//! positions that span tick arrays too far apart for a single transaction.
+//! This instruction updates fee accrual for the lower tick only.
+//! Combined with update_position_fee_upper, it allows fee collection
+//! for positions spanning tick arrays too far apart for one transaction.
 
 use anchor_lang::prelude::*;
 use crate::{

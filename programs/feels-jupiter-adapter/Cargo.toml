@@ -30,3 +30,7 @@ rust_decimal = "1.0"
 ahash = "0.8"
 # Fix getrandom for BPF
 getrandom = { version = "0.2", features = ["custom"] }
+
+[dev-dependencies]
+solana-sdk = { workspace = true }
+anyhow = { workspace = true }

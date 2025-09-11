@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     
     // Create client
     let client = FeelsClient::new(config)?;
-    println!("\n✅ Client initialized successfully!");
+    println!("\nClient initialized successfully!");
 
     // 2. Token Setup (using example pubkeys)
     let jitosol_mint = Pubkey::from_str("J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn")?;
@@ -46,14 +46,14 @@ async fn main() -> anyhow::Result<()> {
     let usdc_mint = Pubkey::from_str("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")?;
     let sol_mint = Pubkey::from_str("So11111111111111111111111111111111111111112")?;
     
-    println!("\n🪙 Token Configuration:");
+    println!("\nToken Configuration:");
     println!("  JitoSOL: {}", jitosol_mint);
     println!("  FeelsSOL: {}", feelssol_mint);
     println!("  USDC: {}", usdc_mint);
     println!("  SOL: {}", sol_mint);
 
     // 3. PDA Derivation Examples
-    println!("\n🔑 PDA Derivation Examples:");
+    println!("\nPDA Derivation Examples:");
     
     // Sort tokens for consistent ordering
     let (token_0, token_1) = sort_tokens(usdc_mint, feelssol_mint);
@@ -73,27 +73,27 @@ async fn main() -> anyhow::Result<()> {
     println!("  Pool PDA: {} (bump: {}) @ {}bps", pool_address, pool_bump, fee_rate);
 
     // 4. Hub-Constrained Router Setup
-    println!("\n🔄 Setting up Hub-Constrained Router:");
+    println!("\nSetting up Hub-Constrained Router:");
     let mut router = HubRouter::new(feelssol_mint);
     
     // Add pools (all must include FeelsSOL as hub)
     let pools = vec![
         PoolInfo {
             address: Pubkey::new_unique(),
-            token_a: usdc_mint,
-            token_b: feelssol_mint,
+            token_0: usdc_mint,
+            token_1: feelssol_mint,
             fee_rate: 30, // 0.3%
         },
         PoolInfo {
             address: Pubkey::new_unique(),
-            token_a: sol_mint,
-            token_b: feelssol_mint,
+            token_0: sol_mint,
+            token_1: feelssol_mint,
             fee_rate: 25, // 0.25%
         },
         PoolInfo {
             address: Pubkey::new_unique(),
-            token_a: jitosol_mint,
-            token_b: feelssol_mint,
+            token_0: jitosol_mint,
+            token_1: feelssol_mint,
             fee_rate: 10, // 0.1% for entry/exit
         },
     ];
@@ -101,11 +101,11 @@ async fn main() -> anyhow::Result<()> {
     for pool in pools {
         router.add_pool(pool.clone())?;
         println!("  Added pool: {} <-> {} @ {}bps", 
-            pool.token_a, pool.token_b, pool.fee_rate);
+            pool.token_0, pool.token_1, pool.fee_rate);
     }
 
     // 5. Route Finding Examples
-    println!("\n🗺️  Route Finding Examples:");
+    println!("\nRoute Finding Examples:");
     
     // Example 1: Direct route (USDC -> FeelsSOL)
     let route1 = router.find_route(&usdc_mint, &feelssol_mint)?;
@@ -129,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
     println!("    Total fee: {}bps", router.calculate_route_fee(&route3));
 
     // 6. Transaction Examples (would execute on real cluster)
-    println!("\n📝 Transaction Examples (dry run):");
+    println!("\nTransaction Examples (dry run):");
     
     // Example: Enter FeelsSOL
     println!("\n  Enter FeelsSOL:");
@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
     
     // Example: Quote swap
     println!("\n  Quote Swap:");
-    let quote = client.quote_swap(&usdc_mint, &sol_mint, 1_000_000).await?;
+    let quote = client.quote_swap(&usdc_mint, &sol_mint, 1_000_000)?;
     println!("    Input: {} USDC", quote.amount_in as f64 / 1_000_000.0);
     println!("    Output: {} SOL", quote.amount_out as f64 / 1_000_000_000.0);
     println!("    Fee: {} USDC ({}bps)", 
@@ -158,22 +158,22 @@ async fn main() -> anyhow::Result<()> {
     println!("    Route: {} hop(s)", quote.route.hop_count());
 
     // 7. Market Operations (would require initialized market)
-    println!("\n📊 Market Operations:");
+    println!("\nMarket Operations:");
     
     // Example: Get market info
     println!("  Get Market Info:");
-    // let market_info = client.get_market_info(&market_address).await?;
+    // let market_info = client.get_market_info(&market_address)?;
     println!("    Market: {}", market_address);
     println!("    Status: Would fetch actual market data");
     
     // Example: Get buffer info
     println!("\n  Get Buffer Info:");
-    // let buffer_info = client.get_buffer_info(&buffer_address).await?;
+    // let buffer_info = client.get_buffer_info(&buffer_address)?;
     println!("    Buffer: {}", buffer_address);
     println!("    Status: Would fetch actual buffer data");
 
     // 8. Advanced Features
-    println!("\n🚀 Advanced Features:");
+    println!("\nAdvanced Features:");
     
     // Calculate required tick arrays for swap
     println!("  Tick Arrays for Swap:");
@@ -186,8 +186,8 @@ async fn main() -> anyhow::Result<()> {
     println!("    Close Position: Remove liquidity and collect fees");
     println!("    Collect Fees: Harvest accumulated trading fees");
 
-    println!("\n✅ Example completed successfully!");
-    println!("\n💡 Note: This is a dry run. On a real cluster, transactions would be submitted.");
+    println!("\nExample completed successfully!");
+    println!("\nNote: This is a dry run. On a real cluster, transactions would be submitted.");
 
     Ok(())
 }
@@ -195,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
 // Helper function to demonstrate error handling
 #[allow(dead_code)]
 fn demonstrate_error_handling() {
-    println!("\n⚠️  Error Handling Examples:");
+    println!("\nError Handling Examples:");
     
     let feelssol_mint = Pubkey::new_unique();
     let mut router = HubRouter::new(feelssol_mint);
@@ -203,8 +203,8 @@ fn demonstrate_error_handling() {
     // Try to add invalid pool (no hub token)
     let invalid_pool = PoolInfo {
         address: Pubkey::new_unique(),
-        token_a: Pubkey::new_unique(),
-        token_b: Pubkey::new_unique(),
+        token_0: Pubkey::new_unique(),
+        token_1: Pubkey::new_unique(),
         fee_rate: 30,
     };
     

@@ -2,6 +2,9 @@
 
 use anchor_lang::prelude::*;
 use crate::types::{Route, SwapQuote};
+use crate::error::SdkError;
+
+type Result<T> = std::result::Result<T, SdkError>;
 
 /// Calculate a swap quote
 pub fn get_swap_quote(

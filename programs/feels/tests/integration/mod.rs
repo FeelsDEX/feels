@@ -1,7 +1,7 @@
-/// Integration tests will be reintroduced after the unified API and
-/// market-physics-based fee model stabilize.
-///
-/// TODO: Reimplement protocol lifecycle and token validation tests
-/// against the unified instructions and new state layout.
-
-pub mod routing_integration;
+/// Integration tests
+pub mod basic_test;
+pub mod initialize_market_test;
+pub mod mint_token_test;
+pub mod test_creator_market_launch;
+// pub mod test_initialize_vaults; // Disabled - InitializeVaults not in current implementation
+pub mod test_swap_scenarios;

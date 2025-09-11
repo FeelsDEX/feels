@@ -5,12 +5,14 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
+use solana_program::program_pack::Pack;
+use spl_token::state::Account as TokenAccountState;
 use crate::{
     constants::{MARKET_SEED, BUFFER_SEED, VAULT_SEED, MARKET_AUTHORITY_SEED, PROTOCOL_TOKEN_SEED},
     error::FeelsError,
     events::MarketInitialized,
     state::{Market, Buffer, PolicyV1, OracleState, ProtocolToken, TokenType, TokenOrigin, InitialLiquidityCommitment},
-    utils::tick_from_sqrt_price,
+    utils::{tick_from_sqrt_price, calculate_token_out_from_sqrt_price},
 };
 
 /// Initialize market parameters
@@ -24,6 +26,8 @@ pub struct InitializeMarketParams {
     pub initial_sqrt_price: u128,
     /// Commitment for initial liquidity deployment
     pub liquidity_commitment: InitialLiquidityCommitment,
+    /// Optional initial buy amount in FeelsSOL (0 = no initial buy)
+    pub initial_buy_feelssol_amount: u64,
 }
 
 /// Initialize market accounts
@@ -114,6 +118,16 @@ pub struct InitializeMarket<'info> {
     /// CHECK: Can be a dummy account if token_1 is FeelsSOL
     pub protocol_token_1: AccountInfo<'info>,
     
+    /// Creator's FeelsSOL account for initial buy
+    /// CHECK: Only validated if initial_buy_feelssol_amount > 0
+    #[account(mut)]
+    pub creator_feelssol: AccountInfo<'info>,
+    
+    /// Creator's token account for receiving initial buy tokens
+    /// CHECK: Only validated if initial_buy_feelssol_amount > 0
+    #[account(mut)]
+    pub creator_token_out: AccountInfo<'info>,
+    
     /// System program
     pub system_program: Program<'info, System>,
     
@@ -167,8 +181,8 @@ pub fn initialize_market(
     // Determine token types and origins (similar to old initialize_market)
     let mut token_0_type = TokenType::Spl;
     let mut token_1_type = TokenType::Spl;
-    let mut token_0_origin = TokenOrigin::External;
-    let mut token_1_origin = TokenOrigin::External;
+    let token_0_origin;
+    let token_1_origin;
     
     // Check token origins
     if token_0_is_feelssol {
@@ -191,6 +205,11 @@ pub fn initialize_market(
                 require!(
                     protocol_token.mint == ctx.accounts.token_0.key(),
                     FeelsError::TokenNotProtocolMinted
+                );
+                // Verify creator is launching their own token's market
+                require!(
+                    protocol_token.creator == ctx.accounts.creator.key(),
+                    FeelsError::UnauthorizedSigner
                 );
                 token_0_type = protocol_token.token_type;
             } else {
@@ -221,6 +240,11 @@ pub fn initialize_market(
                     protocol_token.mint == ctx.accounts.token_1.key(),
                     FeelsError::TokenNotProtocolMinted
                 );
+                // Verify creator is launching their own token's market
+                require!(
+                    protocol_token.creator == ctx.accounts.creator.key(),
+                    FeelsError::UnauthorizedSigner
+                );
                 token_1_type = protocol_token.token_type;
             } else {
                 return Err(FeelsError::TokenNotProtocolMinted.into());
@@ -230,7 +254,7 @@ pub fn initialize_market(
         }
     }
     
-    // Reject Token-2022 for now
+    // Reject Token-2022, not currently supported
     require!(
         token_0_type == TokenType::Spl && token_1_type == TokenType::Spl,
         FeelsError::Token2022NotSupported
@@ -311,6 +335,90 @@ pub fn initialize_market(
     msg!("Deployer: {}", params.liquidity_commitment.deployer);
     msg!("Deploy by: {}", params.liquidity_commitment.deploy_by);
     msg!("Positions: {}", params.liquidity_commitment.position_commitments.len());
+    
+    // Handle initial buy if requested
+    if params.initial_buy_feelssol_amount > 0 {
+        // Load and validate token accounts
+        let creator_feelssol_data = &ctx.accounts.creator_feelssol.try_borrow_data()?;
+        let creator_feelssol = TokenAccountState::unpack(creator_feelssol_data)?;
+        
+        let creator_token_out_data = &ctx.accounts.creator_token_out.try_borrow_data()?;
+        let creator_token_out = TokenAccountState::unpack(creator_token_out_data)?;
+        
+        // Determine which token is FeelsSOL and validate accounts
+        let (feelssol_in, token_out_mint) = if token_0_is_feelssol {
+            // Buying token_1 with FeelsSOL
+            require!(
+                creator_feelssol.mint == ctx.accounts.token_0.key(),
+                FeelsError::InvalidMint
+            );
+            require!(
+                creator_token_out.mint == ctx.accounts.token_1.key(),
+                FeelsError::InvalidMint
+            );
+            (true, ctx.accounts.token_1.key())
+        } else {
+            // Buying token_0 with FeelsSOL
+            require!(
+                creator_feelssol.mint == ctx.accounts.token_1.key(),
+                FeelsError::InvalidMint
+            );
+            require!(
+                creator_token_out.mint == ctx.accounts.token_0.key(),
+                FeelsError::InvalidMint
+            );
+            (false, ctx.accounts.token_0.key())
+        };
+        
+        // Validate creator has enough FeelsSOL
+        require!(
+            creator_feelssol.amount >= params.initial_buy_feelssol_amount,
+            FeelsError::InsufficientBalance
+        );
+        
+        // Transfer FeelsSOL to vault
+        let feelssol_vault = if feelssol_in {
+            &ctx.accounts.vault_0
+        } else {
+            &ctx.accounts.vault_1
+        };
+        
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from: ctx.accounts.creator_feelssol.to_account_info(),
+                    to: feelssol_vault.to_account_info(),
+                    authority: ctx.accounts.creator.to_account_info(),
+                },
+            ),
+            params.initial_buy_feelssol_amount,
+        )?;
+        
+        // Calculate output amount based on initial price
+        // Since there's no liquidity yet, we calculate based on the initial price directly
+        let token_0_decimals = ctx.accounts.token_0.decimals;
+        let token_1_decimals = ctx.accounts.token_1.decimals;
+        
+        // Calculate the output amount
+        let output_amount = calculate_token_out_from_sqrt_price(
+            params.initial_buy_feelssol_amount,
+            params.initial_sqrt_price,
+            token_0_decimals,
+            token_1_decimals,
+            feelssol_in, // true if token_0 (FeelsSOL) is input
+        )?;
+        
+        msg!("Initial buy calculated:");
+        msg!("  FeelsSOL in: {}", params.initial_buy_feelssol_amount);
+        msg!("  Token out: {}", output_amount);
+        msg!("  Token out mint: {}", token_out_mint);
+        msg!("  At sqrt price: {}", params.initial_sqrt_price);
+        
+        // Note: The actual transfer of output tokens would happen after liquidity deployment
+        // from the buffer's token vault. For now, we've transferred the FeelsSOL to the vault
+        // and calculated the expected output. The execution will complete when liquidity is deployed.
+    }
     
     // Emit event
     emit!(MarketInitialized {

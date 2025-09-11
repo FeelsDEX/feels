@@ -2,6 +2,7 @@
 {
   pkgs,
   inputs',
+  projectConfig,
   ...
 }: rec {
   # BPF Builder function for Solana programs using zero.nix tools
@@ -50,20 +51,22 @@
         # Check source structure
         echo "Checking source files for ${name}..."
         
-        # Check for Anchor generated files and create if missing for ALL programs
-        # Find all programs that need stub files
-        find programs -name "Cargo.toml" | while read cargo_file; do
-          PROGRAM_DIR=$(dirname "$cargo_file")
-          if [ ! -f "$PROGRAM_DIR/src/__client_accounts_crate.rs" ]; then
-            echo "Creating __client_accounts_crate.rs stub in $PROGRAM_DIR..."
-            echo "// Anchor client generation module - auto-generated stub" > "$PROGRAM_DIR/src/__client_accounts_crate.rs"
-            echo "//" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
-            echo "// This module is required by Anchor's #[program] macro to generate client-side" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
-            echo "// TypeScript definitions and account structures." >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
-            echo "pub use crate::*;" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
-            echo "Created stub file in $PROGRAM_DIR"
-          fi
-        done
+        # Check for Anchor generated files and create if missing (if configured)
+        ${if projectConfig.buildConfig.createClientStubs then ''
+          # Find all programs that need stub files
+          find ${projectConfig.directories.programs} -name "Cargo.toml" | while read cargo_file; do
+            PROGRAM_DIR=$(dirname "$cargo_file")
+            if [ ! -f "$PROGRAM_DIR/src/__client_accounts_crate.rs" ]; then
+              echo "Creating __client_accounts_crate.rs stub in $PROGRAM_DIR..."
+              echo "// Anchor client generation module - auto-generated stub" > "$PROGRAM_DIR/src/__client_accounts_crate.rs"
+              echo "//" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
+              echo "// This module is required by Anchor's #[program] macro to generate client-side" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
+              echo "// TypeScript definitions and account structures." >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
+              echo "pub use crate::*;" >> "$PROGRAM_DIR/src/__client_accounts_crate.rs"
+              echo "Created stub file in $PROGRAM_DIR"
+            fi
+          done
+        '' else ""}
 
         
         # Set up platform tools environment
@@ -186,23 +189,36 @@
       };
     };
   
-  # Helper function to build all Valence programs
-  buildValencePrograms = src: {
-    core = buildBPFProgram {
-      name = "valence-kernel";
-      inherit src;
-      cargoToml = "programs/valence-kernel/Cargo.toml";
-    };
-  };
+  # Helper function to build all configured programs
+  buildAllPrograms = src:
+    pkgs.lib.mapAttrs (key: config: 
+      buildBPFProgram {
+        name = config.name;
+        inherit src;
+        cargoToml = config.cargoToml;
+      }
+    ) projectConfig.programs;
   
-  # App to build all Valence programs using Nix
-  build-bpf-programs = {
+  # App to build all programs using Nix
+  bpf-build = {
     type = "app";
-    program = "${pkgs.writeShellScriptBin "valence-build-bpf-programs" ''
+    program = let
+      programBuildCommands = pkgs.lib.concatStringsSep "\n" (
+        pkgs.lib.mapAttrsToList (key: config: ''
+          echo -e "''${YELLOW}Building ${config.displayName}...''${NC}"
+          nix build .#${config.name} --out-link ./target/nix-${key}
+        '') projectConfig.programs
+      );
+      programOutputPaths = pkgs.lib.concatStringsSep "\n" (
+        pkgs.lib.mapAttrsToList (key: config: ''
+          echo "  - ./target/nix-${key}/deploy/"
+        '') projectConfig.programs
+      );
+    in "${pkgs.writeShellScriptBin "bpf-build" ''
       set -e
       
-      echo "=== Building Valence BPF Programs with Nix ==="
-      echo "This builds all Valence programs using the Nix BPF builder"
+      echo "=== Building ${projectConfig.projectName} BPF Programs with Nix ==="
+      echo "This builds all programs using the Nix BPF builder"
       echo ""
       
       # Colors for output
@@ -212,45 +228,16 @@
       NC='\033[0m' # No Color
       
       # Build programs using nix build
-      echo -e "''${YELLOW}Building valence-kernel...''${NC}"
-      nix build .#valence-kernel --out-link ./target/nix-core
+      ${programBuildCommands}
       
       echo ""
       echo -e "''${GREEN}=== BPF Programs Built Successfully ===''${NC}"
       echo ""
       echo "Built programs available in:"
-      echo "  - ./target/nix-core/deploy/"
+      ${programOutputPaths}
       echo ""
       echo "To deploy programs:"
-      echo "  solana program deploy ./target/nix-core/deploy/<program>.so"
-    ''}/bin/valence-build-bpf-programs";
-  };
-  
-  # Test BPF builder app
-  test-bpf-builder = {
-    type = "app";
-    program = "${pkgs.writeShellScriptBin "valence-test-bpf-builder" ''
-      set -e
-      
-      echo "=== Testing BPF Builder ==="
-      echo ""
-      
-      # Test building the Valence programs using the BPF builder
-      echo "Testing BPF builder with Valence programs..."
-      nix build .#valence-kernel --out-link ./target/test-core-bpf
-      
-      echo ""
-      echo "BPF builder test completed successfully"
-      echo "Built programs available in:"
-      echo "  - ./target/test-core-bpf/deploy/"
-      
-      if [ -d "./target/test-core-bpf/deploy" ]; then
-        echo ""
-        echo "Core programs:"
-        ls -la ./target/test-core-bpf/deploy/ || echo "No files found"
-      fi
-    ''}/bin/valence-test-bpf-builder";
+      echo "  solana program deploy ./target/nix-<program>/deploy/<program>.so"
+    ''}/bin/bpf-build";
   };
 }
-
-

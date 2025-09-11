@@ -49,8 +49,8 @@ impl FeelsClient {
     }
     
     /// Get market info
-    pub async fn get_market_info(&self, market: &Pubkey) -> SdkResult<MarketInfo> {
-        let account: Market = self.program.account(*market).await
+    pub fn get_market_info(&self, market: &Pubkey) -> SdkResult<MarketInfo> {
+        let account: Market = self.program.account(*market)
             .map_err(|e| SdkError::AccountNotFound(format!("Market {}: {}", market, e)))?;
         
         Ok(MarketInfo {
@@ -65,8 +65,8 @@ impl FeelsClient {
     }
     
     /// Get buffer info  
-    pub async fn get_buffer_info(&self, buffer: &Pubkey) -> SdkResult<BufferInfo> {
-        let account: Buffer = self.program.account(*buffer).await
+    pub fn get_buffer_info(&self, buffer: &Pubkey) -> SdkResult<BufferInfo> {
+        let account: Buffer = self.program.account(*buffer)
             .map_err(|e| SdkError::AccountNotFound(format!("Buffer {}: {}", buffer, e)))?;
         
         Ok(BufferInfo {
@@ -82,7 +82,7 @@ impl FeelsClient {
     }
     
     /// Quote a swap
-    pub async fn quote_swap(
+    pub fn quote_swap(
         &self,
         from_mint: &Pubkey,
         to_mint: &Pubkey,
@@ -107,7 +107,7 @@ impl FeelsClient {
     }
     
     /// Execute a swap
-    pub async fn swap(
+    pub fn swap(
         &self,
         user_token_in: &Pubkey,
         user_token_out: &Pubkey,
@@ -133,14 +133,13 @@ impl FeelsClient {
         
         let sig = self.program.request()
             .instruction(ix)
-            .send()
-            .await?;
+            .send()?;
         
         Ok(sig)
     }
     
     /// Enter FeelsSOL
-    pub async fn enter_feelssol(
+    pub fn enter_feelssol(
         &self,
         user_jitosol: &Pubkey,
         user_feelssol: &Pubkey,
@@ -159,14 +158,13 @@ impl FeelsClient {
         
         let sig = self.program.request()
             .instruction(ix)
-            .send()
-            .await?;
+            .send()?;
         
         Ok(sig)
     }
     
     /// Exit FeelsSOL
-    pub async fn exit_feelssol(
+    pub fn exit_feelssol(
         &self,
         user_feelssol: &Pubkey,
         user_jitosol: &Pubkey,
@@ -185,8 +183,7 @@ impl FeelsClient {
         
         let sig = self.program.request()
             .instruction(ix)
-            .send()
-            .await?;
+            .send()?;
         
         Ok(sig)
     }
@@ -218,7 +215,7 @@ impl FeelsClient {
     }
     
     /// Find market for token pair (placeholder)
-    fn find_market(&self, _token_a: &Pubkey, _token_b: &Pubkey) -> SdkResult<Pubkey> {
+    fn find_market(&self, _token_0: &Pubkey, _token_1: &Pubkey) -> SdkResult<Pubkey> {
         // This would derive the market PDA
         // For now, return a placeholder
         Ok(Pubkey::default())

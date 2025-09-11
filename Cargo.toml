@@ -2,31 +2,29 @@
 resolver = "2"
 members = [
     "programs/feels",
-    "crates/sdk",
-    "crates/keeper",
-    "crates/feels-core",
-    "simulation",
+    "programs/feels-jupiter-adapter",
+    "sdk",
 ]
 
 [workspace.dependencies]
-anchor-lang = "0.29.0"
-anchor-client = "0.29.0"
-anchor-spl = "0.29.0"
-solana-program = "=1.18.26"
-solana-sdk = "=1.18.26"
-solana-client = "=1.18.26"
+anchor-lang = "0.31.1"
+anchor-client = "0.31.1"
+anchor-spl = "0.31.1"
+solana-program = "2.2.1"
+solana-sdk = "2.2.1"
+solana-client = "2.2.1"
 # Force older version to avoid Rust 1.85 requirement
 base64ct = "=1.6.0"
-borsh = "0.10"
+borsh = "0.10.3"
 bytemuck = "1.14"
-spl-token = "4.0.0"
-spl-token-2022 = { version = "1.0.0", default-features = false }
-spl-token-metadata-interface = "0.2.0"
-spl-associated-token-account = "2.3.0"
+spl-token = "7.0"
+spl-token-2022 = { version = "6.0", default-features = false }
+spl-token-metadata-interface = "0.6"
+spl-associated-token-account = "6.0"
 integer-sqrt = "0.1"
-
-# Shared protocol crates
-feels-core = { path = "crates/feels-core" }
+getrandom = { version = "0.2", features = ["custom"] }
+# Pin ahash to avoid getrandom 0.3 dependency
+ahash = { version = "=0.8.6", default-features = false }
 
 # Common dependencies
 serde = { version = "1.0", features = ["derive"] }
@@ -38,16 +36,9 @@ tokio = { version = "1", features = ["full"] }
 fixed = { version = "1.28", features = ["serde", "num-traits"] }
 num-traits = "0.2"
 # Test dependencies disabled due to yanked solana_rbpf dependency
-# solana-program-test = "1.18.26"
-# solana-sdk = "1.18.26"
-# tokio = "1"
+solana-program-test = "2.2.1"
 
 [profile.release]
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-
-# Patches disabled due to yanked dependency conflicts
-
-
-

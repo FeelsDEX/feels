@@ -229,36 +229,28 @@ pub fn get_swap_scenarios() -> Vec<SwapScenario> {
 }
 
 /// Helper to create a standard test environment
-pub async fn create_standard_test_env(suite: &mut TestSuite) -> TestResult<StandardTestEnv> {
+pub async fn create_standard_test_env(ctx: &TestContext) -> TestResult<StandardTestEnv> {
     let accounts = get_test_accounts();
     
     // Airdrop SOL to test accounts
-    suite.airdrop(&accounts.alice.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
-    suite.airdrop(&accounts.bob.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
-    suite.airdrop(&accounts.market_creator.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
+    ctx.airdrop(&accounts.alice.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
+    ctx.airdrop(&accounts.bob.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
+    ctx.airdrop(&accounts.market_creator.pubkey(), test_constants::DEFAULT_AIRDROP).await?;
     
     // Create mints
-    let jitosol_mint = suite.create_mint(
+    let jitosol_mint = ctx.create_mint(
         &accounts.market_creator.pubkey(),
         test_constants::JITOSOL_DECIMALS,
     ).await?;
     
-    let feelssol_mint = suite.create_mint(
+    let feelssol_mint = ctx.create_mint(
         &accounts.market_creator.pubkey(),
         test_constants::FEELSSOL_DECIMALS,
     ).await?;
     
-    let test_token_mint = suite.create_mint(
+    let test_token_mint = ctx.create_mint(
         &accounts.market_creator.pubkey(),
         test_constants::TEST_TOKEN_DECIMALS,
-    ).await?;
-    
-    // Initialize FeelsSOL environment
-    #[cfg(feature = "test-utils")]
-    suite.init_feelssol_test_env(
-        jitosol_mint.pubkey(),
-        feelssol_mint.pubkey(),
-        &accounts.market_creator,
     ).await?;
     
     Ok(StandardTestEnv {

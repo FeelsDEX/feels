@@ -17,21 +17,8 @@ use crate::{
     error::FeelsError,
     events::TokenMinted,
     state::Buffer,
-    utils::validate_distribution,
 };
 
-/// Distribution recipient
-#[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
-pub struct DistributionRecipient {
-    pub address: Pubkey,
-    pub amount: u64,
-}
-
-/// Wrapper for recipients to help with type inference
-#[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
-pub struct RecipientList {
-    pub recipients: Vec<DistributionRecipient>,
-}
 
 /// Parameters for minting a new token
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
@@ -39,8 +26,6 @@ pub struct MintTokenParams {
     pub ticker: String,
     pub name: String,
     pub uri: String,
-    pub creator_amount: u64,
-    pub recipients: RecipientList,
 }
 
 #[derive(Accounts)]
@@ -59,18 +44,10 @@ pub struct MintToken<'info> {
         init,
         payer = creator,
         mint::decimals = TOKEN_DECIMALS,
-        mint::authority = mint_authority.key(),
+        mint::authority = creator.key(), // Initially set to creator, will be transferred
     )]
     pub token_mint: Account<'info, Mint>,
     
-    /// Creator's token account
-    #[account(
-        init,
-        payer = creator,
-        associated_token::mint = token_mint,
-        associated_token::authority = creator,
-    )]
-    pub creator_token: Account<'info, TokenAccount>,
     
     /// Buffer account for this token
     #[account(
@@ -107,10 +84,6 @@ pub struct MintToken<'info> {
         bump,
     )]
     pub buffer_authority: AccountInfo<'info>,
-    
-    /// Mint authority (temporary)
-    /// CHECK: Will be transferred to buffer authority
-    pub mint_authority: AccountInfo<'info>,
     
     /// Metadata account
     /// CHECK: Created by Metaplex CPI
@@ -154,17 +127,8 @@ pub struct MintToken<'info> {
 }
 
 pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()> {
-    // Calculate total distribution
-    let mut distribution_total = params.creator_amount;
-    for recipient in &params.recipients.recipients {
-        distribution_total = distribution_total
-            .checked_add(recipient.amount)
-            .ok_or(FeelsError::MathOverflow)?;
-    }
-    
-    // Validate distribution (50% must go to buffer)
-    let buffer_amount = TOTAL_SUPPLY / 2; // 500M tokens
-    validate_distribution(distribution_total, TOTAL_SUPPLY, buffer_amount)?;
+    // All tokens go to buffer (100% of supply)
+    let buffer_amount = TOTAL_SUPPLY;
     
     // Validate ticker and name lengths
     require!(params.ticker.len() <= 10, FeelsError::InvalidPrice);
@@ -203,7 +167,7 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
     let create_metadata_ix = CreateMetadataAccountV3 {
         metadata: ctx.accounts.metadata.key(),
         mint: ctx.accounts.token_mint.key(),
-        mint_authority: ctx.accounts.mint_authority.key(),
+        mint_authority: ctx.accounts.creator.key(), // Creator is the mint authority initially
         payer: ctx.accounts.creator.key(),
         update_authority: (ctx.accounts.creator.key(), true), // (authority, is_signer)
         system_program: ctx.accounts.system_program.key(),
@@ -215,55 +179,39 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
     });
     
     // Execute CPI to create metadata
-    anchor_lang::solana_program::program::invoke(
+    anchor_lang::solana_program::program::invoke_signed(
         &create_metadata_ix,
         &[
             ctx.accounts.metadata.to_account_info(),
             ctx.accounts.token_mint.to_account_info(),
-            ctx.accounts.mint_authority.to_account_info(),
-            ctx.accounts.creator.to_account_info(),
+            ctx.accounts.creator.to_account_info(), // Creator is mint authority
+            ctx.accounts.creator.to_account_info(), // Also payer
             ctx.accounts.system_program.to_account_info(),
             ctx.accounts.rent.to_account_info(),
             ctx.accounts.metadata_program.to_account_info(),
         ],
+        &[], // No seeds needed, creator is already a signer
     )?;
     
-    // Mint tokens to distribution addresses
-    // First mint to creator
-    token::mint_to(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token::MintTo {
-                mint: ctx.accounts.token_mint.to_account_info(),
-                to: ctx.accounts.creator_token.to_account_info(),
-                authority: ctx.accounts.mint_authority.to_account_info(),
-            },
-        ),
-        params.creator_amount,
-    )?;
-    
-    // Mint to buffer
+    // Mint all tokens to buffer
     token::mint_to(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             token::MintTo {
                 mint: ctx.accounts.token_mint.to_account_info(),
                 to: ctx.accounts.buffer_token_vault.to_account_info(),
-                authority: ctx.accounts.mint_authority.to_account_info(),
+                authority: ctx.accounts.creator.to_account_info(),
             },
         ),
         buffer_amount,
     )?;
-    
-    // Note: In production, would also mint to other recipients
-    // For MVP, skipping to keep it simple
     
     // Transfer mint authority to buffer authority PDA
     token::set_authority(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             token::SetAuthority {
-                current_authority: ctx.accounts.mint_authority.to_account_info(),
+                current_authority: ctx.accounts.creator.to_account_info(),
                 account_or_mint: ctx.accounts.token_mint.to_account_info(),
             },
         ),
@@ -288,7 +236,7 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
         name: params.name,
         total_supply: TOTAL_SUPPLY,
         buffer_amount,
-        creator_amount: params.creator_amount,
+        creator_amount: 0,
         buffer_account: buffer.key(),
         timestamp: Clock::get()?.unix_timestamp,
     });

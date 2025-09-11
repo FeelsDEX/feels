@@ -78,32 +78,48 @@ impl Buffer {
     }
     
     /// Collect fee to appropriate partition (MVP only uses spot)
+    /// SECURITY: This function is transactional - it only modifies state if all operations succeed
     pub fn collect_fee(&mut self, amount: u64, token_index: usize, domain: FeeDomain) -> Result<()> {
         let amount_u128 = amount as u128;
-        match domain {
+        
+        // First, calculate all new values without modifying state
+        let new_tau = match domain {
             FeeDomain::Spot => {
-                self.tau_spot = self.tau_spot.checked_add(amount_u128)
-                    .ok_or(crate::error::FeelsError::MathOverflow)?;
+                self.tau_spot.checked_add(amount_u128)
+                    .ok_or(crate::error::FeelsError::MathOverflow)?
             }
             FeeDomain::Time => {
                 // Not used in MVP
-                self.tau_time = self.tau_time.checked_add(amount_u128)
-                    .ok_or(crate::error::FeelsError::MathOverflow)?;
+                self.tau_time.checked_add(amount_u128)
+                    .ok_or(crate::error::FeelsError::MathOverflow)?
             }
             FeeDomain::Leverage => {
                 // Not used in MVP
-                self.tau_leverage = self.tau_leverage.checked_add(amount_u128)
-                    .ok_or(crate::error::FeelsError::MathOverflow)?;
+                self.tau_leverage.checked_add(amount_u128)
+                    .ok_or(crate::error::FeelsError::MathOverflow)?
             }
+        };
+        
+        // Calculate new fee totals
+        let new_fees = if token_index == 0 {
+            self.fees_token_0.checked_add(amount_u128)
+                .ok_or(crate::error::FeelsError::MathOverflow)?
+        } else {
+            self.fees_token_1.checked_add(amount_u128)
+                .ok_or(crate::error::FeelsError::MathOverflow)?
+        };
+        
+        // Only modify state after all checks pass
+        match domain {
+            FeeDomain::Spot => self.tau_spot = new_tau,
+            FeeDomain::Time => self.tau_time = new_tau,
+            FeeDomain::Leverage => self.tau_leverage = new_tau,
         }
         
-        // Track total fees by token
         if token_index == 0 {
-            self.fees_token_0 = self.fees_token_0.checked_add(amount_u128)
-                .ok_or(crate::error::FeelsError::MathOverflow)?;
+            self.fees_token_0 = new_fees;
         } else {
-            self.fees_token_1 = self.fees_token_1.checked_add(amount_u128)
-                .ok_or(crate::error::FeelsError::MathOverflow)?;
+            self.fees_token_1 = new_fees;
         }
         
         Ok(())

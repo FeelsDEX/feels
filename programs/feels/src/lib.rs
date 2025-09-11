@@ -2,6 +2,7 @@
 
 // Suppress specific deprecated warnings from Anchor/Solana runtime
 #![allow(deprecated_safe)]
+#![allow(deprecated)]
 
 pub mod constants;
 pub mod error;  
@@ -129,7 +130,7 @@ pub mod feels {
         amount_1_min: u64,
     ) -> Result<()> {
         // For metadata version, always close the account
-        let params = ClosePositionParams {
+        let _params = ClosePositionParams {
             amount_0_min,
             amount_1_min,
             close_account: true,

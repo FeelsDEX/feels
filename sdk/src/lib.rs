@@ -25,7 +25,7 @@ pub use utils::*;
 use anchor_lang::prelude::*;
 
 /// Program ID for Feels Protocol
-pub const PROGRAM_ID: &str = "FEELSjMmBW8cB9SsoNXdQiKtFYbNVUe2tTEKKZmu6E1";
+pub const PROGRAM_ID: &str = "2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1";
 
 /// Get the program ID as a Pubkey
 pub fn program_id() -> Pubkey {

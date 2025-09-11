@@ -1,9 +1,12 @@
 use crate::common::*;
 use proptest::prelude::*;
+use feels::error::FeelsError;
+use feels::utils::{get_tick_array_start_index, sqrt_price_from_tick, tick_from_sqrt_price};
+use orca_whirlpools_core::{tick_index_to_sqrt_price, sqrt_price_to_tick_index, U128};
 
 /// Generate a valid sqrt price within market bounds
 fn sqrt_price_strategy() -> impl Strategy<Value = u128> {
-    (fixtures::test_constants::MIN_SQRT_PRICE..fixtures::test_constants::MAX_SQRT_PRICE)
+    (constants::MIN_SQRT_PRICE..constants::MAX_SQRT_PRICE)
 }
 
 /// Generate a valid liquidity amount
@@ -19,10 +22,10 @@ fn swap_amount_strategy() -> impl Strategy<Value = u64> {
 /// Generate a valid fee tier
 fn fee_tier_strategy() -> impl Strategy<Value = u16> {
     prop_oneof![
-        Just(fixtures::test_constants::STABLE_FEE_TIER),
-        Just(fixtures::test_constants::LOW_FEE_TIER),
-        Just(fixtures::test_constants::MEDIUM_FEE_TIER),
-        Just(fixtures::test_constants::HIGH_FEE_TIER),
+        Just(constants::STABLE_FEE_TIER),
+        Just(constants::LOW_FEE_TIER),
+        Just(constants::MEDIUM_FEE_TIER),
+        Just(constants::HIGH_FEE_TIER),
         (1u16..=10000u16), // Any fee up to 100%
     ]
 }
@@ -126,8 +129,8 @@ proptest! {
         tick_index in i32::MIN..=i32::MAX,
         tick_spacing in 1u16..=1000u16,
     ) {
-        let array_start = crate::utils::get_tick_array_start_index(tick_index, tick_spacing);
-        let array_size = (crate::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
+        let array_start = get_tick_array_start_index(tick_index, tick_spacing);
+        let array_size = (feels::state::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
         
         // Invariant 1: Array start is aligned to array size
         prop_assert_eq!(
@@ -148,7 +151,7 @@ proptest! {
         
         // Invariant 3: Consistent for nearby ticks
         if tick_index < i32::MAX {
-            let next_tick_array = crate::utils::get_tick_array_start_index(
+            let next_tick_array = get_tick_array_start_index(
                 tick_index + 1,
                 tick_spacing
             );
@@ -211,9 +214,9 @@ proptest! {
     fn fuzz_price_tick_consistency(
         sqrt_price in sqrt_price_strategy(),
     ) {
-        let tick = crate::math::sqrt_price_to_tick_index(sqrt_price);
-        let sqrt_price_from_tick = crate::math::tick_index_to_sqrt_price(tick).0;
-        let tick_from_price = crate::math::sqrt_price_to_tick_index(sqrt_price_from_tick);
+        let tick = sqrt_price_to_tick_index(U128::from(sqrt_price));
+        let sqrt_price_from_tick = tick_index_to_sqrt_price(tick);
+        let tick_from_price = sqrt_price_to_tick_index(U128::from(sqrt_price_from_tick));
         
         // Invariant: Converting back and forth maintains tick
         // (Price may change slightly due to rounding)
@@ -298,7 +301,7 @@ proptest! {
         swap_amount_multiplier in 1u64..=100u64,
     ) {
         // Calculate array span
-        let array_span = (crate::state::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
+        let array_span = (feels::state::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
         
         // Calculate expected final tick after crossing multiple arrays
         let ticks_to_cross = array_span * num_arrays_to_cross as i32;
@@ -342,10 +345,10 @@ proptest! {
         zero_for_one: bool,
     ) {
         // Convert bound ticks to sqrt prices
-        let bound_lower_sqrt = crate::utils::sqrt_price_from_tick(bound_lower_tick)
-            .unwrap_or(fixtures::test_constants::MIN_SQRT_PRICE);
-        let bound_upper_sqrt = crate::utils::sqrt_price_from_tick(bound_upper_tick)
-            .unwrap_or(fixtures::test_constants::MAX_SQRT_PRICE);
+        let bound_lower_sqrt = sqrt_price_from_tick(bound_lower_tick)
+            .unwrap_or(constants::MIN_SQRT_PRICE);
+        let bound_upper_sqrt = sqrt_price_from_tick(bound_upper_tick)
+            .unwrap_or(constants::MAX_SQRT_PRICE);
         
         // Simulate a swap that would exceed bounds
         let final_sqrt_price = if zero_for_one {
@@ -372,7 +375,7 @@ proptest! {
         
         // Property 2: At bound, tick should match exactly
         if final_sqrt_price == bound_lower_sqrt {
-            let final_tick = crate::utils::tick_from_sqrt_price(final_sqrt_price)
+            let final_tick = tick_from_sqrt_price(final_sqrt_price)
                 .unwrap_or(bound_lower_tick);
             prop_assert_eq!(
                 final_tick,
@@ -380,7 +383,7 @@ proptest! {
                 "Tick should match lower bound exactly"
             );
         } else if final_sqrt_price == bound_upper_sqrt {
-            let final_tick = crate::utils::tick_from_sqrt_price(final_sqrt_price)
+            let final_tick = tick_from_sqrt_price(final_sqrt_price)
                 .unwrap_or(bound_upper_tick);
             prop_assert_eq!(
                 final_tick,
@@ -415,7 +418,7 @@ proptest! {
         zero_for_one: bool,
     ) {
         // Calculate array boundaries
-        let array_span = (crate::state::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
+        let array_span = (feels::state::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
         let current_array_start = (current_tick / array_span) * array_span;
         
         // Calculate which array would be missing
@@ -485,7 +488,7 @@ fn compute_swap_step(
     amount: u64,
     fee_bps: u16,
     zero_for_one: bool,
-) -> Result<SwapStepResult> {
+) -> std::result::Result<SwapStepResult, FeelsError> {
     // Mock implementation
     Ok(SwapStepResult {
         sqrt_price_next: if zero_for_one {
@@ -504,7 +507,7 @@ fn calculate_tokens_from_liquidity(
     sqrt_price_lower: u128,
     sqrt_price_upper: u128,
     sqrt_price_current: u128,
-) -> Result<(u64, u64)> {
+) -> std::result::Result<(u64, u64), FeelsError> {
     // Mock implementation
     if sqrt_price_current <= sqrt_price_lower {
         Ok((100000, 0))

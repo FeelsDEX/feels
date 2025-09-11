@@ -301,3 +301,69 @@ pub mod safe {
         div_ceil_u128(fee_amount, 10000).map(|v| v as u64)
     }
 }
+
+/// Calculate token output amount from sqrt price for initial buy
+/// 
+/// This calculates how many output tokens you get for a given input amount
+/// at the specified sqrt price, accounting for decimal differences.
+/// 
+/// sqrt_price = sqrt(price) * 2^64 where price = token1/token0
+pub fn calculate_token_out_from_sqrt_price(
+    amount_in: u64,
+    sqrt_price: u128,
+    token_0_decimals: u8,
+    token_1_decimals: u8,
+    is_token_0_input: bool,
+) -> Result<u64> {
+    // Convert sqrt_price to actual price
+    // price = (sqrt_price / 2^64)^2
+    let sqrt_price_q64 = U256::from(sqrt_price);
+    let q64 = U256::from(1u128 << 64);
+    
+    // Calculate price = (sqrt_price)^2 / 2^128
+    let price_q128 = sqrt_price_q64 * sqrt_price_q64;
+    
+    // Adjust for decimal differences
+    let decimal_adjustment = if token_0_decimals > token_1_decimals {
+        U256::from(10u128.pow((token_0_decimals - token_1_decimals) as u32))
+    } else if token_1_decimals > token_0_decimals {
+        U256::from(1u64) // Will divide by this factor below
+    } else {
+        U256::from(1u64)
+    };
+    
+    let amount_out = if is_token_0_input {
+        // Buying token_1 with token_0
+        // token1_amount = token0_amount * price * decimal_adjustment
+        let amount_in_u256 = U256::from(amount_in);
+        let numerator = amount_in_u256 * price_q128;
+        let denominator = q64 * q64; // 2^128
+        
+        let result = if token_1_decimals > token_0_decimals {
+            let adj_factor = U256::from(10u128.pow((token_1_decimals - token_0_decimals) as u32));
+            (numerator * adj_factor) / denominator
+        } else {
+            (numerator / decimal_adjustment) / denominator
+        };
+        
+        result
+    } else {
+        // Buying token_0 with token_1
+        // token0_amount = token1_amount / price / decimal_adjustment
+        let amount_in_u256 = U256::from(amount_in);
+        let numerator = amount_in_u256 * q64 * q64; // amount * 2^128
+        let denominator = price_q128;
+        
+        let result = if token_0_decimals > token_1_decimals {
+            (numerator / denominator) * decimal_adjustment
+        } else {
+            let adj_factor = U256::from(10u128.pow((token_1_decimals - token_0_decimals) as u32));
+            (numerator / denominator) / adj_factor
+        };
+        
+        result
+    };
+    
+    // Convert back to u64, ensuring no overflow
+    Ok(u64::try_from(amount_out.min(U256::from(u64::MAX))).unwrap_or(u64::MAX))
+}

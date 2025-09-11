@@ -4,95 +4,139 @@ This directory contains comprehensive tests for the Feels protocol, organized by
 
 ## Overview
 
+The test suite has been refactored to support multiple testing environments:
+- **In-Memory**: Fast unit tests using `solana-program-test` 
+- **Devnet**: Integration tests against devnet (requires `RUN_DEVNET_TESTS=1`)
+- **Localnet**: Integration tests against local validator
+
 The test suite provides coverage for:
 - Mathematical operations and utilities (unit tests)
 - Instruction validation and constraints (unit tests)  
 - Protocol lifecycle and cross-instruction interactions (integration tests)
 - AMM operations and token management (functional tests)
-- Token ticker validation system (integration tests)
+- Security vulnerability regression tests
 
 ## Module Structure
 
 ```
 tests/
-├── unit/
-│   ├── math_operations.rs     # Mathematical function tests
-│   ├── math_tick.rs          # Tick math specific tests
-│   ├── instruction_validation.rs # Instruction validation tests
-│   └── mod.rs                # Unit test module exports
-├── integration/
-│   ├── protocol_lifecycle.rs # Protocol initialization and lifecycle
-│   ├── token_validate.rs     # Token validation integration tests
-│   └── mod.rs                # Integration test module exports
-├── functional/
-│   ├── amm_operations.rs     # End-to-end AMM functionality tests
-│   └── mod.rs                # Functional test module exports
-└── README.md                 # This file
+├── common/               # Shared test infrastructure
+│   ├── mod.rs           # Module organization
+│   ├── client.rs        # Test client abstraction (InMemory/Devnet)
+│   ├── context.rs       # Test context and pre-configured accounts
+│   ├── environment.rs   # Environment configuration
+│   ├── helpers.rs       # High-level test helpers
+│   ├── builders.rs      # Test data builders
+│   ├── macros.rs        # Test macros for multi-environment testing
+│   └── time.rs          # Time manipulation utilities
+├── unit/                # Unit tests for individual components
+│   ├── instructions/    # Instruction-specific tests
+│   ├── state/           # State struct tests
+│   └── test_*.rs        # Component unit tests
+├── integration/         # Integration tests for features
+│   ├── basic_test.rs    # Basic integration tests
+│   ├── initialize_market_test.rs # Market initialization
+│   └── test_swap_scenarios.rs    # Swap integration tests
+├── e2e/                 # End-to-end scenario tests
+│   ├── test_full_trading_flow.rs # Complete trading lifecycle
+│   ├── test_position_metadata.rs # NFT position tests
+│   └── test_token_lifecycle.rs   # Token lifecycle tests
+├── property/            # Property-based tests
+│   └── fuzz_*.rs        # Fuzz tests for invariants
+└── README.md            # This file
 ```
 
 ## Quick Start
 
+### Prerequisites
+
+1. **Build the BPF program first**:
+```bash
+cargo build-sbf
+```
+
+2. The tests will automatically find the BPF binary in `target/deploy/feels.so`
+
 ### Running Tests
 
 ```bash
-# Run all tests
-cargo test
+# Using nix environment (recommended)
+nix develop --command cargo test
+
+# Or use the test runner script
+./run-tests.sh
 
 # Run specific test categories
-cargo test unit        # Unit tests only
-cargo test integration # Integration tests only
-cargo test functional  # Functional tests only
+cargo test --test mod unit::        # Unit tests only
+cargo test --test mod integration:: # Integration tests only  
+cargo test --test mod e2e::        # E2E tests only
+cargo test --test mod property::   # Property tests only
 
-# Run specific test files
-cargo test math_operations
-cargo test token_validate
-cargo test protocol_lifecycle
+# Run specific test
+cargo test --test mod test_simple_example
+
+# Run with output
+cargo test --test mod test_simple_example -- --nocapture
 ```
 
-### Test Categories
+### Writing Tests
 
-#### Unit Tests
-Focus on individual functions and mathematical operations:
+The test infrastructure provides macros for environment-specific testing:
 
 ```rust
-// Example from math_operations.rs
-#[test]
-fn test_safe_math_overflow_protection() {
-    use feels::utils::safe::add_u64;
-    
-    let max_u64 = u64::MAX;
-    let result = add_u64(max_u64, 1);
-    assert!(result.is_err());
-}
+use crate::common::*;
+
+// Run test in in-memory environment only  
+test_in_memory!(test_name, |ctx: TestContext| async move {
+    // Test logic here
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
+
+// Run test in all environments
+test_all_environments!(test_name, |ctx: TestContext| async move {
+    // Test logic here
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
+
+// Run test on devnet only
+test_devnet!(test_name, |ctx: TestContext| async move {
+    // Test logic here
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
 ```
 
-#### Integration Tests
-Test interactions between multiple components:
+### Using Test Helpers
 
 ```rust
-// Example from protocol_lifecycle.rs
-#[test]
-fn test_protocol_initialization_sequence() {
-    // Step 1: Initialize protocol state
-    // Step 2: Create FeelsSOL wrapper
-    // Step 3: Create first pool
-    // Step 4: Verify all components work together
-}
-```
+// Create a market with liquidity
+let market = ctx.market_builder()
+    .token_0(token_0.pubkey())
+    .token_1(token_1.pubkey())
+    .add_liquidity(alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+    .build()
+    .await?;
 
-#### Functional Tests
-End-to-end testing of complete workflows:
+// Execute a swap
+let swap_result = ctx.swap_helper()
+    .swap_exact_input(
+        &market,
+        &bob,
+        true, // zero_for_one
+        1_000_000,
+        0,
+    )
+    .await?;
 
-```rust
-// Example from amm_operations.rs
-#[test]
-fn test_complete_amm_workflow() {
-    // 1. Pool creation
-    // 2. Liquidity provision
-    // 3. Swap execution
-    // 4. Fee collection
-    // 5. Position management
-}
+// Open a position
+let position = ctx.position_helper()
+    .open_position(
+        &market,
+        &alice,
+        -100,
+        100,
+        1_000_000
+    )
+    .await?;
 ```
 
 ## Key Features
@@ -229,11 +273,35 @@ cargo test overflow_protection
 cargo test authorization
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+1. **Tests fail with "Program processor not available"**
+   - Make sure you've built the BPF program: `cargo build-sbf`
+   - The test infrastructure will automatically find the binary in `target/deploy/feels.so`
+
+2. **Tests fail with "KeypairPubkeyMismatch"**
+   - This usually indicates an issue with account ownership or signing
+   - Check that the correct keypair is being used for signing
+   - Ensure account ownership is properly set up
+
+3. **Environment-specific test issues**
+   - For devnet tests: Set `RUN_DEVNET_TESTS=1`
+   - For localnet tests: Set `RUN_LOCALNET_TESTS=1`
+   - Devnet/localnet tests require appropriate network connectivity
+
+4. **Compilation errors**
+   - Ensure all dependencies are built: `cargo build`
+   - Check that the SDK is properly built
+   - Verify Anchor version matches: `anchor --version`
+
 ## Contributing
 
 When adding new tests:
-1. **Follow the directory structure**: Unit tests in `unit/`, integration tests in `integration/`, functional tests in `functional/`
-2. **Use descriptive test names**: `test_specific_functionality_condition()`
-3. **Add comprehensive documentation**: Explain what the test validates
-4. **Include edge cases**: Test boundary conditions and error cases
-5. **Update this README**: Document new test categories and coverage areas
+1. **Follow the directory structure**: Unit tests in `unit/`, integration tests in `integration/`, e2e tests in `e2e/`
+2. **Use the test macros**: `test_in_memory!` for fast tests, `test_all_environments!` for comprehensive testing
+3. **Use descriptive test names**: `test_specific_functionality_condition()`
+4. **Add comprehensive documentation**: Explain what the test validates
+5. **Include edge cases**: Test boundary conditions and error cases
+6. **Update this README**: Document new test categories and coverage areas

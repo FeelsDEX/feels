@@ -6,13 +6,12 @@ use solana_sdk::{
     pubkey::Pubkey,
     account::Account,
 };
-use std::str::FromStr;
 
 fn main() -> anyhow::Result<()> {
     // Example: Create a FeelsAmm instance from on-chain data
     
     // This would be the Feels market account pubkey
-    let market_key = Pubkey::from_str("YourFeelsMarketPubkeyHere")?;
+    let market_key = Pubkey::new_unique();
     
     // In practice, you'd fetch this from the chain
     // This is a mock account for demonstration

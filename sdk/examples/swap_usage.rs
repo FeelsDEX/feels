@@ -34,9 +34,9 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             .unwrap()
             .build(&user)?;
 
-        println!("✓ Built swap instruction with {} accounts", 
+        println!("Built swap instruction with {} accounts", 
                 swap_instruction.accounts.len());
-        println!("✓ Program ID: {}", swap_instruction.program_id);
+        println!("Program ID: {}", swap_instruction.program_id);
         
         Ok(())
     };
@@ -69,11 +69,11 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             Pubkey::new_unique(), // Array covering next range up
         ];
 
-        let swap_instruction = SwapBuilder::new(params)
+        let _swap_instruction = SwapBuilder::new(params)
             .with_tick_arrays(tick_arrays)
             .build(&user)?;
 
-        println!("✓ Built swap with manually specified arrays");
+        println!("Built swap with manually specified arrays");
         
         Ok(())
     };
@@ -99,11 +99,11 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             max_ticks_crossed: 200,
         };
 
-        let swap_instruction = SwapBuilder::new(params)
+        let _swap_instruction = SwapBuilder::new(params)
             .with_tick_range(-5000, 5000, 128)? // Cover wide range with 128 spacing
             .build(&user)?;
 
-        println!("✓ Built swap with range-derived arrays");
+        println!("Built swap with range-derived arrays");
         
         Ok(())
     };
@@ -117,11 +117,11 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
         
         // Generate comprehensive test arrays
         let test_arrays = coverage.generate_comprehensive_arrays()?;
-        println!("✓ Generated {} test arrays for comprehensive coverage", test_arrays.len());
+        println!("Generated {} test arrays for comprehensive coverage", test_arrays.len());
         
         // Generate swap test cases
         let swap_cases = coverage.generate_swap_test_cases();
-        println!("✓ Generated {} swap test cases", swap_cases.len());
+        println!("Generated {} swap test cases", swap_cases.len());
         
         // Show some examples
         for (i, case) in swap_cases.iter().take(3).enumerate() {
@@ -131,11 +131,11 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
         
         // Generate position test cases
         let position_cases = coverage.generate_position_test_cases();
-        println!("✓ Generated {} position test cases", position_cases.len());
+        println!("Generated {} position test cases", position_cases.len());
         
         // Generate stress test scenarios
         let stress_scenarios = coverage.generate_stress_test_scenarios();
-        println!("✓ Generated {} stress test scenarios", stress_scenarios.len());
+        println!("Generated {} stress test scenarios", stress_scenarios.len());
         
         for scenario in &stress_scenarios {
             println!("  Scenario: {} ({} swaps) - {}", 
@@ -153,11 +153,11 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
         
         // Create test keypairs
         let keypairs = builder.create_keypairs(5);
-        println!("✓ Created {} test keypairs", keypairs.len());
+        println!("Created {} test keypairs", keypairs.len());
         
         // Create deterministic test mints
         let mints = builder.create_test_mints(3);
-        println!("✓ Created {} deterministic test mints", mints.len());
+        println!("Created {} deterministic test mints", mints.len());
         
         for (i, mint) in mints.iter().enumerate() {
             println!("  Mint {}: {}", i, mint);
@@ -173,7 +173,7 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
     test_coverage_example()?;
     account_builder_example()?;
     
-    println!("\n🎉 All examples completed successfully!");
+    println!("\nAll examples completed successfully!");
     
     Ok(())
 }
@@ -235,7 +235,7 @@ fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
         .with_auto_arrays(direction, estimated_ticks)?
         .build(&user)?;
 
-    println!("✓ Advanced swap built with:");
+    println!("Advanced swap built with:");
     println!("  Expected output: {}", estimated_output);
     println!("  Minimum output: {}", minimum_with_slippage);
     println!("  Estimated ticks: {}", estimated_ticks);

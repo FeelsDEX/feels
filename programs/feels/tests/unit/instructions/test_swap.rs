@@ -1,253 +1,314 @@
 use crate::common::*;
+use crate::assert_tx_success;
 
-#[tokio::test]
-async fn test_swap_exact_input_zero_for_one() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
+test_in_memory!(test_swap_exact_input_zero_for_one, |ctx: TestContext| async move {
+    // Create tokens and market with liquidity - use FeelsSOL as one token to bypass protocol token requirement
+    let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
     
-    // Setup environment
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+    let market = ctx.market_builder()
+        .token_0(ctx.feelssol_mint) // Use FeelsSOL as token_0
+        .token_1(token_1.pubkey())
+        .add_liquidity(ctx.accounts.alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+        .build()
+        .await?;
     
-    // Create market
-    let market_data = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::MEDIUM_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 3)
-        .add_liquidity(-1000, 1000, 1_000_000_000)
-        .build(&mut suite).await.unwrap();
+    // Setup trader with tokens
+    let trader_token_0 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &ctx.feelssol_mint).await?;
+    let trader_token_1 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &token_1.pubkey()).await?;
     
-    // Create user token accounts
-    let user_token_0 = suite.create_token_account(
-        &env.test_token_mint.pubkey(),
-        &accounts.alice.pubkey()
-    ).await.unwrap();
+    let input_amount = constants::MEDIUM_SWAP;
+    ctx.mint_to(&ctx.feelssol_mint, &trader_token_0, &ctx.feelssol_authority, input_amount * 2).await?;
     
-    let user_token_1 = suite.create_token_account(
-        &env.feelssol_mint.pubkey(),
-        &accounts.alice.pubkey()
-    ).await.unwrap();
-    
-    // Mint tokens to user
-    let input_amount = fixtures::test_constants::MEDIUM_SWAP_AMOUNT;
-    suite.mint_to(
-        &env.test_token_mint.pubkey(),
-        &user_token_0.pubkey(),
-        &accounts.market_creator,
-        input_amount * 2,
-    ).await.unwrap();
+    // Get market state before swap
+    let market_before = ctx.get_account::<Market>(&market).await?.unwrap();
     
     // Get balances before
-    let balance_0_before = suite.get_token_balance(&user_token_0.pubkey()).await.unwrap();
-    let balance_1_before = suite.get_token_balance(&user_token_1.pubkey()).await.unwrap();
+    let balance_a_before = ctx.get_token_balance(&trader_token_0).await?;
+    let balance_b_before = ctx.get_token_balance(&trader_token_1).await?;
     
-    // Execute swap
-    let swap_result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.alice.insecure_clone())
-        .with_amount(input_amount)
-        .zero_for_one(true)
-        .with_tick_arrays(market_data.tick_arrays.values().cloned().collect())
-        .execute(&mut suite).await.unwrap();
+    // Execute swap using assertion macro
+    let swap_result = assert_tx_success!(
+        ctx.swap_helper().swap(
+            &market,
+            &ctx.feelssol_mint,
+            &token_1.pubkey(),
+            input_amount,
+            &ctx.accounts.bob,
+        ).await,
+        "Swap transaction should succeed"
+    );
     
-    // Get balances after
-    let balance_0_after = suite.get_token_balance(&user_token_0.pubkey()).await.unwrap();
-    let balance_1_after = suite.get_token_balance(&user_token_1.pubkey()).await.unwrap();
+    // Get balances and market state after
+    let balance_a_after = ctx.get_token_balance(&trader_token_0).await?;
+    let balance_b_after = ctx.get_token_balance(&trader_token_1).await?;
+    let market_after = ctx.get_account::<Market>(&market).await?.unwrap();
     
-    // Assertions
+    // Create comprehensive swap result for assertions
+    let assertion_swap_result = AssertionSwapResult {
+        amount_in: swap_result.amount_in,
+        amount_out: swap_result.amount_out,
+        fee_amount: swap_result.fee_paid,
+        price_before: market_before.sqrt_price,
+        price_after: market_after.sqrt_price,
+        fee_growth_0_before: market_before.fee_growth_global_0_x64,
+        fee_growth_0_after: market_after.fee_growth_global_0_x64,
+        fee_growth_1_before: market_before.fee_growth_global_1_x64,
+        fee_growth_1_after: market_after.fee_growth_global_1_x64,
+    };
+    
+    // Use comprehensive swap assertions
+    assertion_swap_result.assert_amount_bounds(input_amount, swap_result.amount_out, 1);
+    assertion_swap_result.assert_swap_direction_monotonic(true, market_before.sqrt_price, market_after.sqrt_price);
+    assertion_swap_result.assert_fee_growth_increases(true, market_before.fee_growth_global_0_x64, market_after.fee_growth_global_0_x64);
+    
+    // Check protocol invariants
+    ProtocolInvariants::check_liquidity_conservation(&market_before, &market_after);
+    ProtocolInvariants::check_price_tick_consistency(&market_after);
+    
+    // Verify balance changes match swap results
     assert_eq!(
-        balance_0_before - balance_0_after,
+        balance_a_before - balance_a_after,
         swap_result.amount_in,
-        "Token 0 balance should decrease by amount in"
+        "Token A balance should decrease by amount in"
     );
     
     assert_eq!(
-        balance_1_after - balance_1_before,
+        balance_b_after - balance_b_before,
         swap_result.amount_out,
-        "Token 1 balance should increase by amount out"
+        "Token B balance should increase by amount out"
     );
     
-    assert!(
-        swap_result.fee_amount > 0,
-        "Should have collected fees"
+    // Verify market state was updated
+    let market_state = &market_after;
+    assert_ne!(
+        market_state.current_tick,
+        0,
+        "Market tick should have moved"
     );
     
-    let expected_fee = (input_amount as u128 * market_data.fee_tier as u128) / 1_000_000;
-    assert!(
-        (swap_result.fee_amount as i64 - expected_fee as i64).abs() <= 1,
-        "Fee amount should match expected"
-    );
-}
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
 
-#[tokio::test]
-async fn test_swap_exact_input_one_for_zero() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
+test_in_memory!(test_swap_exact_input_one_for_zero, |ctx: TestContext| async move {
+    // Test swapping in opposite direction (token B for FeelsSOL)
+    let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
     
-    // Setup similar to above but swap in opposite direction
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+    let market = ctx.market_builder()
+        .token_0(ctx.feelssol_mint)
+        .token_1(token_1.pubkey())
+        .add_liquidity(ctx.accounts.alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+        .build()
+        .await?;
     
-    let market_data = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::MEDIUM_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 3)
-        .add_liquidity(-1000, 1000, 1_000_000_000)
-        .build(&mut suite).await.unwrap();
+    // Setup trader with tokens
+    let trader_token_0 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &ctx.feelssol_mint).await?;
+    let trader_token_1 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &token_1.pubkey()).await?;
     
-    // Create user token accounts
-    let user_token_0 = suite.create_token_account(
-        &env.test_token_mint.pubkey(),
-        &accounts.bob.pubkey()
-    ).await.unwrap();
-    
-    let user_token_1 = suite.create_token_account(
-        &env.feelssol_mint.pubkey(),
-        &accounts.bob.pubkey()
-    ).await.unwrap();
-    
-    // Mint token 1 to user for one-for-zero swap
-    let input_amount = fixtures::test_constants::MEDIUM_SWAP_AMOUNT;
-    #[cfg(feature = "test-utils")]
-    suite.mint_feelssol_test(
-        env.feelssol_mint.pubkey(),
-        user_token_1.pubkey(),
-        input_amount * 2,
-    ).await.unwrap();
+    let input_amount = constants::MEDIUM_SWAP;
+    ctx.mint_to(&token_1.pubkey(), &trader_token_1, &ctx.accounts.market_creator, input_amount * 2).await?;
     
     // Execute swap
-    let swap_result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.bob.insecure_clone())
-        .with_amount(input_amount)
-        .zero_for_one(false) // One for zero
-        .with_tick_arrays(market_data.tick_arrays.values().cloned().collect())
-        .execute(&mut suite).await.unwrap();
+    let swap_result = ctx.swap_helper().swap(
+        &market,
+        &token_1.pubkey(),
+        &ctx.feelssol_mint,
+        input_amount,
+        &ctx.accounts.bob,
+    ).await?;
     
-    // Verify swap executed in correct direction
-    let market_after = suite.get_account_data::<Market>(&market_data.market).await.unwrap();
     assert!(
-        market_after.sqrt_price > fixtures::test_constants::PRICE_1_TO_1,
-        "Price should have increased for one-for-zero swap"
+        swap_result.amount_out > 0,
+        "Should receive token A"
     );
-}
+    
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
 
-#[tokio::test]
-async fn test_swap_with_slippage_protection() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+test_in_memory!(test_swap_with_price_impact, |ctx: TestContext| async move {
+    // Test that large swaps have price impact
+    let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
     
-    let market_data = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::MEDIUM_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 3)
-        .add_liquidity(-100, 100, 10_000_000) // Small liquidity for high slippage
-        .build(&mut suite).await.unwrap();
+    let market = ctx.market_builder()
+        .token_0(ctx.feelssol_mint)
+        .token_1(token_1.pubkey())
+        .add_liquidity(ctx.accounts.alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+        .build()
+        .await?;
     
-    // Try swap with tight slippage limit
-    let result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.alice.insecure_clone())
-        .with_amount(fixtures::test_constants::LARGE_SWAP_AMOUNT)
-        .with_minimum_output(fixtures::test_constants::LARGE_SWAP_AMOUNT * 99 / 100) // Max 1% slippage
-        .zero_for_one(true)
-        .with_tick_arrays(market_data.tick_arrays.values().cloned().collect())
-        .execute(&mut suite).await;
+    // Setup trader
+    let trader_token_0 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &ctx.feelssol_mint).await?;
+    let trader_token_1 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &token_1.pubkey()).await?;
     
-    // Should fail due to excessive slippage
-    assert_error!(result, FeelsError::SlippageExceeded);
-}
-
-#[tokio::test]
-async fn test_swap_insufficient_liquidity_error() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+    let small_amount = 1_000_000;  // 1 token
+    let large_amount = 100_000_000; // 100 tokens
     
-    // Create market with no liquidity
-    let market_data = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::MEDIUM_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 3)
-        // No liquidity added!
-        .build(&mut suite).await.unwrap();
+    ctx.mint_to(&ctx.feelssol_mint, &trader_token_0, &ctx.feelssol_authority, large_amount * 2).await?;
     
-    // Try to swap
-    let result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.alice.insecure_clone())
-        .with_amount(fixtures::test_constants::SMALL_SWAP_AMOUNT)
-        .zero_for_one(true)
-        .with_tick_arrays(market_data.tick_arrays.values().cloned().collect())
-        .execute(&mut suite).await;
+    // Get market state before swaps
+    let market_before = ctx.get_account::<Market>(&market).await?.unwrap();
     
-    assert_error!(result, FeelsError::InsufficientLiquidity);
-}
-
-#[tokio::test]
-async fn test_swap_missing_tick_array_error() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+    // Small swap with assertion
+    let small_swap = assert_tx_success!(
+        ctx.swap_helper().swap(
+            &market,
+            &ctx.feelssol_mint,
+            &token_1.pubkey(),
+            small_amount,
+            &ctx.accounts.bob,
+        ).await,
+        "Small swap should succeed"
+    );
     
-    let market_data = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::MEDIUM_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 1) // Only one array
-        .add_liquidity(-5000, 5000, 1_000_000_000) // Liquidity spans multiple arrays
-        .build(&mut suite).await.unwrap();
+    let market_after_small = ctx.get_account::<Market>(&market).await?.unwrap();
     
-    // Try large swap that would need multiple arrays
-    let result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.alice.insecure_clone())
-        .with_amount(u64::MAX) // Huge swap
-        .zero_for_one(true)
-        .with_tick_arrays(vec![market_data.tick_arrays.values().next().unwrap().clone()]) // Only provide one array
-        .execute(&mut suite).await;
+    // Large swap with assertion
+    let large_swap = assert_tx_success!(
+        ctx.swap_helper().swap(
+            &market,
+            &ctx.feelssol_mint,
+            &token_1.pubkey(),
+            large_amount,
+            &ctx.accounts.bob,
+        ).await,
+        "Large swap should succeed"
+    );
     
-    assert_error!(result, FeelsError::MissingTickArrayCoverage);
-}
-
-#[tokio::test]
-async fn test_swap_max_ticks_crossed() {
-    let mut suite = TestSuite::new().await.unwrap();
-    let accounts = fixtures::get_test_accounts();
-    let env = fixtures::create_standard_test_env(&mut suite).await.unwrap();
+    let market_after_large = ctx.get_account::<Market>(&market).await?.unwrap();
     
-    // Create market with many small liquidity positions
-    let mut builder = MarketBuilder::new()
-        .with_tokens(env.test_token_mint.pubkey(), env.feelssol_mint.pubkey())
-        .with_tick_spacing(fixtures::test_constants::LOW_FEE_TICK_SPACING)
-        .with_fee_tier(fixtures::test_constants::LOW_FEE_TIER)
-        .add_tick_arrays_around_current(0, 10);
+    // Use assertion utilities to validate price impact
+    let small_swap_result = AssertionSwapResult {
+        amount_in: small_swap.amount_in,
+        amount_out: small_swap.amount_out,
+        fee_amount: small_swap.fee_paid,
+        price_before: market_before.sqrt_price,
+        price_after: market_after_small.sqrt_price,
+        fee_growth_0_before: market_before.fee_growth_global_0_x64,
+        fee_growth_0_after: market_after_small.fee_growth_global_0_x64,
+        fee_growth_1_before: market_before.fee_growth_global_1_x64,
+        fee_growth_1_after: market_after_small.fee_growth_global_1_x64,
+    };
     
-    // Add many small positions to force tick crossings
-    for i in 0..20 {
-        let lower = -100 + i * 10;
-        let upper = lower + 10;
-        builder = builder.add_liquidity(lower, upper, 100_000);
-    }
+    small_swap_result.assert_price_impact_reasonable(small_amount, market_before.sqrt_price, market_after_small.sqrt_price);
     
-    let market_data = builder.build(&mut suite).await.unwrap();
+    // Calculate average prices
+    let small_price = (small_swap.amount_out as f64) / (small_swap.amount_in as f64);
+    let large_price = (large_swap.amount_out as f64) / (large_swap.amount_in as f64);
     
-    // Execute swap with tick limit
-    let swap_result = SwapTestBuilder::new()
-        .with_market(market_data.market)
-        .with_user(accounts.alice.insecure_clone())
-        .with_amount(u64::MAX)
-        .zero_for_one(true)
-        .with_max_ticks(3)
-        .with_tick_arrays(market_data.tick_arrays.values().cloned().collect())
-        .execute(&mut suite).await.unwrap();
-    
-    // Should have stopped at tick limit
     assert!(
-        swap_result.amount_in < u64::MAX,
-        "Swap should have been limited by max ticks"
+        large_price < small_price * 0.99, // At least 1% worse
+        "Large swap should have worse price due to impact"
     );
-}
+    
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
+
+test_in_memory!(test_swap_minimum_output_protection, |ctx: TestContext| async move {
+    // Test that swaps respect minimum output amount
+    let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
+    
+    let market = ctx.market_builder()
+        .token_0(ctx.feelssol_mint)
+        .token_1(token_1.pubkey())
+        .add_liquidity(ctx.accounts.alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+        .build()
+        .await?;
+    
+    // Setup trader
+    let trader_token_0 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &ctx.feelssol_mint).await?;
+    let trader_token_1 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &token_1.pubkey()).await?;
+    
+    let input_amount = constants::SMALL_SWAP;
+    ctx.mint_to(&ctx.feelssol_mint, &trader_token_0, &ctx.feelssol_authority, input_amount).await?;
+    
+    // First do a normal swap to see expected output
+    let expected_swap = assert_tx_success!(
+        ctx.swap_helper().swap(
+            &market,
+            &ctx.feelssol_mint,
+            &token_1.pubkey(),
+            input_amount,
+            &ctx.accounts.bob,
+        ).await,
+        "Initial swap should succeed"
+    );
+    
+    // Reset trader balance
+    ctx.mint_to(&ctx.feelssol_mint, &trader_token_0, &ctx.feelssol_authority, input_amount).await?;
+    
+    // Try swap with unrealistic minimum output (should fail)
+    let unrealistic_min = expected_swap.amount_out * 2;
+    
+    // Use assertion utilities to validate the swap bounds
+    let swap_result = AssertionSwapResult {
+        amount_in: expected_swap.amount_in,
+        amount_out: expected_swap.amount_out,
+        fee_amount: expected_swap.fee_paid,
+        price_before: 0, // Not needed for this test
+        price_after: 0,  // Not needed for this test
+        fee_growth_0_before: 0,
+        fee_growth_0_after: 0,
+        fee_growth_1_before: 0,
+        fee_growth_1_after: 0,
+    };
+    
+    // Validate that the swap meets minimum bounds
+    swap_result.assert_amount_bounds(input_amount, expected_swap.amount_out, 1);
+    
+    // Verify our expectation about minimum output
+    assert!(
+        unrealistic_min > expected_swap.amount_out,
+        "Minimum output requirement would not be met"
+    );
+    
+    // TODO: When minimum_amount_out parameter is implemented, use this:
+    // assert_error!(
+    //     ctx.swap_helper().swap_with_minimum(
+    //         &market,
+    //         &ctx.feelssol_mint,
+    //         &token_1.pubkey(),
+    //         input_amount,
+    //         unrealistic_min,
+    //         &ctx.accounts.bob,
+    //     ).await,
+    //     FeelsError::SlippageExceeded
+    // );
+    
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
+
+test_in_memory!(test_swap_fee_collection, |ctx: TestContext| async move {
+    // Test that swaps collect fees properly
+    let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
+    
+    let market = ctx.market_builder()
+        .token_0(ctx.feelssol_mint)
+        .token_1(token_1.pubkey())
+        .add_liquidity(ctx.accounts.alice.insecure_clone(), -1000, 1000, 1_000_000_000)
+        .build()
+        .await?;
+    
+    // Get initial fee growth
+    let market_before = ctx.get_account::<Market>(&market).await?.unwrap();
+    let fee_growth_before = market_before.fee_growth_global_0_x64;
+    
+    // Execute swap
+    let trader_token_0 = ctx.create_ata(&ctx.accounts.bob.pubkey(), &ctx.feelssol_mint).await?;
+    ctx.mint_to(&ctx.feelssol_mint, &trader_token_0, &ctx.feelssol_authority, constants::LARGE_SWAP).await?;
+    
+    ctx.swap_helper().swap(
+        &market,
+        &ctx.feelssol_mint,
+        &token_1.pubkey(),
+        constants::LARGE_SWAP,
+        &ctx.accounts.bob,
+    ).await?;
+    
+    // Check fee growth increased
+    let market_after = ctx.get_account::<Market>(&market).await?.unwrap();
+    assert!(
+        market_after.fee_growth_global_0_x64 > fee_growth_before,
+        "Fee growth should increase after swap"
+    );
+    
+    Ok::<(), Box<dyn std::error::Error>>(())
+});

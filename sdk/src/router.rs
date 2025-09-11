@@ -13,9 +13,9 @@ pub struct PoolInfo {
     /// Pool address
     pub address: Pubkey,
     /// First token mint
-    pub token_a: Pubkey,
+    pub token_0: Pubkey,
     /// Second token mint
-    pub token_b: Pubkey,
+    pub token_1: Pubkey,
     /// Fee rate in basis points
     pub fee_rate: u16,
 }
@@ -40,15 +40,15 @@ impl HubRouter {
     /// Add a pool to the router
     pub fn add_pool(&mut self, pool: PoolInfo) -> SdkResult<()> {
         // Validate that pool includes hub token
-        if pool.token_a != self.hub_mint && pool.token_b != self.hub_mint {
+        if pool.token_0 != self.hub_mint && pool.token_1 != self.hub_mint {
             return Err(SdkError::InvalidRoute(
                 "Pool must include hub token (FeelsSOL)".to_string()
             ));
         }
         
         // Add pool for both directions
-        let key1 = Self::order_tokens(pool.token_a, pool.token_b);
-        let key2 = Self::order_tokens(pool.token_b, pool.token_a);
+        let key1 = Self::order_tokens(pool.token_0, pool.token_1);
+        let key2 = Self::order_tokens(pool.token_1, pool.token_0);
         
         self.pools.insert(key1, pool.clone());
         self.pools.insert(key2, pool);
@@ -148,16 +148,16 @@ mod tests {
     #[test]
     fn test_hub_router_validation() {
         let hub = Pubkey::new_unique();
-        let token_a = Pubkey::new_unique();
-        let token_b = Pubkey::new_unique();
+        let token_0 = Pubkey::new_unique();
+        let token_1 = Pubkey::new_unique();
         
         let mut router = HubRouter::new(hub);
         
         // Should fail - no hub token
         let invalid_pool = PoolInfo {
             address: Pubkey::new_unique(),
-            token_a,
-            token_b,
+            token_0,
+            token_1,
             fee_rate: 30,
         };
         assert!(router.add_pool(invalid_pool).is_err());
@@ -165,8 +165,8 @@ mod tests {
         // Should succeed - includes hub
         let valid_pool = PoolInfo {
             address: Pubkey::new_unique(),
-            token_a,
-            token_b: hub,
+            token_0,
+            token_1: hub,
             fee_rate: 30,
         };
         assert!(router.add_pool(valid_pool).is_ok());
@@ -183,15 +183,15 @@ mod tests {
         // Add pools
         router.add_pool(PoolInfo {
             address: Pubkey::new_unique(),
-            token_a: usdc,
-            token_b: hub,
+            token_0: usdc,
+            token_1: hub,
             fee_rate: 30,
         }).unwrap();
         
         router.add_pool(PoolInfo {
             address: Pubkey::new_unique(),
-            token_a: sol,
-            token_b: hub,
+            token_0: sol,
+            token_1: hub,
             fee_rate: 25,
         }).unwrap();
         

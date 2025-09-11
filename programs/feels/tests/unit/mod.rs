@@ -1,12 +1,48 @@
 /// Unit test module organization
 ///
-/// Kept tests validate core math and leverage primitives that remain relevant
-/// in the new architecture. Outdated tests have been removed; see TODOs in
-/// their former files to reimplement against the unified API and physics model.
+/// Core unit tests for protocol components
 
-pub mod leverage_system;
-pub mod math_operations;
-pub mod math_refactor_validation;
-pub mod math_tick;
-pub mod math_tick_edge_cases;
-pub mod routing_validation;
+// Static compile-time assertions
+pub mod static_assertions;
+pub mod test_static_assertions;
+
+// Buffer tests
+pub mod test_buffer_overflow;
+
+// Position safety tests
+pub mod test_close_position_safety;
+
+// Dust control tests
+pub mod test_dust_control;
+
+// Fee calculation tests
+pub mod test_fee_growth;
+pub mod test_fee_rounding;
+
+// Security tests
+pub mod test_initialization_race_condition_fix;
+pub mod test_launch_security;
+pub mod test_reentrancy_guard;
+
+// Oracle tests
+pub mod test_observation_offsets;
+pub mod test_oracle_timestamp_security;
+
+// POMM tests
+pub mod test_pomm_saturation;
+pub mod test_pomm_security;
+
+// Tick array tests
+pub mod test_tick_array_griefing;
+
+// Instruction tests subdirectory
+pub mod instructions;
+
+// State tests subdirectory
+pub mod state;
+
+// Test infrastructure verification
+pub mod test_infrastructure;
+
+// Simple example test
+pub mod test_simple_example;

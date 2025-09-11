@@ -25,6 +25,7 @@ default:
     @echo ""
     @echo "IDL & Types:"
     @echo "  just idl-build     - Generate IDL files"
+    @echo "  just idl-validate  - Validate IDL matches SDK"
     @echo "  just types         - Generate TypeScript types"
     @echo ""
     @echo "Nix:"
@@ -108,6 +109,76 @@ idl-build:
     @echo "Generating IDL files..."
     nix run .#idl-build
 
+# Validate IDL against SDK
+idl-validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    echo "Validating IDL consistency..."
+    
+    if [ ! -f "target/idl/feels.json" ]; then
+        echo "IDL not found at target/idl/feels.json"
+        echo "   Run 'just idl-build' to generate the IDL first"
+        exit 1
+    fi
+    
+    echo "Found in IDL:"
+    echo "   - $(jq '.instructions | length' target/idl/feels.json) instructions"
+    echo "   - $(jq '.accounts | length' target/idl/feels.json) accounts"
+    echo "   - $(jq '.types | length' target/idl/feels.json) types"
+    echo ""
+    
+    echo "Checking critical instructions..."
+    MISSING=""
+    for ix in initialize_market swap open_position close_position collect_fees enter_feelssol exit_feelssol; do
+        if ! jq -e ".instructions[] | select(.name == \"$ix\")" target/idl/feels.json >/dev/null 2>&1; then
+            MISSING="$MISSING $ix"
+        fi
+    done
+    
+    if [ -z "$MISSING" ]; then
+        echo "   All critical instructions found"
+    else
+        echo "   Missing instructions:$MISSING"
+        exit 1
+    fi
+    
+    echo ""
+    echo "Checking critical account types..."
+    MISSING=""
+    for acc in Market Position Buffer TickArray; do
+        if ! jq -e ".accounts[] | select(.name | endswith(\"::$acc\"))" target/idl/feels.json >/dev/null 2>&1; then
+            MISSING="$MISSING $acc"
+        fi
+    done
+    
+    if [ -z "$MISSING" ]; then
+        echo "   All critical account types found"
+    else
+        echo "   Missing accounts:$MISSING"
+        exit 1
+    fi
+    
+    echo ""
+    echo "Checking parameter types..."
+    MISSING=""
+    for type in SwapParams InitializeMarketParams MintTokenParams ClosePositionParams; do
+        if ! jq -e ".types[] | select(.name | endswith(\"::$type\"))" target/idl/feels.json >/dev/null 2>&1; then
+            MISSING="$MISSING $type"
+        fi
+    done
+    
+    if [ -z "$MISSING" ]; then
+        echo "   All critical parameter types found"
+    else
+        echo "   Missing types:$MISSING"
+        exit 1
+    fi
+    
+    echo ""
+    echo "============================================================"
+    echo "IDL validation passed!"
+
 # Generate TypeScript types
 types: idl-build
     @echo "Generating TypeScript types..."
@@ -161,7 +232,7 @@ dev: format lint test-unit
     @echo "Quick development cycle complete!"
 
 # Full CI pipeline simulation
-ci: format lint test build
+ci: format lint test build idl-build idl-validate
     @echo "Full CI pipeline simulation complete!"
 
 # Tail logs from local validator

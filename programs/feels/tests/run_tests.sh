@@ -18,9 +18,9 @@ run_test_category() {
     echo -e "\n${YELLOW}Running ${description}...${NC}"
     
     if cargo test --manifest-path ../../Cargo.toml --features test-utils ${category}:: -- --test-threads=1; then
-        echo -e "${GREEN}✓ ${description} passed${NC}"
+        echo -e "${GREEN}${description} passed${NC}"
     else
-        echo -e "${RED}✗ ${description} failed${NC}"
+        echo -e "${RED}${description} failed${NC}"
         exit 1
     fi
 }
@@ -41,9 +41,9 @@ run_test_category "e2e" "End-to-End Tests"
 # Run static assertions separately
 echo -e "\n${YELLOW}Running static assertions...${NC}"
 if cargo test --manifest-path Cargo.toml static_assertions -- --test-threads=1; then
-    echo -e "${GREEN}✓ Static assertions passed${NC}"
+    echo -e "${GREEN}Static assertions passed${NC}"
 else
-    echo -e "${RED}✗ Static assertions failed${NC}"
+    echo -e "${RED}Static assertions failed${NC}"
     exit 1
 fi
 

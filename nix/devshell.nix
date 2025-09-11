@@ -2,9 +2,11 @@
 {
   pkgs,
   inputs',
+  projectConfig,
   ...
 }: let
   inherit (pkgs) lib stdenv;
+  idlBuilderConfig = import ./idl-builder.nix { inherit pkgs inputs' projectConfig; };
 in {
   packages = with pkgs; [
     openssl
@@ -42,6 +44,12 @@ in {
     }
     # Remove nightly-rust from commands to avoid collision
     {package = inputs'.zero-nix.packages.setup-solana;}
+    # IDL builder and cargo wrapper
+    {
+      name = "idl-build";
+      package = idlBuilderConfig.idl-build;
+      help = "Build IDL for Anchor programs";
+    }
   ];
   
   env = [
@@ -136,22 +144,28 @@ in {
   devshell.startup.setup-solana = {
     deps = [];
     text = ''
-      echo "Feels Protocol Development Environment"
-      echo "======================================"
+      echo "${projectConfig.devEnv.welcomeMessage}"
       echo ""
       echo "Available tools:"
       echo "  - solana: Solana CLI and validator"
       echo "  - anchor: Anchor framework for Solana development"
-      echo "  - crate2nix: Generate Cargo.nix for Nix builds"
+      echo "  - idl-build: Build IDL for Anchor programs"
+      echo "  - update-cargo-nix: Update Cargo.nix for Nix builds"
       echo "  - just: Task runner (run 'just' to see commands)"
       echo ""
       echo "Quick commands:"
       echo "  - just                      - Show all available commands"
       echo "  - just build                - Build all programs"
       echo "  - just test                 - Run tests"
+      echo "  - idl-build                 - Generate IDL (uses cargo +nightly wrapper)"
       echo ""
       echo "Build commands:"
       echo "  - cargo build-sbf           - Build Solana programs directly"
+      echo ""
+      echo "Nix apps (run with 'nix run .#<app>'):"
+      echo "  - devnet                    - Start local validator with auto-deploy"
+      echo "  - bpf-build                 - Build all BPF programs using Nix"
+      echo "  - idl-build                 - Generate IDL files"
       echo ""
     '';
   };

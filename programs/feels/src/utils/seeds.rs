@@ -81,6 +81,22 @@ pub fn derive_vault_authority(feelssol_mint: &Pubkey, program_id: &Pubkey) -> (P
     )
 }
 
+/// Derive oracle PDA for a market
+pub fn derive_oracle(market: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"oracle", market.as_ref()],
+        program_id,
+    )
+}
+
+/// Derive epoch params PDA for a market
+pub fn derive_epoch_params(market: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[EPOCH_PARAMS_SEED, market.as_ref()],
+        program_id,
+    )
+}
+
 /// Derive metadata PDA for SPL tokens
 pub fn derive_metadata(mint: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(

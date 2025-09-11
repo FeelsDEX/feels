@@ -59,8 +59,8 @@ let feels_amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context)?;
 // Get a quote
 let quote = feels_amm.quote(&QuoteParams {
     amount: 1_000_000,
-    input_mint: token_a_mint,
-    output_mint: token_b_mint,
+    input_mint: token_0_mint,
+    output_mint: token_1_mint,
     swap_mode: SwapMode::ExactIn,
 })?;
 
@@ -70,11 +70,11 @@ let swap_accounts = feels_amm.get_swap_and_account_metas(&swap_params)?;
 
 ## Integration Status
 
-- ✅ Implements Jupiter AMM interface v0.6.0
-- ✅ Compatible with Feels Protocol concentrated liquidity
-- ✅ Supports exact input swaps
-- ✅ Calculates fees based on market parameters
-- ✅ Provides account metadata for swap execution
+- Implements Jupiter AMM interface v0.6.0
+- Compatible with Feels Protocol concentrated liquidity
+- Supports exact input swaps
+- Calculates fees based on market parameters
+- Provides account metadata for swap execution
 
 ## Future Enhancements
 

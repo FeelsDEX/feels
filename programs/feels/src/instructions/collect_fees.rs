@@ -139,6 +139,7 @@ pub struct CollectFees<'info> {
 
 /// Check if position has uncalculated fees
 #[inline(never)]
+#[allow(dead_code)]
 fn needs_fee_calculation(
     position: &Position,
     market: &Market,
@@ -201,6 +202,7 @@ fn transfer_accumulated_fees<'info>(
 
 /// Process fee calculation with tick arrays
 #[inline(never)]
+#[allow(dead_code)]
 fn process_fee_calculation<'info>(
     remaining_accounts: &[AccountInfo<'info>],
     position: &mut Position,
