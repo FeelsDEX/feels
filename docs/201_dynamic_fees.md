@@ -1,10 +1,10 @@
-# Dynamic Fee Model
+# Dynamic Fee Model (MVP: Base + Impact Only)
 
-This document presents the production-ready pool-level dynamic fee model that computes fees entirely on-chain after swap execution, eliminating trust assumptions while maintaining simplicity and robustness. Terminology: “protocol” refers to global systems (treasury, reserve rate oracle, safety), while “pool” refers to per‑market systems (CLMM, GTWAP oracle, fees, JIT, floor).
+This document presents the MVP pool-level dynamic fee model that computes fees entirely on-chain after swap execution. Terminology: “protocol” refers to global systems (treasury, reserve rate oracle, safety), while “pool” refers to per‑market systems (CLMM, GTWAP oracle, fees, JIT, floor).
 
 ## Physics Analogy: Markets as Energy Networks
 
-Our goal is to create a sustainable market ecosystem that maintains price stability within a tradeable range while monetizing the volatility necessary for price discovery. Rather than seeking absolute stability, we incentivize liquidity providers to maintain depth around a gradually rising equilibrium, ensuring markets remain liquid and efficient while the protocol captures value from trading activity. We achieve this balance through a physics-inspired model where price displacement from equilibrium behaves like potential energy and persistent order flow behaves like momentum. The system rewards LPs for providing liquidity within a stable band around the current price, with fees that increase when trades threaten to break this range, naturally concentrating liquidity where it's most needed for healthy market function.
+Our goal is to create a sustainable market ecosystem that maintains price stability within a tradeable range while monetizing the volatility necessary for price discovery. For MVP, we prioritize a simple and predictable model (base + impact) while preserving a clear path to richer dynamics (equilibrium bias, momentum) in Phase 2. The physics analogy below provides motivation for future phases.
 
 The system can be analogized to an energy network: user flow adds energy, and liquidity providers offer channels for it to move. Dynamic fees act as the system's impedance, they regulate current so throughput stays healthy. Trades that climb uphill (away from equilibrium) must perform work against resistance and pay a surcharge. Trades that flow downhill (toward equilibrium) harness potential energy and receive a discount. This creates a self-correcting market that remains simple enough to implement and audit fully on-chain.
 
@@ -22,98 +22,23 @@ This approach treats fees as impedance that increases with displacement (potenti
 4. **Precise integer math** with clear units and bounds
 5. **Minimal state** and O(1) computation outside the swap loop
 
-## The Model
+## The Model (MVP)
 
 ### Fee Calculation (After Swap)
 
-**Behavior**: This function is called after the swap has executed, using the actual start and end ticks to determine the realized price impact. It combines multiple factors multiplicatively to produce a final fee in basis points.
+**Behavior**: This function is called after the swap has executed, using the actual start and end ticks to determine the realized price impact. It adds impact_bps to a base fee to produce a final fee in basis points.
 
-**Intuition**: By calculating fees after the fact, we avoid the complexity of prediction and verification. The fee grows with market impact but is modulated by whether the trade helps or hurts market balance.
+**Intuition**: By calculating fees after the fact, we avoid prediction errors. The fee grows with realized market impact and is independent of oracle state.
 
 **Rationale**: Post-execution calculation ensures we charge based on actual market stress caused, not estimates. This eliminates gaming via slippage manipulation and removes the need for any off-chain computation.
 
 ```rust
-pub fn calculate_dynamic_fee_after_swap(
-    start_tick: i32,
-    end_tick: i32,
-    trade_direction: i8,  // +1 = buy (price up), -1 = sell (price down)
-    amount_in: u64,
-    market_state: &PoolState,
-    current_slot: u64,
-) -> u16 {
-    // 1. Calculate actual price impact from ticks moved
+pub fn calculate_fee_after_swap(start_tick: i32, end_tick: i32) -> u16 {
     let ticks_moved = (end_tick - start_tick).abs();
-    let price_impact_bps = ticks_to_bps(ticks_moved)
-        .max(IMPACT_FLOOR_BPS);  // Floor prevents gaming via tiny trades
-    
-    // 2. Get momentum factor with staleness check
-    let momentum_pct = if market_state.flow_last_update + STALE_SLOTS < current_slot {
-        100  // Neutral when stale
-    } else {
-        // Apply momentum based on trade direction and cached adjustment
-        let adjustment = if market_state.momentum_slot == current_slot {
-            market_state.cached_momentum_adjustment
-        } else {
-            // First trade of slot - calculate and cache adjustment
-            let adj = calculate_momentum_adjustment(market_state.flow_ewma);
-            market_state.momentum_slot = current_slot;
-            market_state.cached_momentum_adjustment = adj;
-            adj
-        };
-        
-        // Apply direction-aware factor to the adjustment
-        apply_momentum_direction(adjustment, market_state.flow_ewma, trade_direction)
-    };
-    
-    // 3. Calculate equilibrium with warmup blending using unified components
-    let live_equilibrium = calculate_biased_equilibrium(
-        &market_state.pool_oracle,
-        &market_state.pool_floor
-    );
-    // Blend from bootstrap equilibrium to live equilibrium based on warmup
-    let equilibrium_tick = if market_state.warmup.done {
-        live_equilibrium
-    } else {
-        lerp_ticks_q16(
-            market_state.warmup.r0_tick,
-            live_equilibrium,
-            market_state.warmup.ramp_q16
-        )
-    };
-    
-    let equilibrium_distance = market_state.current_tick - equilibrium_tick;
-    let dir_pct = calculate_direction_adjustment(
-        equilibrium_distance,
-        trade_direction
-    );
-    
-    // 4. Apply warmup gating to rebates only
-    // Note: We intentionally avoid early exits here even for trades with zero impact.
-    // This ensures consistent behavior and prevents gaming opportunities where traders
-    // could exploit early exit conditions to bypass impact floors or momentum effects.
-    let dev = (momentum_pct - 100) + dir_pct;  // Total deviation from base
-    let dev_pos = dev.max(0);  // Surcharges (always applied)
-    let dev_neg = dev.min(0);  // Rebates (gated by warmup)
-    
-    // During warmup, rebates are scaled down by ramp progress
-    let effective_dev = if market_state.warmup.done {
-        dev
-    } else {
-        dev_pos + ((market_state.warmup.ramp_q16 as i32 * dev_neg) >> 16)
-    };
-    
-    let unified_pct = (100 + effective_dev)
-        .clamp(MIN_MULTIPLIER_PCT, MAX_MULTIPLIER_PCT);
-    
-    // 5. Dynamic fee component (using reciprocal multiplication)
-    // Instead of dividing by 100, multiply by 1/100 = 0.01 in Q16 = 655
-    let dynamic_bps = ((price_impact_bps as u32 * unified_pct as u32 * 655) >> 16) as i32;
-    
-    // 6. Total fee (clamped to bounds)
-    let total_bps = (BASE_FEE_BPS as i32 + dynamic_bps)
-        .clamp(MIN_TOTAL_FEE_BPS as i32, MAX_TOTAL_FEE_BPS as i32);
-    
-    total_bps as u16
+    let impact_bps = ticks_to_bps(ticks_moved).max(IMPACT_FLOOR_BPS);
+    let total = (BASE_FEE_BPS as u32 + impact_bps as u32)
+        .clamp(MIN_TOTAL_FEE_BPS as u32, MAX_TOTAL_FEE_BPS as u32);
+    total as u16
 }
 ```
 
@@ -185,7 +110,7 @@ fn ticks_to_bps(ticks: i32) -> u16 {
 
 **Design Trade-off**: This lookup table approach creates discontinuities at 100-tick boundaries (e.g., 199 ticks = 199 bps, but 200 ticks = 201 bps). This is a conscious choice prioritizing gas efficiency over perfect smoothness. The alternative, an on-chain exponential or polynomial approximation, would be more computationally expensive. For a production system handling high transaction volumes, the gas savings justify the minor pricing discontinuities.
 
-### 2. Momentum Factor (Continuous)
+### Phase 2 (Deferred): Momentum Factor (Continuous)
 
 **Behavior**: Produces a multiplicative factor between 80% and 150% based on market momentum. When trades go with momentum, fees increase (up to 1.5x). When trades counter momentum, fees decrease (down to 0.8x).
 
@@ -225,7 +150,7 @@ fn apply_momentum_direction(adjustment: i32, flow_ewma: i64, trade_direction: i8
 }
 ```
 
-### 3. Equilibrium with Two-Part Bias System
+### Phase 2 (Deferred): Equilibrium with Two-Part Bias System
 
 **Behavior**: Calculates the equilibrium price target using a two-part system: a gentle capped upward bias during normal conditions, and a hard floor as a failsafe. This combines an "attractive target" that pulls prices up with a "repulsive floor" that prevents dangerous drops.
 
@@ -266,7 +191,7 @@ fn calculate_biased_equilibrium(
 
 As the market grows and TWAP reaches 20000+, the soft bias caps at NORMAL_BIAS_CAP_TICKS × 5%, preventing unbounded drift.
 
-### 4. Direction Adjustment
+### Phase 2 (Deferred): Direction Adjustment
 
 **Behavior**: Adds a penalty (positive adjustment) when trades move price away from equilibrium, or a bonus (negative adjustment) when trades restore balance. The bonus scales with how far the market is from equilibrium.
 
@@ -315,11 +240,11 @@ fn calculate_direction_adjustment(
 - Split into 10x 100 token trades: Each pays max(5 bps actual, 10 bps floor) = 10 bps impact → 55 bps per trade → 550 bps total
 - The split is strongly unprofitable, achieving our anti-gaming goal with minimal complexity
 
-### 6. Warmup Ramp
+### Phase 2 (Deferred): Warmup Ramp
 
-**Behavior**: During the initial market period, gradually enables rebates and equilibrium targeting based on both time elapsed and trading activity. Prevents early noisy data from creating incorrect incentives.
+**Behavior**: During the initial pool period, gradually enables rebates and equilibrium targeting based on both time elapsed and trading activity. Prevents early noisy data from creating incorrect incentives.
 
-**Intuition**: New markets need time and sufficient trading activity to establish reliable price signals. Early trades might be exploratory or manipulative. The ramp requires both conditions to be met before enabling full dynamic behavior.
+**Intuition**: New pools need time and sufficient trading activity to establish reliable price signals. Early trades might be exploratory or manipulative. The ramp requires both conditions to be met before enabling full dynamic behavior.
 
 **Rationale**: Using both time AND volume prevents gaming. Time alone could be waited out with no trading. Volume alone could be gamed with wash trading. The combination ensures organic market development.
 
@@ -375,11 +300,11 @@ fn cache_momentum_adjustment(state: &mut PoolState, current_slot: u64) {
 
 ### 7. Fee Distribution
 
-**Behavior**: After fees are collected from trades, they are distributed among multiple protocol entities based on a dynamic allocation system that adjusts splits based on pool maturity and market conditions.
+**Behavior**: After fees are collected from trades, they are distributed among multiple protocol entities using a fixed split (MVP). Governance may adjust the split globally (or per‑pool override) but it does not change per trade.
 
 **Intuition**: Different stakeholders contribute to the protocol's success in different ways. The distribution system ensures each entity is compensated appropriately for their role while maintaining incentive alignment.
 
-**Rationale**: Dynamic allocation allows the protocol to adjust incentives based on market needs - for example, increasing LP share during volatile periods to attract liquidity, or boosting protocol share during stable periods to build reserves.
+**Rationale**: A fixed split keeps the MVP simple and predictable. Over time, governance can tune splits using protocol parameters, but the mechanism remains simple and auditable.
 
 The collected fees are split between the following entities:
 - **The Feels Protocol**: Treasury accumulation for development and governance
@@ -388,11 +313,11 @@ The collected fees are split between the following entities:
 - **LPs (Liquidity Providers)**: Rewards capital provision and impermanent loss risk
 - **Swappers**: Via rebates for equilibrium-restoring trades
 
-This split is controlled by a fee allocation system which adjusts splits based on pool maturity and market conditions. The system ensures that incentives remain aligned across all participants while adapting to changing market dynamics.
+This split is configured via protocol parameters (with optional per‑pool override). Future phases may introduce adaptive policies, but the MVP uses a static configuration.
 
-### 8. Understanding Swapper Rebates
+### 8. Understanding Swapper Rebates (Phase 2)
 
-A key feature of the dynamic fee model is its ability to reward swappers for making trades that help stabilize the market. These rewards are delivered in the form of a **rebate**.
+When advanced fees are enabled, the model can reward swappers for making trades that help stabilize the market. These rewards are delivered in the form of a **rebate**.
 
 **Who gets the rebate?**
 The **swapper** executing the trade.
@@ -411,11 +336,11 @@ A trade is considered "helpful" and eligible for a rebate if it:
 
 The **Pool Buffer (τ)** is the accounting source for these rebates. When a rebate is given, the buffer and other fee recipients simply forgo the income they would have otherwise received, effectively using their potential revenue to pay for the swapper's discount.
 
-## State Management with Unified Components
+## State Management with Unified Components (Phase 2)
 
 **Behavior**: The dynamic fee system leverages unified protocol components for consistent state management across all subsystems.
 
-**Intuition**: By sharing core infrastructure like pool::Oracle, pool::Floor, and FlowSignals, the fee system gains access to richer signals while reducing state duplication.
+**Intuition**: By sharing core infrastructure like pool::Oracle, pool::Floor, and FlowSignals, the fee system gains access to richer signals while reducing state duplication. The fee split includes LPs, PoolReserve, PoolBuffer, Protocol Treasury, and a small Creator base fee (MVP), with exact percentages governed by protocol params.
 
 **Rationale**: Unified components ensure consistency, reduce gas costs, and enable more sophisticated fee calculations through shared signals.
 
@@ -514,110 +439,23 @@ impl PoolState {
 }
 ```
 
-## Unified Parameter Management
+## Parameters (Flat, Explicit for MVP)
 
-**Behavior**: The protocol uses a hierarchical parameter system where core parameters drive derived values across all subsystems.
-
-**Intuition**: By reducing dozens of parameters to a small set of core values, governance becomes more intuitive and consistent.
-
-**Rationale**: This approach ensures parameter changes have predictable, system-wide effects while maintaining flexibility for fine-tuning.
+For transparency and predictable governance, the MVP uses a flat set of explicit parameters:
 
 ```rust
-// Core parameters that drive the entire system
-pub struct CoreParameters {
-    pub risk_tolerance: u16,      // 0-100 scale
-    pub responsiveness: u16,      // 0-100 scale  
-    pub floor_safety_margin: u16, // Basis points
-}
-
-// Dynamic fee parameters derived from core
-pub struct DynamicFeeParameters {
-    // Core fees
+pub struct FeeParamsMvp {
     pub base_fee_bps: u16,
+    pub impact_floor_bps: u16,
     pub min_total_fee_bps: u16,
     pub max_total_fee_bps: u16,
     pub default_fee_cap_bps: u16,
-    
-    // Price impact
-    pub impact_floor_bps: u16,
-    
-    // Momentum
-    pub max_momentum_adj: u32,
-    pub k_momentum: u64,
-    pub stale_slots: u64,
-    
-    // Direction
-    pub away_penalty_pct: i32,
-    pub toward_bonus_pct: u32,
-    pub distance_scale_ticks: u32,
-    
-    // Equilibrium
-    pub floor_buffer_ticks: i32,
-    pub normal_bias_rate_pct: u32,
-    pub normal_bias_cap_ticks: i32,
-    
-    // Multiplier bounds
-    pub min_multiplier_pct: i32,
-    pub max_multiplier_pct: i32,
-    
-    // Warmup
-    pub s_min: u32,
-    pub min_warmup_trades: u32,
-    pub q_pivot: u64,
 }
-
-impl DynamicFeeParameters {
-    pub fn from_core(core: &CoreParameters) -> Self {
-        // Higher risk tolerance = wider bounds, lower floors
-        let risk_factor = core.risk_tolerance as u32;
-        let response_factor = core.responsiveness as u32;
-        
-        Self {
-            // Base fees scale with risk tolerance
-            base_fee_bps: 30 - (risk_factor / 10) as u16,
-            min_total_fee_bps: 10 - (risk_factor / 20) as u16,
-            max_total_fee_bps: 150 + (risk_factor / 2) as u16,
-            default_fee_cap_bps: 130 + (risk_factor / 5) as u16,
-            
-            // Impact floor decreases with risk tolerance
-            impact_floor_bps: 15 - (risk_factor / 10) as u16,
-            
-            // Momentum sensitivity increases with responsiveness
-            max_momentum_adj: 30 + (response_factor / 2),
-            k_momentum: 700_000 - (response_factor as u64 * 4000),
-            stale_slots: 45 - (response_factor / 5) as u64,
-            
-            // Direction incentives scale with both
-            away_penalty_pct: (40 + (response_factor / 5)) as i32,
-            toward_bonus_pct: 60 + (risk_factor / 3),
-            distance_scale_ticks: 1200 - (response_factor as u32 * 4),
-            
-            // Floor safety scales with margin
-            floor_buffer_ticks: core.floor_safety_margin as i32,
-            normal_bias_rate_pct: 3 + (risk_factor / 25),
-            normal_bias_cap_ticks: 4000 + (risk_factor as i32 * 20),
-            
-            // Bounds widen with risk tolerance
-            min_multiplier_pct: 70 - (risk_factor / 5) as i32,
-            max_multiplier_pct: 160 + (risk_factor / 2) as i32,
-            
-            // Warmup shortens with higher responsiveness
-            s_min: 2400 - (response_factor * 12),
-            min_warmup_trades: 150 - response_factor,
-            q_pivot: 1_000_000,
-        }
-    }
-}
-
-// Default production values
-pub const DEFAULT_CORE_PARAMS: CoreParameters = CoreParameters {
-    risk_tolerance: 30,      // Moderate risk
-    responsiveness: 50,      // Balanced response
-    floor_safety_margin: 100, // 100 tick buffer
-};
 ```
 
-## Integration with Swap
+These are modified directly via governance (no derived mappings). Phase 2 features (equilibrium, momentum, direction, warmup) introduce additional parameters behind feature flags when enabled.
+
+## Integration with Swap (MVP)
 
 **Behavior**: Shows how the fee model integrates with the existing swap flow. The swap executes first, then fees are calculated based on actual results and applied to the output.
 
@@ -642,15 +480,8 @@ pub fn execute_swap(
         sqrt_price_limit,
     )?;
     
-    // Calculate dynamic fee based on actual impact
-    let fee_bps = calculate_dynamic_fee_after_swap(
-        start_tick,
-        swap_result.end_tick,
-        swap_result.trade_direction,
-        amount_in,
-        &ctx.accounts.pool.state,
-        Clock::get()?.slot,
-    );
+    // Calculate fee based on realized impact (MVP)
+    let fee_bps = calculate_fee_after_swap(start_tick, swap_result.end_tick);
     
     // Check against user's fee cap if provided
     if let Some(cap) = max_fee_bps {
@@ -738,6 +569,12 @@ pub fn unified_post_swap_update(
 }
 ```
 
+### Recommended Fee Caps (Client Guidance)
+
+- Default `max_fee_bps` for casual users: 120 bps (tune via governance/data).
+- For sophisticated users/aggregators: set `max_fee_bps` to the observed 95th percentile fee over the last N trades for similar trade sizes, plus a small safety margin (e.g., +20 bps).
+- The program emits the effective `fee_bps` via events; indexers can surface recommended caps per pool and trade size.
+
 ## Hybrid Model: Balancing UX with Protocol Objectives
 
 While this fully on-chain model achieves robustness and anti-gaming properties, it creates UX challenges:
@@ -788,7 +625,7 @@ pub fn execute_swap_with_fee_cap(
 
 1. **Maintains On-Chain Calculation**: All anti-gaming benefits preserved
 2. **Provides Certainty**: Users know maximum possible cost
-3. **Market-Based Discovery**: Sophisticated traders will find optimal cap levels
+3. **Trader-Based Discovery**: Sophisticated traders will find optimal cap levels
 4. **Graceful Degradation**: System works even if estimation is poor
 
 ### Why Revert Instead of Min()
@@ -808,11 +645,11 @@ The choice to revert when `fee_bps > max_fee_bps` rather than using `min(fee_bps
 1. **Fully On-Chain**: No client calculations or verification needed
 2. **Actual Impact**: Uses realized tick movement, not estimates
 3. **Anti-Gaming**: Impact floor prevents tiny trade spam and split trades
-4. **Two-Part Equilibrium**: Gentle upward bias with hard floor failsafe
+4. (Phase 2) Two-Part Equilibrium: Gentle upward bias with hard floor failsafe
 5. **Clear Bounds**: Total fee always positive and capped
 6. **Efficient**: O(1) calculations after swap completion
 7. **User Control**: Fee caps provide transaction certainty
-8. **Warmup Protection**: Gradual enablement prevents early market manipulation
+8. (Phase 2) Warmup Protection: Gradual enablement prevents early pool manipulation
 
 ## Testing Scenarios
 
@@ -828,9 +665,9 @@ The choice to revert when `fee_bps > max_fee_bps` rather than using `min(fee_bps
 
 **Result**: Splitting costs 550 bps vs 95 bps for single trade. Gaming is strongly discouraged.
 
-### Scenario 2: Arbitrage Incentive
+### Scenario 2 (Phase 2): Arbitrage Incentive
 
-**Setup**: Market price is 2000 ticks above equilibrium. Arbitrageur can move price 500 ticks toward equilibrium.
+**Setup**: Pool price is 2000 ticks above equilibrium. Arbitrageur can move price 500 ticks toward equilibrium.
 
 **Behavior**:
 - 500 tick move = 500 bps impact
@@ -840,9 +677,9 @@ The choice to revert when `fee_bps > max_fee_bps` rather than using `min(fee_bps
 
 **Result**: Arbitrageur pays only 130 bps to capture 500 bps of price improvement, creating strong incentive to restore balance.
 
-### Scenario 3: Early Market Protection
+### Scenario 3 (Phase 2): Early Pool Protection
 
-**Setup**: New market launches. Attacker tries to manipulate fees via early trades.
+**Setup**: New pool launches. Attacker tries to manipulate fees via early trades.
 
 **Behavior with warmup**:
 - First few trades: ramp ≈ 0, equilibrium stays at bootstrap R0
@@ -850,7 +687,7 @@ The choice to revert when `fee_bps > max_fee_bps` rather than using `min(fee_bps
 - Rebates heavily scaled down until both conditions met
 - Surcharges always apply fully (no gaming opportunity)
 
-**Result**: Market develops organically without early manipulation affecting long-term behavior.
+**Result**: Pool develops organically without early manipulation affecting long-term behavior.
 
 ## Tests
 
@@ -1031,25 +868,28 @@ The protocol's long-term success depends not just on the elegance of its design,
 
 ## Deployment Phases
 
-The dynamic fee system deployment follows the protocol-wide phased approach:
+The dynamic fee system deployment follows the protocol-wide rollout stages:
 
-### Phase 1: Foundation (Weeks 1-2)
+### Stage 1: Foundation (Weeks 1-2)
 - Deploy unified infrastructure (pool::Oracle, pool::Floor, SafetyController, FlowSignals)
 - Launch with conservative fee parameters
 - Base fee: 30 bps, Impact floor: 15 bps
 - Momentum and direction adjustments disabled
 
-### Phase 2: Activation (Weeks 3-4)
+### Stage 2: Activation (Weeks 3-4)
 - Enable momentum tracking with conservative bounds
 - Enable direction adjustments with small bonuses
 - Begin collecting flow signal data
 
-### Phase 3: Optimization (Weeks 5-8)
+### Stage 3: Optimization (Weeks 5-8)
 - Tune parameters based on observed trading patterns
 - Gradually reduce impact floor if split trading is minimal
 - Increase rebate potential for equilibrium-restoring trades
 
-### Phase 4: Maturity (Week 8+)
+### Stage 4: Maturity (Week 8+)
 - Full dynamic fee model with all features active
 - Data-driven parameter adjustments via governance
 - Integration with advanced features (e.g., fee tiers by trader type)
+### Phase 2 Note: Equilibrium & Rebates
+
+Equilibrium targets and rebates are disabled in MVP. When enabled later, stale GTWAP windows will fall back to `max(current_tick, pool_floor.get_safe_ask_tick())` and disable rebates automatically.

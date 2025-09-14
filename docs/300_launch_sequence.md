@@ -1,6 +1,6 @@
 # Token Launch Sequence
 
-This document details the complete process of launching a new token on the Feels Protocol, from acquiring FeelsSOL through token minting, pool initialization, and liquidity deployment via a bonding curve, through graduation to steady state.
+This document details the complete process of launching a new token on the Feels Protocol, from acquiring FeelsSOL through token minting, pool initialization, and liquidity deployment via a bonding curve, through graduation to steady state. For MVP, we also provide a Launch Factory path that bundles steps and reduces the risk of user error.
 
 ## Step 1: Convert JitoSOL to FeelsSOL
 
@@ -165,10 +165,13 @@ Process:
 2. Creates N−1 micro‑range positions with liquidity sized to approximate `x*y=k`
 3. Aligns ticks to spacing and updates active liquidity
 
-### Step 4.2: (Optional) Initial Buy
+### Step 4.2: (Optional) Initial Buy (Side‑Effect Free)
+The initial buy is an optional, ordinary swap against the bonding curve liquidity. It has no special side effects beyond normal swap accounting (fees, balances) and does not change pool configuration or allocations.
+
 1. Transfers initial buy FeelsSOL from deployer to appropriate vault
 2. Calculates output amount using current pool price
 3. Transfers calculated tokens from vault to deployer's token account
+4. Applies standard dynamic fees and fee split, including creator base fee
 
 ### Step 4.3: Finalize Deployment
 1. Transfer mint fee from escrow to treasury
@@ -176,6 +179,16 @@ Process:
 3. Mark pool as having bonding curve deployed
 
 The initial buy executes at the current market price, guaranteeing the deployer gets the best available price as the first buyer.
+
+## Launch Factory (Recommended for MVP)
+
+To reduce friction and errors, creators can use a one‑click Launch Factory (CLI/script or wrapper instruction) that:
+- Validates prerequisites (balances, PDA derivations, account rents)
+- Initializes the pool and deploys bonding curve liquidity in one atomic transaction when possible
+- Falls back to a safe, idempotent two‑step sequence if CU limits require
+- Optionally performs the initial buy as a normal swap
+
+Idempotent flags (e.g., `pool_initialized`, `curve_deployed`, `graduation_pending`) make retries safe. A single `PoolLaunched` event is emitted only after all steps complete; intermediate events help guide retries if needed.
 
 ## Step 5: Token Expiration (Optional)
 
@@ -212,6 +225,41 @@ Process:
 
 ---
 
+## Step 6: Convert FeelsSOL back to JitoSOL (Redemption)
+
+Provide a symmetric redemption path to unwind FeelsSOL into JitoSOL, subject to protocol safety.
+
+### Instruction: `exit_feelssol`
+
+Parameters:
+- `amount: u64` – Amount of FeelsSOL to redeem
+
+### Accounts
+
+| Account | Description |
+|---------|-------------|
+| `user` | Signer, system account |
+| `user_feelssol` | User's FeelsSOL token account |
+| `user_jitosol` | User's JitoSOL token account |
+| `feelssol_mint` | FeelsSOL mint |
+| `jitosol_mint` | JitoSOL mint |
+| `jitosol_vault` | Protocol JitoSOL vault (PDA) |
+| `protocol_oracle` | Protocol reserve oracle (rate with safety buffer) |
+| `safety_controller` | Protocol SafetyController |
+| `token_program` | SPL Token program |
+| `system_program` | System program |
+
+Process:
+1. Safety checks via SafetyController (global pause; degrade rules).
+2. Read conservative exchange rate from `protocol_oracle` (Jito native rate minus safety buffer; or min(protocol, market) in Phase 2).
+3. Burn `amount` FeelsSOL from `user_feelssol`.
+4. Transfer corresponding JitoSOL from `jitosol_vault` to `user_jitosol`.
+5. Emit FeelsSOLRedeemed event.
+
+Degrade/Pause behavior:
+- If `protocol_oracle` is stale or unhealthy, SafetyController may pause `exit_feelssol` while leaving swaps enabled.
+- Rate limiting may apply to redemption volume per slot.
+
 ## Complete Example
 
 **Sequence Diagram**
@@ -225,8 +273,8 @@ sequenceDiagram
     participant FeelsSOL_Mint
     participant Token_Mint
     participant Escrow
-    participant Market
-    participant Market_Vaults
+    participant Pool
+    participant Pool_Vaults
     participant Treasury
     participant Anyone_Destroyer
     
@@ -251,19 +299,19 @@ sequenceDiagram
         Program->>Token_Mint: Revoke mint authority (None)
         Program->>Token_Mint: Revoke freeze authority (None)
         Note over Token_Mint: Fixed supply, unfrozen forever
-        Program->>Market: Create market account
-        Program->>Market: Set initial sqrt_price
-        Program->>Market_Vaults: Create empty vaults
-        Program->>Escrow: Link escrow to market
+        Program->>Pool: Create pool account
+        Program->>Pool: Set initial sqrt_price
+        Program->>Pool_Vaults: Create empty vaults
+        Program->>Escrow: Link escrow to pool
     end
     
     rect rgb(240, 240, 240)
         Note right of User: Step 4: Deploy Bonding Curve
         User->>Program: deploy_bonding_curve_liquidity(initial_buy=1000)
         
-        Note over Program: Deploy Staircase
-        Program->>Escrow: Transfer 80% of tokens
-        Escrow->>Market_Vaults: 800M FEELS
+        Note over Program: Deploy Bonding Curve
+        Program->>Escrow: Transfer seed tokens
+        Escrow->>Pool_Vaults: 800M FEELS
         Program->>Pool: Create discretized curve positions
         
         Note over Program: Transfer fees
@@ -271,7 +319,7 @@ sequenceDiagram
         User->>Treasury: Transfer 1000 FeelsSOL deployment fee
         
         Note over Program: Execute Initial Buy
-        User->>Market_Vaults: 1000 FeelsSOL
+        User->>Pool_Vaults: 1000 FeelsSOL
         Program->>Program: Calculate output (~1M FEELS)
         Pool_Vaults->>User: Receive ~1M FEELS
         
@@ -311,13 +359,13 @@ Starting with 3000 FeelsSOL for a complete token launch:
    - Pay 1000 FeelsSOL mint fee (stored in escrow, not sent to treasury)
    - Create FEELS token with 1B supply to escrow
    - Mint and freeze authorities NOT revoked yet
-2. Initialize Market: 
+2. Initialize Pool: 
    - Verify creator authorization
    - Revoke mint and freeze authorities permanently
    - Set initial price at 0.001 FeelsSOL per FEELS (sqrt_price ≈ 2071319988 << 64)
-   - Link escrow to market
+   - Link escrow to pool
 3. Deploy Liquidity: 
-   - Protocol deploys 800M FEELS (80%) across 10 positions
+   - Protocol deploys 800M FEELS across discretized bonding‑curve micro‑ranges
    - Pay 1000 FeelsSOL deployment fee from user to treasury
    - Transfer mint fee (1000 FeelsSOL) from escrow to treasury
    - User includes 1000 FeelsSOL for initial buy
@@ -326,6 +374,6 @@ Starting with 3000 FeelsSOL for a complete token launch:
 Final state:
 - Treasury: 2000 FeelsSOL (mint fee + deployment fee)
 - Escrow: 200M FEELS (20% retained)
-- Market liquidity: 800M FEELS distributed across 10 positions
+- Pool liquidity: 800M FEELS distributed across micro‑ranges
 - User: ~1M FEELS from initial buy
-- Market is live and tradeable
+- Pool is live and tradeable

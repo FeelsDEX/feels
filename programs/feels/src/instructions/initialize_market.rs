@@ -33,10 +33,7 @@ pub struct InitializeMarketParams {
 #[instruction(params: InitializeMarketParams)]
 pub struct InitializeMarket<'info> {
     /// Creator initializing the market
-    #[account(
-        mut,
-        constraint = creator.owner == &System::id() @ FeelsError::InvalidAuthority
-    )]
+    #[account(mut)]
     pub creator: Signer<'info>,
     
     /// Token 0 mint (lower pubkey)
@@ -81,7 +78,7 @@ pub struct InitializeMarket<'info> {
     #[account(
         init,
         payer = creator,
-        seeds = [VAULT_SEED, market.key().as_ref(), token_0.key().as_ref()],
+        seeds = [VAULT_SEED, token_0.key().as_ref(), token_1.key().as_ref(), b"0"],
         bump,
         token::mint = token_0,
         token::authority = market_authority,
@@ -92,7 +89,7 @@ pub struct InitializeMarket<'info> {
     #[account(
         init,
         payer = creator,
-        seeds = [VAULT_SEED, market.key().as_ref(), token_1.key().as_ref()],
+        seeds = [VAULT_SEED, token_0.key().as_ref(), token_1.key().as_ref(), b"1"],
         bump,
         token::mint = token_1,
         token::authority = market_authority,
@@ -108,7 +105,8 @@ pub struct InitializeMarket<'info> {
     pub market_authority: AccountInfo<'info>,
     
     /// FeelsSOL mint (hub token)
-    pub feelssol_mint: Account<'info, Mint>,
+    /// CHECK: Validated as either token_0 or token_1
+    pub feelssol_mint: AccountInfo<'info>,
     
     /// Protocol token registry for token_0 (if not FeelsSOL)
     /// CHECK: Can be a dummy account if token_0 is FeelsSOL
@@ -119,20 +117,16 @@ pub struct InitializeMarket<'info> {
     pub protocol_token_1: AccountInfo<'info>,
     
     /// Pre-launch escrow for the protocol token
-    #[account(
-        mut,
-        constraint = escrow.market == Pubkey::default() @ FeelsError::InvalidMarket
-    )]
-    pub escrow: Box<Account<'info, PreLaunchEscrow>>,
+    /// CHECK: Validated manually in handler
+    #[account(mut)]
+    pub escrow: AccountInfo<'info>,
     
     /// Creator's FeelsSOL account for initial buy
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
-    #[account(mut)]
     pub creator_feelssol: AccountInfo<'info>,
     
     /// Creator's token account for receiving initial buy tokens
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
-    #[account(mut)]
     pub creator_token_out: AccountInfo<'info>,
     
     /// System program
@@ -150,13 +144,6 @@ pub fn initialize_market(
     ctx: Context<InitializeMarket>,
     params: InitializeMarketParams,
 ) -> Result<()> {
-    msg!("initialize_market: Starting");
-    msg!("  creator: {}", ctx.accounts.creator.key());
-    msg!("  token_0: {}", ctx.accounts.token_0.key());
-    msg!("  token_1: {}", ctx.accounts.token_1.key());
-    msg!("  token_0 is_writable: {}", ctx.accounts.token_0.to_account_info().is_writable);
-    msg!("  token_1 is_writable: {}", ctx.accounts.token_1.to_account_info().is_writable);
-    
     // Early validation - fail fast before accessing mutable references
     
     // 1. Validate parameters first
@@ -181,7 +168,52 @@ pub fn initialize_market(
         FeelsError::InvalidTokenOrder
     );
     
-    // 3. Check that at least one token is FeelsSOL
+    // 3. Manually deserialize and validate escrow account
+    msg!("Attempting to deserialize escrow");
+    msg!("  Escrow account: {}", ctx.accounts.escrow.key());
+    
+    let escrow_data = ctx.accounts.escrow.try_borrow_data()?;
+    msg!("  Escrow data length: {}", escrow_data.len());
+    msg!("  Escrow first 8 bytes: {:?}", &escrow_data[0..8]);
+    
+    require!(
+        escrow_data.len() >= 8,
+        FeelsError::InvalidAccount
+    );
+    
+    // Deserialize the escrow
+    let mut escrow_slice = &escrow_data[..];
+    let escrow: PreLaunchEscrow = PreLaunchEscrow::try_deserialize(&mut escrow_slice)
+        .map_err(|e| {
+            msg!("Failed to deserialize escrow: {:?}", e);
+            FeelsError::InvalidAccount
+        })?;
+    
+    msg!("  escrow.token_mint: {}", escrow.token_mint);
+    msg!("  escrow.market: {}", escrow.market);
+    msg!("  escrow.creator: {}", escrow.creator);
+    
+    // Validate escrow is for one of the tokens
+    let escrow_for_token_0 = escrow.token_mint == ctx.accounts.token_0.key();
+    let escrow_for_token_1 = escrow.token_mint == ctx.accounts.token_1.key();
+    require!(
+        escrow_for_token_0 || escrow_for_token_1,
+        FeelsError::InvalidAccount
+    );
+    
+    // Validate escrow market is not yet set
+    require!(
+        escrow.market == Pubkey::default(),
+        FeelsError::MarketAlreadyInitialized
+    );
+    
+    // Validate creator matches escrow creator
+    require!(
+        escrow.creator == ctx.accounts.creator.key(),
+        FeelsError::UnauthorizedSigner
+    );
+    
+    // 4. Check that at least one token is FeelsSOL
     let token_0_is_feelssol = ctx.accounts.token_0.key() == ctx.accounts.feelssol_mint.key();
     let token_1_is_feelssol = ctx.accounts.token_1.key() == ctx.accounts.feelssol_mint.key();
     
@@ -230,10 +262,11 @@ pub fn initialize_market(
             &[PROTOCOL_TOKEN_SEED, ctx.accounts.token_0.key().as_ref()],
             ctx.program_id,
         );
-        require!(
-            ctx.accounts.protocol_token_0.key() == expected_protocol_token_0,
-            FeelsError::InvalidAuthority
-        );
+        
+        // If it's not the expected protocol token PDA, it might be a dummy account
+        if ctx.accounts.protocol_token_0.key() != expected_protocol_token_0 {
+            return Err(FeelsError::TokenNotProtocolMinted.into());
+        }
         
         if let Ok(protocol_token_data) = ctx.accounts.protocol_token_0.try_borrow_data() {
             if protocol_token_data.len() >= 8 {
@@ -264,10 +297,11 @@ pub fn initialize_market(
             &[PROTOCOL_TOKEN_SEED, ctx.accounts.token_1.key().as_ref()],
             ctx.program_id,
         );
-        require!(
-            ctx.accounts.protocol_token_1.key() == expected_protocol_token_1,
-            FeelsError::InvalidAuthority
-        );
+        
+        // If it's not the expected protocol token PDA, it might be a dummy account
+        if ctx.accounts.protocol_token_1.key() != expected_protocol_token_1 {
+            return Err(FeelsError::TokenNotProtocolMinted.into());
+        }
         
         if let Ok(protocol_token_data) = ctx.accounts.protocol_token_1.try_borrow_data() {
             if protocol_token_data.len() >= 8 {
@@ -523,7 +557,19 @@ pub fn initialize_market(
     }
     
     // Update escrow to link to the new market
-    ctx.accounts.escrow.market = market.key();
+    // We need to deserialize, modify, and serialize back
+    {
+        let mut escrow_data = ctx.accounts.escrow.try_borrow_mut_data()?;
+        let mut escrow_slice = &escrow_data[..];
+        let mut escrow: PreLaunchEscrow = PreLaunchEscrow::try_deserialize(&mut escrow_slice)
+            .map_err(|_| FeelsError::InvalidAccount)?;
+        
+        escrow.market = market.key();
+        
+        // Serialize back
+        let mut data = &mut escrow_data[..];
+        escrow.try_serialize(&mut data)?;
+    }
     
     // Emit event
     emit!(MarketInitialized {

@@ -10,6 +10,16 @@ New tokens often launch with thin books. We want to ensure the Feels protocol pr
 
 Provide bounded, just-in-time (JIT) protocol liquidity inside the swap around a biased, clamped geometric time-weighted average price (GTWAP) anchor, with micro-spread, strict budgets, and place-execute-remove in one instruction. Side selection is contrarian to the taker's intent, never trend-following on lagging windows. Sizing is funded only from τ (fee buffer); asks never sit below the floor; sells come only from inventory. A tiny toxicity EMA throttles size after pick-offs.
 
+## MVP Mode: JIT v0 (Minimal, Safe, Always-On)
+
+To ensure reliable execution at the market price and smooth bootstrapping without external market makers, the MVP ships a minimal JIT v0 mode:
+
+- Contrarian micro-spread quotes: a tiny bid or ask placed opposite the taker, centered on the pool anchor (GTWAP clamped to current tick) with a fixed spread and 1-tick range.
+- Tight budgets: small per-swap and per-slot quote budgets; uses PoolBuffer only; never taps PoolReserve.
+- No toxicity model in v0: no EWMA, no FlowSignals fusion. Pure contrarian with fixed parameters.
+- Single-tx place–execute–remove: quotes exist only during the swap; no lingering inventory; burn-by-default on protocol fills.
+- Floor guard: JIT ask never below `pool::Floor.get_safe_ask_tick()`.
+
 ## Non-Goals
 
 * No dependency on off-chain keepers, external venues, or 24h volume.
@@ -22,7 +32,7 @@ Provide bounded, just-in-time (JIT) protocol liquidity inside the swap around a 
 
 The JIT liquidity system is the protocol's facility for executable liquidity. After the initial price discovery phase, a combinatino of JIT liquidity available at the market price + floor liquidity, consitutes the system's steady-state market making strategy.
 
-The JIT liquidity system provides automated, risk-aware market making for newly launched tokens on Feels. At its core, the system acts as a contrarian liquidity provider that places narrow bands of liquidity opposite to incoming trades. While the system is primarily funded by ongoing protocol fee revenue flowing into the pool's buffer account (τ), it is initially capitalized by a small portion of the seed capital from the token's launch phase. This ensures the JIT system is active from the moment the market enters its steady-state. The system operates entirely within a single swap instruction, placing liquidity just-in-time for the incoming trade and removing any unfilled liquidity immediately after execution.
+The JIT liquidity system provides automated, risk-aware market making for newly launched tokens on Feels. At its core, the system acts as a contrarian liquidity provider that places narrow bands of liquidity opposite to incoming trades. While the system is primarily funded by ongoing protocol fee revenue flowing into the pool's buffer account (τ), it is initially capitalized by a small portion of the seed capital from the token's launch phase. This ensures the JIT system is active from the moment the pool enters its steady-state. The system operates entirely within a single swap instruction, placing liquidity just-in-time for the incoming trade and removing any unfilled liquidity immediately after execution.
 
 The pricing anchor combines a geometric time-weighted average price (GTWAP) with a floor price bias, creating a reference point that resists short-term manipulation while respecting the protocol's solvency constraints. Around this anchor, the system places micro-spreads that widen dynamically based on detected toxicity (adverse price movements after fills). The adaptive spread mechanism ensures the protocol is compensated proportionally to the risk it takes, with tighter spreads in calm markets and wider spreads during volatile or adversarial conditions.
 
@@ -40,9 +50,22 @@ The JIT system integrates cleanly across layers. Terminology: protocol = global 
 
 **SafetyController**: Global `protocol::SafetyController` gates participation, rate limits, and degraded modes.
 
+### JIT v0 Parameters (MVP Subset)
+
+- base_spread_ticks: 2–3
+- range_ticks: 1
+- dev_clamp_ticks: 50–100 (anchor clamp to current tick)
+- max_per_swap_q: very small (e.g., ≤ 0.1% of PoolBuffer)
+- max_per_slot_q: a small multiple of max_per_swap_q (e.g., ×3)
+- cooldown_slots: 5
+- ask_cooldown_slots: 10
+- inventory_maturity_slots: 0 (burn-by-default; no inventory)
+
+Disabled in v0: toxicity EMA, symmetric mode, momentum-based spread, inventory holds.
+
 ### Anchor & Placement
 
-* **Anchor**: `R = max(pool_oracle.get_tick()?, pool_floor.get_safe_ask_tick())`
+* **Anchor**: `R = max(pool_oracle.get_tick()?, pool_floor.get_safe_ask_tick())`. If GTWAP is stale, use `current_tick` for the anchor.
 * **Clamp** to current price: `R_c = clamp(R, tick_cur − DEV_CLAMP, tick_cur + DEV_CLAMP)`
 * **Micro-spread ranges** (ticks):
 
@@ -185,7 +208,7 @@ Size uses `size_alpha` to reduce on any hit (adverse or not), while spread widen
    - Apply cooldowns and reset slot counters as needed
 
 5. **Unified post-swap flow**:
-   - All updates flow through the protocol's unified post-swap handler
+   - All updates flow through the pool's unified post-swap handler
    - Ensures consistent state updates across all subsystems
 
 ### State (per pool)
@@ -234,7 +257,7 @@ pub struct JitCoreParams {
     pub base_bps_of_tau: u16,
 }
 
-// Market-tier parameters (adjustable per market maturity)
+// Pool-tier parameters (adjustable per pool maturity)
 pub struct JitMarketParams {
     pub base_spread_ticks: u8,      // Default: 1
     pub max_spread_ticks: u8,       // Default: 4
@@ -314,34 +337,27 @@ For newly launched pools:
 
 This ensures JIT remains active during volatile launch periods while preventing long-term exploitation.
 
-## Deployment Phases
+## Deployment Stages
 
-The JIT system deployment follows the protocol-wide phased approach:
+The JIT system deployment follows the protocol-wide rollout stages:
 
-### Phase 1: Foundation (Weeks 1-2)
-- Deploy unified infrastructure (pool::Oracle, pool::Floor, SafetyController, FlowSignals)
-- JIT system deployed but inactive
-- Collect baseline market data
+### Stage 1: Foundation (Weeks 1-2)
+- Deploy unified infrastructure (pool::Oracle, pool::Floor, SafetyController)
+- Enable JIT v0 with very conservative parameters
+- Collect baseline market data (optional FlowSignals for future rollout stages)
 
-### Phase 2: Activation (Weeks 3-4)
-- Enable JIT with conservative parameters
-- Burn-by-default policy for all JIT fills
-- Tight budgets: MAX_PER_SWAP_Q = Q_PIVOT / 100
-- Wide spreads: BASE_SPREAD_TICKS = 3
+### Stage 2: Activation (Weeks 3-4)
+- Consider tightening spreads slightly if pick-offs low; increase budgets modestly
+- Maintain burn-by-default; keep Floor guard and clamps
 
-### Phase 3: Optimization (Weeks 5-8)
-- Monitor flow signal patterns across all subsystems
-- Gradually increase budgets based on toxicity levels
-- Tighten spreads in stable markets
-- Begin testing inventory hold strategies
+### Stage 3: Optimization (Weeks 5-8)
+- Add toxicity EMA + FlowSignals fusion (JIT v1)
+- Tune budgets and spreads using observed data
 
-### Phase 4: Maturity (Week 8+)
-- Full JIT functionality with tuned parameters
-- Consider matured inventory model after extensive data
-- Dynamic parameter adjustment based on market conditions
-- Integration with advanced routing strategies
+### Stage 4: Maturity (Week 8+)
+- Full JIT functionality (v1+) with tuned parameters and optional inventory model
 
-The phased approach ensures all unified components are battle-tested before full JIT activation.
+The staged approach ensures all unified components are battle-tested before full JIT activation.
 
 ## Success Metrics
 
@@ -355,3 +371,18 @@ The phased approach ensures all unified components are battle-tested before full
   - Safety interventions rare and appropriate
   - Toxicity signals consistent across subsystems
 * **Performance**: CU usage within bounds; no degradation of swap execution
+
+## Phase 2 (Deferred) — JIT v1 Enhancements
+
+The following features are intentionally deferred to Phase 2 to reduce MVP complexity while preserving a clear upgrade path:
+
+- Toxicity EMA and FlowSignals fusion for adaptive spread/size throttling
+- Symmetric mode fallback with wider base spread when direction is ambiguous
+- Momentum-informed spread adjustments
+- Inventory holds and maturity model (replace burn-by-default with small, time‑boxed inventory under strict caps)
+- Advanced routing/risk‑aware placement based on global signals
+
+Enablement plan:
+1) Turn on toxicity EMA with conservative weights; monitor pick‑off metrics and JIT utilization.
+2) Introduce FlowSignals combination and symmetric fallback with hard, small caps.
+3) Evaluate limited inventory holds with strict maturity/size ceilings, only after sustained stability.

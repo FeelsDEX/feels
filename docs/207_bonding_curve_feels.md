@@ -13,7 +13,7 @@ This process functions as **Phase 1** of a pool's life, managed by the `PoolCont
 -   **Protocol-Only Liquidity**: To ensure the bonding curve's integrity, all third-party LPing is **disabled** during this phase. The protocol is the sole counterparty to all trades.
 -   **Simulated `x*y=k` Curve**: From a trader's perspective, the experience will feel like swapping on a classic bonding curve with a smooth, continuous price path. Under the hood, they are swapping against hundreds of discrete CLMM positions programmatically arranged to form a hyperbola.
 -   **Graduation Trigger**: The bonding curve phase is finite. It concludes when the market reaches a predefined **target market cap** (e.g., 85 SOL raised), at which point it "graduates".
--   **Seamless Transition to Steady-State**: All capital raised during the bonding phase is automatically rolled over to seed the protocol's long-term, steady-state market-making strategies (Floor and JIT POMM).
+-   **Seamless Transition to Steady-State**: All capital raised during the bonding phase is automatically rolled over to seed the protocol's long-term, steady-state market-making strategies (Floor and JIT POL).
 
 ## 3. Discretized Liquidity Implementation
 
@@ -33,7 +33,7 @@ The `deploy_bonding_curve_liquidity` instruction executes the following algorith
 
 1.  **Define Price Range**: Determine the start and end price for the bonding curve. The start price is derived from the initial virtual reserves. The end price is the price at which the market cap graduation target is met.
 
-2.  **Generate Price Points**: Divide the price range into `N` discrete price points (e.g., `N=200`). These points are spaced **geometrically**, not linearly, to create smaller steps at lower prices and larger steps at higher prices, which naturally maps to the `x*y=k` curve's shape.
+2.  **Generate Price Points**: Divide the price range into `N` discrete price points (recommended MVP: `N = 20–40`). These points are spaced **geometrically**, not linearly, to create smaller steps at lower prices and larger steps at higher prices, which naturally maps to the `x*y=k` curve's shape. A simpler “staircase” of 5–10 deeper tranches is an acceptable alternative when minimizing complexity.
 
 3.  **Convert to Ticks**: Each price point `P_i` is converted into a tick index `T_i`. This creates `N-1` small, contiguous tick ranges: `[T_1, T_2]`, `[T_2, T_3]`, etc.
 
@@ -48,20 +48,21 @@ The result is a fine-grained approximation of a smooth hyperbola, built from dis
 
 ## 4. Pool Lifecycle
 
-### 4.1. Phase 1: Bonding Curve Active
+### 4.1. Pool Phase 1: Bonding Curve Active
 
 -   **Deployment**: The `deploy_bonding_curve_liquidity` instruction creates the discretized hyperbola curve as described above.
 -   **LPing Disabled**: The `PoolController` sets a flag on the pool that prevents any user from calling `open_position` or other liquidity-modifying instructions.
 -   **Trading**: Users buy the new token with `FeelsSOL`. Swaps are executed by the standard CLMM engine against protocol‑owned liquidity. The standard **Dynamic Fee Model** applies to all trades.
+    -   Optional Initial Buy: A side‑effect‑free, ordinary swap that does not alter pool configuration. It applies the standard fee model and fee split, including the creator base fee.
 -   **Graduation Check**: After every swap, the contract checks if the total `FeelsSOL` collected has reached the graduation market cap.
 
-### 4.2. Phase 2: Seamless Transition to Steady-State
+### 4.2. Pool Phase 2: Seamless Transition to Steady-State
 
 A critical design goal is to graduate the pool from its bonding curve to an open, steady-state AMM with **zero downtime**. This is achieved by adding the new, permanent liquidity *before* removing the old, temporary bonding curve liquidity.
 
 1.  **Graduation Trigger**: The `swap` transaction that meets or exceeds the graduation cap flips the `PoolController` state from `PriceDiscovery` to `SteadyState`. Trading continues uninterrupted, but internal logic now changes for all subsequent actions.
 
-2.  **Deployment of Steady-State Liquidity**: Once the pool is in the `SteadyState`, a permissionless crank instruction, `deploy_steady_state_liquidity`, can be called. This crucial, one-time transaction performs the initial deployment of the permanent protocol‑owned strategies.
+2.  **Deployment of Steady-State Liquidity**: Once the pool is in the `SteadyState`, attempt a single, atomic `graduate_pool` instruction to reallocate capital to Floor POL and seed PoolBuffer. If this exceeds CU limits, a permissionless crank instruction, `deploy_steady_state_liquidity`, can be used to seed steady state and a batched `cleanup_bonding_curve` withdraws bonding-curve ranges. All steps are safe to retry and idempotent.
 
     -   **Source of Capital**: The crank's first step is to calculate the total assets collected during the bonding phase. These assets, held in the pool vaults from the now-inactive bonding curve positions, consist of:
         1.  All the `FeelsSOL` paid by buyers.
@@ -80,7 +81,7 @@ A critical design goal is to graduate the pool from its bonding curve to an open
 
 3.  **Pool Opening**: In the same `deploy_steady_state_liquidity` transaction, the `lping_enabled` flag is set to `true`, immediately opening the pool to third-party LPs.
 
-4.  **Cleanup of Bonding Curve Liquidity**: A separate, permissionless crank instruction, `cleanup_bonding_curve`, can now be called multiple times to safely remove the redundant bonding curve positions and reclaim rent, without affecting the now-active market.
+4.  **Cleanup of Bonding Curve Liquidity**: A separate, permissionless crank instruction, `cleanup_bonding_curve`, can now be called multiple times to safely remove the redundant bonding curve positions and reclaim rent, without affecting the now-active pool. This operation is batched and idempotent.
 
 ## 5. Ungraduated Pools
 

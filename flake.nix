@@ -49,12 +49,42 @@
                 name = "feels";
                 displayName = "Feels Protocol";
                 cargoToml = "programs/feels/Cargo.toml";
+                # Optional: Custom dependencies for IDL generation
+                idlDependencies = ''
+[package]
+name = "feels"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "feels"
+
+[features]
+no-entrypoint = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["idl-build"] }
+anchor-spl = { version = "0.31.1", features = ["idl-build"] }
+solana-program = { version = "2.2.1" }
+borsh = { version = "0.10.3" }
+bytemuck = { version = "1.14" }
+spl-token = { version = "7.0" }
+spl-token-2022 = { version = "6.0", default-features = false }
+spl-associated-token-account = { version = "6.0" }
+mpl-token-metadata = { version = "5.1.1", default-features = false }
+orca_whirlpools_core = { version = "2.0.0", default-features = false }
+ethnum = { version = "1.5.0", default-features = false }
+fixed = { version = "1.28", default-features = false, features = ["serde"] }
+num-traits = { version = "0.2", default-features = false }
+micromath = { version = "2.1", default-features = false }
+integer-sqrt = { version = "0.1" }
+                '';
               };
-              adapter = {
-                name = "feels-jupiter-adapter";
-                displayName = "Feels Jupiter Adapter";
-                cargoToml = "programs/feels-jupiter-adapter/Cargo.toml";
-              };
+              # Note: feels-jupiter-adapter is a library, not deployed on-chain
+              # It provides the Jupiter AMM interface implementation
             };
             
             directories = {
@@ -139,7 +169,10 @@
           };
           devshells.default = devshellConfig;
 
-          packages = { default = defaultPackage; } // programPackages // config.crate2nix.packages;
+          packages = { 
+            default = defaultPackage; 
+          } // programPackages 
+            // config.crate2nix.packages;
 
           apps = {
             idl-build = {

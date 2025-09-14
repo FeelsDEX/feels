@@ -69,10 +69,26 @@ pub fn find_epoch_params_address(market: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
-/// Find PDA for vault
+/// Find PDA for vault (deprecated - use find_vault_0_address or find_vault_1_address)
 pub fn find_vault_address(market: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[seeds::VAULT, market.as_ref(), mint.as_ref()],
+        &program_id(),
+    )
+}
+
+/// Find vault 0 PDA (for token_0)
+pub fn find_vault_0_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[seeds::VAULT, token_0.as_ref(), token_1.as_ref(), b"0"],
+        &program_id(),
+    )
+}
+
+/// Find vault 1 PDA (for token_1)
+pub fn find_vault_1_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[seeds::VAULT, token_0.as_ref(), token_1.as_ref(), b"1"],
         &program_id(),
     )
 }

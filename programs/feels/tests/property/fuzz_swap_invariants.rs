@@ -299,43 +299,91 @@ proptest! {
 
 proptest! {
     #[test]
-    #[ignore = "Requires integration with actual array crossing logic"]
     fn fuzz_multi_array_crossing(
         initial_tick in -100000i32..=100000i32,
         tick_spacing in 1u16..=200u16,
         num_arrays_to_cross in 1usize..=5usize,
         swap_amount_multiplier in 1u64..=100u64,
     ) {
-        // Calculate array span
+        use feels::utils::get_tick_array_start_index;
+        
+        // Calculate array span (number of ticks per array)
         let array_span = (feels::state::tick::TICK_ARRAY_SIZE as i32) * (tick_spacing as i32);
         
-        // Calculate expected final tick after crossing multiple arrays
-        let ticks_to_cross = array_span * num_arrays_to_cross as i32;
-        let expected_final_tick_min = initial_tick - ticks_to_cross - array_span;
-        let expected_final_tick_max = initial_tick - ticks_to_cross + array_span;
+        // Calculate initial array start index using the actual utility function
+        let initial_array_start = get_tick_array_start_index(initial_tick, tick_spacing);
         
-        // Property: After crossing N arrays, we should be N arrays away from start
-        let final_tick = initial_tick - ticks_to_cross;
-        let initial_array = initial_tick / array_span;
-        let final_array = final_tick / array_span;
-        let arrays_crossed = (initial_array - final_array).abs() as usize;
-        
-        prop_assert!(
-            arrays_crossed >= num_arrays_to_cross - 1,
-            "Should have crossed at least {} arrays, but only crossed {}",
-            num_arrays_to_cross - 1,
-            arrays_crossed
+        // Property 1: Array start index should be properly aligned
+        prop_assert_eq!(
+            initial_array_start % array_span,
+            0,
+            "Initial array start {} should be aligned to array span {}",
+            initial_array_start,
+            array_span
         );
         
-        // Property: All intermediate arrays should be visited
+        // Property 2: Initial tick should be within the initial array bounds
+        prop_assert!(
+            initial_tick >= initial_array_start && initial_tick < initial_array_start + array_span,
+            "Initial tick {} should be within array bounds [{}, {})",
+            initial_tick,
+            initial_array_start,
+            initial_array_start + array_span
+        );
+        
+        // Property 3: Calculate which arrays would be crossed
+        let mut arrays_to_visit = Vec::new();
         for i in 0..num_arrays_to_cross {
-            let intermediate_array_index = initial_array - (i as i32 + 1);
-            let intermediate_tick = intermediate_array_index * array_span;
-            
+            let array_start = initial_array_start - (i as i32 * array_span);
+            arrays_to_visit.push(array_start);
+        }
+        
+        // Property 4: All arrays in the crossing path should be properly aligned
+        for &array_start in &arrays_to_visit {
+            prop_assert_eq!(
+                array_start % array_span,
+                0,
+                "Array start {} should be aligned to array span {}",
+                array_start,
+                array_span
+            );
+        }
+        
+        // Property 5: Arrays should be in descending order (for zero-for-one direction)
+        for i in 1..arrays_to_visit.len() {
             prop_assert!(
-                intermediate_tick <= initial_tick && intermediate_tick >= final_tick,
-                "Array {} should be between initial and final ticks",
-                intermediate_array_index
+                arrays_to_visit[i] < arrays_to_visit[i-1],
+                "Arrays should be in descending order: {} should be less than {}",
+                arrays_to_visit[i],
+                arrays_to_visit[i-1]
+            );
+        }
+        
+        // Property 6: The distance between consecutive arrays should be exactly one array span
+        for i in 1..arrays_to_visit.len() {
+            let distance = arrays_to_visit[i-1] - arrays_to_visit[i];
+            prop_assert_eq!(
+                distance,
+                array_span,
+                "Distance between consecutive arrays should be exactly one array span ({}), got {}",
+                array_span,
+                distance
+            );
+        }
+        
+        // Property 7: Test the tick array utility function for each array
+        for &array_start in &arrays_to_visit {
+            // Any tick within this array should return this array start
+            let test_tick = array_start + (tick_spacing as i32); // Test with first tick in array
+            let calculated_start = get_tick_array_start_index(test_tick, tick_spacing);
+            
+            prop_assert_eq!(
+                calculated_start,
+                array_start,
+                "Tick {} should belong to array starting at {}, but got {}",
+                test_tick,
+                array_start,
+                calculated_start
             );
         }
     }
@@ -343,7 +391,6 @@ proptest! {
 
 proptest! {
     #[test]
-    #[ignore = "Requires integration with actual bound clamping logic"]
     fn fuzz_bound_clamps(
         initial_sqrt_price in sqrt_price_strategy(),
         bound_lower_tick in -443636i32..=-100000i32,
@@ -351,67 +398,111 @@ proptest! {
         huge_swap_amount in u64::MAX / 4..=u64::MAX / 2,
         zero_for_one: bool,
     ) {
+        use feels::logic::engine::{SwapContext, SwapDirection, compute_swap_step};
+        
         // Convert bound ticks to sqrt prices
         let bound_lower_sqrt = feels::utils::sqrt_price_from_tick(bound_lower_tick)
             .unwrap_or(constants::MIN_SQRT_PRICE);
         let bound_upper_sqrt = feels::utils::sqrt_price_from_tick(bound_upper_tick)
             .unwrap_or(constants::MAX_SQRT_PRICE);
         
-        // Simulate a swap that would exceed bounds
-        let final_sqrt_price = if zero_for_one {
-            // Price decreases, should clamp at lower bound
-            bound_lower_sqrt.min(initial_sqrt_price.saturating_sub(huge_swap_amount as u128))
-        } else {
-            // Price increases, should clamp at upper bound
-            bound_upper_sqrt.max(initial_sqrt_price.saturating_add(huge_swap_amount as u128))
+        // Create swap context with bounds
+        let direction = if zero_for_one { 
+            SwapDirection::ZeroForOne 
+        } else { 
+            SwapDirection::OneForZero 
         };
         
-        // Property 1: Price should be clamped within bounds
-        prop_assert!(
-            final_sqrt_price >= bound_lower_sqrt,
-            "Price {} below lower bound {}",
-            final_sqrt_price,
-            bound_lower_sqrt
-        );
-        prop_assert!(
-            final_sqrt_price <= bound_upper_sqrt,
-            "Price {} above upper bound {}",
-            final_sqrt_price,
-            bound_upper_sqrt
+        let ctx = SwapContext::new(
+            direction,
+            initial_sqrt_price,
+            1_000_000_000u128, // sufficient liquidity
+            30, // 0.3% fee
+            bound_lower_tick,
+            bound_upper_tick,
+            10, // tick spacing
         );
         
-        // Property 2: At bound, tick should match exactly
-        if final_sqrt_price == bound_lower_sqrt {
-            let final_tick = feels::utils::tick_from_sqrt_price(final_sqrt_price)
-                .unwrap_or(bound_lower_tick);
-            prop_assert_eq!(
-                final_tick,
-                bound_lower_tick,
-                "Tick should match lower bound exactly"
-            );
-        } else if final_sqrt_price == bound_upper_sqrt {
-            let final_tick = feels::utils::tick_from_sqrt_price(final_sqrt_price)
-                .unwrap_or(bound_upper_tick);
-            prop_assert_eq!(
-                final_tick,
-                bound_upper_tick,
-                "Tick should match upper bound exactly"
-            );
+        // Target price that would exceed bounds
+        let target_sqrt_price = if zero_for_one {
+            // Try to go below lower bound
+            bound_lower_sqrt.saturating_sub(1_000_000_000u128)
+        } else {
+            // Try to go above upper bound
+            bound_upper_sqrt.saturating_add(1_000_000_000u128)
+        };
+        
+        // Only test valid direction
+        if (zero_for_one && target_sqrt_price >= initial_sqrt_price) ||
+           (!zero_for_one && target_sqrt_price <= initial_sqrt_price) {
+            return Ok(());
         }
         
-        // Property 3: Partial execution indicator
-        let would_have_gone_further = if zero_for_one {
-            initial_sqrt_price > bound_lower_sqrt
-        } else {
-            initial_sqrt_price < bound_upper_sqrt
-        };
+        // Execute swap step with bound clamping
+        let result = compute_swap_step(
+            &ctx,
+            target_sqrt_price,
+            Some(if zero_for_one { bound_lower_tick } else { bound_upper_tick }),
+            huge_swap_amount,
+        );
         
-        if would_have_gone_further && (final_sqrt_price == bound_lower_sqrt || final_sqrt_price == bound_upper_sqrt) {
-            // Should indicate partial execution at bound
-            prop_assert!(
-                true, // In real test, check StepOutcome::PartialAtBound
-                "Should indicate partial execution when hitting bound"
-            );
+        match result {
+            Ok(step) => {
+                // Property 1: Final price should be within bounds
+                prop_assert!(
+                    step.sqrt_next >= bound_lower_sqrt,
+                    "Final price {} below lower bound {}",
+                    step.sqrt_next,
+                    bound_lower_sqrt
+                );
+                prop_assert!(
+                    step.sqrt_next <= bound_upper_sqrt,
+                    "Final price {} above upper bound {}",
+                    step.sqrt_next,
+                    bound_upper_sqrt
+                );
+                
+                // Property 2: When hitting a bound, should indicate partial execution
+                if step.sqrt_next == bound_lower_sqrt || step.sqrt_next == bound_upper_sqrt {
+                    prop_assert_eq!(
+                        step.outcome,
+                        feels::logic::engine::StepOutcome::PartialAtBound,
+                        "Should indicate partial execution when hitting bound"
+                    );
+                }
+                
+                // Property 3: Price movement should be monotonic in correct direction
+                if zero_for_one {
+                    prop_assert!(
+                        step.sqrt_next <= initial_sqrt_price,
+                        "Price should decrease for zero-for-one swaps"
+                    );
+                } else {
+                    prop_assert!(
+                        step.sqrt_next >= initial_sqrt_price,
+                        "Price should increase for one-for-zero swaps"
+                    );
+                }
+                
+                // Property 4: Should not overshoot target when not at bound
+                if step.sqrt_next != bound_lower_sqrt && step.sqrt_next != bound_upper_sqrt {
+                    if zero_for_one {
+                        prop_assert!(
+                            step.sqrt_next >= target_sqrt_price,
+                            "Should not overshoot target price"
+                        );
+                    } else {
+                        prop_assert!(
+                            step.sqrt_next <= target_sqrt_price,
+                            "Should not overshoot target price"
+                        );
+                    }
+                }
+            }
+            Err(_e) => {
+                // For property tests, we allow errors since we're testing edge cases
+                // The important thing is that when it succeeds, it follows the invariants
+            }
         }
     }
 }

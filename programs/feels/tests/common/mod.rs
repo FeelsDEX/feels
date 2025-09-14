@@ -17,6 +17,9 @@ pub mod macros;
 // Type alias for test results
 pub type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+// Import Error trait for macro usage
+pub use std::error::Error;
+
 // Re-export core types
 pub use client::TestClient;
 pub use context::TestContext;

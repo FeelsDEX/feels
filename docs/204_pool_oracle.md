@@ -86,21 +86,23 @@ pub struct Observation {
 - The `update` method on the `OracleState` account is called at the end of every swap.
 - The method performs the following steps:
   1. It retrieves the last observation from the ring buffer.
-  2. It only proceeds if the current block timestamp is greater than the last observation's timestamp.
+  2. It only proceeds if the current block timestamp is greater than the last observation's timestamp (skip write when timestamp has not advanced to avoid redundant updates and CU spikes).
   3. It calculates the time delta since the last observation.
   4. It calculates the new `tick_cumulative` by adding `(last_tick * time_delta)` to the previous `tick_cumulative`.
   5. It advances the `observation_index` to the next slot in the ring buffer.
   6. It writes a new `Observation` with the current timestamp and the new cumulative value into this new slot.
   7. If the ring buffer is not yet full, it may increment the `observation_cardinality`.
 
-### 4.3. Calculating the GTWAP
+### 4.3. Calculating the GTWAP (Lazy, On-Read Accumulation)
 
 - Any on-chain program can calculate the GTWAP over a desired period by calling `get_twap_tick(seconds_ago)`.
-- This function:
-  1. Determines the target timestamp (`now - seconds_ago`).
-  2. Searches the `observations` array to find the initialized observation whose timestamp is closest to, but not after, the target timestamp.
-  3. It retrieves this old observation and the most recent observation.
-  4. It calculates the average tick as `(tick_cumulative_new - tick_cumulative_old) / (timestamp_new - timestamp_old)`.
+- This function performs a lazy accumulation so inactive pools do not require cranks:
+  1. Determines `now` from the current clock and the target timestamp (`now - seconds_ago`).
+  2. Uses the most recent stored observation as the “new” point, but virtually extends it to `now` by adding `last_tick * (now - last_obs_ts)` to the cumulative value (no write required).
+  3. Searches the ring to find the observation closest to, but not after, the target timestamp.
+  4. Computes the average tick as `(tick_cumulative(now) - tick_cumulative_old) / (now - timestamp_old)`.
+
+This makes GTWAP liveness maintenance-free for inactive pools: time continues to accrue at the last known tick and is realized lazily on read.
 
 ## 5. Security and Manipulation Resistance
 
@@ -110,15 +112,25 @@ The GTWAP oracle design is inherently resistant to several forms of attack:
 - **Minimum Duration**: The `get_twap_tick` function enforces a `MIN_TWAP_DURATION` (currently 60 seconds). This prevents queries over extremely short and easily manipulated time windows, ensuring that any calculated TWAP is based on a meaningful period of trading activity.
 - **Timestamp Dependency**: While the oracle relies on block timestamps, which can have minor variance, the time-weighting mechanism averages out small fluctuations. Significant timestamp manipulation is difficult for validators to perform without being slashed.
 
-## 6. Integration within the System
+## 6. Parameters & Staleness
+
+- MIN_TWAP_DURATION: 60 seconds (minimum averaging window)
+- observation_cardinality: 12 (ring buffer size)
+- staleness_threshold_slots: 150 slots (max slots since last observation before degrade; tune via governance)
+
+Behavior on staleness:
+- If stale, GTWAP-dependent features (rebates, equilibrium bias) are disabled; the equilibrium anchor should fall back to `max(current_tick, pool_floor.get_safe_ask_tick())`. Fee impact still uses realized ticks moved.
+- Emit Degraded(GTWAP) via SafetyController.
+
+## 7. Integration within the System
 
 The GTWAP is a foundational pool component used by other systems within a pool (dynamic fees, JIT, floor).
 
-### 6.1. Relationship to Protocol Oracle
+### 7.1. Relationship to Protocol Oracle
 
 The pool GTWAP oracle is separate from the protocol‑level reserve rate oracle. The protocol oracle provides a conservative FeelsSOL↔JitoSOL exchange rate used for global solvency checks and treasury accounting. Consumers should fetch GTWAP from `pool::Oracle` and the reserve rate from `protocol::Oracle` as needed; do not conflate the two.
 
 ### 6.2. Consumers of GTWAP
 
-- **Dynamic Fee Model**: The dynamic fee calculation uses the GTWAP as the "equilibrium" price. Trades moving the price away from the GTWAP pay a surcharge, while trades moving the price toward it can receive a discount.
+- **Dynamic Fee Model (Phase 2)**: When advanced fees are enabled, GTWAP anchors the equilibrium target. Trades moving the price away from equilibrium pay a surcharge, while trades moving toward it may receive a rebate. In MVP, fees are base + impact only and do not use GTWAP directly.
 - **JIT Liquidity**: The Just-In-Time liquidity provider uses the GTWAP as its primary anchor for placing quotes, ensuring its operations are centered around a stable, manipulation-resistant price point.

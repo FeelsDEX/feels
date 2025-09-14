@@ -1,28 +1,72 @@
-{ pkgs, inputs', projectConfig }:
-
-let
-  # Get nightly rust from zero-nix
+# IDL Builder for Anchor programs
+{
+  pkgs,
+  inputs',
+  projectConfig,
+  ...
+}: rec {
+  # Get the stable rust from solana-tools (compatible with solana-packet)
+  solana-rust = inputs'.zero-nix.packages.solana-tools;
+  
+  # Get nightly rust for IDL generation  
   nightly-rust = inputs'.zero-nix.packages.nightly-rust;
-  
-  # Create a cargo wrapper that intercepts +nightly syntax
-  cargo-wrapper = pkgs.writeShellScriptBin "cargo" ''
-    # Check if first argument is +nightly
-    if [ "$1" = "+nightly" ]; then
-      # Remove +nightly and call the real nightly cargo
-      shift
-      exec ${nightly-rust}/bin/cargo "$@"
-    else
-      # Pass through to regular cargo
-      exec ${nightly-rust}/bin/cargo "$@"
-    fi
-  '';
-  
+
+  # Interactive IDL builder script that accepts program name
   idl-build = pkgs.writeShellScriptBin "idl-build" ''
     set -euo pipefail
     
-    echo "Building IDL files for ${projectConfig.projectName}..."
+    # Check if program name was provided
+    PROGRAM_NAME="''${1:-}"
     
-    # Ensure we're in the project root (if configured)
+    if [ -z "$PROGRAM_NAME" ]; then
+      echo "Usage: idl-build <program-name>"
+      echo ""
+      echo "Available programs:"
+      ${pkgs.lib.concatStringsSep "\n" (
+        pkgs.lib.mapAttrsToList (key: config: ''
+          echo "  - ${config.name}"
+        '') projectConfig.programs
+      )}
+      exit 1
+    fi
+    
+    # Find the program config
+    PROGRAM_FOUND=false
+    CARGO_TOML=""
+    DISPLAY_NAME=""
+    CUSTOM_DEPS=""
+    
+    ${pkgs.lib.concatStringsSep "\n" (
+      pkgs.lib.mapAttrsToList (key: config: ''
+        if [ "$PROGRAM_NAME" = "${config.name}" ]; then
+          PROGRAM_FOUND=true
+          CARGO_TOML="${config.cargoToml}"
+          DISPLAY_NAME="${config.displayName}"
+          ${if config ? idlDependencies then ''
+            CUSTOM_DEPS=$(cat << 'EOF'
+${config.idlDependencies}
+EOF
+          )
+          '' else ""}
+        fi
+      '') projectConfig.programs
+    )}
+    
+    if [ "$PROGRAM_FOUND" = "false" ]; then
+      echo "Error: Unknown program '$PROGRAM_NAME'"
+      echo ""
+      echo "Available programs:"
+      ${pkgs.lib.concatStringsSep "\n" (
+        pkgs.lib.mapAttrsToList (key: config: ''
+          echo "  - ${config.name}"
+        '') projectConfig.programs
+      )}
+      exit 1
+    fi
+    
+    echo "Building IDL for $DISPLAY_NAME..."
+    
+    # Ensure we're in the project root
     ${if projectConfig.buildConfig.requireAnchorToml then ''
       if [ ! -f "Anchor.toml" ]; then
         echo "Error: Anchor.toml not found. Run this from the project root."
@@ -33,93 +77,139 @@ let
     # Create target/idl directory if it doesn't exist
     mkdir -p ${projectConfig.directories.idl}
     
-    # Setup environment with our cargo wrapper
-    export PATH="${cargo-wrapper}/bin:${nightly-rust}/bin:${inputs'.zero-nix.packages.solana-tools}/bin:$PATH"
+    # Determine program directory
+    PROGRAM_DIR=$(dirname "$CARGO_TOML")
+    
+    # Step 1: Build the program with stable Rust if needed
+    echo "Step 1: Checking program build..."
+    export PATH="${solana-rust}/bin:$PATH"
+    export RUST_LOG=warn
+    
+    PROGRAM_BINARY="${projectConfig.directories.deploy}/$PROGRAM_NAME.so"
+    
+    if [ ! -f "$PROGRAM_BINARY" ]; then
+      echo "Building program first..."
+      # Try anchor build first
+      if [ -f "Anchor.toml" ] && anchor build --skip-lint 2>/dev/null; then
+        echo "Program built with anchor"
+      else
+        # Fall back to cargo build-sbf
+        cd "$PROGRAM_DIR"
+        cargo build-sbf 2>&1 || true
+        cd -
+      fi
+    else
+      echo "Program binary already exists"
+    fi
+    
+    # Step 2: Generate IDL with nightly Rust
+    echo ""
+    echo "Step 2: Generating IDL with nightly Rust..."
+    
+    cd "$PROGRAM_DIR"
+    
+    # Backup original Cargo.toml
+    cp Cargo.toml Cargo.toml.orig
+    
+    # Use custom dependencies if provided
+    if [ -n "$CUSTOM_DEPS" ]; then
+      echo "$CUSTOM_DEPS" > Cargo.toml
+    fi
+    
+    # Setup nightly environment
+    export PATH="${nightly-rust}/bin:$PATH"
     export RUSTFLAGS='--cfg procmacro2_semver_exempt'
     
-    # Create a temporary directory for our cargo wrapper
-    WRAPPER_DIR=$(mktemp -d)
-    
-    # Create cargo wrapper in temp dir that will be first in PATH
-    cat > "$WRAPPER_DIR/cargo" << 'CARGO_EOF'
-#!/usr/bin/env bash
-if [ "$1" = "+nightly" ]; then
-  shift
-  exec ${nightly-rust}/bin/cargo "$@"
-else
-  exec ${nightly-rust}/bin/cargo "$@"
-fi
-CARGO_EOF
-    chmod +x "$WRAPPER_DIR/cargo"
-    
-    # Put our wrapper first in PATH
-    export PATH="$WRAPPER_DIR:$PATH"
-    
-    # Clean up on exit
-    trap "rm -rf \$WRAPPER_DIR" EXIT
-    
-    # First, build the program with cargo build-sbf
-    echo "Building program with cargo build-sbf..."
-    cargo build-sbf -p feels || echo "Warning: Build failed, but continuing with IDL generation"
-    
-    # Now generate the IDL by running the test directly
-    echo "Generating IDL..."
-    
-    # Change to the program directory
-    cd programs/feels
-    
-    # Run the IDL generation test directly
-    echo "Running: cargo test __anchor_private_print_idl --features idl-build -- --nocapture"
-    if cargo test __anchor_private_print_idl --features idl-build -- --nocapture 2>&1 | tee /tmp/idl-output.log; then
+    # Run IDL generation test
+    echo "Running IDL generation test..."
+    if ${nightly-rust}/bin/cargo test --lib __anchor_private_print_idl --features idl-build -- --nocapture 2>&1 | tee /tmp/idl-output.log; then
       echo "IDL test completed"
       
-      # Extract the IDL JSON from the output
-      # First try to find JSON between markers
-      if grep -q "==== IDL JSON START ====" /tmp/idl-output.log; then
-        sed -n '/==== IDL JSON START ====/,/==== IDL JSON END ====/p' /tmp/idl-output.log | sed '1d;$d' > "../../target/idl/feels.json"
+      # Extract IDL JSON
+      echo "Extracting IDL from test output..."
+      
+      # Find the line containing the main IDL JSON (after all events)
+      # Look for the JSON object that starts with {"address":
+      IDL_START=$(grep -n '^{$' /tmp/idl-output.log | while read line_info; do
+        LINE_NUM=$(echo "$line_info" | cut -d: -f1)
+        # Check if next line contains "address":
+        NEXT_LINE=$((LINE_NUM + 1))
+        if sed -n "''${NEXT_LINE}p" /tmp/idl-output.log | grep -q '"address":'; then
+          echo "$LINE_NUM"
+          break
+        fi
+      done)
+      
+      if [ -n "$IDL_START" ]; then
+        echo "Found IDL start at line $IDL_START"
+        
+        # Find the matching closing brace
+        tail -n +$IDL_START /tmp/idl-output.log | awk '
+        BEGIN { level = 0; in_json = 1 }
+        {
+            if (in_json) {
+                print
+                # Count braces
+                line = $0
+                gsub(/[^{}]/, "", line)
+                for (i = 1; i <= length(line); i++) {
+                    c = substr(line, i, 1)
+                    if (c == "{") level++
+                    else if (c == "}") {
+                        level--
+                        if (level == 0) {
+                            in_json = 0
+                            exit
+                        }
+                    }
+                }
+            }
+        }
+        ' > "../../${projectConfig.directories.idl}/$PROGRAM_NAME.json"
       else
-        # Otherwise extract the JSON object
-        awk '/^{/{p=1} p{print} /^}/{p=0}' /tmp/idl-output.log > "../../target/idl/feels.json"
+        echo "WARNING: Could not find IDL start marker, trying fallback extraction..."
+        # Fallback: look for a complete JSON object with version field
+        awk '
+        BEGIN { in_json = 0; level = 0 }
+        /^{$/ && !in_json { in_json = 1; level = 1; print; next }
+        in_json {
+            print
+            line = $0
+            gsub(/[^{}]/, "", line)
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (c == "{") level++
+                else if (c == "}") {
+                    level--
+                    if (level == 0) exit
+                }
+            }
+        }
+        ' /tmp/idl-output.log > "../../${projectConfig.directories.idl}/$PROGRAM_NAME.json"
       fi
       
-      # Verify we got valid JSON
-      if [ -s "../../target/idl/feels.json" ] && grep -q '"version"' "../../target/idl/feels.json"; then
-        echo "IDL extracted to target/idl/feels.json"
+      # Restore original Cargo.toml
+      mv Cargo.toml.orig Cargo.toml
+      cd -
+      
+      # Verify valid JSON
+      if [ -s "${projectConfig.directories.idl}/$PROGRAM_NAME.json" ] && ${pkgs.jq}/bin/jq . "${projectConfig.directories.idl}/$PROGRAM_NAME.json" >/dev/null 2>&1; then
+        echo ""
+        echo "IDL successfully generated!"
+        echo "Location: ${projectConfig.directories.idl}/$PROGRAM_NAME.json"
+        echo ""
+        echo "IDL summary:"
+        ${pkgs.jq}/bin/jq '. | {version, metadata, instructions: (.instructions | length), accounts: (.accounts | length), types: (.types | length)}' "${projectConfig.directories.idl}/$PROGRAM_NAME.json"
       else
-        echo "Failed to extract valid IDL from output"
-        echo "Output was:"
-        cat /tmp/idl-output.log
-        cd -
+        echo "ERROR: Failed to extract valid IDL"
         exit 1
       fi
-      
-      cd -
     else
-      echo "IDL test failed"
+      echo "IDL generation failed"
+      # Restore original Cargo.toml
+      mv Cargo.toml.orig Cargo.toml
       cd -
       exit 1
     fi
-    
-    # Copy IDL files to target/idl
-    if [ -d "target/types" ]; then
-      echo "Copying IDL files..."
-      cp target/types/*.ts target/idl/ 2>/dev/null || true
-    fi
-    
-    # Generate JSON IDL if it exists
-    if [ -f "target/idl/feels_protocol.json" ]; then
-      echo "JSON IDL generated: target/idl/feels_protocol.json"
-    fi
-    
-    # Generate TypeScript types if they exist
-    if [ -f "target/types/feels_protocol.ts" ]; then
-      echo "TypeScript types generated: target/types/feels_protocol.ts"
-    fi
-    
-    echo "IDL build complete!"
   '';
-in
-
-{
-  inherit idl-build cargo-wrapper;
 }

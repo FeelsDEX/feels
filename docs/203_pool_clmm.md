@@ -8,11 +8,11 @@ This document specifies the architecture and mechanics of the automated market m
 
 - **Price**: The ratio of two tokens in a pool. In the Feels system, all prices are represented as `sqrt_price`, a Q64.64 fixed-point number, which simplifies many mathematical calculations. `sqrt_price = sqrt(price_token1 / price_token0) * 2^64`.
 - **Tick**: A discrete price point. The entire price range is divided into discrete ticks. Each tick corresponds to a specific price. The relationship is `price = 1.0001^tick_index`. This means moving one tick changes the price by approximately 0.01% (1 basis point).
-- **Tick Spacing**: To prevent griefing with dust liquidity and to manage on-chain data, liquidity can only be added at ticks that are a multiple of `tick_spacing`. A market can have a `tick_spacing` of, for example, 1, 10, or 100.
+- **Tick Spacing**: To prevent griefing with dust liquidity and to manage on-chain data, liquidity can only be added at ticks that are a multiple of `tick_spacing`. A pool can have a `tick_spacing` of, for example, 1, 10, or 100.
 - **Liquidity (`L`)**: A virtual quantity representing the depth of the market. In a given price range, the real reserves (`x`, `y`) are related to liquidity by the formulas:
   - `Δx = L * (1/√P_upper - 1/√P_lower)`
   - `Δy = L * (√P_upper - √P_lower)`
-- **Active Liquidity**: The total liquidity available at the current market price. This is the sum of all `liquidity_net` values from ticks below the current tick.
+- **Active Liquidity**: The total liquidity available at the current pool price. This is the sum of all `liquidity_net` values from ticks below the current tick.
 
 ### 1.2. Positions
 
@@ -30,7 +30,7 @@ Instead of providing liquidity across the entire price range (0 to ∞), Liquidi
 To manage on-chain data efficiently, individual `Tick` data structures are not stored in their own accounts. Instead, they are grouped into `TickArray` accounts.
 
 - **Fixed Size**: Each `TickArray` stores a fixed number of ticks (e.g., 64).
-- **PDA-based**: The address of a `TickArray` is derived from the market key and the `start_tick_index` of the array, allowing for deterministic lookups.
+- **PDA-based**: The address of a `TickArray` is derived from the pool key and the `start_tick_index` of the array, allowing for deterministic lookups.
 - **Lazy Initialization**: Ticks within an array are only initialized when liquidity is first added to them.
 
 ## 2. Data Structures
@@ -44,7 +44,7 @@ The central account for a trading pair.
 
 #[account]
 pub struct Pool {
-    // Market status and configuration
+    // Pool status and configuration
     pub is_initialized: bool,
     pub is_paused: bool,
     pub token_0: Pubkey,
@@ -158,8 +158,8 @@ These functions are located in `programs/feels/src/logic/liquidity_math.rs`.
 - **Purpose**: Creates a new `Pool` account for a token pair.
 - **Process**:
   1. Validates token order, tick spacing, and initial price.
-  2. Initializes the `Market`, `Buffer`, and `Oracle` accounts.
-  3. Creates the market's token `vault_0` and `vault_1`.
+  2. Initializes the `Pool`, `PoolBuffer`, and `PoolOracle` accounts.
+  3. Creates the pool's token `vault_0` and `vault_1`.
   4. Revokes mint/freeze authority for protocol-launched tokens to fix their supply.
 - **Key Accounts**: `creator`, `token_0`, `token_1`, `pool`, `vault_0`, `vault_1`.
 
@@ -169,11 +169,11 @@ These functions are located in `programs/feels/src/logic/liquidity_math.rs`.
 - **Process**:
   1. Creates a new `position_mint` (NFT) and `position_token_account` for the user.
   2. Creates the `Position` PDA account to store its state.
-  3. Calculates the required `amount_0` and `amount_1` based on the desired `liquidity_amount` and the current market price.
-  4. Transfers the tokens from the user to the market vaults.
+  3. Calculates the required `amount_0` and `amount_1` based on the desired `liquidity_amount` and the current pool price.
+  4. Transfers the tokens from the user to the pool vaults.
   5. Initializes the `tick_lower` and `tick_upper` in their respective `TickArray` accounts if they are not already initialized.
   6. Updates `liquidity_net` and `liquidity_gross` on both ticks.
-  7. Updates the market's `liquidity` if the new position is active at the current price.
+  7. Updates the pool's `liquidity` if the new position is active at the current price.
   8. Mints 1 `position_token` to the user.
 - **Key Accounts**: `provider`, `pool`, `position_mint`, `position`, `provider_token_0`, `provider_token_1`, `vault_0`, `vault_1`, `lower_tick_array`, `upper_tick_array`.
 
@@ -186,7 +186,7 @@ These functions are located in `programs/feels/src/logic/liquidity_math.rs`.
   3. Calculates the `amount_0` and `amount_1` corresponding to the position's liquidity at the current price.
   4. Transfers the total tokens (underlying + fees) from the vaults to the user.
   5. Updates the `liquidity_net` and `liquidity_gross` on the position's ticks to remove the liquidity.
-  6. Updates the market's active `liquidity` if the position was in range.
+  6. Updates the pool's active `liquidity` if the position was in range.
   7. Burns the user's position NFT.
   8. Optionally closes the `Position` and `position_mint` accounts to return rent to the user.
 - **Key Accounts**: `owner`, `pool`, `position`, `position_mint`, `owner_token_0`, `owner_token_1`, `vault_0`, `vault_1`, `lower_tick_array`, `upper_tick_array`.
@@ -196,7 +196,7 @@ These functions are located in `programs/feels/src/logic/liquidity_math.rs`.
 - **Purpose**: Executes a trade, swapping one token for another.
 - **Process**:
   1. Determines swap direction (`ZeroForOne` or `OneForZero`).
-  2. Transfers the input tokens from the user to the appropriate market vault.
+  2. Transfers the input tokens from the user to the appropriate pool vault.
   3. Iterates through initialized ticks in the direction of the swap:
      a. Within each tick segment (the space between two initialized ticks), the swap behaves like a constant product AMM, using the active `liquidity` for that segment.
      b. The amount of input token is consumed, and the corresponding output token is calculated.
@@ -205,12 +205,12 @@ These functions are located in `programs/feels/src/logic/liquidity_math.rs`.
         i. The active `liquidity` is updated by adding the `liquidity_net` of the crossed tick.
         ii. The `fee_growth_outside` for the crossed tick is flipped to correctly account for fees on either side of it.
   4. The loop continues until the input amount is fully consumed or the price limit is reached.
-  5. The total calculated `amount_out` is transferred from the market vault to the user.
+  5. The total calculated `amount_out` is transferred from the pool vault to the user.
 - **Key Accounts**: `user`, `pool`, `vault_0`, `vault_1`, `user_token_in`, `user_token_out`, and a list of `TickArray` accounts (`remaining_accounts`) needed for the swap path.
 
 ## 5. Fee Mechanics
 
-- **Global Fee Growth**: The `Market` account tracks `fee_growth_global_0_x64` and `fee_growth_global_1_x64`. Every time a swap occurs, the fee collected is divided by the active `liquidity` and added to this global accumulator. This represents the total fees earned per unit of liquidity across the entire market.
+- **Global Fee Growth**: The `Pool` account tracks `fee_growth_global_0_x64` and `fee_growth_global_1_x64`. Every time a swap occurs, the fee collected is divided by the active `liquidity` and added to this global accumulator. This represents the total fees earned per unit of liquidity across the entire pool.
 - **Outside Fee Growth**: Each `Tick` tracks `fee_growth_outside_x64`. This represents the total fees earned per unit of liquidity *below* that tick.
 - **Inside Fee Growth**: The fees earned by a position between `tick_lower` (l) and `tick_upper` (u) can be calculated using the global and outside values. For a given token `i`:
   - `fee_growth_above_l = fee_growth_global_i - fee_growth_outside_l`

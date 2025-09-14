@@ -1,12 +1,12 @@
 # Floor Liquidity (Pool Protocol‑Owned Liquidity) Specification
 
-This document specifies the design and implementation of the Floor Liquidity system, the Feels protocol's primary Protocol-Owned Market Maker (POMM) strategy.
+This document specifies the design and implementation of the Floor Liquidity system, the Feels protocol's primary Protocol‑Owned Liquidity (POL) strategy at the pool level.
 
 ## 1. Overview
 
 The Floor Liquidity system is the core mechanism by which the Feels protocol converts short-term trading activity and staking yield into a long-term, perpetually rising price floor for a token. Its primary purpose is to provide a guaranteed, on-chain exit price for token holders against protocol-owned liquidity, ensuring permanent liquidity and building long-term value.
 
-This system activates after the initial token launch phase is complete. It replaces the temporary "staircase" liquidity (used for price discovery) and becomes the foundational, passive market-making strategy for the pool, operating in conjunction with the more active Just-in-Time (JIT) liquidity system.
+This system activates after the initial token launch phase is complete. It replaces the temporary bonding curve liquidity (used for price discovery) and becomes the foundational, passive market-making strategy for the pool, operating in conjunction with the more active Just-in-Time (JIT) liquidity system.
 
 ## 2. Core Concepts
 
@@ -90,6 +90,36 @@ This is a higher-level controller responsible for the *execution* of the `pool::
 
 This separation of concerns keeps the core solvency calculation clean and isolated from the complexities of position management.
 
+### 3.3. Circulating Supply Definition (used for Floor)
+
+For floor calculations, a pool’s circulating supply is:
+
+```
+circulating_supply = total_token_supply
+                     − protocol_owned_tokens
+                     − pool_owned_tokens (PoolReserve + PoolBuffer holdings)
+                     − prelaunch_escrow_balance (if any)
+```
+
+Notes:
+- protocol_owned_tokens include any protocol treasury holdings for this token outside the pool.
+- pool_owned_tokens include inventory held by PoolController PDAs (e.g., bonded leftovers, JIT inventory if held temporarily in later phases). In MVP, JIT burns on fill; treat JIT as not accumulating inventory.
+- prelaunch_escrow_balance should be zero post‑graduation; included for safety.
+
+### 3.4. Minimum Floor Reserve and Allocatable Capital (Future)
+
+To support lending in the future market evolution (Phase 2: Lending), governance may define:
+- `min_floor_reserve_ratio_bps`: the minimum proportion of PoolReserve that must remain to satisfy the floor at current circulating supply.
+- `vault_allocation_cap_bps`: a ceiling on PoolReserve that can be allocated to the lending/vault subsystem.
+
+PoolController must ensure: `PoolReserve - lending_allocation_q >= floor_min_q` before approving any allocation to lending.
+
+### 3.5. Units and Valuation Notes (MVP)
+
+- PoolReserve and PoolBuffer are denominated in FeelsSOL units at the pool level.
+- Floor price/tick is computed from PoolReserve (FeelsSOL) and circulating supply of the pool token; it does not depend on the protocol reserve oracle (JitoSOL rate).
+- Protocol mint/redeem paths (FeelsSOL↔JitoSOL) use protocol::Oracle independently; keep these valuations separate to avoid cross‑layer coupling.
+
 ## 4. Lifecycle and Mechanics
 
 1.  **Activation**: After the initial launch phase (i.e., after `deploy_bonding_curve_liquidity` is called and the pool graduates), the temporary bonding curve liquidity is removed, and the Floor Liquidity system is activated. The `pool::Floor` calculates the initial floor price based on pool state, and the Pool Controller deploys the first floor position.
@@ -104,7 +134,7 @@ This separation of concerns keeps the core solvency calculation clean and isolat
 
 The Floor Liquidity system is a foundational layer that provides stability and guarantees for other protocol components.
 
--   **Dynamic Fees**: The `pool::Floor`'s `get_safe_ask_tick()` provides the "hard floor target" for the dynamic fee model's equilibrium calculation. This ensures the fee system never incentivizes trades that would threaten pool solvency.
+-   **Dynamic Fees (Phase 2)**: When advanced fees are enabled, the `pool::Floor`'s `get_safe_ask_tick()` provides the hard floor target for equilibrium calculations, ensuring the fee system never incentivizes trades that would threaten pool solvency. In MVP, fees are base + impact only.
 
 -   **JIT Liquidity**: The Just-in-Time liquidity system queries `pool::Floor` to ensure that its reactive, short-term quotes are never placed below the fundamental price floor. This prevents the active market maker from working against the passive, long-term one.
 

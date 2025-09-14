@@ -166,7 +166,7 @@ $$
 
 **Mitigation**:
 - Conservative oracle design using minimum of available rates
-- Safety buffers in exchange rate calculations (0.5% in Phase 1)
+- Safety buffers in exchange rate calculations (0.5% in Oracle Phase 1)
 - Hybrid oracle approach incorporating both protocol and market rates
 - Real-time monitoring of JitoSOL health metrics and market spreads
 - Potential future diversification to multiple liquid staking tokens
@@ -327,30 +327,27 @@ The protocol oracle must:
 - Dependent on DEX liquidity and functionality
 - Added complexity in implementation
 
-### 6.4 Protocol Reserve Oracle Design
+### 6.4 Protocol Reserve Oracle Design (MVP)
 
 The reserve oracle design serves as the protocol's critical price discovery mechanism, determining the exchange rate between JitoSOL and FeelsSOL for all minting and redemption operations. Its primary purpose is to protect protocol solvency while providing accurate pricing that reflects the fundamental value of staked SOL, gradually incorporating real-time market signals.
 
-The system starts conservatively by using only Jito's protocol rate (with a safety buffer) to ensure the protocol never overvalues its backing assets. As the system matures, it gradually incorporates market signals from DEX trading to capture liquidity premiums and provide more responsive pricing.
+The system uses a conservative composition from day one: the exchange rate is the minimum of Jito's protocol native rate and a filtered DEX TWAP of JitoSOL/SOL, with a divergence guard and liquidity thresholds to ignore illiquid markets. This ensures the protocol never overvalues its backing asset while remaining responsive to market de‑pegs.
 
 The protocol oracle integrates with the broader system architecture:
 
-**Phase 1: Conservative Foundation (Launch)**
 ```rust
 impl ProtocolOracle {
     pub fn get_exchange_rate_v1(&self) -> Result<u64> {
-        let jito_rate = self.backing.jito_rate;
-        let conservative_rate = jito_rate * 9950 / 10000;  // 0.5% safety buffer
-        Ok(conservative_rate)
+        let jito_rate = self.backing.jito_rate;            // native protocol rate
+        let market_rate = self.dex_twap_filtered(1800)?;   // 30-minute TWAP with liquidity thresholds
+        Ok(jito_rate.min(market_rate))
     }
-    
-    pub fn update(&mut self, slot: u64, tick: i32, timestamp: i64) -> Result<()> {
-        // Protocol oracle: update backing rate if needed (pool GTWAP is separate)
-        // Update backing rate if needed
+
+    pub fn update(&mut self, slot: u64) -> Result<()> {
         if slot > self.backing.last_jito_update + UPDATE_INTERVAL {
             self.backing.update_jito_rate()?;
         }
-        
+        self.update_dex_twap_if_needed(slot)?;
         self.last_update = slot;
         self.update_health_status()?;
         Ok(())
@@ -358,21 +355,75 @@ impl ProtocolOracle {
 }
 ```
 
-**Phase 2: Market Integration (Post-Launch)**
-```rust
-fn get_exchange_rate_v2() -> Result<u64> {
-    let jito_rate = get_jito_native_rate()?;
-    let market_rate = get_dex_twap(1800)?;  // 30-minute TWAP
-    
-    let divergence_bps = abs_diff(jito_rate, market_rate) * 10000 / jito_rate;
-    
-    if divergence_bps < 25 {  // < 0.25% divergence
-        Ok(market_rate)
-    } else {
-        Ok(min(jito_rate, market_rate))  // Conservative choice
+#### 6.4.1 DEX TWAP Data Source (MVP)
+
+To compute the filtered DEX TWAP used by the protocol oracle, the system aggregates on‑chain JitoSOL/SOL prices under strict inclusion criteria:
+
+- Window: `dex_twap_window_secs` (e.g., 1800 seconds = 30 minutes)
+- Eligibility filters per venue/pair:
+  - Minimum quote liquidity (e.g., `dex_twap_min_liquidity`) at or near mid during the window
+  - Minimum traded volume over the window (governance‑set)
+  - Whitelisted venues (DEX programs) and canonical JitoSOL/SOL pairs
+- Calculation:
+  - Use time‑weighted average price (tick‑based or price‑based, venue dependent)
+  - Drop outliers above a high percentile band or with insufficient observations
+  - Combine multiple eligible venues by volume‑weighting or take the minimum for extra conservatism
+
+The SafetyController monitors divergence between the protocol native rate and the filtered DEX TWAP. If the spread exceeds `depeg_threshold_bps` for `depeg_required_obs` consecutive observations, it immediately pauses `exit_feelssol` while leaving swaps enabled.
+
+#### 6.4.2 Whitelisted Venues & Pairs (Example)
+
+Governance maintains an allowlist of venues and canonical JitoSOL/SOL markets used by the protocol oracle. Example (placeholder IDs — replace with actual program IDs and markets at deployment):
+
+- Venues (program IDs):
+  - Orca Whirlpool: `orca_whirlpool_program_id_here`
+  - Raydium AMM: `raydium_amm_program_id_here`
+- Canonical pairs (market/pool accounts or mint pairs):
+  - JitoSOL/SOL (Orca Whirlpool): `orca_jitosol_sol_pool_pubkey_here`
+  - JitoSOL/SOL (Raydium Concentrated): `raydium_jitosol_sol_pool_pubkey_here`
+
+Notes:
+- Only whitelisted venues/pairs may contribute to the DEX TWAP.
+- Additions/removals are governance‑gated and emitted via events for transparency.
+
+#### 6.4.3 DEX TWAP Filter Config (Schema)
+
+On‑chain or config account schema for the oracle’s DEX TWAP filters (illustrative):
+
+```json
+{
+  "dex_twap_window_secs": 1800,
+  "depeg_threshold_bps": 150,
+  "depeg_required_obs": 3,
+  "liquidity_threshold": {
+    "min_quote_liquidity": "1000.0",   
+    "min_traded_volume": "50.0"
+  },
+  "whitelist": [
+    {
+      "venue_program": "orca_whirlpool_program_id_here",
+      "pair": {
+        "mint_a": "JitoSoLMintPubkey",
+        "mint_b": "SoLMintPubkey"
+      },
+      "pool_pubkey": "orca_jitosol_sol_pool_pubkey_here"
+    },
+    {
+      "venue_program": "raydium_amm_program_id_here",
+      "pair": {
+        "mint_a": "JitoSoLMintPubkey",
+        "mint_b": "SoLMintPubkey"
+      },
+      "pool_pubkey": "raydium_jitosol_sol_pool_pubkey_here"
     }
+  ]
 }
 ```
+
+Implementation notes:
+- Liquidity/volume thresholds are expressed in quote units (SOL) and rolling over the window.
+- If multiple eligible venues remain after filtering, combine by volume‑weighting or use the minimum for extra conservatism.
+- The filter config can be stored in a protocol config account and updated via governance.
 
 
 ### 6.3 Protocol Safety Controller

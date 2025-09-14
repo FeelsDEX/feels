@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{find_market_address, find_buffer_address, find_vault_address, find_vault_authority_address, error::SdkError};
+use crate::{find_market_address, find_buffer_address, find_vault_authority_address, error::SdkError};
 
 type Result<T> = std::result::Result<T, SdkError>;
 
@@ -168,8 +168,8 @@ pub fn swap(
     max_ticks_crossed: u8,
 ) -> Result<Instruction> {
     let (buffer, _) = find_buffer_address(&market);
-    let (vault_0, _) = find_vault_address(&market, &token_0_mint);
-    let (vault_1, _) = find_vault_address(&market, &token_1_mint);
+    let (vault_0, _) = crate::find_vault_0_address(&token_0_mint, &token_1_mint);
+    let (vault_1, _) = crate::find_vault_1_address(&token_0_mint, &token_1_mint);
     let (vault_authority, _) = find_vault_authority_address(&market);
     
     let mut accounts = vec![
@@ -206,7 +206,7 @@ pub fn swap(
 
 /// Build initialize market instruction (includes buffer initialization)
 pub fn initialize_market(
-    authority: Pubkey,
+    creator: Pubkey,
     token_0: Pubkey,
     token_1: Pubkey,
     feelssol_mint: Pubkey,
@@ -223,67 +223,119 @@ pub fn initialize_market(
         &[b"oracle", market.as_ref()],
         &crate::program_id(),
     );
-    let (vault_0, _) = find_vault_address(&market, &token_0);
-    let (vault_1, _) = find_vault_address(&market, &token_1);
+    let (vault_0, _) = crate::find_vault_0_address(&token_0, &token_1);
+    let (vault_1, _) = crate::find_vault_1_address(&token_0, &token_1);
     let (market_authority, _) = Pubkey::find_program_address(
         &[b"authority", market.as_ref()],
         &crate::program_id(),
     );
 
-    // Derive the escrow PDA for the project token
+    // Derive the escrow PDA for the project token (non-FeelsSOL token)
     let project_token_mint = if token_0 != feelssol_mint { token_0 } else { token_1 };
     let (escrow, _) = Pubkey::find_program_address(
         &[b"escrow", project_token_mint.as_ref()],
         &crate::program_id(),
     );
     
+    // Debug logging
+    eprintln!("SDK initialize_market: token_0 = {}", token_0);
+    eprintln!("SDK initialize_market: token_1 = {}", token_1);
+    eprintln!("SDK initialize_market: feelssol_mint = {}", feelssol_mint);
+    eprintln!("SDK initialize_market: project_token_mint = {}", project_token_mint);
+    eprintln!("SDK initialize_market: Escrow PDA: {}", escrow);
+    
     // Protocol token accounts - these can be dummy accounts if token is FeelsSOL
     let protocol_token_0 = if token_0 == feelssol_mint {
-        solana_sdk::system_program::id() // Use system program as dummy account for FeelsSOL
+        // Use a unique dummy PDA for FeelsSOL to avoid conflicts with system program
+        let (dummy_protocol_0, _) = Pubkey::find_program_address(
+            &[b"dummy_protocol_0"],
+            &crate::program_id(),
+        );
+        dummy_protocol_0
     } else {
         let (protocol_token_0, _) = Pubkey::find_program_address(
             &[b"protocol_token", token_0.as_ref()],
             &crate::program_id(),
         );
+        eprintln!("SDK: Calculated protocol_token_0 PDA: {}", protocol_token_0);
         protocol_token_0
     };
     
     let protocol_token_1 = if token_1 == feelssol_mint {
-        solana_sdk::system_program::id() // Use system program as dummy account for FeelsSOL
+        // Use a unique dummy PDA for FeelsSOL to avoid conflicts with system program
+        let (dummy_protocol_1, _) = Pubkey::find_program_address(
+            &[b"dummy_protocol_1"],
+            &crate::program_id(),
+        );
+        dummy_protocol_1
     } else {
         let (protocol_token_1, _) = Pubkey::find_program_address(
             &[b"protocol_token", token_1.as_ref()],
             &crate::program_id(),
         );
+        eprintln!("SDK: Calculated protocol_token_1 PDA: {}", protocol_token_1);
         protocol_token_1
     };
     
     // Use dummy accounts if not doing initial buy
-    let creator_feelssol_account = creator_feelssol.unwrap_or(solana_sdk::system_program::id());
-    let creator_token_out_account = creator_token_out.unwrap_or(solana_sdk::system_program::id());
+    // Create unique dummy accounts to avoid conflicts
+    // These are just placeholder accounts that won't be used
+    let dummy_feelssol = Pubkey::find_program_address(
+        &[b"dummy_feelssol"],
+        &crate::program_id(),
+    ).0;
+    let dummy_token_out = Pubkey::find_program_address(
+        &[b"dummy_token_out"],
+        &crate::program_id(),
+    ).0;
+    
+    let creator_feelssol_account = creator_feelssol.unwrap_or(dummy_feelssol);
+    let creator_token_out_account = creator_token_out.unwrap_or(dummy_token_out);
+    
+    let mut accounts = vec![
+        AccountMeta::new(creator, true),
+        AccountMeta::new(token_0, false),
+        AccountMeta::new(token_1, false),
+        AccountMeta::new(market, false),
+        AccountMeta::new(buffer, false),
+        AccountMeta::new(oracle, false),
+        AccountMeta::new(vault_0, false),
+        AccountMeta::new(vault_1, false),
+        AccountMeta::new_readonly(market_authority, false),
+        AccountMeta::new_readonly(feelssol_mint, false),
+    ];
+    
+    // Add protocol token accounts
+    // If it's a dummy account (for FeelsSOL), make it readonly
+    if token_0 == feelssol_mint {
+        accounts.push(AccountMeta::new_readonly(protocol_token_0, false));
+    } else {
+        accounts.push(AccountMeta::new(protocol_token_0, false));
+    }
+    
+    if token_1 == feelssol_mint {
+        accounts.push(AccountMeta::new_readonly(protocol_token_1, false));
+    } else {
+        accounts.push(AccountMeta::new(protocol_token_1, false));
+    }
+    
+    // Add remaining accounts in exact order as defined in the instruction
+    accounts.push(AccountMeta::new(escrow, false)); // escrow
+    accounts.push(AccountMeta::new_readonly(creator_feelssol_account, false)); // creator_feelssol (dummy, so readonly)
+    accounts.push(AccountMeta::new_readonly(creator_token_out_account, false)); // creator_token_out (dummy, so readonly)
+    accounts.push(AccountMeta::new_readonly(solana_sdk::system_program::id(), false)); // system_program
+    accounts.push(AccountMeta::new_readonly(spl_token::id(), false)); // token_program
+    accounts.push(AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false)); // rent
+    
+    // Debug: Print all accounts in order
+    eprintln!("SDK initialize_market accounts in order:");
+    for (i, account) in accounts.iter().enumerate() {
+        eprintln!("  {}: {} (writable: {})", i, account.pubkey, account.is_writable);
+    }
     
     Ok(Instruction {
         program_id: crate::program_id(),
-        accounts: vec![
-            AccountMeta::new(authority, true),
-            AccountMeta::new(token_0, false),
-            AccountMeta::new(token_1, false),
-            AccountMeta::new(market, false),
-            AccountMeta::new(buffer, false),
-            AccountMeta::new(oracle, false),
-            AccountMeta::new(vault_0, false),
-            AccountMeta::new(vault_1, false),
-            AccountMeta::new_readonly(market_authority, false),
-            AccountMeta::new_readonly(feelssol_mint, false),
-            AccountMeta::new_readonly(protocol_token_0, false),
-            AccountMeta::new_readonly(protocol_token_1, false),
-            AccountMeta::new(escrow, false), // Escrow must be mutable
-            AccountMeta::new(creator_feelssol_account, false),
-            AccountMeta::new(creator_token_out_account, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
-        ],
+        accounts,
         data: InitializeMarketInstructionData {
             params: InitializeMarketParams {
                 base_fee_bps,
@@ -388,8 +440,8 @@ pub fn deploy_initial_liquidity(
     deployer_token_out: Option<Pubkey>,
 ) -> Result<Instruction> {
     let (buffer, _) = find_buffer_address(&market);
-    let (vault_0, _) = find_vault_address(&market, &token_0);
-    let (vault_1, _) = find_vault_address(&market, &token_1);
+    let (vault_0, _) = crate::find_vault_0_address(&token_0, &token_1);
+    let (vault_1, _) = crate::find_vault_1_address(&token_0, &token_1);
     let (market_authority, _) = find_vault_authority_address(&market);
     
     // Derive buffer authority and vaults

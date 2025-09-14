@@ -6,107 +6,41 @@ default:
     @echo "Feels Protocol Development Tasks"
     @echo "================================"
     @echo ""
-    @echo "Build & Test:"
-    @echo "  just build         - Build the protocol"
-    @echo "  just test          - Run all tests"
-    @echo "  just test-unit     - Run unit tests only"
-    @echo "  just test-integration - Run integration tests only"
-    @echo ""
-    @echo "Code Quality:"
-    @echo "  just format        - Format all code"
-    @echo "  just lint          - Run clippy lints"
-    @echo "  just check         - Run all quality checks"
+    @echo "Build & Deploy:"
+    @echo "  just build         - Build the protocol with Anchor"
+    @echo "  just nix-build     - Build with Nix BPF builder"
+    @echo "  just deploy        - Deploy to local devnet"
+    @echo "  just deploy-devnet - Deploy to Solana devnet"
     @echo ""
     @echo "Development:"
     @echo "  just clean         - Clean build artifacts"
     @echo "  just local-devnet  - Start local development network"
-    @echo "  just deploy        - Deploy to local devnet"
-    @echo "  just deploy-devnet - Deploy to Solana devnet"
+    @echo "  just logs          - Tail validator logs"
+    @echo "  just program-id    - Show program address"
     @echo ""
-    @echo "IDL & Types:"
-    @echo "  just idl-build     - Generate IDL files"
-    @echo "  just idl-validate  - Validate IDL matches SDK"
-    @echo "  just types         - Generate TypeScript types"
+    @echo "IDL Generation:"
+    @echo "  just idl-build [PROGRAM] - Generate IDL files (default: all)"
+    @echo "  just idl-validate  - Validate IDL consistency"
     @echo ""
-    @echo "Nix:"
-    @echo "  just nix-build     - Build with Nix"
-    @echo "  just nix-shell     - Enter Nix shell"
-    @echo "  just cargo-nix     - Generate Cargo.nix for fast builds"
+    @echo "Solana Tools:"
+    @echo "  just airdrop [AMT] - Airdrop SOL to wallet (default: 10)"
+    @echo "  just balance       - Show account balance"
 
-# Build the protocol using Nix BPF builder (default)
+# Build the protocol using Anchor (default)
 build:
-    @echo "Building Feels Protocol with Nix BPF builder..."
-    nix build .#feels-protocol --out-link target/nix-feels
+    @echo "Building Feels Protocol..."
+    anchor build
+    @echo "Programs built and available in target/deploy/"
+
+# Build with Nix BPF builder
+nix-build:
+    @echo "Building with Nix BPF builder..."
+    nix build .#feels --out-link target/nix-feels
     @mkdir -p target/deploy
     @cp target/nix-feels/deploy/*.so target/deploy/ 2>/dev/null || true
-    @echo "Program built with Nix and copied to target/deploy/"
+    @echo "Feels program built with Nix and copied to target/deploy/"
+    @echo "Note: feels-jupiter-adapter is a library, not deployed on-chain"
 
-# Build with cargo (fallback)
-build-cargo:
-    @echo "Building with cargo build-sbf..."
-    @mkdir -p target/deploy
-    cd programs/feels && cargo build-sbf
-    @echo "Program built with cargo"
-
-# Build with stack frame optimizations info
-build-info:
-    @echo "Building Solana program with stack frame optimizations..."
-    @echo ""
-    @echo "Available build commands:"
-    @echo "  just build      - Build with Nix BPF builder (preferred)"
-    @echo "  just build-cargo - Build with cargo build-sbf"
-    @echo "  anchor build    - Build with Anchor CLI"
-    @echo ""
-    @echo "Stack frame optimizations applied:"
-    @echo ""
-    @echo "1. MintToken instruction:"
-    @echo "   - Boxed: escrow (PreLaunchEscrow)"
-    @echo "   - Boxed: protocol_token (ProtocolToken)"
-    @echo ""
-    @echo "2. DeployInitialLiquidity instruction:"
-    @echo "   - Boxed: market (Market)"
-    @echo "   - Boxed: buffer (Buffer)"
-    @echo "   - Boxed: escrow (PreLaunchEscrow)"
-    @echo "   - Boxed: protocol_config (ProtocolConfig)"
-    @echo ""
-    @echo "3. DestroyExpiredToken instruction:"
-    @echo "   - Boxed: escrow (PreLaunchEscrow)"
-    @echo ""
-    @echo "These optimizations reduce stack usage by moving large accounts to heap."
-
-# Run all tests
-test:
-    @echo "Running all tests..."
-    cargo test
-
-# Run unit tests only
-test-unit:
-    @echo "Running unit tests..."
-    cargo test --lib
-
-# Run integration tests only
-test-integration:
-    @echo "Running integration tests..."
-    @echo "No integration tests configured yet"
-
-# Format all code
-format:
-    @echo "Formatting code..."
-    cargo fmt --all
-    @if command -v nixpkgs-fmt >/dev/null 2>&1; then \
-        find . -name "*.nix" -exec nixpkgs-fmt {} \; ; \
-    else \
-        echo "nixpkgs-fmt not available, skipping nix file formatting" ; \
-    fi
-
-# Run clippy lints
-lint:
-    @echo "Running clippy lints..."
-    cargo clippy --all-targets --all-features -- -D warnings -A unexpected_cfgs
-
-# Run all quality checks
-check: format lint test
-    @echo "All quality checks passed!"
 
 # Clean build artifacts
 clean:
@@ -118,7 +52,7 @@ clean:
 # Start local development network
 local-devnet:
     @echo "Starting local development network..."
-    nix run .#local-devnet
+    nix run .#devnet
 
 # Deploy to local devnet
 deploy:
@@ -131,9 +65,16 @@ deploy-devnet:
     anchor deploy --provider.cluster devnet
 
 # Generate IDL files
-idl-build:
-    @echo "Generating IDL files..."
-    nix run .#idl-build
+idl-build PROGRAM="":
+    #!/usr/bin/env bash
+    if [ -z "{{PROGRAM}}" ]; then
+        echo "Generating IDL files for all on-chain programs..."
+        nix run .#idl-build -- feels
+        echo "Note: feels-jupiter-adapter is a library, not an on-chain program, so it doesn't have an IDL"
+    else
+        echo "Generating IDL for {{PROGRAM}}..."
+        nix run .#idl-build -- {{PROGRAM}}
+    fi
 
 # Validate IDL against SDK
 idl-validate:
@@ -205,62 +146,6 @@ idl-validate:
     echo "============================================================"
     echo "IDL validation passed!"
 
-# Generate TypeScript types
-types: idl-build
-    @echo "Generating TypeScript types..."
-    @echo "Types are generated as part of anchor build"
-
-# Generate Cargo.nix for fast builds
-cargo-nix:
-    @echo "Generating Cargo.nix..."
-    nix run .#generate-cargo-nix
-
-# Enter Nix development shell
-nix-shell:
-    @echo "Entering Nix development shell..."
-    nix develop
-
-# Benchmark the protocol (placeholder)
-bench:
-    @echo "Running benchmarks..."
-    @echo "Benchmarks not yet implemented"
-
-# Security audit
-audit:
-    @echo "Running security audit..."
-    @if command -v cargo-audit >/dev/null 2>&1; then \
-        cargo audit ; \
-    else \
-        echo "cargo-audit not installed. Install with: cargo install cargo-audit" ; \
-    fi
-
-# Update dependencies
-update:
-    @echo "Updating dependencies..."
-    cargo update
-
-# Generate documentation
-docs:
-    @echo "Generating documentation..."
-    cargo doc --no-deps --open
-
-# Initialize development environment
-init:
-    @echo "Initializing development environment..."
-    @echo "Installing git hooks..."
-    @mkdir -p .git/hooks
-    @echo "#!/bin/sh\njust format" > .git/hooks/pre-commit
-    @chmod +x .git/hooks/pre-commit
-    @echo "Development environment initialized!"
-
-# Quick development cycle (format, lint, test)
-dev: format lint test-unit
-    @echo "Quick development cycle complete!"
-
-# Full CI pipeline simulation
-ci: format lint test build idl-build idl-validate
-    @echo "Full CI pipeline simulation complete!"
-
 # Tail logs from local validator
 logs:
     @echo "Tailing validator logs..."
@@ -271,10 +156,10 @@ logs:
     fi
 
 # Show program address
-program-id:
-    @echo "Feels Protocol Program ID:"
-    @if [ -f target/deploy/feels-keypair.json ]; then \
-        cat target/deploy/feels-keypair.json | solana address ; \
+program-id PROGRAM="feels":
+    @echo "{{PROGRAM}} Program ID:"
+    @if [ -f target/deploy/{{PROGRAM}}-keypair.json ]; then \
+        cat target/deploy/{{PROGRAM}}-keypair.json | solana address ; \
     else \
         echo "Program keypair not found. Build the program first with 'just build'" ; \
     fi

@@ -148,15 +148,14 @@ impl TestContext {
     }
     
     /// Create a mock protocol token for testing
-    /// This bypasses the mint_token instruction which requires Metaplex
+    /// This creates a simple token mint without using mint_token instruction
+    /// since Metaplex is not available in test environment
     pub async fn mint_protocol_token(
         &self,
         token_name: &str,
         decimals: u8,
         _initial_supply: u64, // No longer used - all tokens go to buffer
-    ) -> TestResult<Keypair> {
-        use feels::state::{ProtocolToken, TokenType, PreLaunchEscrow};
-        
+    ) -> TestResult<Keypair> {        
         // Create a fresh creator account
         let creator = self.accounts.market_creator.insecure_clone();
         
@@ -164,79 +163,10 @@ impl TestContext {
         let token_mint = self.create_mint(&creator.pubkey(), decimals).await?;
         println!("Created mock protocol token {} at {}", token_name, token_mint.pubkey());
         
-        // Create the protocol token registry entry directly
-        // This is a workaround for tests since we can't use mint_token without Metaplex
-        let (protocol_token_pda, _) = Pubkey::find_program_address(
-            &[b"protocol_token", token_mint.pubkey().as_ref()],
-            &PROGRAM_ID,
-        );
-        
-        // Create the escrow PDA
-        let (escrow_pda, _) = Pubkey::find_program_address(
-            &[b"escrow", token_mint.pubkey().as_ref()],
-            &PROGRAM_ID,
-        );
-        
-        // Create the escrow authority PDA
-        let (escrow_authority, _) = Pubkey::find_program_address(
-            &[b"escrow_authority", escrow_pda.as_ref()],
-            &PROGRAM_ID,
-        );
-        
-        // Get payer based on environment
-        let payer = match &*self.client.lock().await {
-            TestClient::InMemory(client) => client.payer.insecure_clone(),
-            TestClient::Devnet(client) => client.payer.insecure_clone(),
-        };
-        
-        // Calculate rents
-        let rent = solana_program::sysvar::rent::Rent::default();
-        let protocol_token_rent = rent.minimum_balance(ProtocolToken::LEN);
-        let escrow_rent = rent.minimum_balance(PreLaunchEscrow::LEN);
-        
-        // Create accounts for protocol token and escrow
-        let create_protocol_token_ix = solana_sdk::system_instruction::create_account(
-            &payer.pubkey(),
-            &protocol_token_pda,
-            protocol_token_rent,
-            ProtocolToken::LEN as u64,
-            &PROGRAM_ID,
-        );
-        
-        let create_escrow_ix = solana_sdk::system_instruction::create_account(
-            &payer.pubkey(),
-            &escrow_pda,
-            escrow_rent,
-            PreLaunchEscrow::LEN as u64,
-            &PROGRAM_ID,
-        );
-        
-        // Process account creation
-        self.process_transaction(&[create_protocol_token_ix, create_escrow_ix], &[&payer]).await?;
-        
-        // Create escrow token vault
-        let escrow_token_vault = self.create_ata(&escrow_authority, &token_mint.pubkey()).await?;
-        
-        // Mint all tokens to escrow vault
-        self.mint_to(&token_mint.pubkey(), &escrow_token_vault, &token_mint, 1_000_000_000_000_000).await?;
-        
-        // Write protocol token data
-        let protocol_token = ProtocolToken {
-            mint: token_mint.pubkey(),
-            creator: creator.pubkey(),
-            token_type: TokenType::Spl,
-            created_at: 0, // Mock timestamp
-            can_create_markets: true,
-            _reserved: [0; 32],
-        };
-        
-        // Serialize and write the data
-        let mut data = vec![0u8; 8]; // discriminator
-        data.extend_from_slice(&protocol_token.try_to_vec()?);
-        
-        // For testing, we'll assume the account data was written
-        // In a real test environment, we'd need to write this data somehow
-        println!("Mock protocol token entry created at {}", protocol_token_pda);
+        // For in-memory tests, we'll skip creating the protocol token registry
+        // since we can't write account data directly with BanksClient
+        // The integration test will need to use a different approach or accept that
+        // protocol tokens can't be easily mocked in this environment
         
         Ok(token_mint)
     }

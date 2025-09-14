@@ -6,6 +6,7 @@ use solana_sdk::transaction::Transaction;
 use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use solana_program::program_pack::Pack;
 use spl_token::state::Account as TokenAccount;
+use solana_program_test::{ProgramTest, BanksClient};
 
 /// Enum that wraps different client implementations
 pub enum TestClient {
@@ -60,6 +61,20 @@ impl TestClient {
         }
     }
 
+    /// Set account data directly (for testing)
+    pub fn set_account_data(
+        &mut self,
+        address: &Pubkey,
+        data: Vec<u8>,
+    ) -> TestResult<()> {
+        match self {
+            TestClient::InMemory(client) => client.set_account_data(address, data),
+            TestClient::Devnet(_) => {
+                Err("Cannot set account data in devnet tests".into())
+            }
+        }
+    }
+
     /// Get token account balance
     pub async fn get_token_balance(&mut self, address: &Pubkey) -> TestResult<u64> {
         match self {
@@ -111,7 +126,7 @@ impl TestClient {
 
 // Implementation for ProgramTest (in-memory testing)
 pub struct InMemoryClient {
-    pub banks_client: solana_program_test::BanksClient,
+    pub banks_client: BanksClient,
     pub payer: Keypair,
     pub last_blockhash: Hash,
 }
@@ -138,7 +153,7 @@ impl InMemoryClient {
         }
         
         // Load the BPF binary
-        let mut program_test = solana_program_test::ProgramTest::new(
+        let mut program_test = ProgramTest::new(
             "feels",
             PROGRAM_ID,
             None, // Load from BPF
@@ -272,6 +287,18 @@ impl InMemoryClient {
             Some(account) => Ok(Some(account.data)),
             None => Ok(None),
         }
+    }
+
+    /// Set account data directly (for testing)
+    /// Note: This is not feasible with BanksClient - account data must be set through transactions
+    pub fn set_account_data(
+        &mut self,
+        _address: &Pubkey,
+        _data: Vec<u8>,
+    ) -> TestResult<()> {
+        // BanksClient doesn't support direct account data setting
+        // Account data can only be modified through program instructions
+        Err("Direct account data setting not supported in BanksClient tests".into())
     }
 
     pub async fn get_token_balance(&mut self, address: &Pubkey) -> TestResult<u64> {

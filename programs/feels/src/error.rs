@@ -179,4 +179,10 @@ pub enum FeelsError {
     
     #[msg("Market already has active liquidity")]
     MarketAlreadyActive,
+    
+    #[msg("Invalid account")]
+    InvalidAccount,
+    
+    #[msg("Market already initialized")]
+    MarketAlreadyInitialized,
 }

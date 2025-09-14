@@ -53,7 +53,7 @@ macro_rules! test_in_memory {
     ($name:ident, $test_fn:expr) => {
         #[tokio::test]
         async fn $name() {
-            use $crate::common::{TestContext, TestEnvironment};
+            use crate::common::{TestContext, TestEnvironment};
             let ctx = TestContext::new(TestEnvironment::in_memory()).await
                 .expect("Failed to create test context");
                 
@@ -99,6 +99,8 @@ macro_rules! assert_instruction_error {
         }
     }};
 }
+
+// assert_tx_success is defined in assertions.rs
 
 /// Assert account exists with expected owner
 #[macro_export]
@@ -178,6 +180,10 @@ macro_rules! batch_operations {
         Ok::<(), Box<dyn std::error::Error>>(())
     }};
 }
+
+// assert_error is defined in assertions.rs
+
+// assert_balance_change is defined in assertions.rs
 
 /// Time-scoped test execution
 #[macro_export]
