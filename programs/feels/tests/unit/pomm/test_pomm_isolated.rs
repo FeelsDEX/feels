@@ -1,7 +1,6 @@
 //! Isolated POMM test to verify protocol token functionality
 
-mod common;
-use common::*;
+use crate::common::*;
 
 #[tokio::test]
 async fn test_pomm_width_with_protocol_token() {

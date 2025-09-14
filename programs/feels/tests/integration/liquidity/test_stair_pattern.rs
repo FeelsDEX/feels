@@ -13,8 +13,7 @@ use feels::{
     },
 };
 
-mod helpers;
-use helpers::*;
+use crate::helpers::*;
 
 #[tokio::test]
 #[ignore = "Test needs updating for new architecture"]

@@ -11,39 +11,48 @@ The test suite has been refactored to support multiple testing environments:
 
 The test suite provides coverage for:
 - Mathematical operations and utilities (unit tests)
-- Instruction validation and constraints (unit tests)  
+- Security features and vulnerability regression tests
 - Protocol lifecycle and cross-instruction interactions (integration tests)
-- AMM operations and token management (functional tests)
-- Security vulnerability regression tests
+- Complete user flows and AMM operations (e2e tests)
+- Invariant checking and fuzz testing (property tests)
 
-## Module Structure
+## Directory Structure
 
 ```
 tests/
-├── common/               # Shared test infrastructure
-│   ├── mod.rs           # Module organization
-│   ├── client.rs        # Test client abstraction (InMemory/Devnet)
-│   ├── context.rs       # Test context and pre-configured accounts
-│   ├── environment.rs   # Environment configuration
-│   ├── helpers.rs       # High-level test helpers
-│   ├── builders.rs      # Test data builders
-│   ├── macros.rs        # Test macros for multi-environment testing
-│   └── time.rs          # Time manipulation utilities
-├── unit/                # Unit tests for individual components
-│   ├── instructions/    # Instruction-specific tests
-│   ├── state/           # State struct tests
-│   └── test_*.rs        # Component unit tests
-├── integration/         # Integration tests for features
-│   ├── basic_test.rs    # Basic integration tests
-│   ├── initialize_market_test.rs # Market initialization
-│   └── test_swap_scenarios.rs    # Swap integration tests
-├── e2e/                 # End-to-end scenario tests
-│   ├── test_full_trading_flow.rs # Complete trading lifecycle
-│   ├── test_position_metadata.rs # NFT position tests
-│   └── test_token_lifecycle.rs   # Token lifecycle tests
-├── property/            # Property-based tests
-│   └── fuzz_*.rs        # Fuzz tests for invariants
-└── README.md            # This file
+├── common/                 # Shared test infrastructure
+│   ├── assertions.rs      # Custom assertion helpers
+│   ├── builders.rs        # Test data builders
+│   ├── client.rs          # Test client abstraction (InMemory/Devnet)
+│   ├── context.rs         # Test context and pre-configured accounts
+│   ├── environment.rs     # Environment configuration
+│   ├── fixtures.rs        # Reusable test data
+│   ├── helpers.rs         # High-level test helpers
+│   ├── macros.rs          # Test macros for multi-environment testing
+│   ├── time.rs            # Time manipulation utilities
+│   └── tracing.rs         # Test output and debugging
+├── unit/                   # Unit tests for individual components
+│   ├── math/              # Mathematical operations (fees, rounding, dust)
+│   ├── security/          # Security features (reentrancy, race conditions)
+│   ├── pomm/              # Protocol-Owned Market Making logic
+│   ├── buffer/            # Buffer management and overflow handling
+│   ├── position/          # Position management and safety
+│   ├── oracle/            # Oracle and observation logic
+│   └── instructions/      # Instruction-specific tests
+├── integration/            # Integration tests for feature workflows
+│   ├── initialization/    # Market initialization variations
+│   ├── liquidity/         # Liquidity provision patterns
+│   ├── debug/             # Debug and diagnostic tests
+│   └── token/             # Token lifecycle operations
+├── e2e/                    # End-to-end tests for complete user flows
+│   ├── test_full_trading_flow.rs    # Complete trading lifecycle
+│   ├── test_position_metadata.rs    # NFT position tests
+│   ├── test_token_lifecycle.rs      # Token mint→trade→burn flow
+│   └── test_feelssol_basic.rs       # FeelsSOL entry/exit flows
+├── property/               # Property-based and fuzz tests
+│   └── fuzz_swap_invariants.rs      # Swap invariant testing
+├── helpers/                # Legacy helpers (to be migrated to common/)
+└── README.md              # This file
 ```
 
 ## Quick Start
@@ -60,33 +69,105 @@ cargo build-sbf
 ### Running Tests
 
 ```bash
-# Using nix environment (recommended)
-nix develop --command cargo test
+# Using the justfile (recommended)
+just test               # Run all tests
+just test-unit         # Run unit tests only
+just test-integration  # Run integration tests only
+just test-e2e          # Run end-to-end tests only
+just test-property     # Run property-based tests only
 
-# Or use the test runner script
-./run-tests.sh
+# Or use cargo directly
+cargo test --features test-utils                        # Run all tests
+cargo test --features test-utils unit::                # Unit tests only
+cargo test --features test-utils integration::         # Integration tests only  
+cargo test --features test-utils e2e::                # E2E tests only
+cargo test --features test-utils property::           # Property tests only
 
-# Run specific test categories
-cargo test --test mod unit::        # Unit tests only
-cargo test --test mod integration:: # Integration tests only  
-cargo test --test mod e2e::        # E2E tests only
-cargo test --test mod property::   # Property tests only
+# Run specific subdirectory
+cargo test --features test-utils unit::math::          # Math unit tests
+cargo test --features test-utils unit::security::      # Security unit tests
+cargo test --features test-utils integration::initialization::  # Initialization tests
 
 # Run specific test
-cargo test --test mod test_simple_example
+cargo test --features test-utils test_swap_exact_amount
 
 # Run with output
-cargo test --test mod test_simple_example -- --nocapture
+cargo test --features test-utils -- --nocapture
 ```
 
-### Writing Tests
+## Test Categories
+
+### Unit Tests (`unit/`)
+Tests for individual components in isolation.
+
+**Subdirectories:**
+- `math/` - Fee calculations, rounding behavior, dust control
+- `security/` - Reentrancy guards, race conditions, griefing protection
+- `pomm/` - POMM width calculations, saturation tests
+- `buffer/` - Buffer overflow handling, balance management
+- `position/` - Position closing safety, fee collection
+- `oracle/` - Observation offsets, timestamp security
+
+### Integration Tests (`integration/`)
+Tests for feature workflows involving multiple components.
+
+**Subdirectories:**
+- `initialization/` - Market initialization with various configurations
+- `liquidity/` - Liquidity provision patterns (e.g., stair pattern)
+- `debug/` - Debug and diagnostic tests
+- `token/` - Token minting and lifecycle operations
+
+### End-to-End Tests (`e2e/`)
+Complete user journey tests that simulate real usage scenarios.
+
+**Key tests:**
+- Full trading flows with multiple participants
+- Token lifecycle from creation to destruction
+- Position management including metadata NFTs
+- FeelsSOL hub token entry and exit flows
+
+### Property Tests (`property/`)
+Fuzz testing to verify invariants hold under random inputs.
+
+**Current coverage:**
+- Swap invariants (conservation of value)
+- Mathematical properties (no overflow, consistent rounding)
+
+## Naming Conventions
+
+### File Names
+- All test files follow the pattern: `test_*.rs`
+- Use descriptive names: `test_<feature>_<scenario>.rs`
+- Group related tests in the same file
+
+### Test Function Names
+```rust
+#[test]
+fn test_<component>_<scenario>_<expected_outcome>() {
+    // Example: test_swap_large_amount_succeeds()
+    // Example: test_position_close_with_fees_fails()
+}
+```
+
+### Module Organization
+Each subdirectory has a `mod.rs` that exports all test modules:
+```rust
+// unit/math/mod.rs
+pub mod test_fee_growth;
+pub mod test_fee_rounding;
+pub mod test_dust_control;
+```
+
+## Writing Tests
+
+### Test Macros
 
 The test infrastructure provides macros for environment-specific testing:
 
 ```rust
 use crate::common::*;
 
-// Run test in in-memory environment only  
+// Run test in in-memory environment only (fastest)
 test_in_memory!(test_name, |ctx: TestContext| async move {
     // Test logic here
     Ok::<(), Box<dyn std::error::Error>>(())
@@ -139,139 +220,78 @@ let position = ctx.position_helper()
     .await?;
 ```
 
-## Key Features
+## Adding New Tests
 
-### Mathematical Test Coverage
-- Safe arithmetic operations with overflow/underflow protection
-- U256 big integer operations and precision testing
-- Tick-price conversion accuracy and bounds checking
-- Liquidity math validation and delta calculations
+### 1. Determine the Category
+- **Unit**: Testing a single function or component in isolation?
+- **Integration**: Testing a feature that uses multiple components?
+- **E2E**: Testing a complete user workflow?
+- **Property**: Testing invariants with random inputs?
+
+### 2. Find or Create the Appropriate Location
+- For unit tests, use the component subdirectory (math, security, etc.)
+- For integration tests, use the feature subdirectory (initialization, liquidity, etc.)
+- For e2e tests, place directly in the `e2e/` directory
+- For property tests, place directly in the `property/` directory
+
+### 3. Follow the Template
+```rust
+use crate::common::*;  // Import common test infrastructure
+
+test_in_memory!(test_my_feature, |ctx: TestContext| async move {
+    // Setup
+    let creator = Keypair::new();
+    ctx.airdrop(&creator.pubkey(), 1_000_000_000).await?;
+    
+    // Execute
+    let result = my_operation(&ctx, &creator).await?;
+    
+    // Assert
+    assert!(result.is_ok());
+    assert_eq!(result.value, expected_value);
+    
+    Ok::<(), Box<dyn std::error::Error>>(())
+});
+```
+
+## Key Test Coverage Areas
+
+### Mathematical Operations
+- Safe arithmetic with overflow/underflow protection
 - Fee calculation precision and rounding behavior
+- Tick-price conversions and boundary conditions
+- Liquidity math validation and delta calculations
 
-### Instruction Validation Tests
-- PDA derivation correctness and determinism
-- Account constraint validation
-- Parameter validation and bounds checking
-- Authority and ownership verification
+### Security Features
+- Reentrancy protection
+- Race condition prevention
+- Oracle timestamp validation
+- Tick array griefing protection
+- Buffer overflow handling
 
-### Integration Testing
-- Protocol initialization sequence validation
-- Cross-instruction state consistency
-- Token validation system integration
-- Multi-step operation workflows
+### Protocol Operations
+- Market initialization with various configurations
+- Token validation and restricted ticker handling
+- Position lifecycle (open, update, close)
+- Fee collection and distribution
+- Liquidity provision and removal
 
-### Security and Vulnerability Testing
-- Overflow/underflow detection in math operations
-- Input validation and sanitization
-- Access control and authorization checks
-- Edge case and boundary condition testing
+### Edge Cases
+- Maximum/minimum values for all parameters
+- Boundary conditions (e.g., tick edges)
+- Invalid input rejection
+- Duplicate operation prevention
 
-## Testing Patterns
+## Best Practices
 
-### 1. Mathematical Property Testing
-```rust
-#[test]
-fn test_math_property_invariants() {
-    // Test that mathematical operations maintain invariants
-    // Example: Addition overflow detection
-    assert!(add_u64(u64::MAX, 1).is_err());
-    
-    // Example: Rounding consistency
-    assert!(round_up(x) >= round_down(x));
-}
-```
-
-### 2. Integration Workflow Testing
-```rust
-#[test]
-fn test_protocol_integration_workflow() {
-    // 1. Initialize protocol
-    // 2. Create FeelsSOL wrapper
-    // 3. Create token pools
-    // 4. Validate cross-component interactions
-    // 5. Verify state consistency
-}
-```
-
-### 3. Security Regression Testing
-```rust
-#[test]
-fn test_vulnerability_fixes() {
-    // Test that previously identified vulnerabilities remain fixed
-    // Example: U256 overflow protection
-    let result = U256::MAX.checked_add(&U256::from(1u128));
-    assert!(result.is_none());
-}
-```
-
-## Test Coverage Areas
-
-### Unit Tests (`tests/unit/`)
-- **math_operations.rs**: Safe arithmetic, U256 operations, precision testing
-- **math_tick.rs**: Tick math conversions and boundary conditions  
-- **instruction_validation.rs**: PDA derivation, account constraints
-
-### Integration Tests (`tests/integration/`)
-- **protocol_lifecycle.rs**: End-to-end protocol initialization workflows
-- **token_validate.rs**: Token ticker validation system integration
-
-### Functional Tests (`tests/functional/`)
-- **amm_operations.rs**: Complete AMM functionality from pool creation to trading
-
-## Token Ticker Validation Testing
-
-The test suite includes comprehensive coverage of the token ticker validation system:
-
-```rust
-#[test]
-fn test_token_create_with_restricted_ticker() {
-    // Test that SOL, USDC, USDT, FeelsSOL are properly restricted
-    let result = validate_ticker_format("SOL");
-    assert!(result.is_err());
-    
-    // Test alternatives are suggested
-    let alternatives = get_ticker_alternatives("SOL");
-    assert!(alternatives.contains(&"SOL2".to_string()));
-}
-```
-
-## Running Specific Tests
-
-### Mathematical Tests
-```bash
-# Test all mathematical operations
-cargo test math_operations
-
-# Test specific mathematical components
-cargo test safe_math
-cargo test u256_operations  
-cargo test tick_math
-cargo test precision
-```
-
-### Integration Tests
-```bash
-# Test protocol initialization
-cargo test protocol_lifecycle
-
-# Test token validation system
-cargo test token_validate
-
-# Test all integration workflows
-cargo test integration
-```
-
-### Security and Vulnerability Tests
-```bash
-# Run security regression tests
-cargo test vulnerability_regression
-
-# Test overflow protection
-cargo test overflow_protection
-
-# Test access control
-cargo test authorization
-```
+1. **Keep tests focused**: Each test should verify one specific behavior
+2. **Use descriptive names**: Test names should clearly indicate what is being tested
+3. **Minimize dependencies**: Unit tests should not depend on external state
+4. **Use the common infrastructure**: Leverage utilities in `common/` for consistency
+5. **Document complex tests**: Add comments explaining the test scenario
+6. **Clean up resources**: Ensure tests clean up any resources they create
+7. **Avoid test interdependencies**: Tests should run successfully in any order
+8. **Test both success and failure cases**: Verify error conditions are handled correctly
 
 ## Troubleshooting
 
@@ -282,26 +302,27 @@ cargo test authorization
    - The test infrastructure will automatically find the binary in `target/deploy/feels.so`
 
 2. **Tests fail with "KeypairPubkeyMismatch"**
-   - This usually indicates an issue with account ownership or signing
+   - This indicates an issue with account ownership or signing
    - Check that the correct keypair is being used for signing
    - Ensure account ownership is properly set up
 
 3. **Environment-specific test issues**
    - For devnet tests: Set `RUN_DEVNET_TESTS=1`
    - For localnet tests: Set `RUN_LOCALNET_TESTS=1`
-   - Devnet/localnet tests require appropriate network connectivity
+   - Network tests require appropriate connectivity
 
 4. **Compilation errors**
    - Ensure all dependencies are built: `cargo build`
    - Check that the SDK is properly built
    - Verify Anchor version matches: `anchor --version`
 
-## Contributing
+## Maintenance
 
-When adding new tests:
-1. **Follow the directory structure**: Unit tests in `unit/`, integration tests in `integration/`, e2e tests in `e2e/`
-2. **Use the test macros**: `test_in_memory!` for fast tests, `test_all_environments!` for comprehensive testing
-3. **Use descriptive test names**: `test_specific_functionality_condition()`
-4. **Add comprehensive documentation**: Explain what the test validates
-5. **Include edge cases**: Test boundary conditions and error cases
-6. **Update this README**: Document new test categories and coverage areas
+Test commands are managed through the project's justfile in the root directory:
+- `just test` - Run all tests
+- `just test-unit` - Run unit tests only
+- `just test-integration` - Run integration tests only
+- `just test-e2e` - Run end-to-end tests only
+- `just test-property` - Run property-based tests only
+
+Test reorganization has been completed and the structure is now stable. When adding new tests, follow the established patterns and directory structure documented above.

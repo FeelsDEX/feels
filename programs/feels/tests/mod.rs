@@ -21,3 +21,7 @@ pub mod property;
 // End-to-end tests
 #[cfg(test)]
 pub mod e2e;
+
+// Legacy helpers (to be migrated to common)
+#[cfg(test)]
+pub mod helpers;

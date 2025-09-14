@@ -22,6 +22,13 @@ default:
     @echo "  just idl-build [PROGRAM] - Generate IDL files (default: all)"
     @echo "  just idl-validate  - Validate IDL consistency"
     @echo ""
+    @echo "Testing:"
+    @echo "  just test          - Run all tests"
+    @echo "  just test-unit     - Run unit tests only"
+    @echo "  just test-integration - Run integration tests only"
+    @echo "  just test-e2e      - Run end-to-end tests only"
+    @echo "  just test-property - Run property-based tests only"
+    @echo ""
     @echo "Solana Tools:"
     @echo "  just airdrop [AMT] - Airdrop SOL to wallet (default: 10)"
     @echo "  just balance       - Show account balance"
@@ -29,7 +36,7 @@ default:
 # Build the protocol using Anchor (default)
 build:
     @echo "Building Feels Protocol..."
-    anchor build
+    nix develop --command anchor build --no-idl
     @echo "Programs built and available in target/deploy/"
 
 # Build with Nix BPF builder
@@ -45,7 +52,7 @@ nix-build:
 # Clean build artifacts
 clean:
     @echo "Cleaning build artifacts..."
-    cargo clean
+    nix develop --command cargo clean
     rm -rf target/
     rm -rf .anchor/
 
@@ -57,12 +64,12 @@ local-devnet:
 # Deploy to local devnet
 deploy:
     @echo "Deploying to local devnet..."
-    anchor deploy --provider.cluster localnet
+    nix develop --command anchor deploy --provider.cluster localnet
 
 # Deploy to Solana devnet
 deploy-devnet:
     @echo "Deploying to Solana devnet..."
-    anchor deploy --provider.cluster devnet
+    nix develop --command anchor deploy --provider.cluster devnet
 
 # Generate IDL files
 idl-build PROGRAM="":
@@ -159,7 +166,7 @@ logs:
 program-id PROGRAM="feels":
     @echo "{{PROGRAM}} Program ID:"
     @if [ -f target/deploy/{{PROGRAM}}-keypair.json ]; then \
-        cat target/deploy/{{PROGRAM}}-keypair.json | solana address ; \
+        cat target/deploy/{{PROGRAM}}-keypair.json | nix develop --command solana address ; \
     else \
         echo "Program keypair not found. Build the program first with 'just build'" ; \
     fi
@@ -167,12 +174,42 @@ program-id PROGRAM="feels":
 # Airdrop SOL to development wallet
 airdrop AMOUNT="10":
     @echo "Airdropping {{AMOUNT}} SOL..."
-    solana airdrop {{AMOUNT}}
+    nix develop --command solana airdrop {{AMOUNT}}
 
 # Show account balance
 balance:
     @echo "Account balance:"
-    solana balance
+    nix develop --command solana balance
+
+# Run all tests
+test:
+    @echo "Running all tests..."
+    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
+    nix develop --command cargo test -p feels --test '*' -- --test-threads=1
+
+# Run unit tests only
+test-unit:
+    @echo "Running unit tests..."
+    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
+    nix develop --command cargo test -p feels unit:: -- --test-threads=1
+
+# Run integration tests only  
+test-integration:
+    @echo "Running integration tests..."
+    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
+    nix develop --command cargo test -p feels integration:: -- --test-threads=1
+
+# Run end-to-end tests only
+test-e2e:
+    @echo "Running end-to-end tests..."
+    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
+    nix develop --command cargo test -p feels e2e:: -- --test-threads=1
+
+# Run property-based tests only
+test-property:
+    @echo "Running property-based tests..."
+    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
+    nix develop --command cargo test -p feels property:: -- --test-threads=1
 
 # Reset local development environment
 reset:
