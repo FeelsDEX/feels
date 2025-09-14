@@ -1,5 +1,6 @@
 /// Integration tests
 pub mod basic_test;
+pub mod example_new_infrastructure;
 pub mod initialize_market_test;
 pub mod mint_token_test;
 pub mod test_creator_market_launch;

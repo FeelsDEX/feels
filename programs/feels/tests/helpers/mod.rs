@@ -1,13 +1,12 @@
 //! Test helpers
 
-use anchor_lang::prelude::*;
 use solana_sdk::{
     instruction::Instruction,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_instruction,
     transaction::Transaction,
 };
+use solana_sdk::system_instruction;
 use solana_program_test::BanksClient;
 use spl_token::instruction as token_instruction;
 use feels::instructions::*;
@@ -109,6 +108,7 @@ pub fn find_market_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
+#[allow(dead_code)]
 pub fn find_buffer_address(market: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[b"buffer", market.as_ref()],
@@ -116,11 +116,12 @@ pub fn find_buffer_address(market: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
+#[allow(dead_code)]
 pub fn mint_token_instruction(
-    creator: Pubkey,
-    token_mint: Pubkey,
-    feelssol_mint: Pubkey,
-    params: MintTokenParams,
+    _creator: Pubkey,
+    _token_mint: Pubkey,
+    _feelssol_mint: Pubkey,
+    _params: MintTokenParams,
 ) -> Instruction {
     // This would normally come from the SDK
     // For now, create a simplified version
@@ -131,12 +132,13 @@ pub fn mint_token_instruction(
     }
 }
 
+#[allow(dead_code)]
 pub fn initialize_market_instruction(
-    creator: Pubkey,
-    token_0: Pubkey,
-    token_1: Pubkey,
-    feelssol_mint: Pubkey,
-    params: InitializeMarketParams,
+    _creator: Pubkey,
+    _token_0: Pubkey,
+    _token_1: Pubkey,
+    _feelssol_mint: Pubkey,
+    _params: InitializeMarketParams,
 ) -> Instruction {
     Instruction {
         program_id: feels::id(),
@@ -145,13 +147,14 @@ pub fn initialize_market_instruction(
     }
 }
 
+#[allow(dead_code)]
 pub fn deploy_initial_liquidity_instruction(
-    deployer: Pubkey,
-    market: Pubkey,
-    token_0: Pubkey,
-    token_1: Pubkey,
-    feelssol_mint: Pubkey,
-    params: DeployInitialLiquidityParams,
+    _deployer: Pubkey,
+    _market: Pubkey,
+    _token_0: Pubkey,
+    _token_1: Pubkey,
+    _feelssol_mint: Pubkey,
+    _params: DeployInitialLiquidityParams,
 ) -> Instruction {
     Instruction {
         program_id: feels::id(),

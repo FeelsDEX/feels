@@ -1,4 +1,4 @@
-# Feels Walkthrough
+# Feels Walkthrough (Protocol vs Pool)
 
 ## Baseline 101: Monetizing Volatility
 
@@ -8,7 +8,7 @@ Their mechanism is simple but robust. At its core, Baseline operates around a ti
 
 > Background: Tick-based DEXes can be understood as pseudo-order books, where liquidity providers place bids and asks at specific price points. Each tick represents a discrete price level where liquidity can be concentrated, similar to placing a limit order at a specific price with a desired magnitude (e.g., "10 TokenA available at 0.5 TokenA/TokenB").
 
-Baseline's key innovation is how it directs swap fees. Baseline directs trading fees to a protocol-owned account. This account then provides liquidity back on the DEX in a specific range that acts as a price floor.
+Baseline's key innovation is how it directs swap fees. Baseline directs trading fees to a pool-owned account. This account then provides liquidity back on the DEX in a specific range that acts as a price floor.
 
 The protocol incrementally adjusts this floor liquidity tick upward over time. Floor liquidity is priced to ensure the protocol stays solvent:
 
@@ -46,13 +46,17 @@ Real degenerates prefer perpetual contracts because they can magnify their entir
 
 ## The Feels MVP
 
-The Feels protocol MVP begins with clear design constraints drawn from Baseline's lessons:
-- Must use a tick-based AMM for capital efficiency
-- Must charge fees on swaps with intelligent pricing
-- Fees must flow to protocol-owned accounts
-- Must determine optimal pricing for protocol-owned liquidity placement
+The Feels MVP begins with clear design constraints drawn from Baseline's lessons:
+- Must use a tick-based AMM
+- Must charge fees on swaps
+- Fees must flow to pool-owned accounts
+- Must have a strategy for determining the placement of pool-owned liquidity placement
 
-Additionally, Feels must support permissionless token creation and market launch. The current standard, used by pump.fun and others, is to discover prices using a naive linear bonding curve, where the first token costs 0.1 units, the second costs 0.2 units, and so on. While there are many ways to improve this mechanism, the meme coin community is familiar with this pattern, making it a good place to start.
+Additionally, Feels must support permissionless token creation and market launch. The current standard, is to discover prices using a bonding curve. This curve behaves like a virtual, self-contained Automated Market Maker (AMM) with a constant-product (`x*y=k`) formula.
+
+The key difference from a standard AMM is that during this initial phase, the protocol itself is the sole counterparty and no outside liquidity providers are allowed. When a user buys, tokens are dispensed according to the curve's price, and when they sell, the tokens are returned to the protocol. This creates a predictable price ramp for initial distribution. Once a certain market cap is reached, the token "graduates": a real, open AMM pool is seeded with a portion of the capital raised, and third-party liquidity provision is enabled.
+
+Feels adopts this same two-phase philosophy. The "Price Discovery" phase uses the protocol's native concentrated liquidity (CLMM) engine to create a bonding curve where the protocol is the sole LP. Once the token graduates, the pool enters its "Steady-State" phase. The capital raised is automatically re-allocated to fund the long-term Floor and JIT liquidity strategies, and the pool is opened for public liquidity providers to join. While there are many ways to improve this mechanism, the meme coin community is familiar with this pattern, making it a good place to start.
 
 We also introduce a clever trick with Feels. In the reserve asset layer we convert a user's SOL into JitoSOL and create a synthetic FeelsSOL token which tracks the SOL price. This allows us to capture staking yield from JitoSOL and automatically directs it into floor liquidity, creating an additional value accrual mechanism beyond trading fees. It also makes for better price charts, because the baseline price will rise in tandem with Jito rewards.
 

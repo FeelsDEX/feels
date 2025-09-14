@@ -44,7 +44,7 @@ Here $S, T, L > 0$ are domain value functions measured in a common numeraire, an
 | $T_{\text{lend}}(d), T_{\text{borrow}}(d)$ | Lending/borrowing notionals |
 | $\sigma_{\text{rate}}$ | Annualized interest‑rate volatility (per $\sqrt{\text{year}}$) |
 | $L_{\text{long}}, L_{\text{short}}$ | Long/short position capacities; $\text{skew}\in[-1,1]$; $\sigma_{\text{leverage}}$: annualized position volatility |
-| $w_i, g_i, \tau$ | Conservation: $w_i$ (snapshot participation weights), $g_i$ (multiplicative growth factors), $\tau$ (protocol buffer) |
+| $w_i, g_i, \tau$ | Conservation: $w_i$ (snapshot participation weights), $g_i$ (multiplicative growth factors), $\tau$ (pool buffer) |
 
 ## Dimensional Value Functions and Market Discovery
 
@@ -103,15 +103,33 @@ $$\sum_i w_i \ln g_i = 0$$
 
 where $w_i$ are snapshot participation weights and $g_i$ are multiplicative growth factors for each participant in the subdomain. The protocol buffer $\tau$ participates as needed and is adjusted to satisfy conservation exactly. This keeps accounting precise and auditable: fees and rebates change who holds value without changing the total.
 
-## Computation On- and Off-Chain
+## Computational Model: Phased Evolution
 
-**Client (off-chain):** Routes via the FeelsSOL hub (bounded to ≤2 hops), simulates quotes using the latest on‑chain state and posted commitments, and submits trades with slippage limits. For Mode A (deterministic) trades, the client relies on on‑chain recomputation from posted scalars. For Mode B (commitments), the client can optionally attach per‑segment inclusion proofs provided by the keeper to enable cheap on‑chain verification. Entry and exit use JitoSOL ↔ FeelsSOL; position transitions use FeelsSOL ↔ Position.
+The Feels protocol is designed with a phased evolution for its computational architecture. The initial phase is fully autonomous and on-chain, with future phases introducing an optional, trust-minimized off-chain provider to enable more complex thermodynamic calculations.
 
-**Keeper (off-chain):** Aggregates market metrics (TWAPs, σ_price, σ_rate, σ_leverage, depth, skew), computes domain scalars (S,T,L), base fees via hysteresis, and optional local quadratic approximations with global bounds. Publishes trust‑minimized updates at controlled cadence with strictly increasing sequence numbers. Updates are signed and include timestamps; rate‑of‑change caps and absolute caps are enforced by chain policy.
+### Phase 1: Fully On-Chain and Autonomous (Current Implementation)
 
-**Program (on-chain):** Verifies provider signatures, freshness windows and minimum intervals, rate‑of‑change limits, and monotonic sequence numbers. For instantaneous pricing it either (A) recomputes prices/work from posted scalars, or (B) verifies inclusion proofs and global bounds against posted commitments. It then applies fee caps, κ clamp for rebates, exact‑exponential rebases under conservation, and updates pool and buffer τ state.
+In the current implementation, the system is self-contained and does not rely on any off-chain providers for core logic.
 
-Accepted updates are minimal, and the chain performs only simple arithmetic for fee application and rebasing, deferring heavy analytics to the provider.
+*   **Client (off-chain):** Simulates trades using the latest state fetched directly from on-chain accounts. Submits transactions with slippage limits.
+*   **Program (on-chain):** Performs all critical computations deterministically during the swap. This includes:
+    *   Calculating dynamic fees based on realized price impact, market momentum, and distance from the on-chain GTWAP.
+    *   Updating the on-chain GTWAP oracle with a new observation after every swap.
+    *   Executing the swap by iterating through the on-chain tick arrays.
+
+This model prioritizes decentralization and trustlessness, as all logic is executed transparently on the Solana network.
+
+### Phase 2/3: Hybrid Model with Off-Chain Provider (Future Vision)
+
+To enable the full 3D thermodynamic model (Spot, Time, and Leverage), a future version of the protocol may introduce a hybrid computational model involving an off-chain "Keeper". This allows for more computationally intensive modeling than is feasible within a single Solana transaction.
+
+*   **Keeper (off-chain):** Would be responsible for aggregating complex market metrics (e.g., cross-chain volatility, full-market skew) to compute the high-level `S, T, L` domain scalars. It would then post this state to the chain in a compressed format (either as raw scalars or as cryptographic commitments).
+*   **Program (on-chain):** The on-chain program's role would shift from *computation* to *verification*. It would:
+    *   Verify the Keeper's signature, data freshness, and adherence to rate-of-change limits.
+    *   Use the verified scalars to calculate fees based on thermodynamic "Work".
+    *   Verify inclusion proofs against posted commitments for large, segmented trades.
+
+This future architecture would trade some autonomy for significantly greater computational power, enabling a more sophisticated and capital-efficient unified market. The transition between these phases will be a major protocol upgrade, shifting the core engine from on-chain calculation to on-chain verification.
 
 ## System Lifecycle
 

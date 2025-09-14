@@ -50,6 +50,14 @@ in {
       package = idlBuilderConfig.idl-build;
       help = "Build IDL for Anchor programs";
     }
+    # Metaplex download script
+    {
+      name = "download-metaplex";
+      help = "Download Metaplex Token Metadata program for tests";
+      command = ''
+        ${pkgs.bash}/bin/bash ./scripts/download-metaplex.sh
+      '';
+    }
   ];
   
   env = [

@@ -79,7 +79,7 @@ test_in_memory!(test_computation_cost_justification, |ctx: TestContext| async mo
 });
 
 test_in_memory!(test_comparison_with_pomm, |ctx: TestContext| async move {
-    // POMM also respects MIN_LIQUIDITY to prevent protocol-created dust
+    // POMM also respects MIN_LIQUIDITY to prevent pool-created dust
     // This ensures consistency across all liquidity sources
     
     // Both user positions and POMM positions use same threshold

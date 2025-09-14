@@ -54,7 +54,7 @@ pub struct ExitFeelsSOL<'info> {
     )]
     pub market: Account<'info, Market>,
     
-    /// JitoSOL vault (protocol-owned)
+    /// JitoSOL vault (pool-owned by the FeelsSOL hub pool)
     #[account(
         mut,
         seeds = [JITOSOL_VAULT_SEED, feelssol_mint.key().as_ref()],

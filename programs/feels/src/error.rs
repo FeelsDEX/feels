@@ -173,4 +173,10 @@ pub enum FeelsError {
     
     #[msg("Token not found in protocol registry")]
     TokenNotInRegistry,
+    
+    #[msg("Token has not expired yet")]
+    TokenNotExpired,
+    
+    #[msg("Market already has active liquidity")]
+    MarketAlreadyActive,
 }

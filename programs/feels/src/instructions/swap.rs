@@ -482,7 +482,7 @@ pub fn swap<'info>(
         version: 2, // Version 2 indicates new engine
     });
     
-    // Hook: Protocol-owned market maker maintenance
+    // Hook: Pool-owned market maker maintenance
     maybe_pomm_add_liquidity(
         market,
         buffer,

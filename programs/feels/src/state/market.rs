@@ -76,7 +76,7 @@ pub struct Market {
     pub tick_spacing: u16,
     
     /// Floor liquidity bounds (TEMPORARY - will be removed when POMM uses pure positions)
-    /// These currently serve as bounds for protocol-owned liquidity but will be
+    /// These currently serve as bounds for pool-owned liquidity but will be
     /// replaced with actual position NFTs in a future upgrade.
     /// Global swap bounds - hard limits for all swaps in this market
     pub global_lower_tick: i32,

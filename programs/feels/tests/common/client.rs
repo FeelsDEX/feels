@@ -144,6 +144,51 @@ impl InMemoryClient {
             None, // Load from BPF
         );
         
+        // Add Metaplex Token Metadata program
+        // First, ensure the binary is downloaded
+        let metaplex_path = "../../target/external-programs/mpl_token_metadata.so";
+        if !std::path::Path::new(metaplex_path).exists() {
+            // Try to download it
+            println!("Metaplex binary not found, attempting to download...");
+            let output = std::process::Command::new("../../scripts/download-metaplex.sh")
+                .output()
+                .expect("Failed to run download-metaplex.sh");
+            
+            if !output.status.success() {
+                println!("Warning: Could not download Metaplex binary: {}", 
+                    String::from_utf8_lossy(&output.stderr));
+                println!("Tests requiring Metaplex will fail");
+            }
+        }
+        
+        // Add Metaplex if the binary exists
+        if std::path::Path::new(metaplex_path).exists() {
+            println!("Adding Metaplex Token Metadata program to test environment");
+            
+            // Copy the binary to the expected location for ProgramTest
+            let bpf_out_dir = std::env::var("BPF_OUT_DIR").unwrap_or_else(|_| "../../target/deploy".to_string());
+            let target_path = format!("{}/mpl_token_metadata.so", bpf_out_dir);
+            
+            // Create directory if it doesn't exist
+            if let Some(parent) = std::path::Path::new(&target_path).parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            
+            // Copy the binary
+            if let Err(e) = std::fs::copy(metaplex_path, &target_path) {
+                println!("Warning: Could not copy Metaplex binary to {}: {}", target_path, e);
+            }
+            
+            // Add the program - ProgramTest will look for it in BPF_OUT_DIR
+            program_test.add_program(
+                "mpl_token_metadata",
+                mpl_token_metadata::ID,
+                None, // Will load from BPF_OUT_DIR
+            );
+        } else {
+            println!("Warning: Metaplex binary not found at {}", metaplex_path);
+            println!("Tests requiring token metadata will fail");
+        }
         
         // SPL Token and ATA programs are automatically included by solana-program-test
         
@@ -210,8 +255,8 @@ impl InMemoryClient {
                     return Ok(None);
                 }
                 
-                // Skip discriminator
-                let mut slice = &data[8..];
+                // Don't skip discriminator - AccountDeserialize expects the full data
+                let mut slice = &data[..];
                 let parsed = T::try_deserialize(&mut slice)?;
                 Ok(Some(parsed))
             }
@@ -383,8 +428,8 @@ impl DevnetClient {
                     return Ok(None);
                 }
                 
-                // Skip discriminator
-                let mut slice = &data[8..];
+                // Don't skip discriminator - AccountDeserialize expects the full data
+                let mut slice = &data[..];
                 let parsed = T::try_deserialize(&mut slice)?;
                 Ok(Some(parsed))
             }

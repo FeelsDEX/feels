@@ -29,6 +29,22 @@ declare_id!("2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1");
 pub mod feels {
     use super::*;
     
+    /// Initialize protocol configuration (one-time setup)
+    pub fn initialize_protocol(
+        ctx: Context<InitializeProtocol>,
+        params: InitializeProtocolParams,
+    ) -> Result<()> {
+        instructions::initialize_protocol(ctx, params)
+    }
+    
+    /// Update protocol configuration
+    pub fn update_protocol(
+        ctx: Context<UpdateProtocol>,
+        params: UpdateProtocolParams,
+    ) -> Result<()> {
+        instructions::update_protocol(ctx, params)
+    }
+    
     /// Initialize a new market with commitment for initial liquidity
     /// SECURITY: Market creation and liquidity commitment are atomic,
     /// preventing front-running attacks. Actual liquidity deployment
@@ -136,6 +152,11 @@ pub mod feels {
             close_account: true,
         };
         instructions::close_position_with_metadata(ctx, amount_0_min, amount_1_min)
+    }
+    
+    /// Destroy an expired token that hasn't had liquidity deployed
+    pub fn destroy_expired_token(ctx: Context<DestroyExpiredToken>) -> Result<()> {
+        instructions::destroy_expired_token(ctx)
     }
     
 }

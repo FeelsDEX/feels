@@ -1,0 +1,111 @@
+# Floor Liquidity (Pool Protocol‑Owned Liquidity) Specification
+
+This document specifies the design and implementation of the Floor Liquidity system, the Feels protocol's primary Protocol-Owned Market Maker (POMM) strategy.
+
+## 1. Overview
+
+The Floor Liquidity system is the core mechanism by which the Feels protocol converts short-term trading activity and staking yield into a long-term, perpetually rising price floor for a token. Its primary purpose is to provide a guaranteed, on-chain exit price for token holders against protocol-owned liquidity, ensuring permanent liquidity and building long-term value.
+
+This system activates after the initial token launch phase is complete. It replaces the temporary "staircase" liquidity (used for price discovery) and becomes the foundational, passive market-making strategy for the pool, operating in conjunction with the more active Just-in-Time (JIT) liquidity system.
+
+## 2. Core Concepts
+
+### 2.1. Pool-Level Solvency and Pricing
+
+The floor is a pool-level mechanism, meaning each market (e.g., MEME/FeelsSOL) has its own distinct floor price. This design is critical for isolating risk between markets, as described in the [Feels Protocol Solvency](200_feelssol_solvency.md) document.
+
+The floor price for a specific pool is mathematically defined by the reserves allocated to that pool, not the entire protocol's treasury.
+
+At the heart of the system is the Pool-Level Floor Price Formula:
+
+```
+Floor Price = Pool's Allocated Reserves (in FeelsSOL) / Circulating Supply of Project Token
+```
+
+This calculation ensures that if every token holder were to sell their tokens to the floor liquidity position simultaneously, the *pool* would have enough FeelsSOL reserves to buy every single token. This provides a hard, verifiable backstop for the token's value while maintaining isolation from other markets.
+
+### 2.2. Value Accrual and Allocation
+
+The floor price rises over time through a two-layer process of value accrual at the protocol level and subsequent allocation at the pool level.
+
+1.  **Protocol-Level Accrual**: The main protocol treasury grows from two primary sources:
+    *   **Trading Fees**: A portion of fees from *all* markets is routed to the central protocol treasury.
+    *   **Staking Yield**: The entire JitoSOL reserve backing all FeelsSOL accrues staking yield, constantly increasing the protocol's total asset value.
+
+2.  **Pool-Level Allocation**: A portion of the globally accrued value is periodically allocated to each individual pool's floor reserves by the Pool Allocation System. This allocation directly increases the `Pool's Allocated Reserves`, which in turn raises the calculated floor price for that specific token.
+
+This architecture ensures that while all pools benefit from the success of the entire protocol, the solvency of each pool's floor remains isolated and independently verifiable.
+
+### 2.3. Monotonic Ratcheting
+
+A key feature of the floor is that it is monotonic: it can only ever rise or stay the same, but it can never decrease. This is enforced by a ratcheting mechanism.
+
+1. The system periodically recalculates the theoretical floor price based on its current reserves.
+2. If the newly calculated floor price is higher than the current active floor price, the system "ratchets" the floor up to the new, higher level.
+3. A cooldown period (`RATCHET_COOLDOWN`) prevents the floor from being updated too frequently, ensuring smooth and predictable upward movements.
+
+## 3. Architecture and Components
+
+The Floor Liquidity system is managed by a set of unified on-chain components that separate calculation from execution.
+
+### 3.1. The `pool::Floor` (calculation)
+
+This component acts as the calculation system for a given pool. Each pool has its own `pool::Floor` instance responsible for calculating that pool's specific floor price. Its state is:
+
+```rust
+pub struct PoolFloor {
+    pub current_floor: i32,          // The current active floor tick for this pool.
+    pub floor_buffer: i32,           // A safety margin (in ticks) above this pool's floor.
+    pub last_ratchet_slot: u64,      // Enforces the ratcheting cooldown for this pool.
+    pub jitosol_reserves: u128,      // The protocol reserves ALLOCATED to this specific pool's floor.
+    pub total_feels_supply: u128,    // The circulating supply of the token in this pool.
+}
+
+impl PoolFloor {
+    // Calculates the theoretical floor tick based on reserves and supply.
+    pub fn calculate_floor_tick(&self) -> i32 { ... }
+    
+    // Checks if the cooldown period has passed.
+    pub fn can_ratchet(&self, current_slot: u64) -> bool { ... }
+    
+    // Returns the floor + buffer for other systems to use as a safety line.
+    pub fn get_safe_ask_tick(&self) -> i32 { ... }
+}
+```
+
+The `pool::Floor` does not directly manage any token accounts or liquidity positions. Its sole job is to serve as the single source of truth for what the floor *should* be.
+
+### 3.2. The Pool Controller (execution)
+
+This is a higher-level controller responsible for the *execution* of the `pool::Floor` calculations. While `pool::Floor` determines the `current_floor` tick, the `PoolController` is the system that actually moves the liquidity on-chain.
+
+**Role**: To manage the protocol's main liquidity `Position` NFT for the floor.
+
+**Process**:
+  1. Periodically (e.g., via a crank instruction), it reads the `current_floor` from `pool::Floor`.
+  2. It compares this to the tick of its currently active floor liquidity position.
+  3. If the `current_floor` has been ratcheted up, the Allocator executes the necessary transactions to:
+     a. Withdraw the liquidity from the old, lower floor tick.
+     b. Re-deposit the liquidity as a new, single-sided position at the new, higher `current_floor` tick.
+
+This separation of concerns keeps the core solvency calculation clean and isolated from the complexities of position management.
+
+## 4. Lifecycle and Mechanics
+
+1.  **Activation**: After the initial launch phase (i.e., after `deploy_bonding_curve_liquidity` is called and the pool graduates), the temporary bonding curve liquidity is removed, and the Floor Liquidity system is activated. The `pool::Floor` calculates the initial floor price based on pool state, and the Pool Controller deploys the first floor position.
+
+2.  **Steady State**: In its normal state, the system maintains a large, single-sided liquidity position at the `current_floor` tick. This position consists entirely of the project token (e.g., MEME) and offers to sell it for FeelsSOL. This creates a perfectly horizontal buy wall at the floor price, capable of absorbing the entire circulating supply of the token.
+
+3.  **Value Accrual & Ratcheting**: As swaps occur, a portion of the fees are routed to the pool’s `PoolReserve`, increasing `jitosol_reserves` allocated to this pool. When `pool::Floor` determines that the floor can be raised and the cooldown has passed, it updates `current_floor`.
+
+4.  **Liquidity Redeployment**: The Pool Allocation system detects the change in the `current_floor` and moves the on-chain liquidity position up to the new tick, cementing the new, higher price floor.
+
+## 5. Interaction with Other Systems
+
+The Floor Liquidity system is a foundational layer that provides stability and guarantees for other protocol components.
+
+-   **Dynamic Fees**: The `pool::Floor`'s `get_safe_ask_tick()` provides the "hard floor target" for the dynamic fee model's equilibrium calculation. This ensures the fee system never incentivizes trades that would threaten pool solvency.
+
+-   **JIT Liquidity**: The Just-in-Time liquidity system queries `pool::Floor` to ensure that its reactive, short-term quotes are never placed below the fundamental price floor. This prevents the active market maker from working against the passive, long-term one.
+
+-   **Launch Sequence**: The Floor system is the designated successor to the bonding curve liquidity deployed in the `deploy_bonding_curve_liquidity` instruction, providing a seamless transition from price discovery to long-term value accrual.

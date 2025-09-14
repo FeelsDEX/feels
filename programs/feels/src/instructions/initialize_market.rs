@@ -4,14 +4,14 @@
 //! The actual liquidity deployment happens in a separate instruction.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint};
+use anchor_spl::token::{self, Token, TokenAccount, Mint, spl_token::instruction::AuthorityType};
 use solana_program::program_pack::Pack;
 use spl_token::state::Account as TokenAccountState;
 use crate::{
     constants::{MARKET_SEED, BUFFER_SEED, VAULT_SEED, MARKET_AUTHORITY_SEED, PROTOCOL_TOKEN_SEED},
     error::FeelsError,
     events::MarketInitialized,
-    state::{Market, Buffer, PolicyV1, OracleState, ProtocolToken, TokenType, TokenOrigin, InitialLiquidityCommitment},
+    state::{Market, Buffer, PolicyV1, OracleState, ProtocolToken, TokenType, TokenOrigin, PreLaunchEscrow},
     utils::{tick_from_sqrt_price, calculate_token_out_from_sqrt_price},
 };
 
@@ -24,8 +24,6 @@ pub struct InitializeMarketParams {
     pub tick_spacing: u16,
     /// Initial price (as sqrt_price Q64)
     pub initial_sqrt_price: u128,
-    /// Commitment for initial liquidity deployment
-    pub liquidity_commitment: InitialLiquidityCommitment,
     /// Optional initial buy amount in FeelsSOL (0 = no initial buy)
     pub initial_buy_feelssol_amount: u64,
 }
@@ -42,9 +40,11 @@ pub struct InitializeMarket<'info> {
     pub creator: Signer<'info>,
     
     /// Token 0 mint (lower pubkey)
+    #[account(mut)]
     pub token_0: Account<'info, Mint>,
     
     /// Token 1 mint (higher pubkey)
+    #[account(mut)]
     pub token_1: Account<'info, Mint>,
     
     /// Market account to initialize
@@ -81,10 +81,10 @@ pub struct InitializeMarket<'info> {
     #[account(
         init,
         payer = creator,
-        token::mint = token_0,
-        token::authority = market_authority,
         seeds = [VAULT_SEED, market.key().as_ref(), token_0.key().as_ref()],
         bump,
+        token::mint = token_0,
+        token::authority = market_authority,
     )]
     pub vault_0: Account<'info, TokenAccount>,
     
@@ -92,10 +92,10 @@ pub struct InitializeMarket<'info> {
     #[account(
         init,
         payer = creator,
-        token::mint = token_1,
-        token::authority = market_authority,
         seeds = [VAULT_SEED, market.key().as_ref(), token_1.key().as_ref()],
         bump,
+        token::mint = token_1,
+        token::authority = market_authority,
     )]
     pub vault_1: Account<'info, TokenAccount>,
     
@@ -117,6 +117,13 @@ pub struct InitializeMarket<'info> {
     /// Protocol token registry for token_1 (if not FeelsSOL)
     /// CHECK: Can be a dummy account if token_1 is FeelsSOL
     pub protocol_token_1: AccountInfo<'info>,
+    
+    /// Pre-launch escrow for the protocol token
+    #[account(
+        mut,
+        constraint = escrow.market == Pubkey::default() @ FeelsError::InvalidMarket
+    )]
+    pub escrow: Box<Account<'info, PreLaunchEscrow>>,
     
     /// Creator's FeelsSOL account for initial buy
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
@@ -143,12 +150,16 @@ pub fn initialize_market(
     ctx: Context<InitializeMarket>,
     params: InitializeMarketParams,
 ) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-    let buffer = &mut ctx.accounts.buffer;
-    let oracle = &mut ctx.accounts.oracle;
-    let clock = Clock::get()?;
+    msg!("initialize_market: Starting");
+    msg!("  creator: {}", ctx.accounts.creator.key());
+    msg!("  token_0: {}", ctx.accounts.token_0.key());
+    msg!("  token_1: {}", ctx.accounts.token_1.key());
+    msg!("  token_0 is_writable: {}", ctx.accounts.token_0.to_account_info().is_writable);
+    msg!("  token_1 is_writable: {}", ctx.accounts.token_1.to_account_info().is_writable);
     
-    // Validate parameters
+    // Early validation - fail fast before accessing mutable references
+    
+    // 1. Validate parameters first
     require!(
         params.base_fee_bps <= crate::constants::MAX_FEE_BPS,
         FeelsError::InvalidPrice
@@ -162,7 +173,7 @@ pub fn initialize_market(
         FeelsError::InvalidPrice
     );
     
-    // Validate token order
+    // 2. Validate token order
     let token_0_bytes = ctx.accounts.token_0.key().to_bytes();
     let token_1_bytes = ctx.accounts.token_1.key().to_bytes();
     require!(
@@ -170,13 +181,39 @@ pub fn initialize_market(
         FeelsError::InvalidTokenOrder
     );
     
-    // Check that at least one token is FeelsSOL
+    // 3. Check that at least one token is FeelsSOL
     let token_0_is_feelssol = ctx.accounts.token_0.key() == ctx.accounts.feelssol_mint.key();
     let token_1_is_feelssol = ctx.accounts.token_1.key() == ctx.accounts.feelssol_mint.key();
+    
+    msg!("Token validation:");
+    msg!("  token_0: {}", ctx.accounts.token_0.key());
+    msg!("  token_1: {}", ctx.accounts.token_1.key());
+    msg!("  feelssol_mint: {}", ctx.accounts.feelssol_mint.key());
+    msg!("  token_0_is_feelssol: {}", token_0_is_feelssol);
+    msg!("  token_1_is_feelssol: {}", token_1_is_feelssol);
+    
     require!(
         token_0_is_feelssol || token_1_is_feelssol,
         FeelsError::RequiresFeelsSOLPair
     );
+    
+    // 4. If initial buy requested, validate accounts exist
+    if params.initial_buy_feelssol_amount > 0 {
+        require!(
+            !ctx.accounts.creator_feelssol.data_is_empty(),
+            FeelsError::InvalidAuthority
+        );
+        require!(
+            !ctx.accounts.creator_token_out.data_is_empty(),
+            FeelsError::InvalidAuthority
+        );
+    }
+    
+    // Now safe to get mutable references
+    let market = &mut ctx.accounts.market;
+    let buffer = &mut ctx.accounts.buffer;
+    let oracle = &mut ctx.accounts.oracle;
+    let clock = Clock::get()?;
     
     // Determine token types and origins (similar to old initialize_market)
     let mut token_0_type = TokenType::Spl;
@@ -260,15 +297,86 @@ pub fn initialize_market(
         FeelsError::Token2022NotSupported
     );
     
-    // Validate liquidity commitment
-    require!(
-        params.liquidity_commitment.deploy_by > clock.unix_timestamp,
-        FeelsError::InvalidTimestamp
-    );
-    require!(
-        params.liquidity_commitment.position_commitments.len() > 0,
-        FeelsError::InvalidRoute
-    );
+    // Now that creator verification is complete, revoke mint and freeze authorities
+    // This ensures token has fixed supply and cannot be frozen
+    
+    // Check and revoke authorities for token_0 if it's protocol-minted
+    if token_0_origin == TokenOrigin::ProtocolMinted {
+        // Check if creator still has mint authority
+        if ctx.accounts.token_0.mint_authority.is_some() && 
+           ctx.accounts.token_0.mint_authority.unwrap() == ctx.accounts.creator.key() {
+            // Revoke mint authority
+            token::set_authority(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::SetAuthority {
+                        current_authority: ctx.accounts.creator.to_account_info(),
+                        account_or_mint: ctx.accounts.token_0.to_account_info(),
+                    },
+                ),
+                AuthorityType::MintTokens,
+                None, // Permanently disable minting
+            )?;
+            msg!("Revoked mint authority for token_0");
+        }
+        
+        // Check if creator still has freeze authority
+        if ctx.accounts.token_0.freeze_authority.is_some() && 
+           ctx.accounts.token_0.freeze_authority.unwrap() == ctx.accounts.creator.key() {
+            // Revoke freeze authority
+            token::set_authority(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::SetAuthority {
+                        current_authority: ctx.accounts.creator.to_account_info(),
+                        account_or_mint: ctx.accounts.token_0.to_account_info(),
+                    },
+                ),
+                AuthorityType::FreezeAccount,
+                None, // Permanently disable freezing
+            )?;
+            msg!("Revoked freeze authority for token_0");
+        }
+    }
+    
+    // Check and revoke authorities for token_1 if it's protocol-minted
+    if token_1_origin == TokenOrigin::ProtocolMinted {
+        // Check if creator still has mint authority
+        if ctx.accounts.token_1.mint_authority.is_some() && 
+           ctx.accounts.token_1.mint_authority.unwrap() == ctx.accounts.creator.key() {
+            // Revoke mint authority
+            token::set_authority(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::SetAuthority {
+                        current_authority: ctx.accounts.creator.to_account_info(),
+                        account_or_mint: ctx.accounts.token_1.to_account_info(),
+                    },
+                ),
+                AuthorityType::MintTokens,
+                None, // Permanently disable minting
+            )?;
+            msg!("Revoked mint authority for token_1");
+        }
+        
+        // Check if creator still has freeze authority
+        if ctx.accounts.token_1.freeze_authority.is_some() && 
+           ctx.accounts.token_1.freeze_authority.unwrap() == ctx.accounts.creator.key() {
+            // Revoke freeze authority
+            token::set_authority(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::SetAuthority {
+                        current_authority: ctx.accounts.creator.to_account_info(),
+                        account_or_mint: ctx.accounts.token_1.to_account_info(),
+                    },
+                ),
+                AuthorityType::FreezeAccount,
+                None, // Permanently disable freezing
+            )?;
+            msg!("Revoked freeze authority for token_1");
+        }
+    }
     
     // Initialize market
     market.version = 1;
@@ -329,12 +437,6 @@ pub fn initialize_market(
         market.current_tick,
         clock.unix_timestamp
     )?;
-    
-    // Store liquidity commitment in a separate account (for now, log it)
-    msg!("Market initialized with liquidity commitment:");
-    msg!("Deployer: {}", params.liquidity_commitment.deployer);
-    msg!("Deploy by: {}", params.liquidity_commitment.deploy_by);
-    msg!("Positions: {}", params.liquidity_commitment.position_commitments.len());
     
     // Handle initial buy if requested
     if params.initial_buy_feelssol_amount > 0 {
@@ -419,6 +521,9 @@ pub fn initialize_market(
         // from the buffer's token vault. For now, we've transferred the FeelsSOL to the vault
         // and calculated the expected output. The execution will complete when liquidity is deployed.
     }
+    
+    // Update escrow to link to the new market
+    ctx.accounts.escrow.market = market.key();
     
     // Emit event
     emit!(MarketInitialized {

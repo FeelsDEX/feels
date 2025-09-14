@@ -1,6 +1,6 @@
 //! Deploy initial liquidity instruction
 //! 
-//! Deploys protocol buffer liquidity in an escalating stair pattern (80% of buffer).
+//! Deploys protocol escrow liquidity in an escalating stair pattern (100% of escrow).
 //! Optionally allows the deployer to execute an initial buy at the best price
 //! by including FeelsSOL with the instruction.
 
@@ -8,18 +8,20 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     token::{Token, TokenAccount},
 };
+use solana_program::program_pack::Pack;
+use spl_token::state::Account as TokenAccountState;
 use crate::{
-    constants::{MARKET_AUTHORITY_SEED, VAULT_SEED, BUFFER_SEED, BUFFER_AUTHORITY_SEED},
+    constants::{MARKET_AUTHORITY_SEED, VAULT_SEED, ESCROW_AUTHORITY_SEED},
     error::FeelsError,
-    state::{Market, Buffer},
+    state::{Market, PreLaunchEscrow},
     utils::{transfer_from_user_to_vault_unchecked, sqrt_price_from_tick, liquidity_from_amounts},
 };
 
 /// Number of steps in the stair pattern
 const STAIR_STEPS: usize = 10;
 
-/// Percentage of buffer tokens to deploy (80%)
-const DEPLOYMENT_PERCENTAGE: u8 = 80;
+/// Percentage of escrow tokens to deploy (100%)
+const DEPLOYMENT_PERCENTAGE: u8 = 100;
 
 /// Deploy initial liquidity parameters
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
@@ -46,7 +48,7 @@ pub struct DeployInitialLiquidity<'info> {
         mut,
         constraint = !market.initial_liquidity_deployed @ FeelsError::InvalidMarket,
     )]
-    pub market: Account<'info, Market>,
+    pub market: Box<Account<'info, Market>>,
     
     /// Deployer's FeelsSOL account (for initial buy)
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
@@ -82,35 +84,58 @@ pub struct DeployInitialLiquidity<'info> {
     )]
     pub market_authority: AccountInfo<'info>,
     
-    /// Buffer account (always required)
+    /// Market buffer account (for fee collection, not token escrow)
+    /// Buffer is included to update deployment tracking
     #[account(
         mut,
-        seeds = [BUFFER_SEED, market.key().as_ref()],
+        constraint = buffer.market == market.key() @ FeelsError::InvalidBuffer,
+    )]
+    pub buffer: Box<Account<'info, crate::state::Buffer>>,
+    
+    /// Pre-launch escrow for the protocol token
+    /// Escrow is derived from the non-FeelsSOL token mint
+    #[account(
+        mut,
+        constraint = escrow.market == market.key() @ FeelsError::InvalidBuffer,
+    )]
+    pub escrow: Box<Account<'info, PreLaunchEscrow>>,
+    
+    /// Escrow's token vault
+    #[account(
+        mut,
+        constraint = escrow_token_vault.owner == escrow_authority.key() @ FeelsError::InvalidAuthority,
+    )]
+    pub escrow_token_vault: Account<'info, TokenAccount>,
+    
+    /// Escrow's FeelsSOL vault
+    #[account(
+        mut,
+        constraint = escrow_feelssol_vault.owner == escrow_authority.key() @ FeelsError::InvalidAuthority,
+    )]
+    pub escrow_feelssol_vault: Account<'info, TokenAccount>,
+    
+    /// Escrow authority PDA
+    /// CHECK: PDA that controls escrow vaults
+    #[account(
+        seeds = [ESCROW_AUTHORITY_SEED, escrow.key().as_ref()],
+        bump = escrow.escrow_authority_bump,
+    )]
+    pub escrow_authority: AccountInfo<'info>,
+    
+    /// Protocol config account
+    #[account(
+        seeds = [crate::state::ProtocolConfig::SEED],
         bump,
     )]
-    pub buffer: Account<'info, Buffer>,
+    pub protocol_config: Box<Account<'info, crate::state::ProtocolConfig>>,
     
-    /// Buffer's token vault
+    /// Treasury to receive mint fee
     #[account(
         mut,
-        constraint = buffer_token_vault.owner == buffer_authority.key() @ FeelsError::InvalidAuthority,
+        constraint = treasury.key() == protocol_config.treasury @ FeelsError::InvalidAuthority,
+        constraint = treasury.mint == buffer.feelssol_mint @ FeelsError::InvalidMint,
     )]
-    pub buffer_token_vault: Account<'info, TokenAccount>,
-    
-    /// Buffer's FeelsSOL vault
-    #[account(
-        mut,
-        constraint = buffer_feelssol_vault.owner == buffer_authority.key() @ FeelsError::InvalidAuthority,
-    )]
-    pub buffer_feelssol_vault: Account<'info, TokenAccount>,
-    
-    /// Buffer authority PDA
-    /// CHECK: PDA that controls buffer vaults
-    #[account(
-        seeds = [BUFFER_AUTHORITY_SEED, buffer.key().as_ref()],
-        bump = buffer.buffer_authority_bump,
-    )]
-    pub buffer_authority: AccountInfo<'info>,
+    pub treasury: Account<'info, TokenAccount>,
     
     /// Token program
     pub token_program: Program<'info, Token>,
@@ -124,28 +149,73 @@ pub fn deploy_initial_liquidity<'info>(
     ctx: Context<'_, '_, 'info, 'info, DeployInitialLiquidity<'info>>,
     params: DeployInitialLiquidityParams,
 ) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-    let _clock = Clock::get()?;
+    // Early validation - fail fast before any state changes
+    
+    // 1. Validate tick parameters first
+    require!(
+        params.tick_step_size > 0,
+        FeelsError::TickNotSpaced
+    );
+    require!(
+        params.tick_step_size % ctx.accounts.market.tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+    
+    // 2. Validate deployment hasn't already happened
+    require!(
+        !ctx.accounts.market.initial_liquidity_deployed,
+        FeelsError::InvalidMarket
+    );
+    
+    // 3. Validate escrow is linked to this market
+    require!(
+        ctx.accounts.escrow.market == ctx.accounts.market.key(),
+        FeelsError::InvalidBuffer
+    );
+    
+    // 4. Validate sufficient tokens in escrow for deployment
+    let deploy_token_amount = (ctx.accounts.escrow_token_vault.amount * DEPLOYMENT_PERCENTAGE as u64) / 100;
+    let deploy_feelssol_amount = (ctx.accounts.escrow_feelssol_vault.amount * DEPLOYMENT_PERCENTAGE as u64) / 100;
+    
+    require!(deploy_token_amount > 0, FeelsError::InsufficientBalance);
+    require!(deploy_feelssol_amount > 0, FeelsError::InsufficientBalance);
+    
+    // 5. Early validation: If initial buy requested, validate deployer has sufficient balance
+    if params.initial_buy_feelssol_amount > 0 {
+        let deployer_feelssol_data = &ctx.accounts.deployer_feelssol.try_borrow_data()?;
+        let deployer_feelssol = TokenAccountState::unpack(deployer_feelssol_data)?;
+        
+        require!(
+            deployer_feelssol.owner == ctx.accounts.deployer.key(),
+            FeelsError::InvalidAuthority
+        );
+        require!(
+            deployer_feelssol.amount >= params.initial_buy_feelssol_amount,
+            FeelsError::InsufficientBalance
+        );
+        
+        msg!("Initial buy validation passed: {} FeelsSOL available", deployer_feelssol.amount);
+    }
+    
+    // Get initial balances (deployment amounts already calculated in validation)
+    let initial_feelssol_balance = ctx.accounts.escrow_feelssol_vault.amount;
     
     // Deploy protocol liquidity in stair pattern
     deploy_protocol_stair_pattern(
         ctx.accounts.token_program.to_account_info(),
         &ctx.accounts.vault_0,
         &ctx.accounts.vault_1,
-        market,
-        &ctx.accounts.buffer,
-        &ctx.accounts.buffer_token_vault,
-        &ctx.accounts.buffer_feelssol_vault,
-        &ctx.accounts.buffer_authority,
+        &mut **ctx.accounts.market,
+        &**ctx.accounts.escrow,
+        ctx.accounts.escrow.key(),
+        &ctx.accounts.escrow_token_vault,
+        &ctx.accounts.escrow_feelssol_vault,
+        &ctx.accounts.escrow_authority,
         params.tick_step_size,
     )?;
     
-    // Update buffer to track deployment
+    // Update market buffer to track deployment
     let buffer = &mut ctx.accounts.buffer;
-    
-    // Calculate deployment amounts (80% of buffer balances)
-    let deploy_token_amount = (ctx.accounts.buffer_token_vault.amount * DEPLOYMENT_PERCENTAGE as u64) / 100;
-    let deploy_feelssol_amount = (ctx.accounts.buffer_feelssol_vault.amount * DEPLOYMENT_PERCENTAGE as u64) / 100;
     
     buffer.total_distributed = buffer.total_distributed
         .saturating_add(deploy_token_amount as u128)
@@ -156,29 +226,32 @@ pub fn deploy_initial_liquidity<'info>(
         msg!("Processing initial buy of {} FeelsSOL", params.initial_buy_feelssol_amount);
         
         // Validate token accounts
-        let deployer_feelssol = Account::<TokenAccount>::try_from(&ctx.accounts.deployer_feelssol)?;
-        let deployer_token_out = Account::<TokenAccount>::try_from(&ctx.accounts.deployer_token_out)?;
+        let deployer_feelssol_data = &ctx.accounts.deployer_feelssol.try_borrow_data()?;
+        let deployer_feelssol = TokenAccountState::unpack(deployer_feelssol_data)?;
+        
+        let deployer_token_out_data = &ctx.accounts.deployer_token_out.try_borrow_data()?;
+        let deployer_token_out = TokenAccountState::unpack(deployer_token_out_data)?;
         
         // Determine which token is FeelsSOL
-        let feelssol_is_token_0 = market.token_0 == market.feelssol_mint;
+        let feelssol_is_token_0 = ctx.accounts.market.token_0 == ctx.accounts.escrow.feelssol_mint;
         
         // Validate accounts based on which token is FeelsSOL
         if feelssol_is_token_0 {
             require!(
-                deployer_feelssol.mint == market.token_0,
+                deployer_feelssol.mint == ctx.accounts.market.token_0,
                 FeelsError::InvalidMint
             );
             require!(
-                deployer_token_out.mint == market.token_1,
+                deployer_token_out.mint == ctx.accounts.market.token_1,
                 FeelsError::InvalidMint
             );
         } else {
             require!(
-                deployer_feelssol.mint == market.token_1,
+                deployer_feelssol.mint == ctx.accounts.market.token_1,
                 FeelsError::InvalidMint
             );
             require!(
-                deployer_token_out.mint == market.token_0,
+                deployer_token_out.mint == ctx.accounts.market.token_0,
                 FeelsError::InvalidMint
             );
         }
@@ -201,7 +274,7 @@ pub fn deploy_initial_liquidity<'info>(
         
         transfer_from_user_to_vault_unchecked(
             &ctx.accounts.deployer_feelssol.to_account_info(),
-            feelssol_vault.to_account_info(),
+            &feelssol_vault.to_account_info(),
             &ctx.accounts.deployer,
             &ctx.accounts.token_program,
             params.initial_buy_feelssol_amount,
@@ -218,7 +291,7 @@ pub fn deploy_initial_liquidity<'info>(
         
         let output_amount = calculate_token_out_from_sqrt_price(
             params.initial_buy_feelssol_amount,
-            market.sqrt_price,
+            ctx.accounts.market.sqrt_price,
             token_0_decimals,
             token_1_decimals,
             feelssol_is_token_0,
@@ -231,10 +304,11 @@ pub fn deploy_initial_liquidity<'info>(
             &ctx.accounts.vault_0
         };
         
+        let market_key = ctx.accounts.market.key();
         let market_authority_seeds = &[
             MARKET_AUTHORITY_SEED,
-            market.key().as_ref(),
-            &[market.market_authority_bump],
+            market_key.as_ref(),
+            &[ctx.accounts.market.market_authority_bump],
         ];
         
         anchor_spl::token::transfer(
@@ -253,10 +327,44 @@ pub fn deploy_initial_liquidity<'info>(
         msg!("Initial buy executed:");
         msg!("  FeelsSOL in: {}", params.initial_buy_feelssol_amount);
         msg!("  Tokens out: {}", output_amount);
-        msg!("  At sqrt price: {}", market.sqrt_price);
+        msg!("  At sqrt price: {}", ctx.accounts.market.sqrt_price);
         
         // Note: In a full implementation, this would update market state
         // (sqrt_price, liquidity, fees, etc.) based on the swap execution
+    }
+    
+    // Update market to reflect deployment
+    let market = &mut ctx.accounts.market;
+    market.initial_liquidity_deployed = true;
+    
+    // Transfer mint fee from escrow to treasury now that market is live
+    // With 100% deployment, there is no remaining mint fee
+    let mint_fee_amount = initial_feelssol_balance - deploy_feelssol_amount;
+    
+    if mint_fee_amount > 0 {
+        msg!("Transferring mint fee of {} FeelsSOL to treasury", mint_fee_amount);
+        
+        let escrow_key = ctx.accounts.escrow.key();
+        let escrow_authority_seeds = &[
+            ESCROW_AUTHORITY_SEED,
+            escrow_key.as_ref(),
+            &[ctx.accounts.escrow.escrow_authority_bump],
+        ];
+        
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from: ctx.accounts.escrow_feelssol_vault.to_account_info(),
+                    to: ctx.accounts.treasury.to_account_info(),
+                    authority: ctx.accounts.escrow_authority.to_account_info(),
+                },
+                &[escrow_authority_seeds],
+            ),
+            mint_fee_amount,
+        )?;
+        
+        msg!("Mint fee transferred to treasury successfully");
     }
     
     Ok(())
@@ -267,47 +375,43 @@ fn deploy_protocol_stair_pattern<'info>(
     token_program: AccountInfo<'info>,
     vault_0: &Account<'info, TokenAccount>,
     vault_1: &Account<'info, TokenAccount>,
-    market: &mut Account<'info, Market>,
-    buffer: &Account<'info, Buffer>,
-    buffer_token_vault: &Account<'info, TokenAccount>,
-    buffer_feelssol_vault: &Account<'info, TokenAccount>,
-    buffer_authority: &AccountInfo<'info>,
+    market: &mut Market,
+    escrow: &PreLaunchEscrow,
+    escrow_key: Pubkey,
+    escrow_token_vault: &Account<'info, TokenAccount>,
+    escrow_feelssol_vault: &Account<'info, TokenAccount>,
+    escrow_authority: &AccountInfo<'info>,
     tick_step_size: i32,
 ) -> Result<()> {
-    // Validate parameters
-    require!(
-        tick_step_size > 0 && tick_step_size % market.tick_spacing as i32 == 0,
-        FeelsError::TickNotSpaced
-    );
+    // Parameters already validated in main handler
     
     // Get current balances
-    let buffer_token_balance = buffer_token_vault.amount;
-    let buffer_feelssol_balance = buffer_feelssol_vault.amount;
+    let escrow_token_balance = escrow_token_vault.amount;
+    let escrow_feelssol_balance = escrow_feelssol_vault.amount;
     
-    // Calculate 80% of each token to deploy
-    let deploy_token_amount = (buffer_token_balance as u128 * DEPLOYMENT_PERCENTAGE as u128 / 100) as u64;
-    let deploy_feelssol_amount = (buffer_feelssol_balance as u128 * DEPLOYMENT_PERCENTAGE as u128 / 100) as u64;
+    // Calculate 100% of each token to deploy
+    let deploy_token_amount = (escrow_token_balance as u128 * DEPLOYMENT_PERCENTAGE as u128 / 100) as u64;
+    let deploy_feelssol_amount = (escrow_feelssol_balance as u128 * DEPLOYMENT_PERCENTAGE as u128 / 100) as u64;
     
     msg!("Deploying protocol liquidity in stair pattern:");
-    msg!("  Token amount: {} (80% of {})", deploy_token_amount, buffer_token_balance);
-    msg!("  FeelsSOL amount: {} (80% of {})", deploy_feelssol_amount, buffer_feelssol_balance);
+    msg!("  Token amount: {} (100% of {})", deploy_token_amount, escrow_token_balance);
+    msg!("  FeelsSOL amount: {} (100% of {})", deploy_feelssol_amount, escrow_feelssol_balance);
     
     // Determine if FeelsSOL is token_0 or token_1
-    let feelssol_is_token_0 = market.token_0 == buffer.feelssol_mint;
+    let feelssol_is_token_0 = market.token_0 == escrow.feelssol_mint;
     
-    // Transfer tokens from buffer vaults to market vaults
-    let buffer_key = buffer.key();
-    let buffer_authority_seeds = &[
-        BUFFER_AUTHORITY_SEED,
-        buffer_key.as_ref(),
-        &[buffer.buffer_authority_bump],
+    // Transfer tokens from escrow vaults to market vaults
+    let escrow_authority_seeds = &[
+        ESCROW_AUTHORITY_SEED,
+        escrow_key.as_ref(),
+        &[escrow.escrow_authority_bump],
     ];
     
     // Transfer non-FeelsSOL token
     let (from_vault, to_vault, transfer_amount) = if feelssol_is_token_0 {
-        (buffer_token_vault, vault_1, deploy_token_amount)
+        (escrow_token_vault, vault_1, deploy_token_amount)
     } else {
-        (buffer_token_vault, vault_0, deploy_token_amount)
+        (escrow_token_vault, vault_0, deploy_token_amount)
     };
     
     anchor_spl::token::transfer(
@@ -316,18 +420,18 @@ fn deploy_protocol_stair_pattern<'info>(
             anchor_spl::token::Transfer {
                 from: from_vault.to_account_info(),
                 to: to_vault.to_account_info(),
-                authority: buffer_authority.clone(),
+                authority: escrow_authority.clone(),
             },
-            &[buffer_authority_seeds],
+            &[escrow_authority_seeds],
         ),
         transfer_amount,
     )?;
     
     // Transfer FeelsSOL
     let (from_vault, to_vault, transfer_amount) = if feelssol_is_token_0 {
-        (buffer_feelssol_vault, vault_0, deploy_feelssol_amount)
+        (escrow_feelssol_vault, vault_0, deploy_feelssol_amount)
     } else {
-        (buffer_feelssol_vault, vault_1, deploy_feelssol_amount)
+        (escrow_feelssol_vault, vault_1, deploy_feelssol_amount)
     };
     
     anchor_spl::token::transfer(
@@ -336,9 +440,9 @@ fn deploy_protocol_stair_pattern<'info>(
             anchor_spl::token::Transfer {
                 from: from_vault.to_account_info(),
                 to: to_vault.to_account_info(),
-                authority: buffer_authority.clone(),
+                authority: escrow_authority.clone(),
             },
-            &[buffer_authority_seeds],
+            &[escrow_authority_seeds],
         ),
         transfer_amount,
     )?;

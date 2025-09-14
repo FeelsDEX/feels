@@ -43,7 +43,7 @@ pub struct EnterFeelsSOL<'info> {
     #[account(mut)]
     pub feelssol_mint: Account<'info, Mint>,
     
-    /// JitoSOL vault (protocol-owned)
+    /// JitoSOL vault (pool-owned by the FeelsSOL hub pool)
     #[account(
         mut,
         seeds = [JITOSOL_VAULT_SEED, feelssol_mint.key().as_ref()],

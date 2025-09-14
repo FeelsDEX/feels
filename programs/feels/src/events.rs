@@ -212,4 +212,16 @@ pub enum MarketOperation {
     UpdateFees,
 }
 
+/// Event emitted when an expired token is destroyed
+#[event]
+pub struct TokenDestroyed {
+    pub token_mint: Pubkey,
+    pub destroyer: Pubkey,
+    pub created_at: i64,
+    pub destroyed_at: i64,
+    pub mint_fee_returned: u64,
+    pub destroyer_reward: u64,
+    pub treasury_amount: u64,
+}
+
 

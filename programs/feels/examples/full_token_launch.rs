@@ -6,20 +6,16 @@
 //! 3. Deploying liquidity using the stair pattern
 //! 4. Performing the initial buy (if requested)
 
-use anchor_lang::prelude::*;
-use feels::{
-    instructions::*,
-    state::*,
-};
+use feels::instructions::*;
 
 /// Complete token launch flow
 pub async fn launch_token_with_stair_pattern() {
     // Step 1: Mint a new protocol token
     // All 1 billion tokens go to the protocol buffer
-    let mint_params = MintTokenParams {
-        token_name: "Feels Test Token".to_string(),
-        token_symbol: "FTEST".to_string(),
-        token_uri: "https://example.com/token.json".to_string(),
+    let _mint_params = MintTokenParams {
+        ticker: "FTEST".to_string(),
+        name: "Feels Test Token".to_string(),
+        uri: "https://example.com/token.json".to_string(),
     };
     
     // The mint_token instruction creates:
@@ -27,28 +23,23 @@ pub async fn launch_token_with_stair_pattern() {
     // - All tokens sent to buffer
     // - Protocol token registry entry
     // - Token metadata
+    // - Revokes mint authority (no more tokens can be minted)
+    // - Revokes freeze authority (tokens can't be frozen)
     
     println!("Token minted successfully!");
     println!("✓ 1,000,000,000 tokens in buffer");
+    println!("✓ Mint authority revoked - supply is fixed");
+    println!("✓ Freeze authority revoked - tokens are unfrozen");
     println!("✓ Creator registered as market launcher");
     
     // Step 2: Initialize market
     // Only the token creator can launch a market for their token
     let initial_sqrt_price = (1u128 << 64) * 10; // Initial price = 10 FeelsSOL per token
     
-    let liquidity_commitment = InitialLiquidityCommitment {
-        token_0_amount: 0, // Not used - protocol controls deployment
-        token_1_amount: 0, // Not used - protocol controls deployment
-        deployer: creator_pubkey,
-        deploy_by: current_timestamp + 3600, // 1 hour deadline
-        position_commitments: vec![], // Protocol will create positions
-    };
-    
-    let market_params = InitializeMarketParams {
+    let _market_params = InitializeMarketParams {
         base_fee_bps: 30, // 0.3% fee
         tick_spacing: 10,
         initial_sqrt_price,
-        liquidity_commitment,
         initial_buy_feelssol_amount: 0, // No initial buy during initialization
     };
     
@@ -59,7 +50,7 @@ pub async fn launch_token_with_stair_pattern() {
     // Step 3: Deploy protocol liquidity in stair pattern with optional initial buy
     // This uses 80% of the buffer tokens (800M tokens)
     // Creator can include FeelsSOL to be the first buyer at the best price
-    let deploy_params = DeployInitialLiquidityParams {
+    let _deploy_params = DeployInitialLiquidityParams {
         tick_step_size: 100, // 100 ticks between each step (~1% price intervals)
         initial_buy_feelssol_amount: 100_000_000_000, // Creator buys 100 FeelsSOL worth
     };
@@ -76,6 +67,9 @@ pub async fn launch_token_with_stair_pattern() {
     // Position 3: 16% allocation at current_tick+200 to current_tick+300
     // ... and so on ...
     // Position 10: 2% allocation (or remaining) at highest range
+    
+    // Example current tick (in real deployment, this comes from the market)
+    let current_tick = 0;
     
     for i in 0..10 {
         let tick_lower = current_tick + (i * 100);
@@ -108,7 +102,7 @@ pub async fn launch_token_without_initial_buy() {
     // Steps 1-2 are the same (mint token, initialize market)
     
     // Step 3: Deploy liquidity without initial buy
-    let deploy_params = DeployInitialLiquidityParams {
+    let _deploy_params = DeployInitialLiquidityParams {
         tick_step_size: 100,
         initial_buy_feelssol_amount: 0, // No initial buy
     };

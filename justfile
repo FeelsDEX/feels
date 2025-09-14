@@ -48,6 +48,32 @@ build-cargo:
     cd programs/feels && cargo build-sbf
     @echo "Program built with cargo"
 
+# Build with stack frame optimizations info
+build-info:
+    @echo "Building Solana program with stack frame optimizations..."
+    @echo ""
+    @echo "Available build commands:"
+    @echo "  just build      - Build with Nix BPF builder (preferred)"
+    @echo "  just build-cargo - Build with cargo build-sbf"
+    @echo "  anchor build    - Build with Anchor CLI"
+    @echo ""
+    @echo "Stack frame optimizations applied:"
+    @echo ""
+    @echo "1. MintToken instruction:"
+    @echo "   - Boxed: escrow (PreLaunchEscrow)"
+    @echo "   - Boxed: protocol_token (ProtocolToken)"
+    @echo ""
+    @echo "2. DeployInitialLiquidity instruction:"
+    @echo "   - Boxed: market (Market)"
+    @echo "   - Boxed: buffer (Buffer)"
+    @echo "   - Boxed: escrow (PreLaunchEscrow)"
+    @echo "   - Boxed: protocol_config (ProtocolConfig)"
+    @echo ""
+    @echo "3. DestroyExpiredToken instruction:"
+    @echo "   - Boxed: escrow (PreLaunchEscrow)"
+    @echo ""
+    @echo "These optimizations reduce stack usage by moving large accounts to heap."
+
 # Run all tests
 test:
     @echo "Running all tests..."

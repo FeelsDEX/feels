@@ -1,6 +1,6 @@
-//! Protocol-Owned Market Making (POMM) logic
+//! Pool-Owned Market Making (POMM) logic
 //! 
-//! Opportunistic liquidity placement from protocol buffer fees
+//! Opportunistic liquidity placement from pool buffer fees
 
 use anchor_lang::prelude::*;
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     utils::{liquidity_from_amounts, sqrt_price_from_tick},
 };
 
-/// Opportunistic upkeep: if buffer meets threshold, convert accounting τ into
+/// Opportunistic upkeep: if pool buffer meets threshold, convert accounting τ into
 /// additional floor liquidity at a wide range around current price/tick.
 /// 
 /// SECURITY: This function addresses two critical vulnerabilities:

@@ -1,4 +1,6 @@
-# Verification and Policy
+# Verification and Policy (Future Vision)
+
+> **Note on Phased Implementation:** The verification rules and policies described in this document apply to a future, hybrid version of the protocol that uses an off-chain "Provider" or "Keeper". The current (Phase 1) implementation is fully on-chain and does not use an external provider for its core logic; its safety is ensured by on-chain calculations and standard smart contract security practices.
 
 This document specifies the trust‑minimized verification rules for a single provider and the policy controls the chain enforces for updates, fees, and safety limits. The verification system implements cryptographic proofs and economic bounds to maintain security while enabling efficient off-chain computation of complex market physics.
 
@@ -7,7 +9,7 @@ This document specifies the trust‑minimized verification rules for a single pr
 | Symbol | Description |
 |--------|-------------|
 | $S, T, L$ | Domain value functions |
-| $\tau$ | Protocol buffer |
+| $\tau$ | Pool buffer |
 | $w_{S,i}, w_{T,d}, w_{L,i}$ | Component weights within domains (each set sums to 1) |
 | $I_S, I_T, I_L$ | Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$ |
 | $\kappa$ | Price‑improvement clamp |

@@ -12,13 +12,13 @@ The protocol must integrate three distinct market types: spot exchange for token
 
 The protocol cannot rely on external price oracles because tokens launched on the platform have no external markets initially. Oracle dependencies create attack vectors and compromise decentralization, which requires autonomous price discovery. Without external references, the system must discover prices organically from trading activity, maintain coherent relationships between spot, lending, and leverage prices, and resist manipulation while remaining responsive to genuine market forces.
 
-### 3. Protocol-Owned Market Making
+### 3. Pool-Owned Market Making
 
-One of the primary advantages of the protocol is that it implements a value accrual mechanism where fees accumulate to protocol-owned liquidity positions. This liquidity provides a rising price floor over time, effectively converting short-term volatility into long-term value. This requires precise tracking of fee distribution, automated liquidity management, and mathematical guarantees against value leakage.
+One of the primary advantages of the protocol is that it implements a value accrual mechanism where fees accumulate to pool-owned liquidity positions. This liquidity provides a rising price floor over time, effectively converting short-term volatility into long-term value. This requires precise tracking of fee distribution, automated liquidity management, and mathematical guarantees against value leakage.
 
 ### 4. Borrowing Against Protocol Liquidity
 
-Token holders must be able to borrow against their positions using protocol-owned liquidity as collateral. This allows them to maintain long-term token exposure while accessing working capital, with predictable borrowing costs based on utilization. The challenge is integrating lending with automated market making while maintaining solvency guarantees, fair interest rate discovery, and protection against bad debt.
+Token holders must be able to borrow against their positions using pool-owned liquidity as collateral. This allows them to maintain long-term token exposure while accessing working capital, with predictable borrowing costs based on utilization. The challenge is integrating lending with automated market making while maintaining solvency guarantees, fair interest rate discovery, and protection against bad debt.
 
 ### 5. Leverage as a Value Creation Engine
 
@@ -32,9 +32,9 @@ The thermodynamic approach treats the three markets as dimensions of a single en
 
 $$V = -\hat{w}_s \ln(S) - \hat{w}_t \ln(T) - \hat{w}_l \ln(L)$$
 
-This isn't just elegant mathematics—it solves real problems. The gradient of the potential function naturally produces consistent prices across all dimensions. Cross-dimensional arbitrage opportunities emerge naturally from the physics, and all three markets share liquidity, maximizing capital efficiency. Rather than having three separate pools with their own dynamics, the system operates as a unified whole where movements in one dimension naturally affect the others through the potential landscape.
+The gradient of the potential function naturally produces consistent prices across all dimensions. Cross-dimensional arbitrage opportunities emerge naturally from the physics, and all three markets share liquidity, maximizing capital efficiency. Rather than having three separate pools with their own dynamics, the system operates as a unified whole where movements in one dimension naturally affect the others through the potential landscape.
 
-### 2. Self-Emergent Price Discovery
+### 2. Emergent Price Discovery
 
 In the thermodynamic model, prices emerge as gradients of the potential function ($\nabla V$ gives marginal exchange rates). Markets naturally evolve toward minimum potential, which represents equilibrium. This creates a closed thermodynamic system where energy (value) is conserved through the fundamental identity $\sum_i w_i \ln(g_i) = 0$. Prices adjust to balance supply and demand, and market depth emerges from the curvature of the potential surface. The beauty of this approach is that it requires no external inputs—prices emerge entirely from internal market dynamics.
 
@@ -46,7 +46,7 @@ $$W = V_{\text{end}} - V_{\text{start}}$$
 
 $$\text{Fee} = f(W, \text{path}, \text{market state})$$
 
-This creates natural fee emergence where fees scale with how much a trade moves the market from equilibrium. Trades that reduce potential by moving the system toward equilibrium can even earn rebates. There are no arbitrary fee tiers—instead, fees adjust continuously based on market conditions. This work-based approach ensures that those who provide value to the system (by rebalancing it) are rewarded, while those who extract value (by pushing it further from equilibrium) pay proportionally.
+This creates natural fee emergence where fees scale with how much a trade moves the market from equilibrium. Trades that reduce potential by moving the system toward equilibrium can even earn rebates. There are no arbitrary fee tiers. Instead, fees adjust continuously based on market conditions. This work-based approach ensures that those who provide value to the system (by rebalancing it) are rewarded, while those who extract value (by pushing it further from equilibrium) pay proportionally.
 
 ### 4. Conservation Laws Enable POMM
 
@@ -54,11 +54,11 @@ The fundamental conservation identity ensures value preservation:
 
 $$\sum_i w_i \ln(g_i) = 0$$
 
-This mathematical constraint prevents value leakage—total system value remains constant during rebalancing operations. It enables precise fee tracking where every fee collected is accounted for and properly distributed. Most importantly, it supports the rising floor mechanism where protocol-owned liquidity grows monotonically from accumulated fees. The conservation law acts as an unbreakable accounting principle that makes the POMM mechanism possible.
+This mathematical constraint prevents value leakage, total system value remains constant during rebalancing operations. It enables precise fee tracking where every fee collected is accounted for and properly distributed. Most importantly, it supports the rising floor mechanism where pool-owned liquidity grows monotonically from accumulated fees. The conservation law acts as an unbreakable accounting principle that makes the POMM mechanism possible.
 
 ### 5. Thermodynamic Reservoir for Lending
 
-The protocol buffer ($\tau$) acts as a thermodynamic reservoir that absorbs excess energy (fees) from volatile trading and provides stable energy (liquidity) for borrowing. It maintains system balance through conservation laws, creating a natural lending market where interest rates emerge from utilization like pressure in a gas. Borrowing capacity grows with protocol success, and risk is naturally bounded by conservation constraints. This reservoir model elegantly connects trading activity to lending capacity—more trading creates more fees, which increases borrowing capacity.
+The pool buffer ($\tau$) acts as a thermodynamic reservoir that absorbs excess energy (fees) from volatile trading and provides stable energy (liquidity) for borrowing. It maintains system balance through conservation laws, creating a natural lending market where interest rates emerge from utilization like pressure in a gas. Borrowing capacity grows with protocol success, and risk is naturally bounded by conservation constraints. This reservoir model connects trading activity to lending capacity, i.e. more trading creates more fees, which increases borrowing capacity.
 
 ## Mathematical Soundness
 
@@ -80,13 +80,13 @@ While the theory uses continuous mathematics, the implementation leverages discr
 
 The traditional approach of combining separate protocols suffers from fundamental inefficiencies. Three separate liquidity pools mean capital is fragmented and utilized poorly. There are no natural arbitrage relationships between the systems, requiring complex external mechanisms. Integration requirements become Byzantine, with different teams, codebases, and security models. Risk models are inconsistent across the different protocols, creating opportunities for exploitation.
 
-### Existing Unified Protocols
+### Other Combined Protocols
 
 Some protocols attempt unification by bolting together existing primitives, but this approach has significant limitations. Without a coherent mathematical framework, these systems are fragile and prone to edge cases. They rely heavily on external oracles, creating dependencies and attack vectors. Most critically, they cannot support new token launches that lack external price feeds, limiting their utility for emerging projects.
 
 ### Why Thermodynamics Wins
 
-The thermodynamic model is uniquely suited to these constraints because physics naturally handles multiple coupled dimensions. Conservation is built into the fundamental structure rather than added as an afterthought. The equilibrium-seeking behavior mirrors how real markets behave, making the model both theoretically sound and practically effective. Continuous rebalancing follows thermodynamic relaxation principles, providing smooth, predictable evolution of market states.
+The thermodynamic model is uniquely suited to these constraints because physical models are built around handling multiple coupled dimensions. Conservation is built into the fundamental structure rather than added as an afterthought. The equilibrium-seeking behavior mirrors how real markets behave, making the model both theoretically sound and practically effective. Continuous rebalancing follows thermodynamic relaxation principles, providing smooth, predictable evolution of market states.
 
 ## Implementation Strategy
 
@@ -116,8 +116,6 @@ Other protocols can achieve single integration for spot, lending, and leverage f
 
 ## Conclusion
 
-The thermodynamic AMM design is not overengineering—it's the natural solution to a complex set of constraints. It unifies three markets in a mathematically coherent way that traditional approaches cannot match. It enables self-contained price discovery without external dependencies, solving a critical problem for new token launches. The novel POMM mechanism with rising price floors creates sustainable value accrual. Support for borrowing against protocol-owned liquidity provides utility beyond simple trading. Mathematical guarantees of value conservation ensure system integrity.
+The thermodynamic AMM design provides an intuitive framework to understand a complex set of constraints. Allowing us to think about the unification of three markets in a mathematically coherent way. It enables self-contained price discovery without external dependencies, solving a critical problem for new token launches. The novel POMM mechanism with rising price floors creates sustainable value accrual. Support for borrowing against protocol-owned liquidity provides utility beyond simple trading. Mathematical guarantees of value conservation ensure system integrity.
 
-The physics framework provides both theoretical soundness and practical benefits. The result is more capital efficient than separate markets because liquidity is shared across all functions. It's more robust than oracle-dependent systems because prices emerge from internal dynamics. The value accrual mechanism is more innovative than simple fee collection. Most importantly, it's more useful for new token launches that need bootstrap liquidity and price discovery.
-
-This approach represents a genuine advancement in AMM design, using proven mathematical principles to solve real DeFi challenges in an elegant, unified framework. The thermodynamic model transforms complex multi-market interactions into a coherent system governed by simple, universal principles. Far from being academic abstraction, it's a practical solution that addresses real market needs in a way that simpler models cannot achieve.
+The physics framework provides both theoretical soundness and practical benefits. The result is more capital efficient than separate markets because liquidity is shared across all functions. It's more robust than oracle-dependent systems because prices emerge from internal dynamics. The value accrual mechanism is aligned with building a healthy market structure, making it useful for new token launches that need bootstrap liquidity and price discovery.

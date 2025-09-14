@@ -64,6 +64,7 @@ anyhow = { workspace = true }
 feels-sdk = { path = "../../sdk" }
 async-trait = "0.1"
 solana-client = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)', 'cfg(target_os, values("solana"))', 'cfg(feature, values("telemetry", "size-checks"))'] }

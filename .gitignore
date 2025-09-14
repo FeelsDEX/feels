@@ -102,4 +102,7 @@ app/
 scripts/
 ext/
 
+# Claude AI documentation
+CLAUDE.md
+
 

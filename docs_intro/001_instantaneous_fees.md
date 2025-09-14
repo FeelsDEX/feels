@@ -1,4 +1,6 @@
-# Instantaneous Fees
+# Instantaneous Fees (Future Vision)
+
+> **Note on Phased Implementation:** This document describes the fee model for the future, fully-featured 3D thermodynamic version of the protocol. This "Work-based" model relies on an off-chain provider. The current (Phase 1) implementation uses a simpler, fully on-chain dynamic fee model described in `201_dynamic_fees.md`, which is based on realized price impact and an on-chain GTWAP.
 
 This document explains how trades are priced from the change in potential along the executed path, how that change converts to fee basis points, how rebates are bounded, and how the chain verifies a single provider's updates. The fee structure implements work-based pricing where uphill moves (against equilibrium) pay fees and downhill moves (toward equilibrium) can earn rebates.
 
@@ -19,7 +21,7 @@ This document explains how trades are priced from the change in potential along 
 | `base_bps` | Base fee in basis points |
 | `dyn_bps` | Dynamic surcharge (bps) |
 | `MAX_SURCHARGE_BPS`, `MAX_INSTANTANEOUS_FEE` | Policy caps |
-| $\tau$ | Protocol buffer sourcing rebates and absorbing fees |
+| $\tau$ | Pool buffer sourcing rebates and absorbing fees |
 | $w_{S,i}, w_{T,d}, w_{L,i}$ | Component weights within spot/time/leverage domains (each set sums to 1) |
 | $I_S, I_T, I_L$ | Index sets — $I_S=\{a,b\}$, $I_T$ = duration buckets, $I_L=\{\text{long},\text{short}\}$ |
 

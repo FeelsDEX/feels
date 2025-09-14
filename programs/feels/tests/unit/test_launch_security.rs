@@ -18,9 +18,9 @@ test_in_memory!(test_unbounded_liquidity_vulnerability, |ctx: TestContext| async
     // New launch_token_v2 behavior:
     // - Creates Position NFTs for each tranche
     // - Positions are owned by buffer_authority PDA
-    // - Protocol can manage, collect fees, or remove liquidity
+    // - Pool can manage, collect fees, or remove liquidity
     
-    // This ensures protocol capital is not permanently lost
+    // This ensures pool capital is not permanently lost
     
     Ok::<(), Box<dyn std::error::Error>>(())
 });
@@ -90,8 +90,8 @@ test_in_memory!(test_reentrancy_guard_during_launch, |ctx: TestContext| async mo
     Ok::<(), Box<dyn std::error::Error>>(())
 });
 
-test_in_memory!(test_protocol_owned_position_management, |ctx: TestContext| async move {
-    // Protocol positions created by launch_token_v2
+test_in_memory!(test_pool_owned_position_management, |ctx: TestContext| async move {
+    // Pool positions created by launch_token_v2
     let position = Position {
         owner: Pubkey::new_unique(), // buffer_authority
         market: Pubkey::new_unique(),
@@ -107,7 +107,7 @@ test_in_memory!(test_protocol_owned_position_management, |ctx: TestContext| asyn
         _reserved: [0; 8],
     };
     
-    // Protocol can:
+    // Pool can:
     // 1. Collect fees via collect_fees instruction
     // 2. Close position via close_position when needed
     // 3. Transfer ownership if governance decides
@@ -118,12 +118,12 @@ test_in_memory!(test_protocol_owned_position_management, |ctx: TestContext| asyn
 });
 
 test_in_memory!(test_liquidity_recovery_mechanism, |ctx: TestContext| async move {
-    // With Position NFTs, the protocol can recover liquidity:
+    // With Position NFTs, the pool can recover liquidity:
     
-    // Step 1: Protocol decides to remove liquidity
-    // Step 2: Call close_position for each protocol-owned position
+    // Step 1: Pool decides to remove liquidity
+    // Step 2: Call close_position for each pool-owned position
     // Step 3: Liquidity and fees returned to buffer
-    // Step 4: Protocol can redeploy or distribute as needed
+    // Step 4: Pool can redeploy or distribute as needed
     
     // This fixes the critical issue where liquidity was permanently locked
     

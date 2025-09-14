@@ -1,11 +1,11 @@
 //! Buffer (τ) state for MVP
 //! 
-//! Protocol buffer that collects fees and manages floor LP
+//! Pool buffer that collects fees and manages floor LP
 
 use anchor_lang::prelude::*;
 use anchor_lang::prelude::borsh;
 
-/// Protocol buffer (τ) account
+/// Pool buffer (τ) account
 #[account]
 pub struct Buffer {
     /// Associated market

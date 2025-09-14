@@ -10,6 +10,7 @@ pub mod fixtures;
 pub mod helpers;
 pub mod builders;
 pub mod time;
+pub mod tracing;
 #[macro_use]
 pub mod macros;
 
@@ -18,10 +19,10 @@ pub type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 // Re-export core types
 pub use client::TestClient;
-pub use context::{TestContext, TestAccounts};
+pub use context::TestContext;
 pub use environment::{TestEnvironment, should_run_devnet_tests, should_run_localnet_tests};
-pub use helpers::{MarketHelper, SwapHelper, PositionHelper, SwapResult, TestMarketSetup};
-pub use builders::{MarketBuilder, SwapBuilder, PositionBuilder};
+pub use helpers::SwapResult;
+pub use builders::MarketBuilder;
 
 // Re-export assertion utilities
 pub use assertions::{

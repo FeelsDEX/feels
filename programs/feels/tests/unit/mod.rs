@@ -7,6 +7,7 @@ pub mod static_assertions;
 pub mod test_static_assertions;
 
 // Buffer tests
+pub mod test_buffer;
 pub mod test_buffer_overflow;
 
 // Position safety tests

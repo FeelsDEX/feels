@@ -63,30 +63,11 @@ impl SwapInstructionData {
     }
 }
 
-// Match the program's expected structure
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct PositionCommitment {
-    pub tick_lower: i32,
-    pub tick_upper: i32,
-    pub liquidity: u128,
-    pub position_mint: Pubkey,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct InitialLiquidityCommitment {
-    pub token_0_amount: u64,
-    pub token_1_amount: u64,
-    pub deployer: Pubkey,
-    pub deploy_by: i64,
-    pub position_commitments: Vec<PositionCommitment>,
-}
-
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct InitializeMarketParams {
     pub base_fee_bps: u16,
     pub tick_spacing: u16,
     pub initial_sqrt_price: u128,
-    pub liquidity_commitment: InitialLiquidityCommitment,
     pub initial_buy_feelssol_amount: u64,
 }
 
@@ -248,6 +229,13 @@ pub fn initialize_market(
         &[b"authority", market.as_ref()],
         &crate::program_id(),
     );
+
+    // Derive the escrow PDA for the project token
+    let project_token_mint = if token_0 != feelssol_mint { token_0 } else { token_1 };
+    let (escrow, _) = Pubkey::find_program_address(
+        &[b"escrow", project_token_mint.as_ref()],
+        &crate::program_id(),
+    );
     
     // Protocol token accounts - these can be dummy accounts if token is FeelsSOL
     let protocol_token_0 = if token_0 == feelssol_mint {
@@ -278,8 +266,8 @@ pub fn initialize_market(
         program_id: crate::program_id(),
         accounts: vec![
             AccountMeta::new(authority, true),
-            AccountMeta::new_readonly(token_0, false),
-            AccountMeta::new_readonly(token_1, false),
+            AccountMeta::new(token_0, false),
+            AccountMeta::new(token_1, false),
             AccountMeta::new(market, false),
             AccountMeta::new(buffer, false),
             AccountMeta::new(oracle, false),
@@ -289,6 +277,7 @@ pub fn initialize_market(
             AccountMeta::new_readonly(feelssol_mint, false),
             AccountMeta::new_readonly(protocol_token_0, false),
             AccountMeta::new_readonly(protocol_token_1, false),
+            AccountMeta::new(escrow, false), // Escrow must be mutable
             AccountMeta::new(creator_feelssol_account, false),
             AccountMeta::new(creator_token_out_account, false),
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
@@ -300,16 +289,6 @@ pub fn initialize_market(
                 base_fee_bps,
                 tick_spacing,
                 initial_sqrt_price,
-                liquidity_commitment: InitialLiquidityCommitment {
-                    token_0_amount: 0,
-                    token_1_amount: 0,
-                    deployer: authority,
-                    deploy_by: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64 + 3600, // 1 hour from now
-                    position_commitments: vec![],
-                },
                 initial_buy_feelssol_amount,
             }
         }.data(),
@@ -465,18 +444,19 @@ pub fn deploy_initial_liquidity(
 /// Build mint_token instruction
 pub fn mint_token(
     creator: Pubkey,
+    creator_feelssol: Pubkey,
     token_mint: Pubkey,
     feelssol_mint: Pubkey,
     params: MintTokenParams,
 ) -> Result<Instruction> {
     // Derive PDAs
-    let (buffer, _) = Pubkey::find_program_address(
-        &[b"buffer", token_mint.as_ref()],
+    let (escrow, _) = Pubkey::find_program_address(
+        &[b"escrow", token_mint.as_ref()],
         &crate::program_id(),
     );
     
-    let (buffer_authority, _) = Pubkey::find_program_address(
-        &[b"buffer_authority", buffer.as_ref()],
+    let (escrow_authority, _) = Pubkey::find_program_address(
+        &[b"escrow_authority", escrow.as_ref()],
         &crate::program_id(),
     );
     
@@ -485,15 +465,20 @@ pub fn mint_token(
         &crate::program_id(),
     );
     
-    // Get buffer token vault
-    let buffer_token_vault = spl_associated_token_account::get_associated_token_address(
-        &buffer_authority,
+    let (protocol_config, _) = Pubkey::find_program_address(
+        &[b"protocol_config"],
+        &crate::program_id(),
+    );
+    
+    // Get escrow token vault
+    let escrow_token_vault = spl_associated_token_account::get_associated_token_address(
+        &escrow_authority,
         &token_mint,
     );
     
-    // Get buffer feelssol vault
-    let buffer_feelssol_vault = spl_associated_token_account::get_associated_token_address(
-        &buffer_authority,
+    // Get escrow feelssol vault
+    let escrow_feelssol_vault = spl_associated_token_account::get_associated_token_address(
+        &escrow_authority,
         &feelssol_mint,
     );
     
@@ -512,19 +497,61 @@ pub fn mint_token(
         accounts: vec![
             AccountMeta::new(creator, true),
             AccountMeta::new(token_mint, true),
-            AccountMeta::new(buffer, false),
-            AccountMeta::new(buffer_token_vault, false),
-            AccountMeta::new(buffer_feelssol_vault, false),
-            AccountMeta::new_readonly(buffer_authority, false),
-            AccountMeta::new_readonly(feelssol_mint, false),
-            AccountMeta::new(protocol_token, false),
+            AccountMeta::new(escrow, false),
+            AccountMeta::new(escrow_token_vault, false),
+            AccountMeta::new(escrow_feelssol_vault, false),
+            AccountMeta::new_readonly(escrow_authority, false),
             AccountMeta::new(metadata, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(feelssol_mint, false),
+            AccountMeta::new(creator_feelssol, false),
+            AccountMeta::new_readonly(protocol_config, false),
+            AccountMeta::new_readonly(mpl_token_metadata::ID, false),
+            AccountMeta::new(protocol_token, false),
             AccountMeta::new_readonly(spl_associated_token_account::id(), false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(mpl_token_metadata::ID, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
         ],
         data: MintTokenInstructionData { params }.data(),
+    })
+}
+
+// Add InitializeProtocolParams re-export
+pub use feels::instructions::InitializeProtocolParams;
+
+// Instruction discriminator for initialize_protocol
+const INITIALIZE_PROTOCOL_DISCRIMINATOR: [u8; 8] = [0xbc, 0xe9, 0xfc, 0x6a, 0x86, 0x92, 0xca, 0x5b];
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct InitializeProtocolInstructionData {
+    pub params: InitializeProtocolParams,
+}
+
+impl InitializeProtocolInstructionData {
+    fn data(&self) -> Vec<u8> {
+        let mut data = INITIALIZE_PROTOCOL_DISCRIMINATOR.to_vec();
+        data.extend_from_slice(&self.try_to_vec().unwrap());
+        data
+    }
+}
+
+/// Build initialize_protocol instruction
+pub fn initialize_protocol(
+    authority: Pubkey,
+    params: InitializeProtocolParams,
+) -> Result<Instruction> {
+    let (protocol_config, _) = Pubkey::find_program_address(
+        &[b"protocol_config"],
+        &crate::program_id(),
+    );
+    
+    Ok(Instruction {
+        program_id: crate::program_id(),
+        accounts: vec![
+            AccountMeta::new(authority, true),
+            AccountMeta::new(protocol_config, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+        ],
+        data: InitializeProtocolInstructionData { params }.data(),
     })
 }

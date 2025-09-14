@@ -5,7 +5,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::prelude::borsh;
 use anchor_spl::{
-    token::{self, Token, TokenAccount, Mint, spl_token::instruction::AuthorityType},
+    token::{self, Token, TokenAccount, Mint},
     associated_token::AssociatedToken,
 };
 use mpl_token_metadata::{
@@ -13,10 +13,10 @@ use mpl_token_metadata::{
     types::DataV2,
 };
 use crate::{
-    constants::{BUFFER_SEED, BUFFER_AUTHORITY_SEED, TOKEN_DECIMALS, TOTAL_SUPPLY, MIN_FLOOR_PLACEMENT_THRESHOLD},
+    constants::{ESCROW_SEED, ESCROW_AUTHORITY_SEED, TOKEN_DECIMALS, TOTAL_SUPPLY},
     error::FeelsError,
     events::TokenMinted,
-    state::Buffer,
+    state::{PreLaunchEscrow, ProtocolConfig},
 };
 
 
@@ -44,46 +44,47 @@ pub struct MintToken<'info> {
         init,
         payer = creator,
         mint::decimals = TOKEN_DECIMALS,
-        mint::authority = creator.key(), // Initially set to creator, will be transferred
+        mint::authority = creator.key(), // Initially set to creator, will be revoked
+        mint::freeze_authority = creator.key(), // Initially set to creator, will be revoked
     )]
     pub token_mint: Account<'info, Mint>,
     
     
-    /// Buffer account for this token
+    /// Pre-launch escrow account for this token
     #[account(
         init,
         payer = creator,
-        space = Buffer::LEN,
-        seeds = [BUFFER_SEED, token_mint.key().as_ref()],
+        space = PreLaunchEscrow::LEN,
+        seeds = [ESCROW_SEED, token_mint.key().as_ref()],
         bump,
     )]
-    pub buffer: Account<'info, Buffer>,
+    pub escrow: Box<Account<'info, PreLaunchEscrow>>,
     
-    /// Buffer's token vault
+    /// Escrow's token vault (holds all minted tokens)
     #[account(
         init,
         payer = creator,
         associated_token::mint = token_mint,
-        associated_token::authority = buffer_authority,
+        associated_token::authority = escrow_authority,
     )]
-    pub buffer_token_vault: Account<'info, TokenAccount>,
+    pub escrow_token_vault: Account<'info, TokenAccount>,
     
-    /// Buffer's FeelsSOL vault
+    /// Escrow's FeelsSOL vault (holds mint fee)
     #[account(
         init,
         payer = creator,
         associated_token::mint = feelssol_mint,
-        associated_token::authority = buffer_authority,
+        associated_token::authority = escrow_authority,
     )]
-    pub buffer_feelssol_vault: Account<'info, TokenAccount>,
+    pub escrow_feelssol_vault: Account<'info, TokenAccount>,
     
-    /// Buffer authority PDA
-    /// CHECK: PDA that controls buffer vaults
+    /// Escrow authority PDA
+    /// CHECK: PDA that controls escrow vaults
     #[account(
-        seeds = [BUFFER_AUTHORITY_SEED, buffer.key().as_ref()],
+        seeds = [ESCROW_AUTHORITY_SEED, escrow.key().as_ref()],
         bump,
     )]
-    pub buffer_authority: AccountInfo<'info>,
+    pub escrow_authority: AccountInfo<'info>,
     
     /// Metadata account
     /// CHECK: Created by Metaplex CPI
@@ -98,6 +99,21 @@ pub struct MintToken<'info> {
     /// FeelsSOL mint
     pub feelssol_mint: Account<'info, Mint>,
     
+    /// Creator's FeelsSOL account for paying mint fee
+    #[account(
+        mut,
+        constraint = creator_feelssol.owner == creator.key() @ FeelsError::InvalidAuthority,
+        constraint = creator_feelssol.mint == feelssol_mint.key() @ FeelsError::InvalidMint,
+    )]
+    pub creator_feelssol: Account<'info, TokenAccount>,
+    
+    /// Protocol config account
+    #[account(
+        seeds = [ProtocolConfig::SEED],
+        bump,
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+    
     /// Metaplex token metadata program
     /// CHECK: The metadata program ID is validated by address constraint
     #[account(address = mpl_token_metadata::ID)]
@@ -111,7 +127,7 @@ pub struct MintToken<'info> {
         seeds = [crate::constants::PROTOCOL_TOKEN_SEED, token_mint.key().as_ref()],
         bump,
     )]
-    pub protocol_token: Account<'info, crate::state::ProtocolToken>,
+    pub protocol_token: Box<Account<'info, crate::state::ProtocolToken>>,
     
     /// Associated token program
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -127,30 +143,57 @@ pub struct MintToken<'info> {
 }
 
 pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()> {
-    // All tokens go to buffer (100% of supply)
-    let buffer_amount = TOTAL_SUPPLY;
+    // Early validation - fail fast before any state changes
     
-    // Validate ticker and name lengths
+    // 1. Validate parameters first
     require!(params.ticker.len() <= 10, FeelsError::InvalidPrice);
     require!(params.name.len() <= 32, FeelsError::InvalidPrice);
+    require!(params.uri.len() <= 200, FeelsError::InvalidPrice); // Reasonable URI length limit
     
-    // Initialize buffer state
-    let buffer = &mut ctx.accounts.buffer;
-    buffer.market = Pubkey::default(); // Will be set when market is initialized
-    buffer.authority = ctx.accounts.creator.key();
-    buffer.feelssol_mint = ctx.accounts.feelssol_mint.key();
-    buffer.fees_token_0 = 0u128;
-    buffer.fees_token_1 = 0u128;
-    buffer.tau_spot = 0u128;
-    buffer.tau_time = 0u128;
-    buffer.tau_leverage = 0u128;
-    buffer.floor_tick_spacing = 100; // Default
-    buffer.floor_placement_threshold = MIN_FLOOR_PLACEMENT_THRESHOLD;
-    buffer.last_floor_placement = 0;
-    buffer.last_rebase = 0;
-    buffer.total_distributed = 0u128;
-    buffer.buffer_authority_bump = ctx.bumps.buffer_authority;
-    buffer._reserved = [0; 8];
+    // 2. Validate mint fee and balance
+    let mint_fee = ctx.accounts.protocol_config.mint_fee;
+    require!(
+        ctx.accounts.creator_feelssol.amount >= mint_fee,
+        FeelsError::InsufficientBalance
+    );
+    
+    // 3. Validate account ownership
+    require!(
+        ctx.accounts.creator_feelssol.owner == ctx.accounts.creator.key(),
+        FeelsError::InvalidAuthority
+    );
+    
+    // Now proceed with state changes
+    if mint_fee > 0 {
+        // Transfer mint fee from creator to escrow (held until market goes live)
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.creator_feelssol.to_account_info(),
+                    to: ctx.accounts.escrow_feelssol_vault.to_account_info(),
+                    authority: ctx.accounts.creator.to_account_info(),
+                },
+            ),
+            mint_fee,
+        )?;
+        
+        msg!("Collected mint fee: {} FeelsSOL (held in escrow)", mint_fee);
+    }
+    
+    // All tokens go to escrow (100% of supply)
+    let escrow_amount = TOTAL_SUPPLY;
+    
+    // Initialize pre-launch escrow state
+    let escrow = &mut ctx.accounts.escrow;
+    let clock = Clock::get()?;
+    escrow.token_mint = ctx.accounts.token_mint.key();
+    escrow.creator = ctx.accounts.creator.key();
+    escrow.feelssol_mint = ctx.accounts.feelssol_mint.key();
+    escrow.created_at = clock.unix_timestamp;
+    escrow.market = Pubkey::default(); // Will be set when market is initialized
+    escrow.escrow_authority_bump = ctx.bumps.escrow_authority;
+    escrow._reserved = [0; 128];
     
     // Create token metadata
     let metadata_data = DataV2 {
@@ -193,38 +236,29 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
         &[], // No seeds needed, creator is already a signer
     )?;
     
-    // Mint all tokens to buffer
+    // Mint all tokens to escrow
     token::mint_to(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             token::MintTo {
                 mint: ctx.accounts.token_mint.to_account_info(),
-                to: ctx.accounts.buffer_token_vault.to_account_info(),
+                to: ctx.accounts.escrow_token_vault.to_account_info(),
                 authority: ctx.accounts.creator.to_account_info(),
             },
         ),
-        buffer_amount,
+        escrow_amount,
     )?;
     
-    // Transfer mint authority to buffer authority PDA
-    token::set_authority(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            token::SetAuthority {
-                current_authority: ctx.accounts.creator.to_account_info(),
-                account_or_mint: ctx.accounts.token_mint.to_account_info(),
-            },
-        ),
-        AuthorityType::MintTokens,
-        Some(ctx.accounts.buffer_authority.key()),
-    )?;
+    // NOTE: Mint and freeze authorities are NOT revoked here
+    // They will be revoked in initialize_market after creator verification
+    // This allows the token creator to be verified as the owner before authorities are removed
     
     // Initialize protocol token registry entry
     let protocol_token = &mut ctx.accounts.protocol_token;
     protocol_token.mint = ctx.accounts.token_mint.key();
     protocol_token.creator = ctx.accounts.creator.key();
     protocol_token.token_type = crate::state::TokenType::Spl; // Only SPL tokens for now
-    protocol_token.created_at = Clock::get()?.unix_timestamp;
+    protocol_token.created_at = clock.unix_timestamp;
     protocol_token.can_create_markets = true;
     protocol_token._reserved = [0; 32];
     
@@ -235,10 +269,10 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
         ticker: params.ticker,
         name: params.name,
         total_supply: TOTAL_SUPPLY,
-        buffer_amount,
+        buffer_amount: escrow_amount,
         creator_amount: 0,
-        buffer_account: buffer.key(),
-        timestamp: Clock::get()?.unix_timestamp,
+        buffer_account: escrow.key(),
+        timestamp: clock.unix_timestamp,
     });
     
     Ok(())

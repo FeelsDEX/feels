@@ -15,7 +15,7 @@ This document describes the continuous mechanism for settling time‑value and f
 | $g_i$ | Multiplicative growth factors |
 | $g_A, g_D, g_\tau$ | Deposit, debt, and buffer growth factors |
 | $w_A, w_D, w_\tau^{(\text{time})}$ | Weights for deposits, debt, and buffer (sum to 1 in time subdomain) |
-| $\tau$ | Protocol buffer |
+| $\tau$ | Pool buffer |
 | $\zeta_{spot}, \zeta_{time}, \zeta_{leverage}$ | Fee distribution weights (bps, sum to 10,000) |
 | $\text{skew}$ | Directional imbalance in $[-1,1]$ (used for funding dynamics) |
 | $\rho_T(d)$ | Time‑domain risk $= \sigma_{\text{rate}}\,\sqrt{d}$ (dimensionless) |
@@ -51,7 +51,7 @@ Weights are snapshotted in the relevant numeraire at epoch start to prevent mani
 
 ### Buffer Role as Thermodynamic Reservoir
 
-The buffer $\tau$ serves as a thermodynamic reservoir that absorbs residuals to satisfy conservation exactly, provides liquidity by sourcing rebates and absorbing fees, and stabilizes dynamics by dampening oscillations through strategic participation.
+The pool buffer $\tau$ serves as a thermodynamic reservoir that absorbs residuals to satisfy conservation exactly, provides liquidity by sourcing rebates and absorbing fees, and stabilizes dynamics by dampening oscillations through strategic participation.
 
 Buffer participation is determined by policy and can vary by subdomain based on market conditions and risk management requirements.
 
@@ -127,7 +127,7 @@ fn calculate_lending_rebase(
 
 ### Fee Collection and Distribution Process
 
-All fees collected and rebates paid flow through the buffer $\tau$ with systematic distribution across domains:
+All fees collected and rebates paid flow through the pool buffer $\tau$ with systematic distribution across domains:
 
 $$\tau_{\text{new}} = \tau_{\text{old}} + \text{fees}_{\text{collected}} - \text{rebates}_{\text{paid}}$$
 

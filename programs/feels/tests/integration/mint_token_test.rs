@@ -1,6 +1,7 @@
 //! Integration tests for mint_token instruction
 use crate::common::*;
-use feels::state::{Buffer, ProtocolToken};
+use feels::state::{PreLaunchEscrow, ProtocolToken};
+use feels_sdk as sdk;
 
 test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
     println!("\n=== Test: Basic Token Minting ===");
@@ -8,6 +9,19 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
     // Create a fresh creator account
     let creator = Keypair::new();
     ctx.airdrop(&creator.pubkey(), 100_000_000).await?; // 0.1 SOL
+    
+    // Create creator's FeelsSOL account
+    let creator_feelssol = ctx.create_ata(&creator.pubkey(), &ctx.feelssol_mint).await?;
+    
+    // Even though mint fee is 0, mint a small amount of FeelsSOL to the creator
+    // to ensure the account is properly initialized
+    ctx.mint_to(&ctx.feelssol_mint, &creator_feelssol, &ctx.feelssol_authority, 1_000_000).await?;
+    
+    // Verify the FeelsSOL account
+    let feelssol_account = ctx.get_token_account(&creator_feelssol).await?;
+    println!("Creator FeelsSOL account: owner={}, mint={}, amount={}", 
+        feelssol_account.owner, feelssol_account.mint, feelssol_account.amount);
+    println!("Expected FeelsSOL mint: {}", ctx.feelssol_mint);
     
     // Create the token mint keypair
     let token_mint = Keypair::new();
@@ -19,46 +33,74 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
         uri: "https://test.com/metadata.json".to_string(),
     };
     
-    let ix = feels_sdk::mint_token(
+    println!("Building mint_token instruction with:");
+    println!("  creator: {}", creator.pubkey());
+    println!("  creator_feelssol: {}", creator_feelssol);
+    println!("  token_mint: {}", token_mint.pubkey());
+    println!("  feelssol_mint: {}", ctx.feelssol_mint);
+    
+    let ix = sdk::mint_token(
         creator.pubkey(),
+        creator_feelssol,
         token_mint.pubkey(),
         ctx.feelssol_mint,
         params,
     )?;
     
     // Process the instruction
-    ctx.process_instruction(ix, &[&creator, &token_mint]).await?;
+    println!("About to process mint_token instruction...");
+    match ctx.process_instruction(ix, &[&creator, &token_mint]).await {
+        Ok(_) => println!("✓ mint_token instruction executed successfully"),
+        Err(e) => {
+            println!("✗ mint_token instruction failed: {:?}", e);
+            return Err(e.into());
+        }
+    }
     
     // Verify the token mint was created
     let mint_info = ctx.get_mint(&token_mint.pubkey()).await?;
     assert_eq!(mint_info.decimals, 6, "Token should have 6 decimals");
     assert_eq!(mint_info.supply, 1_000_000_000_000_000, "Total supply should be 1B tokens");
     
-    // Verify the buffer was created and received all tokens
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", token_mint.pubkey().as_ref()],
+    // Verify the escrow was created and received all tokens
+    let (escrow_pda, _) = Pubkey::find_program_address(
+        &[b"escrow", token_mint.pubkey().as_ref()],
         &PROGRAM_ID,
     );
     
-    let buffer: Buffer = ctx.get_account(&buffer_pda).await?
-        .ok_or("Buffer not found")?;
+    println!("Looking for escrow at PDA: {}", escrow_pda);
     
-    assert_eq!(buffer.authority, creator.pubkey(), "Buffer authority should be creator");
-    assert_eq!(buffer.feelssol_mint, ctx.feelssol_mint, "Buffer should reference FeelsSOL mint");
+    let escrow: PreLaunchEscrow = match ctx.get_account(&escrow_pda).await {
+        Ok(Some(account)) => {
+            println!("✓ Found escrow account");
+            account
+        },
+        Ok(None) => {
+            println!("✗ Escrow account not found at expected PDA");
+            return Err("Escrow not found".into());
+        },
+        Err(e) => {
+            println!("✗ Error reading escrow account: {:?}", e);
+            return Err(e.into());
+        }
+    };
     
-    // Verify buffer token vault has all the tokens
-    let (buffer_authority, _) = Pubkey::find_program_address(
-        &[b"buffer_authority", buffer_pda.as_ref()],
+    assert_eq!(escrow.creator, creator.pubkey(), "Escrow creator should be creator");
+    assert_eq!(escrow.feelssol_mint, ctx.feelssol_mint, "Escrow should reference FeelsSOL mint");
+    
+    // Verify escrow token vault has all the tokens
+    let (escrow_authority, _) = Pubkey::find_program_address(
+        &[b"escrow_authority", escrow_pda.as_ref()],
         &PROGRAM_ID,
     );
     
-    let buffer_token_vault = spl_associated_token_account::get_associated_token_address(
-        &buffer_authority,
+    let escrow_token_vault = spl_associated_token_account::get_associated_token_address(
+        &escrow_authority,
         &token_mint.pubkey(),
     );
     
-    let vault_balance = ctx.get_token_balance(&buffer_token_vault).await?;
-    assert_eq!(vault_balance, 1_000_000_000_000_000, "Buffer vault should have all tokens");
+    let vault_balance = ctx.get_token_balance(&escrow_token_vault).await?;
+    assert_eq!(vault_balance, 1_000_000_000_000_000, "Escrow vault should have all tokens");
     
     // Verify protocol token registry entry
     let (protocol_token_pda, _) = Pubkey::find_program_address(
@@ -73,19 +115,19 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
     assert_eq!(protocol_token.creator, creator.pubkey(), "Protocol token should reference creator");
     assert!(protocol_token.can_create_markets, "Token should be able to create markets");
     
-    // Verify mint authority was transferred to buffer authority
+    // Verify mint authority is still with creator (not transferred yet)
     let mint_info = ctx.get_mint(&token_mint.pubkey()).await?;
     assert_eq!(
         mint_info.mint_authority.unwrap(), 
-        buffer_authority,
-        "Mint authority should be transferred to buffer"
+        creator.pubkey(),
+        "Mint authority should still be with creator until market launch"
     );
     
     println!("✓ Token minted successfully");
     println!("  - Token mint: {}", token_mint.pubkey());
     println!("  - Total supply: 1B tokens");
-    println!("  - Buffer PDA: {}", buffer_pda);
-    println!("  - All tokens in buffer vault");
+    println!("  - Escrow PDA: {}", escrow_pda);
+    println!("  - All tokens in escrow vault");
     
     Ok::<(), Box<dyn std::error::Error>>(())
 });
@@ -97,6 +139,9 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
     let creator = Keypair::new();
     ctx.airdrop(&creator.pubkey(), 100_000_000).await?;
     
+    // Create creator's FeelsSOL account
+    let creator_feelssol = ctx.create_ata(&creator.pubkey(), &ctx.feelssol_mint).await?;
+    
     let token_mint = Keypair::new();
     let params = feels::instructions::MintTokenParams {
         ticker: "VERYLONGTICKER".to_string(), // Too long
@@ -104,8 +149,9 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
         uri: "https://test.com".to_string(),
     };
     
-    let ix = feels_sdk::mint_token(
+    let ix = sdk::mint_token(
         creator.pubkey(),
+        creator_feelssol,
         token_mint.pubkey(),
         ctx.feelssol_mint,
         params,
@@ -125,6 +171,7 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
     
     let ix2 = feels_sdk::mint_token(
         creator.pubkey(),
+        creator_feelssol,
         token_mint2.pubkey(),
         ctx.feelssol_mint,
         params2,
@@ -148,8 +195,11 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
     };
     
     // This should fail during account validation
+    // Note: PDA can't have a FeelsSOL account, so we use a dummy address
+    let dummy_feelssol = Pubkey::new_unique();
     let ix3 = feels_sdk::mint_token(
         pda_creator,
+        dummy_feelssol,
         token_mint3.pubkey(),
         ctx.feelssol_mint,
         params3,
@@ -178,6 +228,9 @@ test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
         let creator = Keypair::new();
         ctx.airdrop(&creator.pubkey(), 100_000_000).await?;
         
+        // Create creator's FeelsSOL account
+        let creator_feelssol = ctx.create_ata(&creator.pubkey(), &ctx.feelssol_mint).await?;
+        
         let token_mint = Keypair::new();
         
         let params = feels::instructions::MintTokenParams {
@@ -188,6 +241,7 @@ test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
         
         let ix = feels_sdk::mint_token(
             creator.pubkey(),
+            creator_feelssol,
             token_mint.pubkey(),
             ctx.feelssol_mint,
             params,
@@ -224,6 +278,9 @@ test_in_memory!(test_mint_token_with_metadata, |ctx: TestContext| async move {
     let creator = Keypair::new();
     ctx.airdrop(&creator.pubkey(), 100_000_000).await?;
     
+    // Create creator's FeelsSOL account
+    let creator_feelssol = ctx.create_ata(&creator.pubkey(), &ctx.feelssol_mint).await?;
+    
     let token_mint = Keypair::new();
     
     // Create detailed metadata
@@ -235,6 +292,7 @@ test_in_memory!(test_mint_token_with_metadata, |ctx: TestContext| async move {
     
     let ix = feels_sdk::mint_token(
         creator.pubkey(),
+        creator_feelssol,
         token_mint.pubkey(),
         ctx.feelssol_mint,
         params.clone(),
