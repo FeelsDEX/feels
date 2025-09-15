@@ -58,7 +58,8 @@ impl MarketBuilder {
         upper_tick: i32,
         liquidity: u128,
     ) -> Self {
-        self.liquidity_positions.push((provider, lower_tick, upper_tick, liquidity));
+        self.liquidity_positions
+            .push((provider, lower_tick, upper_tick, liquidity));
         self
     }
 
@@ -75,21 +76,46 @@ impl MarketBuilder {
     pub async fn build(self) -> TestResult<Pubkey> {
         let token_0 = self.token_0.ok_or("Token A not set")?;
         let token_1 = self.token_1.ok_or("Token B not set")?;
-        
+
         let market_helper = self.ctx.market_helper();
-        
+
         // Create market based on configuration
         let market_id = if let Some(initial_price) = self.initial_price {
-            market_helper.create_raydium_market(&token_0, &token_1, initial_price).await?
+            market_helper
+                .create_raydium_market(&token_0, &token_1, initial_price)
+                .await?
         } else {
-            market_helper.create_simple_market(&token_0, &token_1).await?
+            market_helper
+                .create_simple_market(&token_0, &token_1)
+                .await?
         };
 
         // Add liquidity positions if any
         if !self.liquidity_positions.is_empty() {
-            // Note: Position management is not available in the current SDK
-            // This would need to be implemented when position instructions are added
-            // For now, we skip adding liquidity positions
+            let position_helper = self.ctx.position_helper();
+            
+            for (provider, lower_tick, upper_tick, liquidity) in self.liquidity_positions {
+                // Fund the provider with tokens if needed
+                let market_state = self.ctx.get_account::<Market>(&market_id).await?.unwrap();
+                
+                // Calculate required token amounts (simplified - assumes 1:1 price)
+                let amount_0 = liquidity / 2;
+                let amount_1 = liquidity / 2;
+                
+                // Mint tokens to provider
+                let mint_authority = &self.ctx.accounts.market_creator;
+                self.ctx.mint_to(&market_state.token_0, &provider.pubkey(), mint_authority, amount_0 as u64).await?;
+                self.ctx.mint_to(&market_state.token_1, &provider.pubkey(), mint_authority, amount_1 as u64).await?;
+                
+                // Open position
+                position_helper.open_position(
+                    &market_id,
+                    &provider,
+                    lower_tick,
+                    upper_tick,
+                    liquidity,
+                ).await?;
+            }
         }
 
         Ok(market_id)
@@ -189,13 +215,15 @@ impl SwapBuilder {
 
             // Execute swap based on type
             let result = if let Some(amount_in) = spec.amount_in {
-                swap_helper.swap(
-                    &spec.market,
-                    &spec.token_in,
-                    &spec.token_out,
-                    amount_in,
-                    &spec.trader,
-                ).await?
+                swap_helper
+                    .swap(
+                        &spec.market,
+                        &spec.token_in,
+                        &spec.token_out,
+                        amount_in,
+                        &spec.trader,
+                    )
+                    .await?
             } else if let Some(amount_out) = spec.amount_out {
                 let max_amount_in = if let Some(slippage) = spec.max_slippage {
                     // Calculate max amount in based on slippage
@@ -204,14 +232,16 @@ impl SwapBuilder {
                     u64::MAX // No slippage protection
                 };
 
-                swap_helper.swap_exact_out(
-                    &spec.market,
-                    &spec.token_in,
-                    &spec.token_out,
-                    amount_out,
-                    max_amount_in,
-                    &spec.trader,
-                ).await?
+                swap_helper
+                    .swap_exact_out(
+                        &spec.market,
+                        &spec.token_in,
+                        &spec.token_out,
+                        amount_out,
+                        max_amount_in,
+                        &spec.trader,
+                    )
+                    .await?
             } else {
                 return Err("Swap must specify either amount_in or amount_out".into());
             };
@@ -235,15 +265,22 @@ impl SwapBuilder {
     ) -> Self {
         // Front-run transaction
         let attacker_bytes = attacker.to_bytes();
-        let attacker_keypair = Keypair::from_bytes(&attacker_bytes).expect("Failed to clone keypair");
-        self = self.add_swap(market, attacker_keypair, token_in, token_out, front_run_amount);
-        
+        let attacker_keypair =
+            Keypair::from_bytes(&attacker_bytes).expect("Failed to clone keypair");
+        self = self.add_swap(
+            market,
+            attacker_keypair,
+            token_in,
+            token_out,
+            front_run_amount,
+        );
+
         // Victim transaction
         self = self.add_swap(market, victim, token_in, token_out, victim_amount);
-        
+
         // Back-run transaction (swap in opposite direction)
         self = self.add_swap(market, attacker, token_out, token_in, front_run_amount);
-        
+
         self
     }
 }
@@ -301,12 +338,12 @@ impl PositionBuilder {
     ) -> Self {
         let center_tick = 0;
         let half_positions = num_positions / 2;
-        
+
         for i in 0..num_positions {
             let offset = (i as i32 - half_positions as i32) * tick_spacing * 10;
             let lower_tick = center_tick + offset;
             let upper_tick = lower_tick + tick_spacing * 10;
-            
+
             self.positions.push(PositionSpec {
                 lower_tick,
                 upper_tick,
@@ -314,7 +351,7 @@ impl PositionBuilder {
                 auto_collect_fees: false,
             });
         }
-        
+
         self
     }
 
@@ -329,26 +366,28 @@ impl PositionBuilder {
         let market = self.market.ok_or("Market not set")?;
         let owner = self.owner.ok_or("Owner not set")?;
         let position_helper = self.ctx.position_helper();
-        
+
         let mut position_ids = Vec::new();
-        
+
         for spec in self.positions {
-            let position_id = position_helper.open_position(
-                &market,
-                &owner,
-                spec.lower_tick,
-                spec.upper_tick,
-                spec.liquidity,
-            ).await?;
-            
+            let position_id = position_helper
+                .open_position(
+                    &market,
+                    &owner,
+                    spec.lower_tick,
+                    spec.upper_tick,
+                    spec.liquidity,
+                )
+                .await?;
+
             position_ids.push(position_id);
-            
+
             // Auto-collect fees if specified
             if spec.auto_collect_fees {
                 position_helper.collect_fees(&position_id, &owner).await?;
             }
         }
-        
+
         Ok(position_ids)
     }
 }
@@ -373,15 +412,21 @@ enum ScenarioStep {
 impl ScenarioStep {
     async fn execute(&self, ctx: &TestContext) -> TestResult<()> {
         match self {
-            ScenarioStep::CreateMarket { token_0, token_1, initial_price } => {
+            ScenarioStep::CreateMarket {
+                token_0,
+                token_1,
+                initial_price,
+            } => {
                 let market_helper = ctx.market_helper();
-                
+
                 if let Some(price) = *initial_price {
-                    market_helper.create_raydium_market(token_0, token_1, price).await?;
+                    market_helper
+                        .create_raydium_market(token_0, token_1, price)
+                        .await?;
                 } else {
                     market_helper.create_simple_market(token_0, token_1).await?;
                 }
-                
+
                 Ok::<(), Box<dyn std::error::Error>>(())
             }
             ScenarioStep::Wait { duration } => {

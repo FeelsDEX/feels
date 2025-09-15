@@ -2,11 +2,11 @@
 
 use super::*;
 use anchor_lang::AccountDeserialize;
-use solana_sdk::transaction::Transaction;
-use solana_sdk::native_token::LAMPORTS_PER_SOL;
 use solana_program::program_pack::Pack;
+use solana_program_test::{BanksClient, ProgramTest};
+use solana_sdk::native_token::LAMPORTS_PER_SOL;
+use solana_sdk::transaction::Transaction;
 use spl_token::state::Account as TokenAccount;
-use solana_program_test::{ProgramTest, BanksClient};
 
 /// Enum that wraps different client implementations
 pub enum TestClient {
@@ -51,10 +51,7 @@ impl TestClient {
     }
 
     /// Get raw account data
-    pub async fn get_account_data(
-        &mut self,
-        address: &Pubkey,
-    ) -> TestResult<Option<Vec<u8>>> {
+    pub async fn get_account_data(&mut self, address: &Pubkey) -> TestResult<Option<Vec<u8>>> {
         match self {
             TestClient::InMemory(client) => client.get_account_data(address).await,
             TestClient::Devnet(client) => client.get_account_data(address).await,
@@ -62,16 +59,10 @@ impl TestClient {
     }
 
     /// Set account data directly (for testing)
-    pub fn set_account_data(
-        &mut self,
-        address: &Pubkey,
-        data: Vec<u8>,
-    ) -> TestResult<()> {
+    pub fn set_account_data(&mut self, address: &Pubkey, data: Vec<u8>) -> TestResult<()> {
         match self {
             TestClient::InMemory(client) => client.set_account_data(address, data),
-            TestClient::Devnet(_) => {
-                Err("Cannot set account data in devnet tests".into())
-            }
+            TestClient::Devnet(_) => Err("Cannot set account data in devnet tests".into()),
         }
     }
 
@@ -143,7 +134,7 @@ impl InMemoryClient {
                 "../../../target/deploy",
                 "../../../../target/deploy",
             ];
-            
+
             for path in possible_paths {
                 if std::path::Path::new(path).exists() {
                     std::env::set_var("BPF_OUT_DIR", path);
@@ -151,14 +142,12 @@ impl InMemoryClient {
                 }
             }
         }
-        
+
         // Load the BPF binary
         let mut program_test = ProgramTest::new(
-            "feels",
-            PROGRAM_ID,
-            None, // Load from BPF
+            "feels", PROGRAM_ID, None, // Load from BPF
         );
-        
+
         // Add Metaplex Token Metadata program
         // First, ensure the binary is downloaded
         let metaplex_path = "../../target/external-programs/mpl_token_metadata.so";
@@ -168,32 +157,38 @@ impl InMemoryClient {
             let output = std::process::Command::new("../../scripts/download-metaplex.sh")
                 .output()
                 .expect("Failed to run download-metaplex.sh");
-            
+
             if !output.status.success() {
-                println!("Warning: Could not download Metaplex binary: {}", 
-                    String::from_utf8_lossy(&output.stderr));
+                println!(
+                    "Warning: Could not download Metaplex binary: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 println!("Tests requiring Metaplex will fail");
             }
         }
-        
+
         // Add Metaplex if the binary exists
         if std::path::Path::new(metaplex_path).exists() {
             println!("Adding Metaplex Token Metadata program to test environment");
-            
+
             // Copy the binary to the expected location for ProgramTest
-            let bpf_out_dir = std::env::var("BPF_OUT_DIR").unwrap_or_else(|_| "../../target/deploy".to_string());
+            let bpf_out_dir =
+                std::env::var("BPF_OUT_DIR").unwrap_or_else(|_| "../../target/deploy".to_string());
             let target_path = format!("{}/mpl_token_metadata.so", bpf_out_dir);
-            
+
             // Create directory if it doesn't exist
             if let Some(parent) = std::path::Path::new(&target_path).parent() {
                 std::fs::create_dir_all(parent).ok();
             }
-            
+
             // Copy the binary
             if let Err(e) = std::fs::copy(metaplex_path, &target_path) {
-                println!("Warning: Could not copy Metaplex binary to {}: {}", target_path, e);
+                println!(
+                    "Warning: Could not copy Metaplex binary to {}: {}",
+                    target_path, e
+                );
             }
-            
+
             // Add the program - ProgramTest will look for it in BPF_OUT_DIR
             program_test.add_program(
                 "mpl_token_metadata",
@@ -204,14 +199,14 @@ impl InMemoryClient {
             println!("Warning: Metaplex binary not found at {}", metaplex_path);
             println!("Tests requiring token metadata will fail");
         }
-        
+
         // SPL Token and ATA programs are automatically included by solana-program-test
-        
+
         // Increase compute units for complex operations
         program_test.set_compute_max_units(2_000_000);
-        
+
         let (banks_client, payer, recent_blockhash) = program_test.start().await;
-        
+
         Ok(Self {
             banks_client,
             payer,
@@ -236,25 +231,25 @@ impl InMemoryClient {
     ) -> TestResult<()> {
         // Update blockhash
         self.last_blockhash = self.banks_client.get_latest_blockhash().await?;
-        
+
         // Include payer in signers if not already present
         let mut all_signers: Vec<&Keypair> = Vec::new();
         let payer_pubkey = self.payer.pubkey();
-        
+
         // Check if payer is already in signers
         let payer_in_signers = signers.iter().any(|s| s.pubkey() == payer_pubkey);
         if !payer_in_signers {
             all_signers.push(&self.payer);
         }
         all_signers.extend(signers);
-        
+
         let tx = Transaction::new_signed_with_payer(
             instructions,
             Some(&payer_pubkey),
             &all_signers,
             self.last_blockhash,
         );
-        
+
         self.banks_client.process_transaction(tx).await?;
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -269,7 +264,7 @@ impl InMemoryClient {
                 if data.len() < 8 {
                     return Ok(None);
                 }
-                
+
                 // Don't skip discriminator - AccountDeserialize expects the full data
                 let mut slice = &data[..];
                 let parsed = T::try_deserialize(&mut slice)?;
@@ -279,10 +274,7 @@ impl InMemoryClient {
         }
     }
 
-    pub async fn get_account_data(
-        &mut self,
-        address: &Pubkey,
-    ) -> TestResult<Option<Vec<u8>>> {
+    pub async fn get_account_data(&mut self, address: &Pubkey) -> TestResult<Option<Vec<u8>>> {
         match self.banks_client.get_account(*address).await? {
             Some(account) => Ok(Some(account.data)),
             None => Ok(None),
@@ -291,11 +283,7 @@ impl InMemoryClient {
 
     /// Set account data directly (for testing)
     /// Note: This is not feasible with BanksClient - account data must be set through transactions
-    pub fn set_account_data(
-        &mut self,
-        _address: &Pubkey,
-        _data: Vec<u8>,
-    ) -> TestResult<()> {
+    pub fn set_account_data(&mut self, _address: &Pubkey, _data: Vec<u8>) -> TestResult<()> {
         // BanksClient doesn't support direct account data setting
         // Account data can only be modified through program instructions
         Err("Direct account data setting not supported in BanksClient tests".into())
@@ -312,12 +300,8 @@ impl InMemoryClient {
     }
 
     pub async fn airdrop(&mut self, to: &Pubkey, lamports: u64) -> TestResult<()> {
-        let ix = solana_sdk::system_instruction::transfer(
-            &self.payer.pubkey(),
-            to,
-            lamports,
-        );
-        
+        let ix = solana_sdk::system_instruction::transfer(&self.payer.pubkey(), to, lamports);
+
         let payer_bytes = self.payer.to_bytes();
         let payer = Keypair::from_bytes(&payer_bytes)?;
         self.process_instruction(ix, &[&payer]).await
@@ -330,25 +314,25 @@ impl InMemoryClient {
 
     pub async fn advance_time(&mut self, seconds: i64) -> TestResult<()> {
         use solana_program_test::tokio::time::{sleep, Duration};
-        
+
         // Get current slot
         let current_slot = self.banks_client.get_root_slot().await?;
-        
+
         // Advance slots (assuming ~400ms per slot)
         let slots_to_advance = (seconds * 1000 / 400).max(1) as u64;
         let target_slot = current_slot + slots_to_advance;
-        
+
         // Note: warp_to_slot is not available in current BanksClient
         // For now, we'll just sleep to simulate time passing
-        
+
         // Also update clock sysvar
         let mut clock: solana_program::clock::Clock = self.banks_client.get_sysvar().await?;
         clock.unix_timestamp += seconds;
         clock.slot = target_slot;
-        
+
         // Small delay to ensure state updates
         sleep(Duration::from_millis(10)).await;
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 
@@ -371,32 +355,29 @@ pub struct DevnetClient {
 impl DevnetClient {
     pub async fn new(url: &str, payer_path: Option<&str>) -> TestResult<Self> {
         use solana_sdk::signature::read_keypair_file;
-        
+
         let rpc_client = solana_client::rpc_client::RpcClient::new_with_commitment(
             url.to_string(),
             CommitmentConfig::confirmed(),
         );
-        
+
         // Load payer keypair
         let payer = match payer_path {
             Some(path) => read_keypair_file(path)?,
             None => {
                 // Generate new payer and airdrop
                 let new_payer = Keypair::new();
-                
+
                 // Request airdrop
-                let sig = rpc_client.request_airdrop(
-                    &new_payer.pubkey(),
-                    10 * LAMPORTS_PER_SOL,
-                )?;
-                
+                let sig = rpc_client.request_airdrop(&new_payer.pubkey(), 10 * LAMPORTS_PER_SOL)?;
+
                 // Wait for confirmation
                 rpc_client.confirm_transaction(&sig)?;
-                
+
                 new_payer
             }
         };
-        
+
         Ok(Self {
             rpc_client,
             payer,
@@ -420,28 +401,28 @@ impl DevnetClient {
         signers: &[&Keypair],
     ) -> TestResult<()> {
         let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
-        
+
         // Include payer in signers if not already present
         let mut all_signers: Vec<&Keypair> = Vec::new();
         let payer_pubkey = self.payer.pubkey();
-        
+
         // Check if payer is already in signers
         let payer_in_signers = signers.iter().any(|s| s.pubkey() == payer_pubkey);
         if !payer_in_signers {
             all_signers.push(&self.payer);
         }
         all_signers.extend(signers);
-        
+
         let tx = Transaction::new_signed_with_payer(
             instructions,
             Some(&payer_pubkey),
             &all_signers,
             recent_blockhash,
         );
-        
+
         let sig = self.rpc_client.send_and_confirm_transaction(&tx)?;
         println!("Transaction confirmed: {}", sig);
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 
@@ -449,13 +430,17 @@ impl DevnetClient {
         &mut self,
         address: &Pubkey,
     ) -> TestResult<Option<T>> {
-        match self.rpc_client.get_account_with_commitment(address, self.commitment)?.value {
+        match self
+            .rpc_client
+            .get_account_with_commitment(address, self.commitment)?
+            .value
+        {
             Some(account) => {
                 let data = account.data;
                 if data.len() < 8 {
                     return Ok(None);
                 }
-                
+
                 // Don't skip discriminator - AccountDeserialize expects the full data
                 let mut slice = &data[..];
                 let parsed = T::try_deserialize(&mut slice)?;
@@ -465,11 +450,12 @@ impl DevnetClient {
         }
     }
 
-    pub async fn get_account_data(
-        &mut self,
-        address: &Pubkey,
-    ) -> TestResult<Option<Vec<u8>>> {
-        match self.rpc_client.get_account_with_commitment(address, self.commitment)?.value {
+    pub async fn get_account_data(&mut self, address: &Pubkey) -> TestResult<Option<Vec<u8>>> {
+        match self
+            .rpc_client
+            .get_account_with_commitment(address, self.commitment)?
+            .value
+        {
             Some(account) => Ok(Some(account.data)),
             None => Ok(None),
         }
@@ -499,10 +485,10 @@ impl DevnetClient {
         // For devnet, we just wait real time
         // This is a limitation of testing against real validators
         use tokio::time::{sleep, Duration};
-        
+
         println!("Waiting {} seconds for time-based test...", seconds);
         sleep(Duration::from_secs(seconds as u64)).await;
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 

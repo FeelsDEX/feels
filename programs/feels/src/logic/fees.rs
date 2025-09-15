@@ -3,7 +3,7 @@
 //! Note: Keep code concise — no legacy/back-compat paths.
 
 /// Minimum and maximum total fee bounds (in basis points)
-pub const MIN_TOTAL_FEE_BPS: u16 = 10;   // 0.10%
+pub const MIN_TOTAL_FEE_BPS: u16 = 10; // 0.10%
 pub const MAX_TOTAL_FEE_BPS: u16 = 2500; // 25.00%
 
 /// Impact floor in basis points applied to realized impact

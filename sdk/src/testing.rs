@@ -2,9 +2,9 @@
 //!
 //! Provides ergonomic helpers for testing swaps, positions, and market scenarios
 
+use crate::{SdkResult, SwapBuilder, SwapDirection, SwapParams};
 use anchor_lang::prelude::*;
 use solana_sdk::signature::Keypair;
-use crate::{SdkResult, SwapBuilder, SwapParams, SwapDirection};
 
 /// Test coverage utilities for comprehensive swap testing
 pub struct TestCoverage {
@@ -17,10 +17,10 @@ pub struct TestCoverage {
 impl TestCoverage {
     /// Create new test coverage helper
     pub fn new(
-        market: Pubkey, 
-        tick_spacing: u16, 
-        current_tick: i32, 
-        current_sqrt_price: u128
+        market: Pubkey,
+        tick_spacing: u16,
+        current_tick: i32,
+        current_sqrt_price: u128,
     ) -> Self {
         Self {
             market,
@@ -33,7 +33,7 @@ impl TestCoverage {
     /// Generate comprehensive tick array coverage for testing
     pub fn generate_comprehensive_arrays(&self) -> SdkResult<Vec<Pubkey>> {
         let mut arrays = Vec::new();
-        
+
         // Cover wide range around current tick
         let ranges = vec![
             // Close range (likely to be hit)
@@ -57,18 +57,18 @@ impl TestCoverage {
         // Remove duplicates
         arrays.sort();
         arrays.dedup();
-        
+
         Ok(arrays)
     }
 
     /// Generate test cases for different swap scenarios
     pub fn generate_swap_test_cases(&self) -> Vec<SwapTestCase> {
         let base_amounts = vec![
-            100,           // Tiny swap
-            1_000,         // Small swap
-            10_000,        // Medium swap
-            100_000,       // Large swap
-            1_000_000,     // Very large swap
+            100,       // Tiny swap
+            1_000,     // Small swap
+            10_000,    // Medium swap
+            100_000,   // Large swap
+            1_000_000, // Very large swap
         ];
 
         let mut test_cases = Vec::new();
@@ -79,18 +79,20 @@ impl TestCoverage {
                 // Test different tick crossing scenarios
                 for estimated_ticks in [1, 10, 50, 100, 500] {
                     test_cases.push(SwapTestCase {
-                        name: format!("{}_{}_{}ticks", 
-                                    amount, 
-                                    match direction {
-                                        SwapDirection::ZeroForOne => "0for1",
-                                        SwapDirection::OneForZero => "1for0",
-                                    },
-                                    estimated_ticks),
+                        name: format!(
+                            "{}_{}_{}ticks",
+                            amount,
+                            match direction {
+                                SwapDirection::ZeroForOne => "0for1",
+                                SwapDirection::OneForZero => "1for0",
+                            },
+                            estimated_ticks
+                        ),
                         amount_in: amount,
                         direction,
                         estimated_ticks,
                         minimum_amount_out: amount * 95 / 100, // 5% slippage
-                        max_ticks_crossed: 0, // No limit
+                        max_ticks_crossed: 0,                  // No limit
                     });
                 }
             }
@@ -110,15 +112,12 @@ impl TestCoverage {
             (-100, 100, "tight_in_range"),
             (-500, 500, "wide_in_range"),
             (-1000, 1000, "very_wide_in_range"),
-            
             // Out-of-range positions
             (1000, 2000, "above_range"),
             (-2000, -1000, "below_range"),
-            
             // Asymmetric positions
             (-200, 800, "asymmetric_up"),
             (-800, 200, "asymmetric_down"),
-            
             // Edge cases
             (0, 100, "current_to_up"),
             (-100, 0, "down_to_current"),
@@ -128,7 +127,7 @@ impl TestCoverage {
             // Align ticks to spacing
             let tick_lower = align_tick_to_spacing(base_tick + lower_offset, self.tick_spacing);
             let tick_upper = align_tick_to_spacing(base_tick + upper_offset, self.tick_spacing);
-            
+
             if tick_lower < tick_upper {
                 test_cases.push(PositionTestCase {
                     name: name.to_string(),
@@ -148,29 +147,39 @@ impl TestCoverage {
             StressTestScenario {
                 name: "rapid_small_swaps".to_string(),
                 description: "Many small swaps in rapid succession".to_string(),
-                swaps: (0..100).map(|i| SwapTestCase {
-                    name: format!("rapid_swap_{}", i),
-                    amount_in: 100,
-                    direction: if i % 2 == 0 { SwapDirection::ZeroForOne } else { SwapDirection::OneForZero },
-                    estimated_ticks: 1,
-                    minimum_amount_out: 95,
-                    max_ticks_crossed: 10,
-                }).collect(),
+                swaps: (0..100)
+                    .map(|i| SwapTestCase {
+                        name: format!("rapid_swap_{}", i),
+                        amount_in: 100,
+                        direction: if i % 2 == 0 {
+                            SwapDirection::ZeroForOne
+                        } else {
+                            SwapDirection::OneForZero
+                        },
+                        estimated_ticks: 1,
+                        minimum_amount_out: 95,
+                        max_ticks_crossed: 10,
+                    })
+                    .collect(),
             },
-            
             StressTestScenario {
                 name: "alternating_large_swaps".to_string(),
                 description: "Large swaps alternating direction".to_string(),
-                swaps: (0..20).map(|i| SwapTestCase {
-                    name: format!("large_swap_{}", i),
-                    amount_in: 1_000_000,
-                    direction: if i % 2 == 0 { SwapDirection::ZeroForOne } else { SwapDirection::OneForZero },
-                    estimated_ticks: 100,
-                    minimum_amount_out: 950_000,
-                    max_ticks_crossed: 0,
-                }).collect(),
+                swaps: (0..20)
+                    .map(|i| SwapTestCase {
+                        name: format!("large_swap_{}", i),
+                        amount_in: 1_000_000,
+                        direction: if i % 2 == 0 {
+                            SwapDirection::ZeroForOne
+                        } else {
+                            SwapDirection::OneForZero
+                        },
+                        estimated_ticks: 100,
+                        minimum_amount_out: 950_000,
+                        max_ticks_crossed: 0,
+                    })
+                    .collect(),
             },
-            
             StressTestScenario {
                 name: "tick_boundary_crossings".to_string(),
                 description: "Swaps designed to cross many tick boundaries".to_string(),
@@ -211,7 +220,7 @@ pub struct SwapTestCase {
 impl SwapTestCase {
     /// Convert to SwapBuilder for execution
     pub fn to_swap_builder(
-        &self, 
+        &self,
         base_params: SwapParams,
         current_tick: i32,
         tick_spacing: u16,
@@ -299,7 +308,7 @@ impl TestAccountBuilder {
             let bytes = seed.as_bytes();
             let len = std::cmp::min(bytes.len(), 32);
             seed_bytes[..len].copy_from_slice(&bytes[..len]);
-            
+
             let mint = Pubkey::new_from_array(seed_bytes);
             mints.push(mint);
         }
@@ -331,27 +340,27 @@ pub mod assertions {
     /// Assert that a tick is properly aligned to spacing
     pub fn assert_tick_aligned(tick: i32, tick_spacing: u16) {
         assert_eq!(
-            tick % tick_spacing as i32, 
-            0, 
-            "Tick {} is not aligned to spacing {}", 
-            tick, 
+            tick % tick_spacing as i32,
+            0,
+            "Tick {} is not aligned to spacing {}",
+            tick,
             tick_spacing
         );
     }
 
     /// Assert that tick arrays cover a given range
     pub fn assert_arrays_cover_range(
-        arrays: &[Pubkey], 
-        tick_lower: i32, 
-        tick_upper: i32, 
-        _tick_spacing: u16
+        arrays: &[Pubkey],
+        tick_lower: i32,
+        tick_upper: i32,
+        _tick_spacing: u16,
     ) {
         // This is a simplified check - in practice you'd verify the actual array coverage
         assert!(!arrays.is_empty(), "No tick arrays provided");
         assert!(
-            tick_upper > tick_lower, 
-            "Invalid tick range: {} to {}", 
-            tick_lower, 
+            tick_upper > tick_lower,
+            "Invalid tick range: {} to {}",
+            tick_lower,
             tick_upper
         );
     }
@@ -360,7 +369,7 @@ pub mod assertions {
     pub fn assert_valid_swap_test_case(test_case: &SwapTestCase) {
         assert!(test_case.amount_in > 0, "Amount in must be positive");
         assert!(
-            test_case.minimum_amount_out <= test_case.amount_in, 
+            test_case.minimum_amount_out <= test_case.amount_in,
             "Minimum out cannot exceed amount in"
         );
         assert!(!test_case.name.is_empty(), "Test case must have a name");
@@ -373,12 +382,7 @@ mod tests {
 
     #[test]
     fn test_coverage_generation() {
-        let coverage = TestCoverage::new(
-            Pubkey::new_unique(),
-            64,
-            -100,
-            1u128 << 64,
-        );
+        let coverage = TestCoverage::new(Pubkey::new_unique(), 64, -100, 1u128 << 64);
 
         let arrays = coverage.generate_comprehensive_arrays().unwrap();
         assert!(!arrays.is_empty());
@@ -396,13 +400,13 @@ mod tests {
     #[test]
     fn test_account_builder() {
         let mut builder = TestAccountBuilder::new();
-        
+
         let keypairs = builder.create_keypairs(5);
         assert_eq!(keypairs.len(), 5);
-        
+
         let mints = builder.create_test_mints(3);
         assert_eq!(mints.len(), 3);
-        
+
         // Verify deterministic mint generation
         let mut builder2 = TestAccountBuilder::new();
         let mints2 = builder2.create_test_mints(3);

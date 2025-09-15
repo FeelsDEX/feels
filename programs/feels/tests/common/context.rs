@@ -1,13 +1,13 @@
 //! Test context that provides a unified interface for testing
 
 use super::*;
-use crate::common::client::{InMemoryClient, DevnetClient};
+use crate::common::client::{DevnetClient, InMemoryClient};
 use crate::common::helpers::TestMarketSetup;
+use anchor_lang::prelude::*;
+use solana_program::program_pack::Pack;
+use solana_sdk::signature::{Keypair, Signer};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use solana_program::program_pack::Pack;
-use anchor_lang::prelude::*;
-use solana_sdk::signature::Signer;
 
 /// Pre-configured test accounts
 pub struct TestAccounts {
@@ -46,11 +46,9 @@ impl TestContext {
     pub async fn new(environment: TestEnvironment) -> TestResult<Self> {
         // Initialize tracing to suppress OpenTelemetry warnings
         crate::common::tracing::init_test_tracing();
-        
+
         let client = match &environment {
-            TestEnvironment::InMemory => {
-                TestClient::InMemory(InMemoryClient::new().await?)
-            }
+            TestEnvironment::InMemory => TestClient::InMemory(InMemoryClient::new().await?),
             TestEnvironment::Devnet { url, payer_path } => {
                 TestClient::Devnet(DevnetClient::new(url, payer_path.as_deref()).await?)
             }
@@ -62,9 +60,22 @@ impl TestContext {
         // Create test token mints
         let jitosol_authority = Keypair::new();
         let feelssol_authority = Keypair::new();
-        let jitosol_mint = constants::JITOSOL_MINT;
-        let feelssol_mint = Keypair::new(); // Will be created as a mint
-        
+
+        // For in-memory tests, create a mock JitoSOL mint
+        let (jitosol_mint, jitosol_mint_keypair) = match &environment {
+            TestEnvironment::InMemory => {
+                let mint = Keypair::new();
+                (mint.pubkey(), Some(mint))
+            }
+            _ => {
+                // For devnet/localnet, use the real JitoSOL mint
+                (constants::JITOSOL_MINT, None)
+            }
+        };
+
+        // Use a deterministic FeelsSOL mint for consistent testing
+        let feelssol_mint = Keypair::new();
+
         let mut ctx = Self {
             client: Arc::new(Mutex::new(client)),
             accounts: TestAccounts::new(),
@@ -77,16 +88,27 @@ impl TestContext {
 
         // Fund test accounts
         ctx.setup_test_accounts().await?;
-        
+
         // Create FeelsSOL mint
         ctx.create_feelssol_mint(&feelssol_mint).await?;
+
+        // Create mock JitoSOL mint for in-memory tests
+        if let Some(jitosol_keypair) = jitosol_mint_keypair {
+            ctx.create_mock_jitosol_mint(&jitosol_keypair).await?;
+        }
 
         // Initialize protocol with 0 mint fee for testing
         if let Err(e) = ctx.initialize_protocol().await {
             println!("Failed to initialize protocol: {:?}", e);
             return Err(e);
         }
-        
+
+        // Initialize FeelsHub for enter/exit FeelsSOL
+        if let Err(e) = ctx.initialize_feels_hub().await {
+            println!("Failed to initialize FeelsHub: {:?}", e);
+            // This is not critical for all tests, so we'll just log it
+        }
+
         Ok(ctx)
     }
 
@@ -101,16 +123,65 @@ impl TestContext {
         ];
 
         for account in accounts_to_fund {
-            self.airdrop(&account.pubkey(), constants::DEFAULT_AIRDROP).await?;
+            self.airdrop(&account.pubkey(), constants::DEFAULT_AIRDROP)
+                .await?;
         }
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
-    
+
+    /// Initialize FeelsHub for enter/exit FeelsSOL operations
+    pub async fn initialize_feels_hub(&self) -> TestResult<()> {
+        use feels::constants::FEELS_HUB_SEED;
+
+        let payer_pubkey = self.payer().await;
+
+        // Derive the hub PDA
+        let (hub_pda, _) = Pubkey::find_program_address(
+            &[FEELS_HUB_SEED, self.feelssol_mint.as_ref()],
+            &PROGRAM_ID,
+        );
+
+        // Check if already initialized
+        match self.get_account_raw(&hub_pda).await {
+            Ok(_) => {
+                println!("FeelsHub already initialized");
+                return Ok(());
+            }
+            Err(_) => {
+                println!("Initializing FeelsHub...");
+            }
+        }
+
+        // Use the SDK to build the instruction
+        let ix = sdk::initialize_hub(payer_pubkey, self.feelssol_mint, self.jitosol_mint);
+
+        // Get the payer keypair
+        let payer = match &*self.client.lock().await {
+            TestClient::InMemory(client) => client.payer.insecure_clone(),
+            TestClient::Devnet(client) => client.payer.insecure_clone(),
+        };
+
+        // Process the instruction
+        self.process_instruction(ix, &[&payer]).await?;
+
+        println!("FeelsHub initialized successfully");
+        Ok(())
+    }
+
+
     /// Create FeelsSOL mint
     async fn create_feelssol_mint(&self, feelssol_mint: &Keypair) -> TestResult<()> {
-        let payer_pubkey = self.payer().await;
+        use feels::constants::MINT_AUTHORITY_SEED;
         
+        let payer_pubkey = self.payer().await;
+
+        // Derive the mint authority PDA
+        let (mint_authority, _) = Pubkey::find_program_address(
+            &[MINT_AUTHORITY_SEED, feelssol_mint.pubkey().as_ref()],
+            &PROGRAM_ID,
+        );
+
         // Calculate rent for mint account
         let rent = solana_program::sysvar::rent::Rent::default();
         let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
@@ -126,7 +197,7 @@ impl TestContext {
             spl_token::instruction::initialize_mint(
                 &spl_token::id(),
                 &feelssol_mint.pubkey(),
-                &self.feelssol_authority.pubkey(),
+                &mint_authority, // Use the PDA as mint authority
                 None,
                 constants::FEELSSOL_DECIMALS,
             )?,
@@ -134,19 +205,53 @@ impl TestContext {
 
         // Get the payer keypair from the client
         let payer = match &*self.client.lock().await {
-            TestClient::InMemory(client) => {
-                client.payer.insecure_clone()
-            }
-            TestClient::Devnet(client) => {
-                client.payer.insecure_clone()
-            }
+            TestClient::InMemory(client) => client.payer.insecure_clone(),
+            TestClient::Devnet(client) => client.payer.insecure_clone(),
         };
-        
-        self.process_transaction(&instructions, &[&payer, feelssol_mint]).await?;
-        
+
+        self.process_transaction(&instructions, &[&payer, feelssol_mint])
+            .await?;
+
         Ok(())
     }
-    
+
+    /// Create mock JitoSOL mint for testing
+    async fn create_mock_jitosol_mint(&self, jitosol_mint: &Keypair) -> TestResult<()> {
+        let payer_pubkey = self.payer().await;
+
+        // Calculate rent for mint account
+        let rent = solana_program::sysvar::rent::Rent::default();
+        let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
+
+        let instructions = vec![
+            solana_sdk::system_instruction::create_account(
+                &payer_pubkey,
+                &jitosol_mint.pubkey(),
+                mint_rent,
+                spl_token::state::Mint::LEN as u64,
+                &spl_token::id(),
+            ),
+            spl_token::instruction::initialize_mint(
+                &spl_token::id(),
+                &jitosol_mint.pubkey(),
+                &self.jitosol_authority.pubkey(),
+                None,
+                9, // JitoSOL has 9 decimals
+            )?,
+        ];
+
+        // Get the payer keypair from the client
+        let payer = match &*self.client.lock().await {
+            TestClient::InMemory(client) => client.payer.insecure_clone(),
+            TestClient::Devnet(client) => client.payer.insecure_clone(),
+        };
+
+        self.process_transaction(&instructions, &[&payer, jitosol_mint])
+            .await?;
+
+        Ok(())
+    }
+
     /// Create a mock protocol token for testing
     /// This creates a simple token mint without using mint_token instruction
     /// since Metaplex is not available in test environment
@@ -155,33 +260,34 @@ impl TestContext {
         token_name: &str,
         decimals: u8,
         _initial_supply: u64, // No longer used - all tokens go to buffer
-    ) -> TestResult<Keypair> {        
+    ) -> TestResult<Keypair> {
         // Create a fresh creator account
         let creator = self.accounts.market_creator.insecure_clone();
-        
+
         // Create the token mint
         let token_mint = self.create_mint(&creator.pubkey(), decimals).await?;
-        println!("Created mock protocol token {} at {}", token_name, token_mint.pubkey());
-        
+        println!(
+            "Created mock protocol token {} at {}",
+            token_name,
+            token_mint.pubkey()
+        );
+
         // For in-memory tests, we'll skip creating the protocol token registry
         // since we can't write account data directly with BanksClient
         // The integration test will need to use a different approach or accept that
         // protocol tokens can't be easily mocked in this environment
-        
+
         Ok(token_mint)
     }
 
     /// Initialize protocol configuration
     pub async fn initialize_protocol(&self) -> TestResult<()> {
         use feels_sdk as sdk;
-        use feels::instructions::InitializeProtocolParams;
-        
+        use sdk::instructions::InitializeProtocolParams;
+
         // Try to get protocol config - if it exists, skip initialization
-        let (protocol_config, _) = Pubkey::find_program_address(
-            &[b"protocol_config"],
-            &PROGRAM_ID,
-        );
-        
+        let (protocol_config, _) = Pubkey::find_program_address(&[b"protocol_config"], &PROGRAM_ID);
+
         // Check if already initialized
         match self.get_account_raw(&protocol_config).await {
             Ok(_) => {
@@ -192,16 +298,19 @@ impl TestContext {
                 println!("Protocol not initialized, proceeding with initialization");
             }
         }
-        
+
         println!("Initializing protocol...");
-        
+
         // Get the payer to be the authority
         let payer_pubkey = self.payer().await;
-        
+
         // Create initialization parameters with 0 mint fee for testing and sane oracle/safety defaults
         let params = InitializeProtocolParams {
-            mint_fee: 0, // No fee for testing
+            mint_fee: 0,            // No fee for testing
             treasury: payer_pubkey, // Use payer as treasury for simplicity
+            default_protocol_fee_rate: Some(500), // 5% for testing
+            default_creator_fee_rate: Some(250),  // 2.5% for testing
+            max_protocol_fee_rate: Some(1500),    // 15% max for testing
             dex_twap_updater: payer_pubkey,
             depeg_threshold_bps: 500, // 5%
             depeg_required_obs: 2,
@@ -210,23 +319,16 @@ impl TestContext {
             dex_twap_stale_age_secs: 1800,
             dex_whitelist: vec![],
         };
-        
+
         // Build the instruction
-        let ix = sdk::initialize_protocol(
-            payer_pubkey,
-            params,
-        )?;
-        
+        let ix = sdk::initialize_protocol(payer_pubkey, params)?;
+
         // Get the payer keypair based on environment
         let payer = match &*self.client.lock().await {
-            TestClient::InMemory(client) => {
-                client.payer.insecure_clone()
-            }
-            TestClient::Devnet(client) => {
-                client.payer.insecure_clone()
-            }
+            TestClient::InMemory(client) => client.payer.insecure_clone(),
+            TestClient::Devnet(client) => client.payer.insecure_clone(),
         };
-        
+
         // Process the instruction
         match self.process_instruction(ix, &[&payer]).await {
             Ok(_) => {
@@ -239,7 +341,7 @@ impl TestContext {
             }
         }
     }
-    
+
     /// Get the payer pubkey
     pub async fn payer(&self) -> Pubkey {
         self.client.lock().await.payer()
@@ -251,7 +353,11 @@ impl TestContext {
         instruction: Instruction,
         signers: &[&Keypair],
     ) -> TestResult<()> {
-        self.client.lock().await.process_instruction(instruction, signers).await
+        self.client
+            .lock()
+            .await
+            .process_instruction(instruction, signers)
+            .await
     }
 
     /// Process multiple instructions
@@ -260,7 +366,11 @@ impl TestContext {
         instructions: &[Instruction],
         signers: &[&Keypair],
     ) -> TestResult<()> {
-        self.client.lock().await.process_transaction(instructions, signers).await
+        self.client
+            .lock()
+            .await
+            .process_transaction(instructions, signers)
+            .await
     }
 
     /// Get account data
@@ -295,11 +405,10 @@ impl TestContext {
     pub async fn create_mint(&self, authority: &Pubkey, decimals: u8) -> TestResult<Keypair> {
         let mint = Keypair::new();
         let payer_pubkey = self.payer().await;
-        
+
         // Calculate rent for mint account
         let rent = solana_program::sysvar::rent::Rent::default();
         let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
-
 
         let instructions = vec![
             solana_sdk::system_instruction::create_account(
@@ -329,16 +438,17 @@ impl TestContext {
                 self.accounts.market_creator.insecure_clone()
             }
         };
-        
-        self.process_transaction(&instructions, &[&payer, &mint]).await?;
-        
+
+        self.process_transaction(&instructions, &[&payer, &mint])
+            .await?;
+
         Ok(mint)
     }
 
     /// Create associated token account
     pub async fn create_ata(&self, owner: &Pubkey, mint: &Pubkey) -> TestResult<Pubkey> {
         let ata = spl_associated_token_account::get_associated_token_address(owner, mint);
-        
+
         // Check if already exists by trying to get the raw account data
         if let Some(data) = self.client.lock().await.get_account_data(&ata).await? {
             if data.len() == TokenAccount::LEN {
@@ -356,16 +466,12 @@ impl TestContext {
 
         // Get the payer keypair from the client
         let payer = match &*self.client.lock().await {
-            TestClient::InMemory(client) => {
-                client.payer.insecure_clone()
-            }
-            TestClient::Devnet(client) => {
-                client.payer.insecure_clone()
-            }
+            TestClient::InMemory(client) => client.payer.insecure_clone(),
+            TestClient::Devnet(client) => client.payer.insecure_clone(),
         };
-        
+
         self.process_instruction(ix, &[&payer]).await?;
-        
+
         Ok(ata)
     }
 
@@ -390,7 +496,10 @@ impl TestContext {
     }
 
     /// Get raw account data
-    pub async fn get_account_raw(&self, address: &Pubkey) -> TestResult<solana_sdk::account::Account> {
+    pub async fn get_account_raw(
+        &self,
+        address: &Pubkey,
+    ) -> TestResult<solana_sdk::account::Account> {
         let data = self.client.lock().await.get_account_data(address).await?;
         match data {
             Some(data) => Ok(solana_sdk::account::Account {
@@ -406,14 +515,24 @@ impl TestContext {
 
     /// Get token account
     pub async fn get_token_account(&self, address: &Pubkey) -> TestResult<TokenAccount> {
-        let account_data = self.client.lock().await.get_account_data(address).await?
+        let account_data = self
+            .client
+            .lock()
+            .await
+            .get_account_data(address)
+            .await?
             .ok_or("Token account not found")?;
         TokenAccount::unpack(&account_data).map_err(|e| e.into())
     }
 
     /// Get mint account
     pub async fn get_mint(&self, address: &Pubkey) -> TestResult<spl_token::state::Mint> {
-        let account_data = self.client.lock().await.get_account_data(address).await?
+        let account_data = self
+            .client
+            .lock()
+            .await
+            .get_account_data(address)
+            .await?
             .ok_or("Mint not found")?;
         spl_token::state::Mint::unpack(&account_data).map_err(|e| e.into())
     }
@@ -422,12 +541,14 @@ impl TestContext {
     pub fn market_builder(&self) -> MarketBuilder {
         MarketBuilder::new(self.clone())
     }
-    
+
     /// Create a test market with FeelsSOL and a custom token (convenience method)
     pub async fn create_test_market(&self, token_decimals: u8) -> TestResult<TestMarketSetup> {
-        self.market_helper().create_test_market_with_feelssol(token_decimals).await
+        self.market_helper()
+            .create_test_market_with_feelssol(token_decimals)
+            .await
     }
-    
+
     /// Create a test market with initial liquidity (convenience method)
     pub async fn create_test_market_with_liquidity(
         &self,
@@ -437,13 +558,15 @@ impl TestContext {
         upper_tick: i32,
         liquidity_amount: u128,
     ) -> TestResult<TestMarketSetup> {
-        self.market_helper().create_test_market_with_liquidity(
-            token_decimals,
-            liquidity_provider,
-            lower_tick,
-            upper_tick,
-            liquidity_amount,
-        ).await
+        self.market_helper()
+            .create_test_market_with_liquidity(
+                token_decimals,
+                liquidity_provider,
+                lower_tick,
+                upper_tick,
+                liquidity_amount,
+            )
+            .await
     }
 
     // Instruction wrapper methods
@@ -490,7 +613,7 @@ impl TestContext {
             self.jitosol_mint,
             amount,
         );
-        
+
         self.process_instruction(ix, &[user]).await
     }
 
@@ -509,7 +632,7 @@ impl TestContext {
             self.jitosol_mint,
             amount,
         );
-        
+
         self.process_instruction(ix, &[user]).await
     }
 
@@ -520,16 +643,12 @@ impl TestContext {
     ) -> TestResult<Pubkey> {
         // Return a deterministic PDA for the tick array
         let (tick_array, _) = Pubkey::find_program_address(
-            &[
-                b"tick_array",
-                market.as_ref(),
-                &tick_index.to_le_bytes(),
-            ],
+            &[b"tick_array", market.as_ref(), &tick_index.to_le_bytes()],
             &PROGRAM_ID,
         );
         Ok(tick_array)
     }
-    
+
     /// Initialize a market
     pub async fn initialize_market(
         &self,
@@ -544,7 +663,9 @@ impl TestContext {
         // Get creator's token accounts if doing initial buy
         let (creator_feelssol, creator_token_out) = if initial_buy_feelssol_amount > 0 {
             let is_token_0_feelssol = token_0 == &self.feelssol_mint;
-            let feelssol_account = self.create_ata(&creator.pubkey(), &self.feelssol_mint).await?;
+            let feelssol_account = self
+                .create_ata(&creator.pubkey(), &self.feelssol_mint)
+                .await?;
             let token_out_account = if is_token_0_feelssol {
                 self.create_ata(&creator.pubkey(), token_1).await?
             } else {
@@ -554,7 +675,7 @@ impl TestContext {
         } else {
             (None, None)
         };
-        
+
         let ix = sdk::initialize_market(
             creator.pubkey(),
             *token_0,
@@ -567,9 +688,9 @@ impl TestContext {
             creator_feelssol,
             creator_token_out,
         )?;
-        
+
         self.process_instruction(ix, &[creator]).await?;
-        
+
         let (market, _) = sdk::find_market_address(token_0, token_1);
         Ok(market)
     }
@@ -585,7 +706,7 @@ impl Clone for TestContext {
             feelssol_mint: self.feelssol_mint,
             jitosol_mint: self.jitosol_mint,
             feelssol_authority: Keypair::new(), // Create new keypair
-            jitosol_authority: Keypair::new(), // Create new keypair
+            jitosol_authority: Keypair::new(),  // Create new keypair
         }
     }
 }

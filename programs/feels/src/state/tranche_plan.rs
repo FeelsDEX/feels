@@ -27,4 +27,3 @@ impl TranchePlan {
         n * (4 + 4 + 16) // entries
     }
 }
-

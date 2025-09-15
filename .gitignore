@@ -102,6 +102,9 @@ app/
 scripts/
 ext/
 
+# Generated SDK files
+generated-sdk/
+
 # Claude AI documentation
 CLAUDE.md
 

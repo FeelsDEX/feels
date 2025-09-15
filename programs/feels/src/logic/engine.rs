@@ -1,5 +1,5 @@
 //! CLMM Engine - Core swap stepping logic
-//! 
+//!
 //! Provides a reusable stepper function that handles
 //! the core math for concentrated liquidity swaps.
 //!
@@ -12,17 +12,16 @@
 //!
 //! This ensures the protocol is never disadvantaged by rounding errors.
 
-use anchor_lang::prelude::*;
-use anchor_lang::accounts::account_loader::AccountLoader;
-use orca_whirlpools_core::{
-    U128,
-    try_get_next_sqrt_price_from_a, try_get_next_sqrt_price_from_b,
-    try_get_amount_delta_a, try_get_amount_delta_b,
-};
 use crate::{
     error::FeelsError,
     state::{TickArray, TICK_ARRAY_SIZE},
     utils::{get_tick_array_start_index, sqrt_price_from_tick},
+};
+use anchor_lang::accounts::account_loader::AccountLoader;
+use anchor_lang::prelude::*;
+use orca_whirlpools_core::{
+    try_get_amount_delta_a, try_get_amount_delta_b, try_get_next_sqrt_price_from_a,
+    try_get_next_sqrt_price_from_b, U128,
 };
 
 /// Simplified outcome of a swap step for cleaner outer logic
@@ -54,7 +53,6 @@ pub struct StepResult {
     /// Simplified outcome for outer logic
     pub outcome: StepOutcome,
 }
-
 
 /// Direction of the swap
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,7 +106,7 @@ impl SwapContext {
             tick_spacing,
         }
     }
-    
+
     /// Update context after a step
     pub fn update_after_step(&mut self, new_sqrt_price: u128, new_liquidity: u128) {
         self.sqrt_price = new_sqrt_price;
@@ -117,11 +115,11 @@ impl SwapContext {
 }
 
 /// Execute a single swap step within the current tick range
-/// 
+///
 /// Given the current state and a target, this function computes how much
 /// can be swapped before hitting the target price or exhausting input.
 /// The function properly handles bounds and returns the reason for termination.
-/// 
+///
 /// SECURITY: This function is NOT vulnerable to flash loan attacks because:
 /// 1. All calculations use only market.sqrt_price and market.liquidity from on-chain state
 /// 2. Vault balances are NEVER read or used in price calculations
@@ -143,58 +141,68 @@ pub fn compute_swap_step(
     require!(current_sqrt_price > 0, FeelsError::InvalidPrice);
     require!(target_sqrt_price > 0, FeelsError::InvalidPrice);
     require!(liquidity > 0, FeelsError::InsufficientLiquidity);
-    
+
     // Check direction consistency
     match direction {
         SwapDirection::ZeroForOne => {
-            require!(target_sqrt_price < current_sqrt_price, FeelsError::InvalidPrice);
+            require!(
+                target_sqrt_price < current_sqrt_price,
+                FeelsError::InvalidPrice
+            );
         }
         SwapDirection::OneForZero => {
-            require!(target_sqrt_price > current_sqrt_price, FeelsError::InvalidPrice);
+            require!(
+                target_sqrt_price > current_sqrt_price,
+                FeelsError::InvalidPrice
+            );
         }
     }
-    
+
     // We'll calculate fees after determining how much we'll actually use
     // This prevents overcharging when we can reach the target with less than amount_remaining
-    
+
     // Calculate the maximum amount we can swap to reach target price
     let (_max_amount_in, _amount_out_at_target) = match direction {
         SwapDirection::ZeroForOne => {
             // Amount of token0 needed to reach target price
             let max_in = try_get_amount_delta_a(
-                U128::from(target_sqrt_price), 
-                U128::from(current_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(target_sqrt_price),
+                U128::from(current_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             // Amount of token1 we'd get at target
             let out = try_get_amount_delta_b(
-                U128::from(target_sqrt_price), 
-                U128::from(current_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(target_sqrt_price),
+                U128::from(current_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             (max_in, out)
         }
         SwapDirection::OneForZero => {
             // Amount of token1 needed to reach target price
             let max_in = try_get_amount_delta_b(
-                U128::from(current_sqrt_price), 
-                U128::from(target_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(current_sqrt_price),
+                U128::from(target_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             // Amount of token0 we'd get at target
             let out = try_get_amount_delta_a(
-                U128::from(current_sqrt_price), 
-                U128::from(target_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(current_sqrt_price),
+                U128::from(target_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             (max_in, out)
         }
     };
-    
+
     // Check if we're at a bound
     let at_bound = match direction {
         SwapDirection::ZeroForOne => target_tick.is_some_and(|t| t <= global_lower_tick),
@@ -223,39 +231,43 @@ pub fn compute_swap_step(
     let (max_amount_in, amount_out_at_target) = match direction {
         SwapDirection::ZeroForOne => {
             let max_in = try_get_amount_delta_a(
-                U128::from(clamped_target_sqrt_price), 
-                U128::from(current_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(clamped_target_sqrt_price),
+                U128::from(current_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             let out = try_get_amount_delta_b(
-                U128::from(clamped_target_sqrt_price), 
-                U128::from(current_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(clamped_target_sqrt_price),
+                U128::from(current_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             (max_in, out)
         }
         SwapDirection::OneForZero => {
             let max_in = try_get_amount_delta_b(
-                U128::from(current_sqrt_price), 
-                U128::from(clamped_target_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(current_sqrt_price),
+                U128::from(clamped_target_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             let out = try_get_amount_delta_a(
-                U128::from(current_sqrt_price), 
-                U128::from(clamped_target_sqrt_price), 
-                U128::from(liquidity), 
-                false
-            ).map_err(|_| FeelsError::MathOverflow)?;
+                U128::from(current_sqrt_price),
+                U128::from(clamped_target_sqrt_price),
+                U128::from(liquidity),
+                false,
+            )
+            .map_err(|_| FeelsError::MathOverflow)?;
             (max_in, out)
         }
     };
 
     // First check if we have enough to reach the target (without fees)
     // Then calculate the precise fee based on what we'll actually use
-    let (gross_amount_in, fee_amount, new_sqrt_price, amount_out, outcome, crossed_tick) = 
+    let (gross_amount_in, fee_amount, new_sqrt_price, amount_out, outcome, crossed_tick) =
         if amount_remaining > max_amount_in {
             // We have more than enough to reach target
             // Calculate gross amount needed including fee: gross = net / (1 - fee_rate)
@@ -276,16 +288,16 @@ pub fn compute_swap_step(
             } else {
                 max_amount_in
             };
-            
+
             let fee_on_used = gross_in.saturating_sub(max_amount_in);
-            
+
             (
                 gross_in,
                 fee_on_used,
-                clamped_target_sqrt_price, 
-                amount_out_at_target, 
+                clamped_target_sqrt_price,
+                amount_out_at_target,
                 StepOutcome::ReachedTarget,
-                if at_bound { None } else { target_tick }
+                if at_bound { None } else { target_tick },
             )
         } else {
             // Limited by input amount - use all of it
@@ -293,59 +305,60 @@ pub fn compute_swap_step(
             // This ensures minimum fee of 1 for any non-zero swap with non-zero fee rate
             let fee_on_all = crate::utils::calculate_fee_ceil(amount_remaining, fee_pct)?;
             let net_amount = amount_remaining.saturating_sub(fee_on_all);
-            
+
             // Calculate how far we can go with the net amount
             let new_price = match direction {
-                SwapDirection::ZeroForOne => {
-                    try_get_next_sqrt_price_from_a(
-                        U128::from(current_sqrt_price), 
-                        U128::from(liquidity), 
-                        net_amount, 
-                        true
-                    )
-                    .map_err(|_| FeelsError::MathOverflow)?
-                }
-                SwapDirection::OneForZero => {
-                    try_get_next_sqrt_price_from_b(
-                        U128::from(current_sqrt_price), 
-                        U128::from(liquidity), 
-                        net_amount, 
-                        true
-                    )
-                    .map_err(|_| FeelsError::MathOverflow)?
-                }
+                SwapDirection::ZeroForOne => try_get_next_sqrt_price_from_a(
+                    U128::from(current_sqrt_price),
+                    U128::from(liquidity),
+                    net_amount,
+                    true,
+                )
+                .map_err(|_| FeelsError::MathOverflow)?,
+                SwapDirection::OneForZero => try_get_next_sqrt_price_from_b(
+                    U128::from(current_sqrt_price),
+                    U128::from(liquidity),
+                    net_amount,
+                    true,
+                )
+                .map_err(|_| FeelsError::MathOverflow)?,
             };
-            
+
             // Calculate output for partial swap
             let out = match direction {
-                SwapDirection::ZeroForOne => {
-                    try_get_amount_delta_b(
-                        U128::from(new_price), 
-                        U128::from(current_sqrt_price), 
-                        U128::from(liquidity), 
-                        false
-                    ).map_err(|_| FeelsError::MathOverflow)?
-                }
-                SwapDirection::OneForZero => {
-                    try_get_amount_delta_a(
-                        U128::from(current_sqrt_price), 
-                        U128::from(new_price), 
-                        U128::from(liquidity), 
-                        false
-                    ).map_err(|_| FeelsError::MathOverflow)?
-                }
+                SwapDirection::ZeroForOne => try_get_amount_delta_b(
+                    U128::from(new_price),
+                    U128::from(current_sqrt_price),
+                    U128::from(liquidity),
+                    false,
+                )
+                .map_err(|_| FeelsError::MathOverflow)?,
+                SwapDirection::OneForZero => try_get_amount_delta_a(
+                    U128::from(current_sqrt_price),
+                    U128::from(new_price),
+                    U128::from(liquidity),
+                    false,
+                )
+                .map_err(|_| FeelsError::MathOverflow)?,
             };
-            
-            (amount_remaining, fee_on_all, new_price, out, StepOutcome::PartialByAmount, None)
+
+            (
+                amount_remaining,
+                fee_on_all,
+                new_price,
+                out,
+                StepOutcome::PartialByAmount,
+                None,
+            )
         };
-    
+
     // Determine final outcome based on what happened
     let final_outcome = if outcome == StepOutcome::ReachedTarget && at_bound {
         StepOutcome::PartialAtBound
     } else {
         outcome
     };
-    
+
     Ok(StepResult {
         gross_in_used: gross_amount_in,
         net_in_used: gross_amount_in.saturating_sub(fee_amount),
@@ -360,7 +373,7 @@ pub fn compute_swap_step(
 use std::collections::HashMap;
 
 /// Generic tick array iterator for finding next initialized tick
-/// 
+///
 /// This iterator provides O(1) lookups for tick arrays and efficiently
 /// scans through arrays to find initialized ticks. All validation is done
 /// in the constructor to ensure invariants are maintained.
@@ -380,12 +393,12 @@ pub struct TickArrayIterator<'info> {
 
 impl<'info> TickArrayIterator<'info> {
     /// Create a new tick array iterator from remaining accounts
-    /// 
+    ///
     /// This constructor performs all validation to ensure:
     /// - Each tick array belongs to the expected market
     /// - Each tick array has an aligned start_tick_index
     /// - At least one tick array is provided
-    /// 
+    ///
     /// Downstream logic can safely assume these invariants hold.
     pub fn new(
         remaining_accounts: &'info [AccountInfo<'info>],
@@ -405,26 +418,24 @@ impl<'info> TickArrayIterator<'info> {
             !remaining_accounts.is_empty(),
             FeelsError::MissingTickArrayCoverage
         );
-        
+
         // Convert remaining accounts to tick array loaders with full validation
         let mut tick_arrays: Vec<AccountLoader<'info, TickArray>> = Vec::new();
         let mut start_index_map: HashMap<i32, usize> = HashMap::new();
         for account_info in remaining_accounts {
             // Create loader from account info
             let loader = AccountLoader::<TickArray>::try_from(account_info)?;
-            
+
             // Verify discriminator and market linkage
             {
                 let array = loader.load()?;
-                
+
                 // Verify this tick array belongs to the correct market
-                require!(
-                    array.market == *market_key,
-                    FeelsError::InvalidTickArray
-                );
-                
+                require!(array.market == *market_key, FeelsError::InvalidTickArray);
+
                 // Verify start_tick_index alignment using div_euclid
-                let expected_start = get_tick_array_start_index(array.start_tick_index, tick_spacing);
+                let expected_start =
+                    get_tick_array_start_index(array.start_tick_index, tick_spacing);
                 require!(
                     array.start_tick_index == expected_start,
                     FeelsError::InvalidTickArray
@@ -432,13 +443,13 @@ impl<'info> TickArrayIterator<'info> {
                 // Memoize start index to loader position for O(1) lookup
                 start_index_map.insert(array.start_tick_index, tick_arrays.len());
             }
-            
+
             tick_arrays.push(loader);
         }
-        
+
         // Ensure we have at least one tick array
         require!(!tick_arrays.is_empty(), FeelsError::InvalidTickArray);
-        
+
         Ok(Self {
             tick_arrays,
             start_index_map,
@@ -447,83 +458,95 @@ impl<'info> TickArrayIterator<'info> {
             direction,
         })
     }
-    
+
     /// Find the tick array containing a given tick index - O(1) lookup
-    pub fn find_array_for_tick(&self, tick_index: i32) -> Result<Option<&AccountLoader<'info, TickArray>>> {
+    pub fn find_array_for_tick(
+        &self,
+        tick_index: i32,
+    ) -> Result<Option<&AccountLoader<'info, TickArray>>> {
         // Calculate which array should contain this tick using div_euclid for proper negative handling
         let array_start_index = get_tick_array_start_index(tick_index, self.tick_spacing);
-        
+
         if let Some(&pos) = self.start_index_map.get(&array_start_index) {
             return Ok(self.tick_arrays.get(pos));
         }
         Ok(None)
     }
-    
+
     /// Find the tick array loader for a specific tick index - O(1) lookup
-    pub fn find_loader_for_tick_index(&self, tick: i32) -> Option<&AccountLoader<'info, TickArray>> {
+    pub fn find_loader_for_tick_index(
+        &self,
+        tick: i32,
+    ) -> Option<&AccountLoader<'info, TickArray>> {
         let array_start_index = get_tick_array_start_index(tick, self.tick_spacing);
         self.find_loader_for_start(array_start_index)
     }
-    
+
     /// Find the tick array loader for a specific start index - O(1) lookup
     pub fn find_loader_for_start(&self, start: i32) -> Option<&AccountLoader<'info, TickArray>> {
-        self.start_index_map.get(&start)
+        self.start_index_map
+            .get(&start)
             .and_then(|&pos| self.tick_arrays.get(pos))
     }
-    
+
     /// Find the next initialized tick in the swap direction
-    pub fn next_initialized_tick(&self, from_tick: i32) -> Result<Option<(i32, &AccountLoader<'info, TickArray>)>> {
+    pub fn next_initialized_tick(
+        &self,
+        from_tick: i32,
+    ) -> Result<Option<(i32, &AccountLoader<'info, TickArray>)>> {
         let search_direction = match self.direction {
             SwapDirection::ZeroForOne => -1, // Search downward
-            SwapDirection::OneForZero => 1,   // Search upward
+            SwapDirection::OneForZero => 1,  // Search upward
         };
-        
+
         // Start from the next tick in search direction
         let start_tick = from_tick + search_direction * self.tick_spacing as i32;
-        
+
         // First, find the array containing the start tick
         if let Some(array_loader) = self.find_loader_for_tick_index(start_tick) {
             let array = array_loader.load()?;
-            
+
             // Scan within this array first (64 ticks via offsets)
             let start_offset = array.offset_for(start_tick, self.tick_spacing)?;
-            if let Some(tick_index) = self.scan_array_for_initialized_tick(
-                &array, 
-                start_offset, 
-                search_direction > 0
-            )? {
+            if let Some(tick_index) =
+                self.scan_array_for_initialized_tick(&array, start_offset, search_direction > 0)?
+            {
                 return Ok(Some((tick_index, array_loader)));
             }
         }
-        
+
         // If not found in current array, search subsequent arrays by stepping
         // by the aligned array size (cheap computation)
         let array_size_ticks = TICK_ARRAY_SIZE as i32 * self.tick_spacing as i32;
         let current_array_start = get_tick_array_start_index(start_tick, self.tick_spacing);
-        
+
         // Search up to 10 arrays in the direction
         for i in 1..=10 {
             let array_start = current_array_start + (search_direction * i * array_size_ticks);
-            
+
             // Use O(1) lookup via start index
             if let Some(array_loader) = self.find_loader_for_start(array_start) {
                 let array = array_loader.load()?;
-                
+
                 // Scan entire array (64 ticks)
-                let start_offset = if search_direction > 0 { 0 } else { TICK_ARRAY_SIZE - 1 };
+                let start_offset = if search_direction > 0 {
+                    0
+                } else {
+                    TICK_ARRAY_SIZE - 1
+                };
                 if let Some(tick_index) = self.scan_array_for_initialized_tick(
                     &array,
                     start_offset,
-                    search_direction > 0
+                    search_direction > 0,
                 )? {
                     return Ok(Some((tick_index, array_loader)));
                 }
             }
         }
-        
+
         Ok(None)
     }
-    
+
     /// Scan within a single tick array for the next initialized tick
     fn scan_array_for_initialized_tick(
         &self,
@@ -535,7 +558,8 @@ impl<'info> TickArrayIterator<'info> {
             // Scan forward from start_offset to end
             for offset in start_offset..TICK_ARRAY_SIZE {
                 if array.ticks[offset].initialized != 0 {
-                    let tick_index = array.start_tick_index + (offset as i32 * self.tick_spacing as i32);
+                    let tick_index =
+                        array.start_tick_index + (offset as i32 * self.tick_spacing as i32);
                     return Ok(Some(tick_index));
                 }
             }
@@ -543,18 +567,19 @@ impl<'info> TickArrayIterator<'info> {
             // Scan backward from start_offset to beginning
             for offset in (0..=start_offset).rev() {
                 if array.ticks[offset].initialized != 0 {
-                    let tick_index = array.start_tick_index + (offset as i32 * self.tick_spacing as i32);
+                    let tick_index =
+                        array.start_tick_index + (offset as i32 * self.tick_spacing as i32);
                     return Ok(Some(tick_index));
                 }
             }
         }
-        
+
         Ok(None)
     }
 }
 
 /// Update fee growth for a swap segment
-/// 
+///
 /// This computes the fee growth increment for a single segment of the swap
 /// and should be called before crossing each tick.
 pub fn update_fee_growth_segment(
@@ -565,17 +590,17 @@ pub fn update_fee_growth_segment(
     if liquidity_before_step == 0 {
         return Ok(0);
     }
-    
+
     // fee_growth_increment = (fee_amount << 64) / liquidity
     let fee_growth_inc = ((fee_amount as u128) << 64)
         .checked_div(liquidity_before_step)
         .ok_or(FeelsError::DivisionByZero)?;
-    
+
     Ok(fee_growth_inc)
 }
 
 /// Initialize fee growth outside values for a tick
-/// 
+///
 /// When a tick is first initialized, set its fee_growth_outside based on
 /// its position relative to the current tick (Uniswap V3 convention).
 pub fn initialize_tick_fee_growth(

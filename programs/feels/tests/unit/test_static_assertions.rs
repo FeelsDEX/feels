@@ -1,13 +1,13 @@
 //! Compile-time size and layout checks for zero-copy types
-//! 
+//!
 //! These tests ensure that our zero-copy structs maintain expected sizes
 //! to prevent breaking changes and memory layout issues.
 
-use static_assertions::{const_assert_eq, const_assert};
-use feels::state::{Tick, TickArray, Observation};
+use feels::state::{Observation, Tick, TickArray};
+use static_assertions::{const_assert, const_assert_eq};
 
 // Tick struct size checks
-// 16 (liquidity_net) + 16 (liquidity_gross) + 16 (fee_growth_outside_0) 
+// 16 (liquidity_net) + 16 (liquidity_gross) + 16 (fee_growth_outside_0)
 // + 16 (fee_growth_outside_1) + 1 (initialized) + 15 (padding) = 80 bytes
 const_assert_eq!(core::mem::size_of::<Tick>(), 80);
 const_assert_eq!(core::mem::align_of::<Tick>(), 16);
@@ -35,7 +35,7 @@ const_assert!(core::mem::size_of::<TickArray>() <= 10240);
 mod tests {
     use super::*;
     use std::mem::offset_of;
-    
+
     #[test]
     fn test_tick_field_offsets() {
         // Verify Tick field offsets for zero-copy safety
@@ -46,30 +46,30 @@ mod tests {
         assert_eq!(offset_of!(Tick, initialized), 64);
         assert_eq!(offset_of!(Tick, _pad), 65);
     }
-    
+
     #[test]
     fn test_observation_field_offsets() {
         // Verify Observation field offsets
         // Note: Rust reorders fields for optimal layout
         // The i128 field (tick_cumulative) comes first for alignment
-        assert_eq!(offset_of!(Observation, tick_cumulative), 0);  // i128 is placed first
+        assert_eq!(offset_of!(Observation, tick_cumulative), 0); // i128 is placed first
         assert_eq!(offset_of!(Observation, block_timestamp), 16); // i64 follows
-        assert_eq!(offset_of!(Observation, _padding), 24);       // padding array
-        assert_eq!(offset_of!(Observation, initialized), 31);     // bool at the end
-        
+        assert_eq!(offset_of!(Observation, _padding), 24); // padding array
+        assert_eq!(offset_of!(Observation, initialized), 31); // bool at the end
+
         // Verify total size is 32 bytes
         assert_eq!(std::mem::size_of::<Observation>(), 32);
     }
-    
+
     #[test]
     fn test_zero_copy_requirements() {
         // Ensure types meet zero-copy requirements
-        
+
         // Types must be Copy
         fn assert_copy<T: Copy>() {}
         assert_copy::<Tick>();
         assert_copy::<Observation>();
-        
+
         // Types must have consistent layout
         assert_eq!(
             std::mem::size_of::<[Tick; 64]>(),
@@ -77,12 +77,12 @@ mod tests {
             "Tick array packing must be consistent"
         );
     }
-    
+
     #[test]
     fn test_account_size_limits() {
         // Solana account size limit is 10MB, but we should stay well below
         const MAX_REASONABLE_SIZE: usize = 100_000; // 100KB
-        
+
         assert!(
             std::mem::size_of::<TickArray>() < MAX_REASONABLE_SIZE,
             "TickArray size should be reasonable for Solana accounts"

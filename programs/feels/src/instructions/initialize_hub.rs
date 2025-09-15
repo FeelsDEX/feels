@@ -1,10 +1,11 @@
 //! Initialize FeelsHub (MVP)
 
-use anchor_lang::prelude::*;
 use crate::{
-    constants::FEELS_HUB_SEED,
+    constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED},
     state::FeelsHub,
 };
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct InitializeHub<'info> {
@@ -16,6 +17,9 @@ pub struct InitializeHub<'info> {
     /// CHECK: validated in handler constraints
     pub feelssol_mint: AccountInfo<'info>,
 
+    /// JitoSOL mint
+    pub jitosol_mint: Account<'info, Mint>,
+
     /// The FeelsHub PDA
     #[account(
         init,
@@ -26,6 +30,18 @@ pub struct InitializeHub<'info> {
     )]
     pub hub: Account<'info, FeelsHub>,
 
+    /// JitoSOL vault for the hub
+    #[account(
+        init,
+        payer = payer,
+        token::mint = jitosol_mint,
+        token::authority = jitosol_vault,
+        seeds = [JITOSOL_VAULT_SEED, feelssol_mint.key().as_ref()],
+        bump,
+    )]
+    pub jitosol_vault: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
@@ -35,4 +51,3 @@ pub fn initialize_hub(ctx: Context<InitializeHub>) -> Result<()> {
     hub.reentrancy_guard = false;
     Ok(())
 }
-

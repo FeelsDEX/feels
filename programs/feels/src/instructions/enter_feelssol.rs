@@ -1,14 +1,14 @@
 //! Enter FeelsSOL instruction
 
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::{
-    constants::{MINT_AUTHORITY_SEED, JITOSOL_VAULT_SEED, FEELS_HUB_SEED},
+    constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED, MINT_AUTHORITY_SEED},
     error::FeelsError,
     events::FeelsSOLMinted,
     state::FeelsHub,
-    utils::{validate_amount, transfer_from_user_to_vault, mint_to_with_authority},
+    utils::{mint_to_with_authority, transfer_from_user_to_vault, validate_amount},
 };
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 /// Enter FeelsSOL accounts
 #[derive(Accounts)]
@@ -20,7 +20,7 @@ pub struct EnterFeelsSOL<'info> {
         constraint = user.owner == &System::id() @ FeelsError::InvalidAuthority
     )]
     pub user: Signer<'info>,
-    
+
     /// User's JitoSOL account
     #[account(
         mut,
@@ -28,7 +28,7 @@ pub struct EnterFeelsSOL<'info> {
         constraint = user_jitosol.mint == jitosol_mint.key() @ FeelsError::InvalidMint,
     )]
     pub user_jitosol: Account<'info, TokenAccount>,
-    
+
     /// User's FeelsSOL account
     #[account(
         mut,
@@ -36,10 +36,10 @@ pub struct EnterFeelsSOL<'info> {
         constraint = user_feelssol.mint == feelssol_mint.key() @ FeelsError::InvalidMint,
     )]
     pub user_feelssol: Account<'info, TokenAccount>,
-    
+
     /// JitoSOL mint
     pub jitosol_mint: Account<'info, Mint>,
-    
+
     /// FeelsSOL mint
     #[account(mut)]
     pub feelssol_mint: Account<'info, Mint>,
@@ -52,7 +52,7 @@ pub struct EnterFeelsSOL<'info> {
         constraint = !hub.reentrancy_guard @ FeelsError::ReentrancyDetected,
     )]
     pub hub: Account<'info, FeelsHub>,
-    
+
     /// JitoSOL vault (pool-owned by the FeelsSOL hub pool)
     #[account(
         mut,
@@ -60,7 +60,7 @@ pub struct EnterFeelsSOL<'info> {
         bump,
     )]
     pub jitosol_vault: Account<'info, TokenAccount>,
-    
+
     /// Mint authority PDA
     /// CHECK: PDA signer for minting
     #[account(
@@ -68,10 +68,10 @@ pub struct EnterFeelsSOL<'info> {
         bump,
     )]
     pub mint_authority: AccountInfo<'info>,
-    
+
     /// Token program
     pub token_program: Program<'info, Token>,
-    
+
     /// System program
     pub system_program: Program<'info, System>,
 }
@@ -82,7 +82,7 @@ pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
     ctx.accounts.hub.reentrancy_guard = true;
     // Validate amount
     validate_amount(amount)?;
-    
+
     // Transfer JitoSOL from user to vault
     transfer_from_user_to_vault(
         &ctx.accounts.user_jitosol,
@@ -91,7 +91,7 @@ pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
         &ctx.accounts.token_program,
         amount,
     )?;
-    
+
     // Mint FeelsSOL to user (1:1 for MVP)
     let mint_authority_bump = ctx.bumps.mint_authority;
     let mint_key = ctx.accounts.feelssol_mint.key();
@@ -101,7 +101,7 @@ pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
         &[mint_authority_bump],
     ];
     let signer_seeds = &[&seeds[..]];
-    
+
     mint_to_with_authority(
         &ctx.accounts.feelssol_mint,
         &ctx.accounts.user_feelssol,
@@ -110,7 +110,7 @@ pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
         signer_seeds,
         amount,
     )?;
-    
+
     // Emit event
     emit!(FeelsSOLMinted {
         user: ctx.accounts.user.key(),

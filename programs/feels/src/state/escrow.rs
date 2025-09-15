@@ -1,5 +1,5 @@
 //! Pre-launch escrow state
-//! 
+//!
 //! Temporary escrow that holds newly minted tokens and mint fees
 //! before market initialization
 
@@ -11,22 +11,22 @@ use anchor_lang::prelude::*;
 pub struct PreLaunchEscrow {
     /// Token mint this escrow is for
     pub token_mint: Pubkey,
-    
+
     /// Creator who minted the token
     pub creator: Pubkey,
-    
+
     /// FeelsSOL mint (for reference)
     pub feelssol_mint: Pubkey,
-    
+
     /// Creation timestamp (used for expiration)
     pub created_at: i64,
-    
+
     /// Associated market (set when market is initialized)
     pub market: Pubkey,
-    
+
     /// Canonical bump for escrow authority PDA
     pub escrow_authority_bump: u8,
-    
+
     /// Reserved space for future expansion
     pub _reserved: [u8; 128],
 }

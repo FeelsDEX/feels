@@ -50,15 +50,15 @@ impl TimeScenarios {
         for (seconds, _target_price) in price_changes {
             // Advance time
             ctx.advance_time(seconds).await?;
-            
+
             // Observe oracle to update TWAP
             let market_helper = ctx.market_helper();
             market_helper.observe_oracle(market).await?;
-            
+
             // In real scenario, we would manipulate price through swaps
             // For now, just observe at different times
         }
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 
@@ -71,20 +71,20 @@ impl TimeScenarios {
     ) -> TestResult<Vec<i64>> {
         let mut timestamps = Vec::new();
         let market_helper = ctx.market_helper();
-        
+
         for _ in 0..num_observations {
             // Observe oracle
             market_helper.observe_oracle(market).await?;
-            
+
             // Get current timestamp (would come from Clock sysvar)
             let slot = ctx.get_slot().await?;
             let timestamp = TimeUtils::slots_to_seconds(slot);
             timestamps.push(timestamp);
-            
+
             // Advance time for next observation
             ctx.advance_time(observation_interval).await?;
         }
-        
+
         Ok(timestamps)
     }
 
@@ -97,10 +97,10 @@ impl TimeScenarios {
     ) -> TestResult<()> {
         let swap_helper = ctx.swap_helper();
         let market_state = ctx.get_account::<Market>(market).await?.unwrap();
-        
+
         let total_trades = (trades_per_second as i64) * duration_seconds;
         let time_between_trades = 1_000 / trades_per_second as i64; // milliseconds
-        
+
         for i in 0..total_trades {
             // Alternate buy/sell
             let (token_in, token_out) = if i % 2 == 0 {
@@ -108,22 +108,24 @@ impl TimeScenarios {
             } else {
                 (&market_state.token_1, &market_state.token_0)
             };
-            
+
             // Execute small swap
-            swap_helper.swap(
-                market,
-                token_in,
-                token_out,
-                constants::SMALL_SWAP,
-                &ctx.accounts.alice,
-            ).await?;
-            
+            swap_helper
+                .swap(
+                    market,
+                    token_in,
+                    token_out,
+                    constants::SMALL_SWAP,
+                    &ctx.accounts.alice,
+                )
+                .await?;
+
             // Advance time slightly (simulating real-time passage)
             if time_between_trades >= 1000 {
                 ctx.advance_time(time_between_trades / 1000).await?;
             }
         }
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 
@@ -134,31 +136,28 @@ impl TimeScenarios {
         epoch_duration: i64,
     ) -> TestResult<()> {
         let market_helper = ctx.market_helper();
-        
+
         // Get initial state
         let initial_market = market_helper.get_market(market).await?.unwrap();
         let initial_epoch = initial_market.current_tick;
-        
+
         // Advance to just before epoch boundary
-        let time_to_boundary = TimeUtils::time_until_next_epoch(
-            TimeUtils::now(),
-            epoch_duration,
-        );
+        let time_to_boundary = TimeUtils::time_until_next_epoch(TimeUtils::now(), epoch_duration);
         ctx.advance_time(time_to_boundary - 1).await?;
-        
+
         // Trigger observation before epoch change
         market_helper.observe_oracle(market).await?;
-        
+
         // Cross epoch boundary
         ctx.advance_time(2).await?;
-        
+
         // Trigger observation after epoch change
         market_helper.observe_oracle(market).await?;
-        
+
         // Verify epoch changed
         let final_market = market_helper.get_market(market).await?.unwrap();
         assert!(final_market.current_tick > initial_epoch);
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 }
@@ -174,7 +173,7 @@ pub trait TimeAssertions {
     ) -> TestResult<T>
     where
         F: std::future::Future<Output = TestResult<T>>;
-        
+
     /// Assert timestamps are properly ordered
     fn assert_timestamps_ordered(&self, timestamps: &[i64]) -> TestResult<()>;
 }
@@ -189,20 +188,22 @@ impl TimeAssertions for TestContext {
         F: std::future::Future<Output = TestResult<T>>,
     {
         use tokio::time::timeout;
-        
+
         match timeout(max_duration, operation).await {
             Ok(result) => result,
             Err(_) => Err("Operation timed out".into()),
         }
     }
-    
+
     fn assert_timestamps_ordered(&self, timestamps: &[i64]) -> TestResult<()> {
         for i in 1..timestamps.len() {
             if timestamps[i] <= timestamps[i - 1] {
                 return Err(format!(
                     "Timestamps not ordered: {} <= {}",
-                    timestamps[i], timestamps[i - 1]
-                ).into());
+                    timestamps[i],
+                    timestamps[i - 1]
+                )
+                .into());
             }
         }
         Ok::<(), Box<dyn std::error::Error>>(())
@@ -216,11 +217,12 @@ macro_rules! with_time_test {
         #[tokio::test]
         async fn $name() {
             use $crate::common::time::*;
-            
+
             // Setup test context
-            let ctx = TestContext::new(TestEnvironment::in_memory()).await
+            let ctx = TestContext::new(TestEnvironment::in_memory())
+                .await
                 .expect("Failed to create test context");
-            
+
             // Run test with time utilities available
             $body(&ctx).await.expect("Test failed");
         }

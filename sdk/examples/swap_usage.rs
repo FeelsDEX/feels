@@ -2,18 +2,18 @@
 //!
 //! Demonstrates ergonomic swap construction with automatic tick array management
 
-use feels_sdk::{SwapBuilder, SwapParams, SwapDirection, TestCoverage, TestAccountBuilder};
 use anchor_lang::prelude::*;
+use feels_sdk::{SwapBuilder, SwapDirection, SwapParams, TestAccountBuilder, TestCoverage};
 use std::error::Error;
 
 fn main() -> std::result::Result<(), Box<dyn Error>> {
     // Example 1: Basic swap with automatic tick arrays
     let basic_swap_example = || -> std::result::Result<(), Box<dyn Error>> {
         println!("=== Basic Swap Example ===");
-        
+
         let user = Pubkey::new_unique();
         let market = Pubkey::new_unique();
-        
+
         let params = SwapParams {
             market,
             oracle: Pubkey::default(), // No oracle
@@ -24,8 +24,8 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             user_token_in: Pubkey::new_unique(),
             user_token_out: Pubkey::new_unique(),
             amount_in: 1_000_000,        // 1 token
-            minimum_amount_out: 950_000,  // 5% slippage
-            max_ticks_crossed: 0,         // No limit
+            minimum_amount_out: 950_000, // 5% slippage
+            max_ticks_crossed: 0,        // No limit
         };
 
         let swap_instruction = SwapBuilder::new(params)
@@ -34,20 +34,22 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             .unwrap()
             .build(&user)?;
 
-        println!("Built swap instruction with {} accounts", 
-                swap_instruction.accounts.len());
+        println!(
+            "Built swap instruction with {} accounts",
+            swap_instruction.accounts.len()
+        );
         println!("Program ID: {}", swap_instruction.program_id);
-        
+
         Ok(())
     };
 
     // Example 2: Manual tick array specification
     let manual_arrays_example = || -> std::result::Result<(), Box<dyn Error>> {
         println!("\n=== Manual Arrays Example ===");
-        
+
         let user = Pubkey::new_unique();
         let market = Pubkey::new_unique();
-        
+
         let params = SwapParams {
             market,
             oracle: Pubkey::default(),
@@ -74,17 +76,17 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             .build(&user)?;
 
         println!("Built swap with manually specified arrays");
-        
+
         Ok(())
     };
 
     // Example 3: Range-based array derivation
     let range_based_example = || -> std::result::Result<(), Box<dyn Error>> {
         println!("\n=== Range-Based Arrays Example ===");
-        
+
         let user = Pubkey::new_unique();
         let market = Pubkey::new_unique();
-        
+
         let params = SwapParams {
             market,
             oracle: Pubkey::new_unique(), // With oracle
@@ -104,65 +106,77 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             .build(&user)?;
 
         println!("Built swap with range-derived arrays");
-        
+
         Ok(())
     };
 
     // Example 4: Test coverage generation
     let test_coverage_example = || -> std::result::Result<(), Box<dyn Error>> {
         println!("\n=== Test Coverage Example ===");
-        
+
         let market = Pubkey::new_unique();
         let coverage = TestCoverage::new(market, 64, -100, 1u128 << 64);
-        
+
         // Generate comprehensive test arrays
         let test_arrays = coverage.generate_comprehensive_arrays()?;
-        println!("Generated {} test arrays for comprehensive coverage", test_arrays.len());
-        
+        println!(
+            "Generated {} test arrays for comprehensive coverage",
+            test_arrays.len()
+        );
+
         // Generate swap test cases
         let swap_cases = coverage.generate_swap_test_cases();
         println!("Generated {} swap test cases", swap_cases.len());
-        
+
         // Show some examples
         for (i, case) in swap_cases.iter().take(3).enumerate() {
-            println!("  Test {}: {} - {} tokens, {:?}", 
-                    i + 1, case.name, case.amount_in, case.direction);
+            println!(
+                "  Test {}: {} - {} tokens, {:?}",
+                i + 1,
+                case.name,
+                case.amount_in,
+                case.direction
+            );
         }
-        
+
         // Generate position test cases
         let position_cases = coverage.generate_position_test_cases();
         println!("Generated {} position test cases", position_cases.len());
-        
+
         // Generate stress test scenarios
         let stress_scenarios = coverage.generate_stress_test_scenarios();
         println!("Generated {} stress test scenarios", stress_scenarios.len());
-        
+
         for scenario in &stress_scenarios {
-            println!("  Scenario: {} ({} swaps) - {}", 
-                    scenario.name, scenario.swaps.len(), scenario.description);
+            println!(
+                "  Scenario: {} ({} swaps) - {}",
+                scenario.name,
+                scenario.swaps.len(),
+                scenario.description
+            );
         }
-        
+
         Ok(())
     };
 
     // Example 5: Test account builder
     let account_builder_example = || -> std::result::Result<(), Box<dyn Error>> {
         println!("\n=== Account Builder Example ===");
-        
+
         let mut builder = TestAccountBuilder::new();
-        
+
         // Create test keypairs
         let keypairs = builder.create_keypairs(5);
         println!("Created {} test keypairs", keypairs.len());
-        
+
         // Create deterministic test mints
         let mints = builder.create_test_mints(3);
         println!("Created {} deterministic test mints", mints.len());
-        
+
         for (i, mint) in mints.iter().enumerate() {
             println!("  Mint {}: {}", i, mint);
         }
-        
+
         Ok(())
     };
 
@@ -172,9 +186,9 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
     range_based_example()?;
     test_coverage_example()?;
     account_builder_example()?;
-    
+
     println!("\nAll examples completed successfully!");
-    
+
     Ok(())
 }
 
@@ -182,7 +196,7 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
 #[allow(dead_code)]
 fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
     println!("\n=== Advanced Integration Example ===");
-    
+
     // Simulated market state (in practice, you'd fetch this from chain)
     let market_state = MarketState {
         market: Pubkey::new_unique(),
@@ -191,9 +205,9 @@ fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
         sqrt_price: 79228162514264337593543950336u128, // ~1.0
         liquidity: 1_000_000_000u128,
     };
-    
+
     let user = Pubkey::new_unique();
-    
+
     // Build swap with market context
     let params = SwapParams {
         market: market_state.market,
@@ -218,7 +232,7 @@ fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
         direction,
     );
     let minimum_with_slippage = (estimated_output as f64 * 0.95) as u64; // 5% slippage
-    
+
     // Estimate tick movement for array planning
     let estimated_ticks = feels_sdk::swap_builder::estimate_ticks_for_swap(
         params.amount_in,
@@ -239,8 +253,11 @@ fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
     println!("  Expected output: {}", estimated_output);
     println!("  Minimum output: {}", minimum_with_slippage);
     println!("  Estimated ticks: {}", estimated_ticks);
-    println!("  Arrays provided: {}", swap_instruction.accounts.len() - 10); // Subtract base accounts
-    
+    println!(
+        "  Arrays provided: {}",
+        swap_instruction.accounts.len() - 10
+    ); // Subtract base accounts
+
     Ok(())
 }
 
@@ -265,9 +282,9 @@ fn estimate_swap_output(
     if liquidity == 0 {
         return 0;
     }
-    
+
     let price_impact = (amount_in as u128 * 1000) / liquidity;
     let output_ratio = 1000u128.saturating_sub(price_impact);
-    
+
     ((amount_in as u128 * output_ratio) / 1000) as u64
 }

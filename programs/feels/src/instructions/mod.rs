@@ -58,6 +58,9 @@ pub use initialize_tranche_ticks::*;
 pub mod cleanup_bonding_curve;
 pub use cleanup_bonding_curve::*;
 
+pub mod update_floor;
+pub use update_floor::*;
+
 pub mod update_protocol_oracle;
 pub use update_protocol_oracle::*;
 
@@ -65,4 +68,7 @@ pub mod initialize_hub;
 pub use initialize_hub::*;
 
 // Additional specific exports for Anchor
-pub use update_protocol_oracle::{UpdateDexTwap, UpdateDexTwapParams, UpdateNativeRate, UpdateNativeRateParams, update_dex_twap, update_native_rate};
+pub use update_protocol_oracle::{
+    update_dex_twap, update_native_rate, UpdateDexTwap, UpdateDexTwapParams, UpdateNativeRate,
+    UpdateNativeRateParams,
+};

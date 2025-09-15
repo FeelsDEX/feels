@@ -7,6 +7,10 @@
 }: let
   inherit (pkgs) lib stdenv;
   idlBuilderConfig = import ./idl-builder.nix { inherit pkgs inputs' projectConfig; };
+  
+  # Fix 2: Add rust-analyzer with rust-src
+  # Note: We'll use the Solana-provided rust toolchain and add rust-analyzer separately
+  # to avoid conflicts with the Solana BPF toolchain
 in {
   packages = with pkgs; [
     openssl
@@ -24,6 +28,8 @@ in {
     lz4
     zstd
     snappy
+    # Fix 2: Add rust-analyzer separately to avoid conflicts
+    rust-analyzer
   ] ++ lib.optionals stdenv.isDarwin [
     libiconv  # Required for macOS builds
     darwin.apple_sdk.frameworks.Security
@@ -133,6 +139,11 @@ in {
     {
       name = "SNAPPY_LIB_DIR";
       value = "${pkgs.snappy}/lib";
+    }
+    # Fix 3: Set RUST_SRC_PATH for rust-analyzer using the Solana rust toolchain
+    {
+      name = "RUST_SRC_PATH";
+      value = "${inputs'.zero-nix.packages.solana-node}/platform-tools/rust/lib/rustlib/src/rust/library";
     }
   ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
     {

@@ -8,10 +8,7 @@ use anchor_lang::prelude::*;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Route {
     /// Direct swap with FeelsSOL (1 hop)
-    Direct {
-        from: Pubkey,
-        to: Pubkey,
-    },
+    Direct { from: Pubkey, to: Pubkey },
     /// Two-hop swap through FeelsSOL hub
     TwoHop {
         from: Pubkey,

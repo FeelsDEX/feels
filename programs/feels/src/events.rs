@@ -1,7 +1,7 @@
 //! Event definitions
 
-use anchor_lang::prelude::*;
 use anchor_lang::prelude::borsh;
+use anchor_lang::prelude::*;
 
 /// Event emitted when a swap is executed
 #[event]
@@ -26,13 +26,12 @@ pub struct FeeSplitApplied {
     pub base_fee_bps: u16,
     pub impact_fee_bps: u16,
     pub total_fee_bps: u16,
-    pub fee_denom_mint: Pubkey,  // Mint of the token the fee was taken in (output token)
-    pub fee_amount: u64,         // Amount of fee taken in fee_denom_mint
-    pub to_buffer_amount: u64,   // Amount routed to Buffer (τ)
-    pub to_treasury_amount: u64, // Amount routed to Protocol Treasury (MVP: 0)
-    pub to_creator_amount: u64,  // Amount accrued to Creator (MVP: 0)
+    pub fee_denom_mint: Pubkey, // Mint of the token the fee was taken in (output token)
+    pub fee_amount: u64,        // Amount of fee taken in fee_denom_mint
+    pub to_buffer_amount: u64,  // Amount routed to Buffer (τ)
+    pub to_treasury_amount: u64, // Amount routed to Protocol Treasury
+    pub to_creator_amount: u64, // Amount accrued to Creator (protocol tokens only)
     pub jit_consumed_quote: u64, // Quote units reserved by JIT v0 in this swap
-    // Future: to_reserve, to_treasury, to_creator when split is implemented
     pub timestamp: i64,
 }
 
@@ -198,7 +197,6 @@ pub struct LiquidityRemoved {
     pub timestamp: i64,
 }
 
-
 /// Event emitted when a new token is minted
 #[event]
 pub struct TokenMinted {
@@ -214,7 +212,7 @@ pub struct TokenMinted {
 }
 
 /// Event emitted when a token is launched with bonding curve
-#[event]  
+#[event]
 pub struct TokenLaunched {
     pub market: Pubkey,
     pub buffer: Pubkey,

@@ -437,7 +437,7 @@ Protect invariants and validate flows.
 
 ## Phasing & Suggested Order of Implementation
 
-1. Fees MVP (base+impact) + fee split + events
+1. Fees (base+impact) + fee split + events
 2. Protocol oracle v1 (min(native, DEX TWAP)) + safety circuit breaker
 3. JIT v0 minimal (with budgets & floor guard)
 4. Floor ratchet & guards

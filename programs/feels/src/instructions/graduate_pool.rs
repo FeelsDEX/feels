@@ -2,11 +2,8 @@
 //!
 //! Idempotently marks the market as steady-state and cleanup complete.
 
+use crate::{error::FeelsError, state::Market};
 use anchor_lang::prelude::*;
-use crate::{
-    error::FeelsError,
-    state::Market,
-};
 
 #[derive(Accounts)]
 pub struct GraduatePool<'info> {
@@ -30,4 +27,3 @@ pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
     market.cleanup_complete = true;
     Ok(())
 }
-

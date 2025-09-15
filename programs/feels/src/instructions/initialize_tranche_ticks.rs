@@ -3,8 +3,8 @@
 //! TickArray headers and marks lower/upper ticks as initialized with correct
 //! fee_growth_outside snapshots. Safe to call repeatedly.
 
-use anchor_lang::prelude::*;
 use anchor_lang::accounts::account_loader::AccountLoader;
+use anchor_lang::prelude::*;
 
 use crate::{
     error::FeelsError,
@@ -39,7 +39,6 @@ pub struct InitializeTrancheTicks<'info> {
 
     /// System program for creating missing TickArrays
     pub system_program: Program<'info, System>,
-
     // Remaining accounts: TickArray PDAs expected for all lower/upper tranche boundaries
 }
 
@@ -51,14 +50,18 @@ pub fn initialize_tranche_ticks<'info>(
     let tick_spacing = market.tick_spacing;
 
     require!(params.tick_step_size > 0, FeelsError::TickNotSpaced);
-    require!(params.tick_step_size % tick_spacing as i32 == 0, FeelsError::TickNotSpaced);
+    require!(
+        params.tick_step_size % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
 
     let market_key = market.key();
     let arrays = ctx.remaining_accounts;
 
     // Helper: ensure a TickArray exists for the given start index and return a loader
     let ensure_array = |start_index: i32| -> Result<AccountLoader<'info, TickArray>> {
-        let (expected_key, _bump) = crate::utils::derive_tick_array(&market_key, start_index, &crate::id());
+        let (expected_key, _bump) =
+            crate::utils::derive_tick_array(&market_key, start_index, &crate::id());
         let info = arrays
             .iter()
             .find(|ai| ai.key() == expected_key)
@@ -75,7 +78,11 @@ pub fn initialize_tranche_ticks<'info>(
             );
             anchor_lang::solana_program::program::invoke(
                 &ix,
-                &[ctx.accounts.crank.to_account_info(), info.clone(), ctx.accounts.system_program.to_account_info()],
+                &[
+                    ctx.accounts.crank.to_account_info(),
+                    info.clone(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
             )?;
             let loader = AccountLoader::<TickArray>::try_from(info)?;
             let mut array = loader.load_init()?;
@@ -89,7 +96,10 @@ pub fn initialize_tranche_ticks<'info>(
 
     // Iterate tranche entries; optionally apply liquidity nets if not yet applied
     let apply_liq = !ctx.accounts.tranche_plan.applied;
-    let total = core::cmp::min(params.num_steps as usize, ctx.accounts.tranche_plan.entries.len());
+    let total = core::cmp::min(
+        params.num_steps as usize,
+        ctx.accounts.tranche_plan.entries.len(),
+    );
     for i in 0..total {
         let e = ctx.accounts.tranche_plan.entries[i];
         let tick_lower = e.tick_lower;

@@ -300,11 +300,11 @@ fn cache_momentum_adjustment(state: &mut PoolState, current_slot: u64) {
 
 ### 7. Fee Distribution
 
-**Behavior**: After fees are collected from trades, they are distributed among multiple protocol entities using a fixed split (MVP). Governance may adjust the split globally (or per‑pool override) but it does not change per trade.
+**Behavior**: After fees are collected from trades, they are distributed among multiple protocol entities using a configurable split. Governance may adjust the split globally through protocol parameters, but it remains fixed per trade for predictability.
 
 **Intuition**: Different stakeholders contribute to the protocol's success in different ways. The distribution system ensures each entity is compensated appropriately for their role while maintaining incentive alignment.
 
-**Rationale**: A fixed split keeps the MVP simple and predictable. Over time, governance can tune splits using protocol parameters, but the mechanism remains simple and auditable.
+**Rationale**: A configurable but fixed split keeps the system simple and predictable. Governance can tune splits using protocol parameters, but the mechanism remains simple and auditable.
 
 The collected fees are split between the following entities:
 - **The Feels Protocol**: Treasury accumulation for development and governance
@@ -340,7 +340,7 @@ The **Pool Buffer (τ)** is the accounting source for these rebates. When a reba
 
 **Behavior**: The dynamic fee system leverages unified protocol components for consistent state management across all subsystems.
 
-**Intuition**: By sharing core infrastructure like pool::Oracle, pool::Floor, and FlowSignals, the fee system gains access to richer signals while reducing state duplication. The fee split includes LPs, PoolReserve, PoolBuffer, Protocol Treasury, and a small Creator base fee (MVP), with exact percentages governed by protocol params.
+**Intuition**: By sharing core infrastructure like pool::Oracle, pool::Floor, and FlowSignals, the fee system gains access to richer signals while reducing state duplication. The fee split includes LPs, PoolReserve, PoolBuffer, Protocol Treasury, and Creator fees for protocol tokens, with exact percentages governed by protocol params.
 
 **Rationale**: Unified components ensure consistency, reduce gas costs, and enable more sophisticated fee calculations through shared signals.
 

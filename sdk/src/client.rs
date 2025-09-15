@@ -3,28 +3,28 @@
 use crate::{
     config::SdkConfig,
     error::{SdkError, SdkResult},
-    types::{MarketInfo, BufferInfo, SwapQuote, Route},
     instructions,
+    types::{BufferInfo, MarketInfo, Route, SwapQuote},
 };
 use anchor_client::{Client, Cluster, Program};
+use feels::state::{Buffer, Market, ProtocolOracle, SafetyController};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
 };
-use std::sync::Arc;
 use std::str::FromStr;
-use feels::state::{Market, Buffer, ProtocolOracle, SafetyController};
+use std::sync::Arc;
 
 /// Main SDK client for interacting with Feels protocol
 pub struct FeelsClient {
     /// Anchor client
     pub client: Client<Arc<Keypair>>,
-    
+
     /// Anchor program handle
     pub program: Program<Arc<Keypair>>,
-    
+
     /// SDK configuration
     pub config: SdkConfig,
 }
@@ -38,9 +38,9 @@ impl FeelsClient {
             config.payer.clone(),
             CommitmentConfig::from_str(&config.commitment).unwrap(),
         );
-        
+
         let program = client.program(config.program_id)?;
-        
+
         Ok(Self {
             client,
             program,
@@ -49,32 +49,46 @@ impl FeelsClient {
     }
 
     /// Recommended default max fee (bps) for MVP
-    pub fn default_max_fee_bps() -> u16 { 150 }
+    pub fn default_max_fee_bps() -> u16 {
+        150
+    }
 
     /// Get protocol oracle rates (native, dex_twap, and min)
     pub fn get_protocol_rate(&self) -> SdkResult<(u128, u128, u128)> {
-        let (oracle_pda, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &self.config.program_id);
-        let oracle: ProtocolOracle = self.program.account(oracle_pda)
-            .map_err(|e| SdkError::AccountNotFound(format!("ProtocolOracle {}: {}", oracle_pda, e)))?;
+        let (oracle_pda, _) =
+            Pubkey::find_program_address(&[b"protocol_oracle"], &self.config.program_id);
+        let oracle: ProtocolOracle = self.program.account(oracle_pda).map_err(|e| {
+            SdkError::AccountNotFound(format!("ProtocolOracle {}: {}", oracle_pda, e))
+        })?;
         let native = oracle.native_rate_q64;
         let dex = oracle.dex_twap_rate_q64;
-        let min = if native == 0 { dex } else if dex == 0 { native } else { native.min(dex) };
+        let min = if native == 0 {
+            dex
+        } else if dex == 0 {
+            native
+        } else {
+            native.min(dex)
+        };
         Ok((native, dex, min))
     }
 
     /// Get redemption pause status (true = paused)
     pub fn get_redemption_status(&self) -> SdkResult<bool> {
-        let (safety_pda, _) = Pubkey::find_program_address(&[b"safety_controller"], &self.config.program_id);
-        let safety: SafetyController = self.program.account(safety_pda)
-            .map_err(|e| SdkError::AccountNotFound(format!("SafetyController {}: {}", safety_pda, e)))?;
+        let (safety_pda, _) =
+            Pubkey::find_program_address(&[b"safety_controller"], &self.config.program_id);
+        let safety: SafetyController = self.program.account(safety_pda).map_err(|e| {
+            SdkError::AccountNotFound(format!("SafetyController {}: {}", safety_pda, e))
+        })?;
         Ok(safety.redemptions_paused)
     }
-    
+
     /// Get market info
     pub fn get_market_info(&self, market: &Pubkey) -> SdkResult<MarketInfo> {
-        let account: Market = self.program.account(*market)
+        let account: Market = self
+            .program
+            .account(*market)
             .map_err(|e| SdkError::AccountNotFound(format!("Market {}: {}", market, e)))?;
-        
+
         Ok(MarketInfo {
             address: *market,
             token_0: account.token_0,
@@ -85,12 +99,14 @@ impl FeelsClient {
             is_paused: account.is_paused,
         })
     }
-    
+
     /// Get buffer info  
     pub fn get_buffer_info(&self, buffer: &Pubkey) -> SdkResult<BufferInfo> {
-        let account: Buffer = self.program.account(*buffer)
+        let account: Buffer = self
+            .program
+            .account(*buffer)
             .map_err(|e| SdkError::AccountNotFound(format!("Buffer {}: {}", buffer, e)))?;
-        
+
         Ok(BufferInfo {
             address: *buffer,
             market: account.market,
@@ -102,7 +118,7 @@ impl FeelsClient {
             floor_threshold: account.floor_placement_threshold,
         })
     }
-    
+
     /// Quote a swap
     pub fn quote_swap(
         &self,
@@ -112,12 +128,12 @@ impl FeelsClient {
     ) -> SdkResult<SwapQuote> {
         // Determine route
         let route = self.find_route(from_mint, to_mint)?;
-        
+
         // For MVP, just estimate with fixed fee
         let fee_bps = 30; // 0.3%
         let fee_amount = (amount_in as u128 * fee_bps as u128 / 10_000) as u64;
         let amount_out = amount_in - fee_amount; // Simplified calculation
-        
+
         Ok(SwapQuote {
             amount_in,
             amount_out,
@@ -127,7 +143,7 @@ impl FeelsClient {
             route,
         })
     }
-    
+
     /// Execute a swap
     pub fn swap(
         &self,
@@ -144,9 +160,11 @@ impl FeelsClient {
             (*user_token_out, *user_token_in)
         };
         let (market, _) = crate::find_market_address(&token_0, &token_1);
-        let market_state: feels::state::Market = self.program.account(market)
+        let market_state: feels::state::Market = self
+            .program
+            .account(market)
             .map_err(|e| SdkError::AccountNotFound(format!("Market {}: {}", market, e)))?;
-        
+
         let ix = instructions::swap(
             self.config.payer.pubkey(),
             market,
@@ -159,11 +177,9 @@ impl FeelsClient {
             minimum_amount_out,
             0, // max_ticks_crossed
         )?;
-        
-        let sig = self.program.request()
-            .instruction(ix)
-            .send()?;
-        
+
+        let sig = self.program.request().instruction(ix).send()?;
+
         Ok(sig)
     }
 
@@ -177,12 +193,34 @@ impl FeelsClient {
         max_fee_bps: u16,
         tick_arrays: Vec<Pubkey>,
     ) -> SdkResult<Signature> {
-        // Basic estimate using base fee; in production, use an estimator
-        let est_fee_bps: u16 = 30; // fallback base fee
-        if est_fee_bps > max_fee_bps {
-            return Err(SdkError::InvalidParameters(format!("Estimated fee {}bps exceeds cap {}bps", est_fee_bps, max_fee_bps)));
+        // Compare on-chain base fee against caller cap; impact fee varies with ticks moved,
+        // so this provides a conservative quick guard. For strict caps, build the instruction
+        // with a max_total_fee_bps in instructions::swap.
+        let (token_0, token_1) = if user_token_in < user_token_out {
+            (*user_token_in, *user_token_out)
+        } else {
+            (*user_token_out, *user_token_in)
+        };
+        let (market, _) = crate::find_market_address(&token_0, &token_1);
+        let market_state: feels::state::Market = self
+            .program
+            .account(market)
+            .map_err(|e| SdkError::AccountNotFound(format!("Market {}: {}", market, e)))?;
+        let base_fee_bps = market_state.base_fee_bps;
+        if base_fee_bps > max_fee_bps {
+            return Err(SdkError::InvalidParameters(format!(
+                "Base fee {}bps exceeds cap {}bps",
+                base_fee_bps, max_fee_bps
+            )));
         }
-        self.swap(user_token_in, user_token_out, amount_in, minimum_amount_out, tick_arrays)
+        // Fallback to standard swap; for strict enforcement, add a variant that sets max_total_fee_bps.
+        self.swap(
+            user_token_in,
+            user_token_out,
+            amount_in,
+            minimum_amount_out,
+            tick_arrays,
+        )
     }
 
     /// Launch Factory: initialize_market then deploy_initial_liquidity (optionally with initial buy)
@@ -233,7 +271,7 @@ impl FeelsClient {
         let sig_deploy = self.program.request().instruction(ix_deploy).send()?;
         Ok((sig_init, sig_deploy))
     }
-    
+
     /// Enter FeelsSOL
     pub fn enter_feelssol(
         &self,
@@ -251,14 +289,12 @@ impl FeelsClient {
             *feelssol_mint,
             amount,
         );
-        
-        let sig = self.program.request()
-            .instruction(ix)
-            .send()?;
-        
+
+        let sig = self.program.request().instruction(ix).send()?;
+
         Ok(sig)
     }
-    
+
     /// Exit FeelsSOL
     pub fn exit_feelssol(
         &self,
@@ -276,24 +312,22 @@ impl FeelsClient {
             *jitosol_mint,
             amount,
         );
-        
-        let sig = self.program.request()
-            .instruction(ix)
-            .send()?;
-        
+
+        let sig = self.program.request().instruction(ix).send()?;
+
         Ok(sig)
     }
-    
+
     /// Find route between two tokens
     fn find_route(&self, from: &Pubkey, to: &Pubkey) -> SdkResult<Route> {
         // For MVP, assume FeelsSOL is the hub
         // This is simplified - would need to check if direct market exists
         let feelssol_mint = Pubkey::default(); // Would need actual FeelsSOL mint
-        
+
         if from == to {
             return Err(SdkError::InvalidRoute("Cannot swap same token".to_string()));
         }
-        
+
         // Check if one of them is FeelsSOL
         if from == &feelssol_mint || to == &feelssol_mint {
             Ok(Route::Direct {
@@ -309,6 +343,6 @@ impl FeelsClient {
             })
         }
     }
-    
+
     // Deprecated placeholder removed: derive market via sorted mints instead
 }

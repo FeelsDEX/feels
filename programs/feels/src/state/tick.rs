@@ -15,14 +15,13 @@ pub const TICK_ARRAY_SIZE: usize = 64;
 #[derive(Default)]
 #[repr(C)]
 pub struct Tick {
-    pub liquidity_net: i128,              // 16 bytes
-    pub liquidity_gross: u128,            // 16 bytes
-    pub fee_growth_outside_0_x64: u128,  // 16 bytes - Q64 fixed point
-    pub fee_growth_outside_1_x64: u128,  // 16 bytes - Q64 fixed point
-    pub initialized: u8,                  // 1 byte
-    pub _pad: [u8; 15],                   // 15 bytes to make total 80 (16-aligned)
+    pub liquidity_net: i128,            // 16 bytes
+    pub liquidity_gross: u128,          // 16 bytes
+    pub fee_growth_outside_0_x64: u128, // 16 bytes - Q64 fixed point
+    pub fee_growth_outside_1_x64: u128, // 16 bytes - Q64 fixed point
+    pub initialized: u8,                // 1 byte
+    pub _pad: [u8; 15],                 // 15 bytes to make total 80 (16-aligned)
 }
-
 
 #[account(zero_copy)]
 #[repr(C)]
@@ -42,10 +41,19 @@ impl TickArray {
 
     /// Returns the index within the array for a global tick index
     pub fn offset_for(&self, tick_index: i32, tick_spacing: u16) -> Result<usize> {
-        require!(tick_index % tick_spacing as i32 == 0, crate::error::FeelsError::InvalidPrice);
-        require!(self.start_tick_index % tick_spacing as i32 == 0, crate::error::FeelsError::InvalidPrice);
+        require!(
+            tick_index % tick_spacing as i32 == 0,
+            crate::error::FeelsError::InvalidPrice
+        );
+        require!(
+            self.start_tick_index % tick_spacing as i32 == 0,
+            crate::error::FeelsError::InvalidPrice
+        );
         let rel = (tick_index - self.start_tick_index) / tick_spacing as i32;
-        require!(rel >= 0 && rel < (TICK_ARRAY_SIZE as i32), crate::error::FeelsError::InvalidPrice);
+        require!(
+            rel >= 0 && rel < (TICK_ARRAY_SIZE as i32),
+            crate::error::FeelsError::InvalidPrice
+        );
         Ok(rel as usize)
     }
 
@@ -60,8 +68,8 @@ impl TickArray {
     }
 
     pub fn init_tick(
-        &mut self, 
-        tick_index: i32, 
+        &mut self,
+        tick_index: i32,
         tick_spacing: u16,
         current_tick: i32,
         fee_growth_global_0: u128,
@@ -72,15 +80,15 @@ impl TickArray {
             let t = self.get_tick(tick_index, tick_spacing)?;
             t.initialized == 0
         };
-        
+
         if needs_init {
             // Update count first
             self.initialized_tick_count = self.initialized_tick_count.saturating_add(1);
-            
+
             // Now get mutable reference and initialize
             let t = self.get_tick_mut(tick_index, tick_spacing)?;
             t.initialized = 1;
-            
+
             // Initialize fee growth outside based on position relative to current tick
             // This follows Uniswap V3 convention
             if tick_index <= current_tick {
@@ -98,21 +106,39 @@ impl TickArray {
         Ok(())
     }
 
-    pub fn update_liquidity(&mut self, tick_index: i32, tick_spacing: u16, delta: i128, upper: bool) -> Result<()> {
+    pub fn update_liquidity(
+        &mut self,
+        tick_index: i32,
+        tick_spacing: u16,
+        delta: i128,
+        upper: bool,
+    ) -> Result<()> {
         let t = self.get_tick_mut(tick_index, tick_spacing)?;
         require!(t.initialized == 1, crate::error::FeelsError::InvalidPrice);
         // gross
         if delta >= 0 {
-            t.liquidity_gross = t.liquidity_gross.checked_add(delta as u128).ok_or(crate::error::FeelsError::MathOverflow)?;
+            t.liquidity_gross = t
+                .liquidity_gross
+                .checked_add(delta as u128)
+                .ok_or(crate::error::FeelsError::MathOverflow)?;
         } else {
             let d = (-delta) as u128;
-            t.liquidity_gross = t.liquidity_gross.checked_sub(d).ok_or(crate::error::FeelsError::MathOverflow)?;
+            t.liquidity_gross = t
+                .liquidity_gross
+                .checked_sub(d)
+                .ok_or(crate::error::FeelsError::MathOverflow)?;
         }
         // net
         if upper {
-            t.liquidity_net = t.liquidity_net.checked_sub(delta).ok_or(crate::error::FeelsError::MathOverflow)?;
+            t.liquidity_net = t
+                .liquidity_net
+                .checked_sub(delta)
+                .ok_or(crate::error::FeelsError::MathOverflow)?;
         } else {
-            t.liquidity_net = t.liquidity_net.checked_add(delta).ok_or(crate::error::FeelsError::MathOverflow)?;
+            t.liquidity_net = t
+                .liquidity_net
+                .checked_add(delta)
+                .ok_or(crate::error::FeelsError::MathOverflow)?;
         }
         Ok(())
     }
@@ -138,4 +164,5 @@ impl TickArray {
 
 // Compile-time size assertions to guarantee zero_copy layout stays stable
 const _: [(); 80] = [(); core::mem::size_of::<Tick>()];
-const _: [(); 8 + 32 + 4 + 12 + (80*crate::state::tick::TICK_ARRAY_SIZE) + 2 + 14 + 32] = [(); TickArray::LEN];
+const _: [(); 8 + 32 + 4 + 12 + (80 * crate::state::tick::TICK_ARRAY_SIZE) + 2 + 14 + 32] =
+    [(); TickArray::LEN];

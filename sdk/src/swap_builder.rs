@@ -3,9 +3,9 @@
 //! Provides utilities for building swap instructions with automatic
 //! tick array discovery and account management.
 
+use crate::{program_id, SdkError, SdkResult};
 use anchor_lang::prelude::*;
-use solana_sdk::instruction::{Instruction, AccountMeta};
-use crate::{SdkError, SdkResult, program_id};
+use solana_sdk::instruction::{AccountMeta, Instruction};
 
 /// Swap direction for concentrated liquidity
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -82,7 +82,12 @@ impl SwapBuilder {
     }
 
     /// Automatically derive tick arrays for a given tick range
-    pub fn with_tick_range(mut self, tick_lower: i32, tick_upper: i32, tick_spacing: u16) -> SdkResult<Self> {
+    pub fn with_tick_range(
+        mut self,
+        tick_lower: i32,
+        tick_upper: i32,
+        tick_spacing: u16,
+    ) -> SdkResult<Self> {
         let arrays = derive_tick_arrays_for_range(
             &self.params.market,
             tick_lower,
@@ -95,9 +100,9 @@ impl SwapBuilder {
 
     /// Automatically derive tick arrays for a swap based on direction and amount
     pub fn with_auto_arrays(
-        mut self, 
-        direction: SwapDirection, 
-        estimated_ticks: u32
+        mut self,
+        direction: SwapDirection,
+        estimated_ticks: u32,
     ) -> SdkResult<Self> {
         if let (Some(current_tick), Some(tick_spacing)) = (self.current_tick, self.tick_spacing) {
             let arrays = derive_tick_arrays_for_swap(
@@ -140,17 +145,22 @@ impl SwapBuilder {
 
         // Add tick arrays as remaining accounts
         for tick_array in &self.tick_arrays {
-            account_metas.push(solana_sdk::instruction::AccountMeta::new(*tick_array, false));
+            account_metas.push(solana_sdk::instruction::AccountMeta::new(
+                *tick_array,
+                false,
+            ));
         }
 
         // Build instruction data manually
         // The instruction discriminator for "swap" can be calculated from the method name
         let mut data = Vec::with_capacity(8 + 64);
-        
-        // Add discriminator (8 bytes) - this is a hash of "global:swap"
-        // For now, using placeholder - in production, calculate proper discriminator
-        data.extend_from_slice(&[0u8; 8]);
-        
+
+        // Add discriminator (8 bytes): sha256("global:swap")[0..8]
+        let preimage = b"global:swap";
+        let h = solana_sdk::hash::hashv(&[preimage]);
+        let disc = &h.to_bytes()[..8];
+        data.extend_from_slice(disc);
+
         // Serialize SwapParams
         let params = feels::instructions::SwapParams {
             amount_in: self.params.amount_in,
@@ -158,10 +168,11 @@ impl SwapBuilder {
             max_ticks_crossed: self.params.max_ticks_crossed as u8,
             max_total_fee_bps: 0, // 0 = no cap
         };
-        
+
         // Serialize params using Anchor's serialization
         use anchor_lang::AnchorSerialize;
-        params.serialize(&mut data)
+        params
+            .serialize(&mut data)
             .map_err(|e| SdkError::SerializationError(e.to_string()))?;
 
         Ok(Instruction {
@@ -181,29 +192,29 @@ pub fn derive_tick_arrays_for_range(
 ) -> SdkResult<Vec<Pubkey>> {
     const TICK_ARRAY_SIZE: i32 = 64;
     let tick_array_spacing = tick_spacing as i32 * TICK_ARRAY_SIZE;
-    
+
     // Align to tick array boundaries (round down for negative, up for positive)
     let start_index_lower = if tick_lower >= 0 {
         (tick_lower / tick_array_spacing) * tick_array_spacing
     } else {
         ((tick_lower - tick_array_spacing + 1) / tick_array_spacing) * tick_array_spacing
     };
-    
+
     let start_index_upper = if tick_upper >= 0 {
         (tick_upper / tick_array_spacing) * tick_array_spacing
     } else {
         ((tick_upper - tick_array_spacing + 1) / tick_array_spacing) * tick_array_spacing
     };
-    
+
     let mut arrays = Vec::new();
     let mut current_start = start_index_lower;
-    
+
     while current_start <= start_index_upper {
         let (tick_array_pda, _) = find_tick_array_address(market, current_start);
         arrays.push(tick_array_pda);
         current_start += tick_array_spacing;
     }
-    
+
     Ok(arrays)
 }
 
@@ -217,20 +228,20 @@ pub fn derive_tick_arrays_for_swap(
 ) -> SdkResult<Vec<Pubkey>> {
     const TICK_ARRAY_SIZE: i32 = 64;
     const SAFETY_BUFFER: u32 = 10; // Extra arrays for safety
-    
+
     let tick_array_spacing = tick_spacing as i32 * TICK_ARRAY_SIZE;
     let current_array_start = current_tick - (current_tick % tick_array_spacing);
-    
+
     let mut arrays = Vec::new();
-    
+
     // Always include current array
     let (current_array, _) = find_tick_array_address(market, current_array_start);
     arrays.push(current_array);
-    
+
     // Calculate how many additional arrays we need
     let total_tick_movement = estimated_ticks + SAFETY_BUFFER;
     let arrays_needed = (total_tick_movement as i32 / TICK_ARRAY_SIZE) + 2; // +2 for safety
-    
+
     match direction {
         SwapDirection::ZeroForOne => {
             // Price decreasing, tick decreasing
@@ -249,7 +260,7 @@ pub fn derive_tick_arrays_for_swap(
             }
         }
     }
-    
+
     Ok(arrays)
 }
 
@@ -276,10 +287,10 @@ pub fn estimate_ticks_for_swap(
     if current_liquidity == 0 {
         return 100; // Conservative fallback
     }
-    
+
     let price_impact = (amount_in as u128 * 1_000_000) / current_liquidity;
     let estimated_ticks = (price_impact / 10_000) as u32; // Very rough approximation
-    
+
     // Minimum safety buffer
     std::cmp::max(estimated_ticks, 10)
 }
@@ -292,7 +303,7 @@ mod tests {
     fn test_derive_tick_arrays_for_range() {
         let market = Pubkey::new_unique();
         let arrays = derive_tick_arrays_for_range(&market, -1000, 1000, 64).unwrap();
-        
+
         // Should cover the range with appropriate arrays
         assert!(!arrays.is_empty());
         assert!(arrays.len() >= 2); // At minimum should have arrays for negative and positive range
@@ -321,7 +332,7 @@ mod tests {
 
         let user = Pubkey::new_unique();
         let instruction = builder.build(&user).unwrap();
-        
+
         assert_eq!(instruction.program_id, program_id());
         assert!(!instruction.accounts.is_empty());
     }

@@ -16,4 +16,3 @@ mod tests {
         assert!(candidate_floor_tick(11_000, b) > candidate_floor_tick(10_000, b));
     }
 }
-

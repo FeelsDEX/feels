@@ -32,5 +32,5 @@ impl SafetyController {
         8 +  // mint_last_slot
         8 +  // mint_slot_amount
         8 +  // redeem_last_slot
-        8;   // redeem_slot_amount
+        8; // redeem_slot_amount
 }

@@ -19,12 +19,12 @@ pub struct PositionFeeAccrual {
 }
 
 /// Calculate position fee accrual
-/// 
+///
 /// Given the market globals, tick fee growth outside values, and position's last tracked
 /// fee growth inside values, this function computes:
 /// - Current fee growth inside the position's range
 /// - Incremental fees owed since last update
-/// 
+///
 /// This follows the Uniswap V3 formula for tracking fees within a position's range.
 #[allow(clippy::too_many_arguments)]
 pub fn calculate_position_fee_accrual(

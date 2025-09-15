@@ -2,8 +2,8 @@
 //!
 //! Keeps per-slot and per-swap budgets in quote units, backed by Buffer fields.
 
-use anchor_lang::prelude::*;
 use crate::state::Buffer;
+use anchor_lang::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct JitBudget {
@@ -14,7 +14,12 @@ pub struct JitBudget {
 }
 
 impl JitBudget {
-    pub fn begin(buffer: &mut Account<Buffer>, current_slot: u64, per_swap_bps: u16, per_slot_bps: u16) -> Self {
+    pub fn begin(
+        buffer: &mut Account<Buffer>,
+        current_slot: u64,
+        per_swap_bps: u16,
+        per_slot_bps: u16,
+    ) -> Self {
         // Reset per-slot used on new slot
         if buffer.jit_last_slot != current_slot {
             buffer.jit_last_slot = current_slot;
@@ -25,7 +30,12 @@ impl JitBudget {
         let per_swap_cap_q = (base_q.saturating_mul(per_swap_bps as u128)) / 10_000u128;
         let per_slot_cap_q = (base_q.saturating_mul(per_slot_bps as u128)) / 10_000u128;
         let slot_remaining_q = per_slot_cap_q.saturating_sub(buffer.jit_slot_used_q);
-        Self { slot: current_slot, per_swap_cap_q, per_slot_cap_q, slot_remaining_q }
+        Self {
+            slot: current_slot,
+            per_swap_cap_q,
+            per_slot_cap_q,
+            slot_remaining_q,
+        }
     }
 
     /// Reserve an amount (quote units) not exceeding per-swap and remaining per-slot caps.
@@ -33,7 +43,9 @@ impl JitBudget {
         let allow_q = desired_q
             .min(self.per_swap_cap_q)
             .min(self.slot_remaining_q);
-        if allow_q == 0 { return 0; }
+        if allow_q == 0 {
+            return 0;
+        }
         // Consume slot quota
         buffer.jit_slot_used_q = buffer.jit_slot_used_q.saturating_add(allow_q);
         self.slot_remaining_q = self.slot_remaining_q.saturating_sub(allow_q);
@@ -71,21 +83,27 @@ mod tests {
     fn test_jit_budget_logic() {
         // Test the JIT budget calculation logic
         let buffer_data = dummy_buffer();
-        
+
         // Test parameters: 0.5% per swap, 1% per slot
         let per_swap_bps = 50u16;
         let per_slot_bps = 100u16;
-        
+
         // Calculate expected max amounts
         let max_swap = (buffer_data.tau_spot as u128 * per_swap_bps as u128 / 10_000);
         let max_slot = (buffer_data.tau_spot as u128 * per_slot_bps as u128 / 10_000);
-        
+
         // Verify our constants are reasonable
-        assert!(buffer_data.tau_spot > 0, "Buffer should have positive tau_spot");
+        assert!(
+            buffer_data.tau_spot > 0,
+            "Buffer should have positive tau_spot"
+        );
         assert!(max_swap > 0, "Max swap amount should be positive");
         assert!(max_slot > 0, "Max slot amount should be positive");
-        assert!(max_swap <= max_slot, "Per-swap limit should be <= per-slot limit");
-        
+        assert!(
+            max_swap <= max_slot,
+            "Per-swap limit should be <= per-slot limit"
+        );
+
         // Test slot budget logic
         // If we use half the slot budget, we should have half remaining
         let half_budget = max_slot / 2;

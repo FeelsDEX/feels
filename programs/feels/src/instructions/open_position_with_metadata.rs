@@ -1,20 +1,18 @@
 //! Open position with metadata instruction
-//! 
+//!
 //! Wrapper instruction that creates a position and adds
 //! Metaplex metadata to make it a proper NFT.
 
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, Mint, TokenAccount};
-use mpl_token_metadata::{
-    instructions as mpl_instruction,
-    types::DataV2,
-    ID as METADATA_PROGRAM_ID,
-};
 use crate::{
     constants::{POSITION_SEED, VAULT_SEED},
     error::FeelsError,
-    events::{PositionUpdated, PositionOperation},
+    events::{PositionOperation, PositionUpdated},
     state::{Market, Position, TickArray},
+};
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
+use mpl_token_metadata::{
+    instructions as mpl_instruction, types::DataV2, ID as METADATA_PROGRAM_ID,
 };
 
 #[derive(Accounts)]
@@ -26,7 +24,7 @@ pub struct OpenPositionWithMetadata<'info> {
         constraint = provider.owner == &System::id() @ FeelsError::InvalidAuthority
     )]
     pub provider: Signer<'info>,
-    
+
     /// Market state
     #[account(
         mut,
@@ -34,7 +32,7 @@ pub struct OpenPositionWithMetadata<'info> {
         constraint = !market.is_paused @ FeelsError::MarketPaused,
     )]
     pub market: Account<'info, Market>,
-    
+
     /// Position mint - will become an NFT with metadata
     #[account(
         init,
@@ -44,7 +42,7 @@ pub struct OpenPositionWithMetadata<'info> {
         mint::freeze_authority = position,
     )]
     pub position_mint: Account<'info, Mint>,
-    
+
     /// Position token account
     #[account(
         init,
@@ -53,7 +51,7 @@ pub struct OpenPositionWithMetadata<'info> {
         token::authority = provider,
     )]
     pub position_token_account: Account<'info, TokenAccount>,
-    
+
     /// Position account (PDA)
     #[account(
         init,
@@ -63,7 +61,7 @@ pub struct OpenPositionWithMetadata<'info> {
         bump,
     )]
     pub position: Account<'info, Position>,
-    
+
     /// Metadata account (PDA of Metaplex Token Metadata program)
     /// CHECK: Created by Metaplex program
     #[account(
@@ -77,17 +75,17 @@ pub struct OpenPositionWithMetadata<'info> {
         seeds::program = METADATA_PROGRAM_ID,
     )]
     pub metadata: AccountInfo<'info>,
-    
+
     /// Provider's token account for token 0
     /// CHECK: Validated in handler
     #[account(mut)]
     pub provider_token_0: UncheckedAccount<'info>,
-    
+
     /// Provider's token account for token 1
     /// CHECK: Validated in handler
     #[account(mut)]
     pub provider_token_1: UncheckedAccount<'info>,
-    
+
     /// Market vault for token 0 - derived from market and token_0
     /// CHECK: Validated as PDA in handler
     #[account(
@@ -96,7 +94,7 @@ pub struct OpenPositionWithMetadata<'info> {
         bump,
     )]
     pub vault_0: UncheckedAccount<'info>,
-    
+
     /// Market vault for token 1 - derived from market and token_1
     /// CHECK: Validated as PDA in handler
     #[account(
@@ -105,32 +103,32 @@ pub struct OpenPositionWithMetadata<'info> {
         bump,
     )]
     pub vault_1: UncheckedAccount<'info>,
-    
+
     /// Tick array containing the lower tick
     #[account(
         mut,
         constraint = lower_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
     )]
     pub lower_tick_array: AccountLoader<'info, TickArray>,
-    
+
     /// Tick array containing the upper tick
     #[account(
         mut,
         constraint = upper_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
     )]
     pub upper_tick_array: AccountLoader<'info, TickArray>,
-    
+
     /// Metaplex Token Metadata program
     /// CHECK: Address verified in constraint
     #[account(address = METADATA_PROGRAM_ID)]
     pub metadata_program: AccountInfo<'info>,
-    
+
     /// Token program
     pub token_program: Program<'info, Token>,
-    
+
     /// System program
     pub system_program: Program<'info, System>,
-    
+
     /// Rent sysvar
     pub rent: Sysvar<'info, Rent>,
 }
@@ -147,17 +145,17 @@ pub fn open_position_with_metadata(
     let position = &mut ctx.accounts.position;
     let position_key = position.key();
     let clock = Clock::get()?;
-    
+
     // Validate tick range and alignment
     crate::utils::validate_tick_range(tick_lower, tick_upper, market.tick_spacing)?;
     require!(liquidity_amount > 0, FeelsError::ZeroLiquidity);
-    
+
     // Check against minimum liquidity to prevent dust positions
     require!(
         liquidity_amount >= crate::constants::MIN_LIQUIDITY,
         FeelsError::LiquidityBelowMinimum
     );
-    
+
     // Validate that tick arrays match the expected ticks
     {
         let lower_array = ctx.accounts.lower_tick_array.load()?;
@@ -165,11 +163,13 @@ pub fn open_position_with_metadata(
         crate::utils::validate_tick_array_for_tick(&lower_array, tick_lower, market.tick_spacing)?;
         crate::utils::validate_tick_array_for_tick(&upper_array, tick_upper, market.tick_spacing)?;
     }
-    
+
     // Manually deserialize and validate provider token accounts
-    let provider_token_0 = TokenAccount::try_deserialize(&mut &ctx.accounts.provider_token_0.data.borrow()[..])?;
-    let provider_token_1 = TokenAccount::try_deserialize(&mut &ctx.accounts.provider_token_1.data.borrow()[..])?;
-    
+    let provider_token_0 =
+        TokenAccount::try_deserialize(&mut &ctx.accounts.provider_token_0.data.borrow()[..])?;
+    let provider_token_1 =
+        TokenAccount::try_deserialize(&mut &ctx.accounts.provider_token_1.data.borrow()[..])?;
+
     // Validate provider token accounts
     require!(
         provider_token_0.owner == ctx.accounts.provider.key(),
@@ -187,16 +187,16 @@ pub fn open_position_with_metadata(
         provider_token_1.mint == market.token_1,
         FeelsError::InvalidMint
     );
-    
+
     // Manually deserialize and validate vault accounts
     let _vault_0 = TokenAccount::try_deserialize(&mut &ctx.accounts.vault_0.data.borrow()[..])?;
     let _vault_1 = TokenAccount::try_deserialize(&mut &ctx.accounts.vault_1.data.borrow()[..])?;
-    
+
     // Calculate token amounts using unified function
     let sqrt_price_lower = crate::logic::sqrt_price_from_tick(tick_lower)?;
     let sqrt_price_upper = crate::logic::sqrt_price_from_tick(tick_upper)?;
     let sqrt_price_current = market.sqrt_price;
-    
+
     // Use unified amount calculation function (same as swap logic)
     let (amount_0, amount_1) = crate::logic::amounts_from_liquidity(
         sqrt_price_current,
@@ -204,7 +204,7 @@ pub fn open_position_with_metadata(
         sqrt_price_upper,
         liquidity_amount,
     )?;
-    
+
     // Initialize position state
     position.nft_mint = ctx.accounts.position_mint.key();
     position.market = market.key();
@@ -212,39 +212,49 @@ pub fn open_position_with_metadata(
     position.tick_lower = tick_lower;
     position.tick_upper = tick_upper;
     position.liquidity = liquidity_amount;
-    
+
     // CRITICAL: Initialize ticks FIRST before reading fee growth values
     // This ensures fee_growth_outside is properly set based on tick position
     {
         let mut lower_array = ctx.accounts.lower_tick_array.load_mut()?;
         lower_array.init_tick(
-            tick_lower, 
-            market.tick_spacing, 
-            market.current_tick,
-            market.fee_growth_global_0_x64,
-            market.fee_growth_global_1_x64,
-        )?;
-        lower_array.update_liquidity(tick_lower, market.tick_spacing, liquidity_amount as i128, false)?;
-    }
-    {
-        let mut upper_array = ctx.accounts.upper_tick_array.load_mut()?;
-        upper_array.init_tick(
-            tick_upper, 
+            tick_lower,
             market.tick_spacing,
             market.current_tick,
             market.fee_growth_global_0_x64,
             market.fee_growth_global_1_x64,
         )?;
-        upper_array.update_liquidity(tick_upper, market.tick_spacing, liquidity_amount as i128, true)?;
+        lower_array.update_liquidity(
+            tick_lower,
+            market.tick_spacing,
+            liquidity_amount as i128,
+            false,
+        )?;
     }
-    
+    {
+        let mut upper_array = ctx.accounts.upper_tick_array.load_mut()?;
+        upper_array.init_tick(
+            tick_upper,
+            market.tick_spacing,
+            market.current_tick,
+            market.fee_growth_global_0_x64,
+            market.fee_growth_global_1_x64,
+        )?;
+        upper_array.update_liquidity(
+            tick_upper,
+            market.tick_spacing,
+            liquidity_amount as i128,
+            true,
+        )?;
+    }
+
     // NOW take fee growth snapshot after ticks are initialized
     let (fee_growth_inside_0, fee_growth_inside_1) = {
         let lower_array = ctx.accounts.lower_tick_array.load()?;
         let upper_array = ctx.accounts.upper_tick_array.load()?;
         let lower_tick = lower_array.get_tick(tick_lower, market.tick_spacing)?;
         let upper_tick = upper_array.get_tick(tick_upper, market.tick_spacing)?;
-        
+
         // Calculate initial fee growth using the function
         let fee_accrual = crate::logic::calculate_position_fee_accrual(
             market.current_tick,
@@ -258,21 +268,24 @@ pub fn open_position_with_metadata(
             0, // No previous fee growth
             0, // No previous fee growth
         )?;
-        
-        (fee_accrual.fee_growth_inside_0, fee_accrual.fee_growth_inside_1)
+
+        (
+            fee_accrual.fee_growth_inside_0,
+            fee_accrual.fee_growth_inside_1,
+        )
     };
-    
+
     position.fee_growth_inside_0_last_x64 = fee_growth_inside_0;
     position.fee_growth_inside_1_last_x64 = fee_growth_inside_1;
     position.tokens_owed_0 = 0;
     position.tokens_owed_1 = 0;
     position.position_bump = ctx.bumps.position;
-    
+
     // Update market liquidity if position is in range
     if market.current_tick >= tick_lower && market.current_tick < tick_upper {
         market.liquidity = crate::utils::add_liquidity(market.liquidity, liquidity_amount)?;
     }
-    
+
     // Transfer tokens
     if amount_0 > 0 {
         crate::utils::transfer_from_user_to_vault_unchecked(
@@ -283,7 +296,7 @@ pub fn open_position_with_metadata(
             amount_0,
         )?;
     }
-    
+
     if amount_1 > 0 {
         crate::utils::transfer_from_user_to_vault_unchecked(
             &ctx.accounts.provider_token_1.to_account_info(),
@@ -293,17 +306,13 @@ pub fn open_position_with_metadata(
             amount_1,
         )?;
     }
-    
+
     // Mint position token
     let position_bump = ctx.bumps.position;
     let position_mint_key = ctx.accounts.position_mint.key();
-    let seeds = &[
-        POSITION_SEED,
-        position_mint_key.as_ref(),
-        &[position_bump],
-    ];
+    let seeds = &[POSITION_SEED, position_mint_key.as_ref(), &[position_bump]];
     let signer_seeds = &[&seeds[..]];
-    
+
     let cpi_accounts = anchor_spl::token::MintTo {
         mint: ctx.accounts.position_mint.to_account_info(),
         to: ctx.accounts.position_token_account.to_account_info(),
@@ -312,7 +321,7 @@ pub fn open_position_with_metadata(
     let cpi_program = ctx.accounts.token_program.to_account_info();
     let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
     anchor_spl::token::mint_to(cpi_ctx, 1)?;
-    
+
     // Emit unified position event
     emit!(PositionUpdated {
         position: position_key,
@@ -329,25 +338,21 @@ pub fn open_position_with_metadata(
         operation: PositionOperation::Open,
         timestamp: clock.unix_timestamp,
     });
-    
+
     // Then add Metaplex metadata to make it a proper NFT
     let position_mint_key = ctx.accounts.position_mint.key();
     let _market = &ctx.accounts.market;
-    
+
     // Generate metadata for the NFT
     let name = format!("Feels Position #{}", &position_mint_key.to_string()[0..8]);
     let symbol = "FEELS-POS".to_string();
     let uri = format!("https://api.feels.market/position/{}", position_mint_key);
-    
+
     // Create metadata account via CPI to Metaplex
     let position_bump = ctx.bumps.position;
-    let seeds = &[
-        POSITION_SEED,
-        position_mint_key.as_ref(),
-        &[position_bump],
-    ];
+    let seeds = &[POSITION_SEED, position_mint_key.as_ref(), &[position_bump]];
     let signer_seeds = &[&seeds[..]];
-    
+
     // Build metadata instruction using the new API
     let create_metadata_accounts_v3 = mpl_instruction::CreateMetadataAccountV3 {
         metadata: ctx.accounts.metadata.key(),
@@ -358,7 +363,7 @@ pub fn open_position_with_metadata(
         system_program: ctx.accounts.system_program.key(),
         rent: Some(ctx.accounts.rent.key()),
     };
-    
+
     let args = mpl_instruction::CreateMetadataAccountV3InstructionArgs {
         data: DataV2 {
             name,
@@ -372,9 +377,9 @@ pub fn open_position_with_metadata(
         is_mutable: true,
         collection_details: None,
     };
-    
+
     let create_metadata_accounts_v3_ix = create_metadata_accounts_v3.instruction(args);
-    
+
     anchor_lang::solana_program::program::invoke_signed(
         &create_metadata_accounts_v3_ix,
         &[
@@ -388,9 +393,12 @@ pub fn open_position_with_metadata(
         ],
         signer_seeds,
     )?;
-    
+
     // The position is now a proper NFT that will appear in wallets
-    msg!("Position NFT created with metadata at {}", ctx.accounts.metadata.key());
-    
+    msg!(
+        "Position NFT created with metadata at {}",
+        ctx.accounts.metadata.key()
+    );
+
     Ok(())
 }

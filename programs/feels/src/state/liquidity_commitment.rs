@@ -1,5 +1,5 @@
 //! Initial liquidity commitment structures
-//! 
+//!
 //! Defines the commitment made at market creation for initial
 //! liquidity deployment. This allows market initialization
 //! to be decoupled from the initial liquidity strategy.

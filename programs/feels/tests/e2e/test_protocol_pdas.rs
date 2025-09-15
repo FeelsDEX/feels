@@ -20,4 +20,3 @@ test_in_memory!(test_protocol_pdas_exist, |ctx: TestContext| async move {
     assert_ne!(safety_controller, Pubkey::default());
     Ok::<(), Box<dyn std::error::Error>>(())
 });
-

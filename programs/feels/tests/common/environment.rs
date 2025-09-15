@@ -7,15 +7,15 @@
 pub enum TestEnvironment {
     /// In-memory testing using ProgramTest
     InMemory,
-    
+
     /// Testing against devnet
-    Devnet { 
+    Devnet {
         url: String,
         payer_path: Option<String>,
     },
-    
+
     /// Testing against localnet
-    Localnet { 
+    Localnet {
         url: String,
         payer_path: Option<String>,
     },
@@ -26,7 +26,7 @@ impl TestEnvironment {
     pub fn in_memory() -> Self {
         TestEnvironment::InMemory
     }
-    
+
     /// Create devnet test environment
     pub fn devnet() -> Self {
         TestEnvironment::Devnet {
@@ -34,7 +34,7 @@ impl TestEnvironment {
             payer_path: None,
         }
     }
-    
+
     /// Create localnet test environment
     pub fn localnet() -> Self {
         TestEnvironment::Localnet {
@@ -42,7 +42,7 @@ impl TestEnvironment {
             payer_path: Some("keypairs/payer.json".to_string()),
         }
     }
-    
+
     /// Create localnet with custom URL
     pub fn localnet_with_url(url: &str) -> Self {
         TestEnvironment::Localnet {

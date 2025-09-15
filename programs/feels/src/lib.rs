@@ -5,14 +5,13 @@
 #![allow(deprecated)]
 
 pub mod constants;
-pub mod error;  
+pub mod error;
 pub mod events;
 pub mod instructions;
 pub mod logic;
 pub mod macros;
 pub mod state;
 pub mod utils;
-
 
 use anchor_lang::prelude::*;
 
@@ -25,11 +24,10 @@ declare_id!("2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1");
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*
 
-
 #[program]
 pub mod feels {
     use super::*;
-    
+
     /// Initialize protocol configuration (one-time setup)
     pub fn initialize_protocol(
         ctx: Context<InitializeProtocol>,
@@ -37,7 +35,12 @@ pub mod feels {
     ) -> Result<()> {
         instructions::initialize_protocol(ctx, params)
     }
-    
+
+    /// Permissionless floor update crank (computes floor from reserves & supply)
+    pub fn update_floor(ctx: Context<UpdateFloor>) -> Result<()> {
+        instructions::update_floor(ctx)
+    }
+
     /// Update protocol configuration
     pub fn update_protocol(
         ctx: Context<UpdateProtocol>,
@@ -45,28 +48,33 @@ pub mod feels {
     ) -> Result<()> {
         instructions::update_protocol(ctx, params)
     }
-    
+
     /// Initialize a new market with commitment for initial liquidity
-    /// SECURITY: Market creation and liquidity commitment are atomic,
-    /// preventing front-running attacks. Actual liquidity deployment
-    /// happens separately via deploy_initial_liquidity instruction.
+    /// Market creation and liquidity commitment are atomic, preventing
+    /// front-running. Actual liquidity deployment happens separately via
+    /// deploy_initial_liquidity instruction.
     pub fn initialize_market(
         ctx: Context<InitializeMarket>,
         params: InitializeMarketParams,
     ) -> Result<()> {
         instructions::initialize_market(ctx, params)
     }
-    
+
     /// Enter FeelsSOL - deposit JitoSOL to mint FeelsSOL
     pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
         instructions::enter_feelssol(ctx, amount)
     }
-    
+
     /// Exit FeelsSOL - burn FeelsSOL to redeem JitoSOL
     pub fn exit_feelssol(ctx: Context<ExitFeelsSOL>, amount: u64) -> Result<()> {
         instructions::exit_feelssol(ctx, amount)
     }
-    
+
+    /// Initialize FeelsHub for enter/exit operations
+    pub fn initialize_hub(ctx: Context<InitializeHub>) -> Result<()> {
+        instructions::initialize_hub(ctx)
+    }
+
     /// Swap tokens through the AMM
     pub fn swap<'info>(
         ctx: Context<'_, '_, 'info, 'info, Swap<'info>>,
@@ -76,7 +84,7 @@ pub mod feels {
         let params = Box::new(params);
         instructions::swap(ctx, *params)
     }
-    
+
     /// Open a new liquidity position
     pub fn open_position(
         ctx: Context<OpenPosition>,
@@ -86,43 +94,40 @@ pub mod feels {
     ) -> Result<()> {
         instructions::open_position(ctx, tick_lower, tick_upper, liquidity_amount)
     }
-    
+
     /// Close a liquidity position
-    pub fn close_position(
-        ctx: Context<ClosePosition>,
-        params: ClosePositionParams,
-    ) -> Result<()> {
+    pub fn close_position(ctx: Context<ClosePosition>, params: ClosePositionParams) -> Result<()> {
         instructions::close_position(ctx, params)
     }
-    
+
     /// Collect fees from a position - smart single entry point
     /// Automatically handles normal positions, wide positions, and accumulated fees
     pub fn collect_fees<'info>(
-        ctx: Context<'_, '_, 'info, 'info, CollectFees<'info>>
+        ctx: Context<'_, '_, 'info, 'info, CollectFees<'info>>,
     ) -> Result<()> {
         instructions::collect_fees(ctx)
     }
-    
+
     /// Update position fee accrual for lower tick
-    /// SECURITY: Part 1/3 of fee collection for wide positions
+    /// Part 1/3 of fee collection for wide positions
     pub fn update_position_fee_lower(ctx: Context<UpdatePositionFeeLower>) -> Result<()> {
         instructions::update_position_fee_lower(ctx)
     }
-    
+
     /// Update position fee accrual for upper tick
-    /// SECURITY: Part 2/3 of fee collection for wide positions
+    /// Part 2/3 of fee collection for wide positions
     pub fn update_position_fee_upper(ctx: Context<UpdatePositionFeeUpper>) -> Result<()> {
         instructions::update_position_fee_upper(ctx)
     }
-    
+
     /// Mint a new token with distribution
     pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()> {
         instructions::mint_token(ctx, params)
     }
-    
+
     /// Deploy initial liquidity to a market
-    /// SECURITY: Verifies the deployment matches the commitment made during
-    /// market initialization, preventing unauthorized liquidity deployment
+    /// Verifies the deployment matches the commitment made during market
+    /// initialization, preventing unauthorized liquidity deployment
     pub fn deploy_initial_liquidity<'info>(
         ctx: Context<'_, '_, 'info, 'info, DeployInitialLiquidity<'info>>,
         params: DeployInitialLiquidityParams,
@@ -142,7 +147,7 @@ pub mod feels {
     pub fn cleanup_bonding_curve(ctx: Context<CleanupBondingCurve>) -> Result<()> {
         instructions::cleanup_bonding_curve(ctx)
     }
-    
+
     /// Open a position with NFT metadata
     pub fn open_position_with_metadata(
         ctx: Context<OpenPositionWithMetadata>,
@@ -152,7 +157,7 @@ pub mod feels {
     ) -> Result<()> {
         instructions::open_position_with_metadata(ctx, tick_lower, tick_upper, liquidity_amount)
     }
-    
+
     /// Close a position with NFT metadata
     pub fn close_position_with_metadata(
         ctx: Context<ClosePositionWithMetadata>,
@@ -167,7 +172,7 @@ pub mod feels {
         };
         instructions::close_position_with_metadata(ctx, amount_0_min, amount_1_min)
     }
-    
+
     /// Destroy an expired token that hasn't had liquidity deployed
     pub fn destroy_expired_token(ctx: Context<DestroyExpiredToken>) -> Result<()> {
         instructions::destroy_expired_token(ctx)
@@ -177,32 +182,31 @@ pub mod feels {
     pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
         instructions::graduate_pool(ctx)
     }
-    
+
     /// Update DEX TWAP for protocol oracle (keeper-updated)
     pub fn update_dex_twap(ctx: Context<UpdateDexTwap>, params: UpdateDexTwapParams) -> Result<()> {
         instructions::update_dex_twap(ctx, params)
     }
 
     /// Update native reserve rate for protocol oracle (authority)
-    pub fn update_native_rate(ctx: Context<UpdateNativeRate>, params: UpdateNativeRateParams) -> Result<()> {
+    pub fn update_native_rate(
+        ctx: Context<UpdateNativeRate>,
+        params: UpdateNativeRateParams,
+    ) -> Result<()> {
         instructions::update_native_rate(ctx, params)
     }
 }
 
-// Create a processor function for tests that calls the Anchor-generated entry point
+// Minimal processor for non-anchor entrypoint tests: validate discriminator length.
 #[cfg(not(feature = "no-entrypoint"))]
 pub fn processor(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> anchor_lang::solana_program::entrypoint::ProgramResult {
-    // Check instruction discriminator (first 8 bytes)
     if instruction_data.len() < 8 {
+        // must contain an Anchor discriminator
         return Err(ProgramError::InvalidInstructionData);
     }
-    
-    // For testing purposes, let's just return success for now
-    // TODO: In a real implementation, we'd parse and route to the correct handler
-    msg!("Test processor called with {} bytes of instruction data", instruction_data.len());
     Ok(())
 }

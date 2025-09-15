@@ -18,9 +18,10 @@ default:
     @echo "  just logs          - Tail validator logs"
     @echo "  just program-id    - Show program address"
     @echo ""
-    @echo "IDL Generation:"
-    @echo "  just idl-build [PROGRAM] - Generate IDL files (default: all)"
+    @echo "IDL & Client Generation:"
+    @echo "  just idl-build [PROGRAM] - Generate IDL + TypeScript/Rust clients (default: all)"
     @echo "  just idl-validate  - Validate IDL consistency"
+    @echo "  just generate-clients - Generate TypeScript & Rust clients from existing IDL"
     @echo ""
     @echo "Testing:"
     @echo "  just test          - Run all tests"
@@ -28,6 +29,10 @@ default:
     @echo "  just test-integration - Run integration tests only"
     @echo "  just test-e2e      - Run end-to-end tests only"
     @echo "  just test-property - Run property-based tests only"
+    @echo ""
+    @echo "SDK Generation:"
+    @echo "  just generate-sdk  - Generate client SDK (TypeScript & Rust)"
+    @echo "  just generate-sdk-with-id ID - Generate SDK with custom program ID"
     @echo ""
     @echo "Solana Tools:"
     @echo "  just airdrop [AMT] - Airdrop SOL to wallet (default: 10)"
@@ -78,9 +83,17 @@ idl-build PROGRAM="":
         echo "Generating IDL files for all on-chain programs..."
         nix run .#idl-build -- feels
         echo "Note: feels-jupiter-adapter is a library, not an on-chain program, so it doesn't have an IDL"
+        echo ""
+        echo "Generating TypeScript and Rust clients from IDL..."
+        just generate-clients
     else
         echo "Generating IDL for {{PROGRAM}}..."
         nix run .#idl-build -- {{PROGRAM}}
+        if [ "{{PROGRAM}}" = "feels" ]; then
+            echo ""
+            echo "Generating TypeScript and Rust clients from IDL..."
+            just generate-clients
+        fi
     fi
 
 # Validate IDL against SDK
@@ -217,3 +230,98 @@ reset:
     just clean
     rm -rf logs/ test-ledger/ keypairs/
     @echo "Reset complete!"
+
+# Generate TypeScript and Rust clients from IDL
+generate-clients:
+    @echo "Generating TypeScript and Rust clients from IDL..."
+    @bash scripts/generate-clients.sh
+
+# Generate client SDK using Anchor
+generate-sdk:
+    @echo "Generating client SDK..."
+    @echo "Step 1: Building program (without IDL to avoid stack issues)..."
+    just build
+    @echo ""
+    @echo "Step 2: Generating IDL using custom builder..."
+    just idl-build
+    @echo ""
+    @echo "Step 3: Generating TypeScript SDK..."
+    @mkdir -p generated-sdk
+    @if [ -f target/idl/feels.json ]; then \
+        echo "Found IDL at target/idl/feels.json"; \
+        echo "Converting IDL to TypeScript..."; \
+        nix develop --command node -e " \
+            const fs = require('fs'); \
+            const idl = JSON.parse(fs.readFileSync('target/idl/feels.json', 'utf8')); \
+            const ts = 'export type Feels = ' + JSON.stringify(idl, null, 2) + ';\\n\\nexport const IDL: Feels = ' + JSON.stringify(idl, null, 2) + ';'; \
+            fs.writeFileSync('generated-sdk/feels.ts', ts); \
+            console.log('TypeScript IDL generated successfully'); \
+        " || echo "Note: Direct TypeScript generation failed, using raw IDL"; \
+    else \
+        echo "Error: IDL not found at target/idl/feels.json"; \
+        exit 1; \
+    fi
+    @echo ""
+    @echo "Step 4: Generating TypeScript types using anchor idl type..."
+    nix develop --command anchor idl type -o generated-sdk/feels_types.ts target/idl/feels.json || echo "Note: Type generation failed"
+    @echo ""
+    @echo "Step 5: Creating Rust client bindings..."
+    @echo "Note: Anchor 0.31.1 doesn't include client-gen. For Rust clients, use anchor-client crate with the IDL."
+    @echo ""
+    @echo "Client SDK generated in generated-sdk/"
+    @echo "  - IDL: target/idl/feels.json"
+    @echo "  - TypeScript: generated-sdk/feels.ts (complete IDL module)"
+    @echo "  - TypeScript Types: generated-sdk/feels_types.ts (if generated)"
+    @echo ""
+    @echo "To use the TypeScript SDK:"
+    @echo "  import { IDL } from './generated-sdk/feels';"
+    @echo "  const program = new anchor.Program(IDL, programId, provider);"
+    @echo ""
+    @echo "For Rust clients, add to Cargo.toml:"
+    @echo "  anchor-client = \"0.31.1\""
+    @echo "  feels-sdk = { path = \"../sdk\" }"
+
+# Generate SDK with custom program ID
+generate-sdk-with-id PROGRAM_ID:
+    @echo "Generating client SDK with custom program ID: {{PROGRAM_ID}}..."
+    @echo "Step 1: Building program (without IDL to avoid stack issues)..."
+    just build
+    @echo ""
+    @echo "Step 2: Generating IDL using custom builder..."
+    just idl-build
+    @echo ""
+    @echo "Step 3: Generating TypeScript SDK..."
+    @mkdir -p generated-sdk
+    @if [ -f target/idl/feels.json ]; then \
+        echo "Found IDL at target/idl/feels.json"; \
+        echo "Converting IDL to TypeScript with custom program ID..."; \
+        nix develop --command node -e " \
+            const fs = require('fs'); \
+            const idl = JSON.parse(fs.readFileSync('target/idl/feels.json', 'utf8')); \
+            const ts = 'export type Feels = ' + JSON.stringify(idl, null, 2) + ';\\n\\nexport const IDL: Feels = ' + JSON.stringify(idl, null, 2) + ';\\n\\nexport const PROGRAM_ID = \"{{PROGRAM_ID}}\";'; \
+            fs.writeFileSync('generated-sdk/feels.ts', ts); \
+            console.log('TypeScript IDL generated successfully with program ID: {{PROGRAM_ID}}'); \
+        " || echo "Note: Direct TypeScript generation failed, using raw IDL"; \
+    else \
+        echo "Error: IDL not found at target/idl/feels.json"; \
+        exit 1; \
+    fi
+    @echo ""
+    @echo "Step 4: Generating TypeScript types using anchor idl type..."
+    nix develop --command anchor idl type -o generated-sdk/feels_types.ts target/idl/feels.json || echo "Note: Type generation failed"
+    @echo ""
+    @echo "Step 5: Creating Rust client bindings..."
+    @echo "Note: Anchor 0.31.1 doesn't include client-gen. For Rust clients, use anchor-client crate with the IDL."
+    @echo ""
+    @echo "Client SDK generated in generated-sdk/"
+    @echo "  - IDL: target/idl/feels.json"
+    @echo "  - TypeScript: generated-sdk/feels.ts (with PROGRAM_ID export)"
+    @echo "  - TypeScript Types: generated-sdk/feels_types.ts (if generated)"
+    @echo ""
+    @echo "To use the TypeScript SDK:"
+    @echo "  import { IDL, PROGRAM_ID } from './generated-sdk/feels';"
+    @echo "  const program = new anchor.Program(IDL, PROGRAM_ID, provider);"
+    @echo ""
+    @echo "For Rust clients, add to Cargo.toml:"
+    @echo "  anchor-client = \"0.31.1\""
+    @echo "  feels-sdk = { path = \"../sdk\" }"

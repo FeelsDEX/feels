@@ -26,4 +26,3 @@ pub fn cleanup_bonding_curve(ctx: Context<CleanupBondingCurve>) -> Result<()> {
     market.cleanup_complete = true;
     Ok(())
 }
-

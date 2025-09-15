@@ -1,18 +1,18 @@
 //! Pool-Owned Market Making (POMM) logic
-//! 
+//!
 //! Opportunistic liquidity placement from pool buffer fees
 
-use anchor_lang::prelude::*;
 use crate::{
     constants::MIN_LIQUIDITY,
     error::FeelsError,
-    state::{Market, Buffer, OracleState},
+    state::{Buffer, Market, OracleState},
     utils::{liquidity_from_amounts, sqrt_price_from_tick},
 };
+use anchor_lang::prelude::*;
 
 /// Opportunistic upkeep: if pool buffer meets threshold, convert accounting τ into
 /// additional floor liquidity at a wide range around current price/tick.
-/// 
+///
 /// SECURITY: This function addresses two critical vulnerabilities:
 /// 1. Uses only buffer fee accounting, never vault balances, to prevent flash loan attacks
 /// 2. Uses TWAP (Time-Weighted Average Price) instead of spot price for liquidity placement
@@ -25,19 +25,20 @@ pub fn maybe_pomm_add_liquidity(
     now: i64,
 ) -> Result<()> {
     // Simple guard: avoid doing this too often
-    if now <= buffer.last_floor_placement + 60 { // at most once per minute
+    if now <= buffer.last_floor_placement + 60 {
+        // at most once per minute
         return Ok(());
     }
 
     // Check if buffer has accumulated enough fees to trigger floor placement
     // Use buffer's fee accounting directly instead of vault balances to prevent manipulation
-    // 
+    //
     // SECURITY: To avoid u128 saturation edge case where both fees are near u128::MAX,
     // we check if either individual fee amount exceeds the threshold first.
     // This prevents the extremely unlikely scenario where saturation at u128::MAX
     // would cause unintended frequent POMM executions.
     let threshold_u128 = buffer.floor_placement_threshold as u128;
-    
+
     // If either individual fee exceeds threshold, we definitely have enough
     if buffer.fees_token_0 >= threshold_u128 || buffer.fees_token_1 >= threshold_u128 {
         // Proceed with POMM logic
@@ -52,23 +53,23 @@ pub fn maybe_pomm_add_liquidity(
     // Use all available buffer liquidity based on what we actually have
     let amount_0 = buffer.fees_token_0.min(u64::MAX as u128) as u64;
     let amount_1 = buffer.fees_token_1.min(u64::MAX as u128) as u64;
-    
-    if amount_0 == 0 && amount_1 == 0 { 
-        return Ok(()); 
+
+    if amount_0 == 0 && amount_1 == 0 {
+        return Ok(());
     }
 
     // SECURITY: Use TWAP price instead of spot price to prevent manipulation attacks
     // Calculate average price over the last 5 minutes (300 seconds)
     let twap_seconds_ago = 300u32;
-    
+
     // Get TWAP tick from oracle
     let twap_tick = oracle.get_twap_tick(now, twap_seconds_ago)?;
     let twap_sqrt_price = sqrt_price_from_tick(twap_tick)?;
-    
+
     // Use TWAP values instead of spot values for liquidity placement
     let current_tick = twap_tick;
     let current_sqrt_price = twap_sqrt_price;
-    
+
     // SECURITY: Derive POMM range width from market's immutable tick spacing
     // This prevents manipulation via mutable buffer parameters
     // Formula: POMM width = market tick spacing * 20 (approximately ±2% for common tick spacings)
@@ -79,11 +80,15 @@ pub fn maybe_pomm_add_liquidity(
     let pomm_tick_width = (market.tick_spacing as i32)
         .saturating_mul(20)
         .clamp(10, 2000); // Width between 10-2000 ticks (0.1%-20%)
-    
+
     // Log the derived width for transparency
     #[cfg(feature = "telemetry")]
-    msg!("POMM using derived tick width {} from market tick spacing {}", pomm_tick_width, market.tick_spacing);
-    
+    msg!(
+        "POMM using derived tick width {} from market tick spacing {}",
+        pomm_tick_width,
+        market.tick_spacing
+    );
+
     // Determine range based on which tokens we have:
     // - If only token_0: place below current price (will be bought as price rises)
     // - If only token_1: place above current price (will be bought as price falls)
@@ -108,13 +113,23 @@ pub fn maybe_pomm_add_liquidity(
     // Calculate liquidity to add using actual amounts we'll deploy
     let sqrt_pl = sqrt_price_from_tick(tick_lower)?;
     let sqrt_pu = sqrt_price_from_tick(tick_upper)?;
-    let liq = liquidity_from_amounts(current_sqrt_price, sqrt_pl, sqrt_pu, amount_0_used, amount_1_used)?;
-    
+    let liq = liquidity_from_amounts(
+        current_sqrt_price,
+        sqrt_pl,
+        sqrt_pu,
+        amount_0_used,
+        amount_1_used,
+    )?;
+
     // Check against minimum liquidity threshold to prevent dust positions
-    if liq < MIN_LIQUIDITY { 
+    if liq < MIN_LIQUIDITY {
         #[cfg(feature = "telemetry")]
-        msg!("POMM liquidity {} below minimum threshold {}, skipping", liq, MIN_LIQUIDITY);
-        return Ok(()); 
+        msg!(
+            "POMM liquidity {} below minimum threshold {}, skipping",
+            liq,
+            MIN_LIQUIDITY
+        );
+        return Ok(());
     }
 
     // Update floor position and active liquidity
@@ -122,13 +137,15 @@ pub fn maybe_pomm_add_liquidity(
     // but also serve as global bounds. This will be refactored when POMM uses real positions.
     market.global_lower_tick = tick_lower;
     market.global_upper_tick = tick_upper;
-    market.floor_liquidity = market.floor_liquidity
+    market.floor_liquidity = market
+        .floor_liquidity
         .checked_add(liq)
         .ok_or(FeelsError::MathOverflow)?;
-    
+
     // Add to active liquidity if current price is within the new range
     if current_tick >= tick_lower && current_tick <= tick_upper {
-        market.liquidity = market.liquidity
+        market.liquidity = market
+            .liquidity
             .checked_add(liq)
             .ok_or(FeelsError::MathOverflow)?;
     }
@@ -136,10 +153,12 @@ pub fn maybe_pomm_add_liquidity(
     // Adjust Buffer accounting - deduct only what we actually used
     buffer.fees_token_0 = buffer.fees_token_0.saturating_sub(amount_0_used as u128);
     buffer.fees_token_1 = buffer.fees_token_1.saturating_sub(amount_1_used as u128);
-    buffer.tau_spot = buffer.tau_spot
+    buffer.tau_spot = buffer
+        .tau_spot
         .saturating_sub((amount_0_used.saturating_add(amount_1_used)) as u128);
     buffer.last_floor_placement = now;
-    buffer.total_distributed = buffer.total_distributed
+    buffer.total_distributed = buffer
+        .total_distributed
         .saturating_add((amount_0_used.saturating_add(amount_1_used)) as u128);
 
     // Emit a lightweight event via log to avoid extra struct overhead (optional)

@@ -7,7 +7,7 @@ macro_rules! user_token_accounts {
         /// User account
         #[account(mut)]
         pub user: Signer<'info>,
-        
+
         /// User's token account
         #[account(
             mut,
@@ -24,7 +24,7 @@ macro_rules! user_token_accounts_with_mint {
         /// User account
         #[account(mut)]
         pub user: Signer<'info>,
-        
+
         /// User's token account
         #[account(
             mut,
@@ -62,17 +62,17 @@ macro_rules! market_with_vaults {
             constraint = !market.is_paused @ $crate::error::FeelsError::MarketPaused,
         )]
         pub market: Account<'info, Market>,
-        
+
         /// Vault for token 0 - derived from market and token_0
         /// CHECK: Validated in handler
         #[account(mut)]
         pub vault_0: UncheckedAccount<'info>,
-        
+
         /// Vault for token 1 - derived from market and token_1
         /// CHECK: Validated in handler
         #[account(mut)]
         pub vault_1: UncheckedAccount<'info>,
-        
+
         /// Market authority PDA (unified authority)
         /// CHECK: PDA signer for vault operations
         #[account(
@@ -89,7 +89,7 @@ macro_rules! standard_programs {
     () => {
         /// Token program
         pub token_program: Program<'info, Token>,
-        
+
         /// System program
         pub system_program: Program<'info, System>,
     };
@@ -105,7 +105,7 @@ macro_rules! buffer_with_authority {
             constraint = buffer.market == market.key() @ $crate::error::FeelsError::InvalidAuthority,
         )]
         pub buffer: Account<'info, Buffer>,
-        
+
         /// Buffer authority PDA
         /// CHECK: PDA that controls buffer
         #[account(
@@ -169,7 +169,7 @@ macro_rules! validated_tick_array {
         #[account(
             mut,
             constraint = tick_array.market == market.key() @ $crate::error::FeelsError::InvalidMarket,
-            constraint = tick_array.start_tick_index % (market.tick_spacing as i32 * $crate::state::TICK_ARRAY_SIZE as i32) == 0 
+            constraint = tick_array.start_tick_index % (market.tick_spacing as i32 * $crate::state::TICK_ARRAY_SIZE as i32) == 0
                 @ $crate::error::FeelsError::InvalidTickArrayStartIndex,
         )]
         pub tick_array: Account<'info, TickArray>,

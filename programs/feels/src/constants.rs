@@ -1,5 +1,5 @@
 //! Global constants for the Feels protocol
-//! 
+//!
 //! Centralized constants for PDA seeds and protocol parameters
 
 // PDA seed constants

@@ -36,12 +36,16 @@ impl ProtocolOracle {
         8 +  // dex_last_update_ts
         8 +  // native_last_update_ts
         4 +  // dex_window_secs
-        4;   // flags
+        4; // flags
 
     #[inline]
     pub fn min_rate_q64(&self) -> u128 {
-        if self.dex_twap_rate_q64 == 0 { return self.native_rate_q64; }
-        if self.native_rate_q64 == 0 { return self.dex_twap_rate_q64; }
+        if self.dex_twap_rate_q64 == 0 {
+            return self.native_rate_q64;
+        }
+        if self.native_rate_q64 == 0 {
+            return self.dex_twap_rate_q64;
+        }
         self.native_rate_q64.min(self.dex_twap_rate_q64)
     }
 }

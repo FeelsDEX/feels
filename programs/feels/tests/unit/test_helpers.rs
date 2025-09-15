@@ -1,5 +1,5 @@
+use feels::state::{Market, PolicyV1, TokenOrigin, TokenType};
 use solana_sdk::pubkey::Pubkey;
-use feels::state::{Market, PolicyV1, TokenType, TokenOrigin};
 
 /// Create a test Market with default values
 pub fn create_test_market() -> Market {

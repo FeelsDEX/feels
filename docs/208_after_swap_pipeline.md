@@ -13,8 +13,8 @@ This document specifies the atomic, ordered post-swap updates owned by `PoolCont
    - Output: `fee_bps` within `[MIN_TOTAL_FEE_BPS, MAX_TOTAL_FEE_BPS]`
    - Apply user-provided `max_fee_bps` cap (revert if exceeded).
 
-3. Split fees (fixed split; MVP)
-   - Recipients: LP accumulator, PoolReserve, PoolBuffer, Protocol Treasury, Creator (base fee)
+3. Split fees (configurable split)
+   - Recipients: LP accumulator, PoolReserve, PoolBuffer, Protocol Treasury, Creator (protocol tokens)
    - Apply rounding policy: conservative toward protocol solvency on ties.
 
 4. Update FlowSignals (lightweight; MVP)

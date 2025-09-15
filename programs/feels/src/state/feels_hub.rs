@@ -12,6 +12,5 @@ impl FeelsHub {
     pub const SEED: &'static [u8] = b"feels_hub";
     pub const LEN: usize = 8 + // disc
         32 + // feelssol_mint
-        1;   // reentrancy_guard
+        1; // reentrancy_guard
 }
-

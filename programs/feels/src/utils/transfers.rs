@@ -1,9 +1,9 @@
 //! Token transfer utilities
-//! 
+//!
 //! Helper functions for common token transfer patterns
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint, MintTo, Burn};
+use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
 /// Transfer tokens from a user account to a vault
 pub fn transfer_from_user_to_vault<'info>(

@@ -4,10 +4,7 @@
 //! liquidity, amounts, and prices
 
 use crate::error::FeelsError;
-use orca_whirlpools_core::{
-    U128,
-    try_get_amount_delta_a, try_get_amount_delta_b,
-};
+use orca_whirlpools_core::{try_get_amount_delta_a, try_get_amount_delta_b, U128};
 
 /// Calculate amounts from liquidity (for removing liquidity)
 pub fn amounts_from_liquidity(
@@ -41,21 +38,31 @@ pub fn amounts_from_liquidity(
 }
 
 /// Calculate amount0 delta using Orca core
-pub fn amount0_delta(liquidity: u128, sqrt_price_a: u128, sqrt_price_b: u128) -> Result<u64, FeelsError> {
+pub fn amount0_delta(
+    liquidity: u128,
+    sqrt_price_a: u128,
+    sqrt_price_b: u128,
+) -> Result<u64, FeelsError> {
     try_get_amount_delta_a(
         U128::from(sqrt_price_a.min(sqrt_price_b)),
         U128::from(sqrt_price_a.max(sqrt_price_b)),
         U128::from(liquidity),
-        false
-    ).map_err(|_| FeelsError::MathOverflow)
+        false,
+    )
+    .map_err(|_| FeelsError::MathOverflow)
 }
 
 /// Calculate amount1 delta using Orca core  
-pub fn amount1_delta(liquidity: u128, sqrt_price_a: u128, sqrt_price_b: u128) -> Result<u64, FeelsError> {
+pub fn amount1_delta(
+    liquidity: u128,
+    sqrt_price_a: u128,
+    sqrt_price_b: u128,
+) -> Result<u64, FeelsError> {
     try_get_amount_delta_b(
         U128::from(sqrt_price_a.min(sqrt_price_b)),
         U128::from(sqrt_price_a.max(sqrt_price_b)),
         U128::from(liquidity),
-        false
-    ).map_err(|_| FeelsError::MathOverflow)
+        false,
+    )
+    .map_err(|_| FeelsError::MathOverflow)
 }

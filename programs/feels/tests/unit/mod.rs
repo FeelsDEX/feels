@@ -1,7 +1,6 @@
 /// Unit test module organization
 ///
 /// Core unit tests for protocol components organized by category
-
 // Category modules
 pub mod buffer;
 pub mod math;

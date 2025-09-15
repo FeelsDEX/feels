@@ -8,4 +8,3 @@ async fn test_mvp_smoke_in_memory() {
     // Basic sanity: protocol is initialized, FeelsSOL mint exists
     assert_ne!(ctx.feelssol_mint, Pubkey::default());
 }
-

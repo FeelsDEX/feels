@@ -1,5 +1,5 @@
 //! Token metadata tracking for protocol-minted tokens
-//! 
+//!
 //! Tracks token type + origin for future Token-2022 support
 
 use anchor_lang::prelude::*;
@@ -31,19 +31,19 @@ pub enum TokenOrigin {
 pub struct ProtocolToken {
     /// Token mint address
     pub mint: Pubkey,
-    
+
     /// Creator who minted the token
     pub creator: Pubkey,
-    
+
     /// Token type (SPL or Token-2022)
     pub token_type: TokenType,
-    
+
     /// Creation timestamp
     pub created_at: i64,
-    
+
     /// Whether this token can create markets (for future use)
     pub can_create_markets: bool,
-    
+
     /// Reserved for future use
     pub _reserved: [u8; 32],
 }

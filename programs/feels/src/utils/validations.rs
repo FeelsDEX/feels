@@ -1,9 +1,12 @@
 //! Common validation utilities
-//! 
+//!
 //! Shared validation logic used across instructions
 
+use crate::{
+    error::FeelsError,
+    state::{Market, TickArray, TICK_ARRAY_SIZE},
+};
 use anchor_lang::prelude::*;
-use crate::{error::FeelsError, state::{Market, TickArray, TICK_ARRAY_SIZE}};
 
 /// Validate that an amount is non-zero
 pub fn validate_amount(amount: u64) -> Result<()> {
@@ -19,10 +22,7 @@ pub fn validate_liquidity_amounts(amount_0: u64, amount_1: u64) -> Result<()> {
 
 /// Validate slippage constraints
 pub fn validate_slippage(actual: u64, minimum: u64) -> Result<()> {
-    require!(
-        actual >= minimum,
-        FeelsError::SlippageExceeded
-    );
+    require!(actual >= minimum, FeelsError::SlippageExceeded);
     Ok(())
 }
 
@@ -54,10 +54,22 @@ pub fn validate_tick_spacing(tick_spacing: u16, max_tick_spacing: u16) -> Result
 /// Validate that ticks are properly ordered and aligned
 pub fn validate_tick_range(tick_lower: i32, tick_upper: i32, tick_spacing: u16) -> Result<()> {
     require!(tick_lower < tick_upper, FeelsError::InvalidTickRange);
-    require!(tick_lower % tick_spacing as i32 == 0, FeelsError::TickNotSpaced);
-    require!(tick_upper % tick_spacing as i32 == 0, FeelsError::TickNotSpaced);
-    require!(tick_lower >= crate::constants::MIN_TICK, FeelsError::InvalidTick);
-    require!(tick_upper <= crate::constants::MAX_TICK, FeelsError::InvalidTick);
+    require!(
+        tick_lower % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+    require!(
+        tick_upper % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+    require!(
+        tick_lower >= crate::constants::MIN_TICK,
+        FeelsError::InvalidTick
+    );
+    require!(
+        tick_upper <= crate::constants::MAX_TICK,
+        FeelsError::InvalidTick
+    );
     Ok(())
 }
 
@@ -83,7 +95,11 @@ pub fn validate_tick_array_for_tick(
 }
 
 /// Validate distribution for token minting
-pub fn validate_distribution(distribution_total: u64, total_supply: u64, min_reserve: u64) -> Result<()> {
+pub fn validate_distribution(
+    distribution_total: u64,
+    total_supply: u64,
+    min_reserve: u64,
+) -> Result<()> {
     require!(
         distribution_total <= total_supply - min_reserve,
         FeelsError::InvalidPrice
