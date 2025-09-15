@@ -324,12 +324,16 @@ pub fn calculate_token_out_from_sqrt_price(
     let price_q128 = sqrt_price_q64 * sqrt_price_q64;
     
     // Adjust for decimal differences
-    let decimal_adjustment = if token_0_decimals > token_1_decimals {
-        U256::from(10u128.pow((token_0_decimals - token_1_decimals) as u32))
-    } else if token_1_decimals > token_0_decimals {
-        U256::from(1u64) // Will divide by this factor below
-    } else {
-        U256::from(1u64)
+    let decimal_adjustment = match token_0_decimals.cmp(&token_1_decimals) {
+        std::cmp::Ordering::Greater => {
+            U256::from(10u128.pow((token_0_decimals - token_1_decimals) as u32))
+        }
+        std::cmp::Ordering::Less => {
+            U256::from(1u64) // Will divide by this factor below
+        }
+        std::cmp::Ordering::Equal => {
+            U256::from(1u64)
+        }
     };
     
     let amount_out = if is_token_0_input {
@@ -339,14 +343,12 @@ pub fn calculate_token_out_from_sqrt_price(
         let numerator = amount_in_u256 * price_q128;
         let denominator = q64 * q64; // 2^128
         
-        let result = if token_1_decimals > token_0_decimals {
+        if token_1_decimals > token_0_decimals {
             let adj_factor = U256::from(10u128.pow((token_1_decimals - token_0_decimals) as u32));
             (numerator * adj_factor) / denominator
         } else {
             (numerator / decimal_adjustment) / denominator
-        };
-        
-        result
+        }
     } else {
         // Buying token_0 with token_1
         // token0_amount = token1_amount / price / decimal_adjustment
@@ -354,14 +356,12 @@ pub fn calculate_token_out_from_sqrt_price(
         let numerator = amount_in_u256 * q64 * q64; // amount * 2^128
         let denominator = price_q128;
         
-        let result = if token_0_decimals > token_1_decimals {
+        if token_0_decimals > token_1_decimals {
             (numerator / denominator) * decimal_adjustment
         } else {
             let adj_factor = U256::from(10u128.pow((token_1_decimals - token_0_decimals) as u32));
             (numerator / denominator) / adj_factor
-        };
-        
-        result
+        }
     };
     
     // Convert back to u64, ensuring no overflow

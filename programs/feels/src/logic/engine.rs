@@ -197,8 +197,8 @@ pub fn compute_swap_step(
     
     // Check if we're at a bound
     let at_bound = match direction {
-        SwapDirection::ZeroForOne => target_tick.map_or(false, |t| t <= global_lower_tick),
-        SwapDirection::OneForZero => target_tick.map_or(false, |t| t >= global_upper_tick),
+        SwapDirection::ZeroForOne => target_tick.is_some_and(|t| t <= global_lower_tick),
+        SwapDirection::OneForZero => target_tick.is_some_and(|t| t >= global_upper_tick),
     };
 
     // If we're at a bound, clamp the target price
@@ -352,7 +352,7 @@ pub fn compute_swap_step(
         out: amount_out,
         fee: fee_amount,
         sqrt_next: new_sqrt_price,
-        crossed_tick: crossed_tick,
+        crossed_tick,
         outcome: final_outcome,
     })
 }
@@ -399,6 +399,11 @@ impl<'info> TickArrayIterator<'info> {
         require!(
             remaining_accounts.len() <= MAX_TICK_ARRAYS_PER_SWAP,
             FeelsError::TooManyTickArrays
+        );
+        // Require at least one tick array for valid price path
+        require!(
+            !remaining_accounts.is_empty(),
+            FeelsError::MissingTickArrayCoverage
         );
         
         // Convert remaining accounts to tick array loaders with full validation

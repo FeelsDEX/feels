@@ -5,35 +5,25 @@
 use anchor_lang::prelude::*;
 
 /// Token type enum for tracking SPL vs Token-2022
-#[derive(Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize, Default)]
 pub enum TokenType {
     /// Standard SPL token
+    #[default]
     Spl = 0,
     /// Token-2022 (not supported in MVP)
     Token2022 = 1,
 }
 
-impl Default for TokenType {
-    fn default() -> Self {
-        TokenType::Spl
-    }
-}
-
 /// Origin of a token
-#[derive(Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize, Default)]
 pub enum TokenOrigin {
     /// Minted by the protocol using mint_token instruction
     ProtocolMinted = 0,
     /// External token (not allowed to create markets in MVP)
+    #[default]
     External = 1,
     /// FeelsSOL hub token
     FeelsSOL = 2,
-}
-
-impl Default for TokenOrigin {
-    fn default() -> Self {
-        TokenOrigin::External
-    }
 }
 
 /// Registry entry for protocol-minted tokens

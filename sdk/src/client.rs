@@ -15,7 +15,7 @@ use solana_sdk::{
 };
 use std::sync::Arc;
 use std::str::FromStr;
-use feels::state::{Market, Buffer};
+use feels::state::{Market, Buffer, ProtocolOracle, SafetyController};
 
 /// Main SDK client for interacting with Feels protocol
 pub struct FeelsClient {
@@ -46,6 +46,28 @@ impl FeelsClient {
             program,
             config,
         })
+    }
+
+    /// Recommended default max fee (bps) for MVP
+    pub fn default_max_fee_bps() -> u16 { 150 }
+
+    /// Get protocol oracle rates (native, dex_twap, and min)
+    pub fn get_protocol_rate(&self) -> SdkResult<(u128, u128, u128)> {
+        let (oracle_pda, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &self.config.program_id);
+        let oracle: ProtocolOracle = self.program.account(oracle_pda)
+            .map_err(|e| SdkError::AccountNotFound(format!("ProtocolOracle {}: {}", oracle_pda, e)))?;
+        let native = oracle.native_rate_q64;
+        let dex = oracle.dex_twap_rate_q64;
+        let min = if native == 0 { dex } else if dex == 0 { native } else { native.min(dex) };
+        Ok((native, dex, min))
+    }
+
+    /// Get redemption pause status (true = paused)
+    pub fn get_redemption_status(&self) -> SdkResult<bool> {
+        let (safety_pda, _) = Pubkey::find_program_address(&[b"safety_controller"], &self.config.program_id);
+        let safety: SafetyController = self.program.account(safety_pda)
+            .map_err(|e| SdkError::AccountNotFound(format!("SafetyController {}: {}", safety_pda, e)))?;
+        Ok(safety.redemptions_paused)
     }
     
     /// Get market info
@@ -115,16 +137,23 @@ impl FeelsClient {
         minimum_amount_out: u64,
         tick_arrays: Vec<Pubkey>,
     ) -> SdkResult<Signature> {
-        // Get market from tokens (simplified - assumes direct market exists)
-        let market = self.find_market(user_token_in, user_token_out)?;
+        // Derive market from sorted mints and fetch true market state
+        let (token_0, token_1) = if user_token_in < user_token_out {
+            (*user_token_in, *user_token_out)
+        } else {
+            (*user_token_out, *user_token_in)
+        };
+        let (market, _) = crate::find_market_address(&token_0, &token_1);
+        let market_state: feels::state::Market = self.program.account(market)
+            .map_err(|e| SdkError::AccountNotFound(format!("Market {}: {}", market, e)))?;
         
         let ix = instructions::swap(
             self.config.payer.pubkey(),
             market,
             *user_token_in,
             *user_token_out,
-            Pubkey::default(), // token_0_mint - would need to fetch market to get
-            Pubkey::default(), // token_1_mint - would need to fetch market to get
+            market_state.token_0,
+            market_state.token_1,
             tick_arrays,
             amount_in,
             minimum_amount_out,
@@ -136,6 +165,73 @@ impl FeelsClient {
             .send()?;
         
         Ok(sig)
+    }
+
+    /// Execute a swap with a max fee cap (client-side estimate)
+    pub fn swap_with_fee_cap(
+        &self,
+        user_token_in: &Pubkey,
+        user_token_out: &Pubkey,
+        amount_in: u64,
+        minimum_amount_out: u64,
+        max_fee_bps: u16,
+        tick_arrays: Vec<Pubkey>,
+    ) -> SdkResult<Signature> {
+        // Basic estimate using base fee; in production, use an estimator
+        let est_fee_bps: u16 = 30; // fallback base fee
+        if est_fee_bps > max_fee_bps {
+            return Err(SdkError::InvalidParameters(format!("Estimated fee {}bps exceeds cap {}bps", est_fee_bps, max_fee_bps)));
+        }
+        self.swap(user_token_in, user_token_out, amount_in, minimum_amount_out, tick_arrays)
+    }
+
+    /// Launch Factory: initialize_market then deploy_initial_liquidity (optionally with initial buy)
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_pool(
+        &self,
+        token_0: &Pubkey,
+        token_1: &Pubkey,
+        feelssol_mint: &Pubkey,
+        base_fee_bps: u16,
+        tick_spacing: u16,
+        initial_sqrt_price: u128,
+        initial_buy_feelssol_amount: u64,
+        creator_feelssol: Option<Pubkey>,
+        creator_token_out: Option<Pubkey>,
+        tick_step_size: i32,
+    ) -> SdkResult<(Signature, Signature)> {
+        let ix_init = instructions::initialize_market(
+            self.config.payer.pubkey(),
+            *token_0,
+            *token_1,
+            *feelssol_mint,
+            base_fee_bps,
+            tick_spacing,
+            initial_sqrt_price,
+            initial_buy_feelssol_amount,
+            creator_feelssol,
+            creator_token_out,
+        )?;
+        let sig_init = self.program.request().instruction(ix_init).send()?;
+
+        // Build deploy_initial_liquidity instruction
+        let (market, _) = crate::find_market_address(token_0, token_1);
+        // Dummy accounts for optional fields; resolved by builder
+        let deployer_feelssol = creator_feelssol.unwrap_or_default();
+        let deployer_token_out = creator_token_out.unwrap_or_default();
+        let ix_deploy = instructions::deploy_initial_liquidity(
+            self.config.payer.pubkey(),
+            market,
+            *token_0,
+            *token_1,
+            *feelssol_mint,
+            tick_step_size,
+            initial_buy_feelssol_amount,
+            Some(deployer_feelssol),
+            Some(deployer_token_out),
+        )?;
+        let sig_deploy = self.program.request().instruction(ix_deploy).send()?;
+        Ok((sig_init, sig_deploy))
     }
     
     /// Enter FeelsSOL
@@ -214,10 +310,5 @@ impl FeelsClient {
         }
     }
     
-    /// Find market for token pair (placeholder)
-    fn find_market(&self, _token_0: &Pubkey, _token_1: &Pubkey) -> SdkResult<Pubkey> {
-        // This would derive the market PDA
-        // For now, return a placeholder
-        Ok(Pubkey::default())
-    }
+    // Deprecated placeholder removed: derive market via sorted mints instead
 }

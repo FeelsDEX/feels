@@ -1,0 +1,50 @@
+use solana_sdk::pubkey::Pubkey;
+use feels::state::{Market, PolicyV1, TokenType, TokenOrigin};
+
+/// Create a test Market with default values
+pub fn create_test_market() -> Market {
+    Market {
+        version: 1,
+        is_initialized: true,
+        is_paused: false,
+        token_0: Pubkey::default(),
+        token_1: Pubkey::new_unique(),
+        feelssol_mint: Pubkey::default(),
+        token_0_type: TokenType::Spl,
+        token_1_type: TokenType::Spl,
+        token_0_origin: TokenOrigin::ProtocolMinted,
+        token_1_origin: TokenOrigin::ProtocolMinted,
+        sqrt_price: 1 << 64, // 1.0 in Q64
+        liquidity: 0,
+        current_tick: 0,
+        tick_spacing: 1,
+        global_lower_tick: -443636,
+        global_upper_tick: 443636,
+        floor_liquidity: 0,
+        fee_growth_global_0_x64: 0,
+        fee_growth_global_1_x64: 0,
+        base_fee_bps: 30,
+        buffer: Pubkey::new_unique(),
+        authority: Pubkey::new_unique(),
+        last_epoch_update: 0,
+        epoch_number: 0,
+        oracle: Pubkey::new_unique(),
+        oracle_bump: 0,
+        policy: PolicyV1::default(),
+        market_authority_bump: 0,
+        vault_0_bump: 0,
+        vault_1_bump: 0,
+        reentrancy_guard: false,
+        initial_liquidity_deployed: false,
+        jit_enabled: false,
+        jit_per_swap_q_bps: 0,
+        jit_per_slot_q_bps: 0,
+        floor_tick: -443636,
+        floor_buffer_ticks: 100,
+        last_floor_ratchet_ts: 0,
+        floor_cooldown_secs: 60,
+        steady_state_seeded: false,
+        cleanup_complete: false,
+        _reserved: [0; 31],
+    }
+}

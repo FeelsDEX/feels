@@ -151,6 +151,7 @@ fn needs_fee_calculation(
 
 /// Transfer accumulated fees to user
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn transfer_accumulated_fees<'info>(
     position: &mut Account<'info, Position>,
     owner_token_0: &Account<'info, TokenAccount>,
@@ -203,8 +204,8 @@ fn transfer_accumulated_fees<'info>(
 /// Process fee calculation with tick arrays
 #[inline(never)]
 #[allow(dead_code)]
-fn process_fee_calculation<'info>(
-    remaining_accounts: &[AccountInfo<'info>],
+fn process_fee_calculation(
+    remaining_accounts: &[AccountInfo<'_>],
     position: &mut Position,
     market: &Market,
     market_key: Pubkey,

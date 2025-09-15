@@ -139,39 +139,93 @@ impl MarketHelper {
         token_decimals: u8,
     ) -> TestResult<TestMarketSetup> {
         println!("Creating test market with FeelsSOL...");
-        
-        // For MVP testing, we'll create a simple token and use it directly
-        // In production, tokens would be created via mint_token instruction
-        let custom_token = self.ctx.create_mint(&self.ctx.accounts.market_creator.pubkey(), token_decimals).await?;
-        println!("  Created custom token: {}", custom_token.pubkey());
-        
-        // Determine token order
-        let (token_0, token_1) = if self.ctx.feelssol_mint < custom_token.pubkey() {
-            (self.ctx.feelssol_mint, custom_token.pubkey())
-        } else {
-            (custom_token.pubkey(), self.ctx.feelssol_mint)
-        };
-        
-        println!("  Creating market with tokens: {} and {}", token_0, token_1);
-        
-        // For testing, we'll bypass the protocol token check by using a special test mode
-        // This is only for testing - in production all non-FeelsSOL tokens must be protocol-minted
-        println!("  NOTE: Using test mode - bypassing protocol token requirement");
-        
-        // Use SDK to create the market - it will fail with protocol token check
-        // So for now, let's just create a dummy market ID for testing other components
-        let (market_id, _) = sdk::find_market_address(&token_0, &token_1);
-        
-        println!("  Test market setup complete (market creation bypassed for testing)");
-        
-        Ok(TestMarketSetup {
-            market_id,
-            feelssol_mint: self.ctx.feelssol_mint,
-            custom_token_mint: custom_token.pubkey(),
-            custom_token_keypair: custom_token,
-            token_0,
-            token_1,
-        })
+        use sdk::instructions::{mint_token as build_mint_token_ix};
+        let creator = &self.ctx.accounts.market_creator;
+        // Create a new protocol token mint keypair
+        let token_mint = self.ctx.create_mint(&creator.pubkey(), token_decimals).await?;
+        // Creator's FeelsSOL ATA (for mint fee; protocol sets mint_fee=0 for tests)
+        let creator_feelssol_ata = self.ctx.create_ata(&creator.pubkey(), &self.ctx.feelssol_mint).await?;
+
+        match &self.ctx.environment {
+            TestEnvironment::InMemory => {
+                // In-memory environment cannot CPI to Metaplex; fall back to minimal path
+                println!("  InMemory: using simplified path without mint_token CPI");
+                let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {
+                    (self.ctx.feelssol_mint, token_mint.pubkey())
+                } else {
+                    (token_mint.pubkey(), self.ctx.feelssol_mint)
+                };
+                let (market_id, _) = sdk::find_market_address(&token_0, &token_1);
+                Ok(TestMarketSetup {
+                    market_id,
+                    feelssol_mint: self.ctx.feelssol_mint,
+                    custom_token_mint: token_mint.pubkey(),
+                    custom_token_keypair: token_mint,
+                    token_0,
+                    token_1,
+                })
+            }
+            _ => {
+                // Build and send mint_token instruction
+                let ix_mint = build_mint_token_ix(
+                    creator.pubkey(),
+                    creator_feelssol_ata,
+                    token_mint.pubkey(),
+                    self.ctx.feelssol_mint,
+                    feels::instructions::MintTokenParams {
+                        ticker: "TEST".to_string(),
+                        name: "Test Token".to_string(),
+                        uri: "https://example.com".to_string(),
+                    },
+                )?;
+                self.ctx.process_instruction(ix_mint, &[creator, &token_mint]).await?;
+
+                // Initialize market using SDK builder
+                let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {
+                    (self.ctx.feelssol_mint, token_mint.pubkey())
+                } else {
+                    (token_mint.pubkey(), self.ctx.feelssol_mint)
+                };
+
+                let ix_init = sdk::instructions::initialize_market(
+                    creator.pubkey(),
+                    token_0,
+                    token_1,
+                    self.ctx.feelssol_mint,
+                    30,     // base_fee_bps
+                    64,     // tick_spacing
+                    79228162514264337593543950336u128, // sqrt price = 1:1
+                    0,      // no initial buy
+                    None,
+                    None,
+                )?;
+                self.ctx.process_instruction(ix_init, &[creator]).await?;
+
+                // Deploy initial liquidity (staircase) without initial buy
+                let (market_id, _) = sdk::find_market_address(&token_0, &token_1);
+                let ix_deploy = sdk::instructions::deploy_initial_liquidity(
+                    creator.pubkey(),
+                    market_id,
+                    token_0,
+                    token_1,
+                    self.ctx.feelssol_mint,
+                    100, // tick_step_size
+                    0,   // initial_buy
+                    Some(creator_feelssol_ata),
+                    Some(creator_feelssol_ata), // unused without initial buy
+                )?;
+                self.ctx.process_instruction(ix_deploy, &[creator]).await?;
+
+                Ok(TestMarketSetup {
+                    market_id,
+                    feelssol_mint: self.ctx.feelssol_mint,
+                    custom_token_mint: token_mint.pubkey(),
+                    custom_token_keypair: token_mint,
+                    token_0,
+                    token_1,
+                })
+            }
+        }
     }
     
     /// Create a test market with initial liquidity
@@ -293,6 +347,7 @@ impl SwapHelper {
             amount_in,
             minimum_amount_out: 0,
             max_ticks_crossed: 10,
+            max_total_fee_bps: 0,
         };
         
         let data = {
@@ -542,3 +597,106 @@ impl TestContext {
 }
 
 // Clone implementation is in context.rs
+
+// ============================================================================
+// Low-level token utilities (merged from helpers/)
+// ============================================================================
+
+use solana_program_test::BanksClient;
+use solana_sdk::{system_instruction, transaction::Transaction};
+use spl_token::instruction as token_instruction;
+
+/// Create a mint account directly using BanksClient (low-level utility)
+pub async fn create_mint_direct(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    decimals: u8,
+) -> TestResult<Pubkey> {
+    let mint = Keypair::new();
+    let rent = banks_client.get_rent().await?;
+    let lamports = rent.minimum_balance(82);
+    
+    let instructions = vec![
+        system_instruction::create_account(
+            &payer.pubkey(),
+            &mint.pubkey(),
+            lamports,
+            82,
+            &spl_token::id(),
+        ),
+        token_instruction::initialize_mint(
+            &spl_token::id(),
+            &mint.pubkey(),
+            &payer.pubkey(),
+            None,
+            decimals,
+        )?,
+    ];
+    
+    let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+    let recent_blockhash = banks_client.get_latest_blockhash().await?;
+    transaction.sign(&[payer, &mint], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    
+    Ok(mint.pubkey())
+}
+
+/// Create a token account directly using BanksClient (low-level utility)
+pub async fn create_token_account_direct(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    mint: Pubkey,
+    owner: Pubkey,
+) -> TestResult<Pubkey> {
+    let account = Keypair::new();
+    let rent = banks_client.get_rent().await?;
+    let lamports = rent.minimum_balance(165);
+    
+    let instructions = vec![
+        system_instruction::create_account(
+            &payer.pubkey(),
+            &account.pubkey(),
+            lamports,
+            165,
+            &spl_token::id(),
+        ),
+        token_instruction::initialize_account(
+            &spl_token::id(),
+            &account.pubkey(),
+            &mint,
+            &owner,
+        )?,
+    ];
+    
+    let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+    let recent_blockhash = banks_client.get_latest_blockhash().await?;
+    transaction.sign(&[payer, &account], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    
+    Ok(account.pubkey())
+}
+
+/// Mint tokens directly using BanksClient (low-level utility)
+pub async fn mint_to_direct(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    mint: Pubkey,
+    account: Pubkey,
+    amount: u64,
+) -> TestResult<()> {
+    let instruction = token_instruction::mint_to(
+        &spl_token::id(),
+        &mint,
+        &account,
+        &payer.pubkey(),
+        &[],
+        amount,
+    )?;
+    
+    let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    let recent_blockhash = banks_client.get_latest_blockhash().await?;
+    transaction.sign(&[payer], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    
+    Ok(())
+}

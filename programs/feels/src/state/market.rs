@@ -126,6 +126,22 @@ pub struct Market {
     
     /// Initial liquidity deployment status
     pub initial_liquidity_deployed: bool,
+
+    /// JIT v0 feature flag (per-market)
+    pub jit_enabled: bool,
+    /// JIT budget caps (bps of Buffer.tau_spot)
+    pub jit_per_swap_q_bps: u16,
+    pub jit_per_slot_q_bps: u16,
+
+    /// Floor management (MVP)
+    pub floor_tick: i32,
+    pub floor_buffer_ticks: i32,
+    pub last_floor_ratchet_ts: i64,
+    pub floor_cooldown_secs: i64,
+
+    /// Graduation flags (idempotent)
+    pub steady_state_seeded: bool,
+    pub cleanup_complete: bool,
     
     /// Reserved space for future expansion
     pub _reserved: [u8; 31], // Extra space for future upgrades - reduced by 1 for initial_liquidity_deployed
@@ -165,6 +181,15 @@ impl Market {
         1 + // vault_1_bump
         1 + // reentrancy_guard
         1 + // initial_liquidity_deployed
+        1 + // jit_enabled
+        2 + // jit_per_swap_q_bps
+        2 + // jit_per_slot_q_bps
+        4 + // floor_tick
+        4 + // floor_buffer_ticks
+        8 + // last_floor_ratchet_ts
+        8 + // floor_cooldown_secs
+        1 + // steady_state_seeded
+        1 + // cleanup_complete
         31; // _reserved
     
     /// Get the current tick from sqrt_price

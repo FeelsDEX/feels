@@ -13,8 +13,10 @@ use spl_token::state::Account as TokenAccountState;
 use crate::{
     constants::{MARKET_AUTHORITY_SEED, VAULT_SEED, ESCROW_AUTHORITY_SEED},
     error::FeelsError,
-    state::{Market, PreLaunchEscrow},
-    utils::{transfer_from_user_to_vault_unchecked, sqrt_price_from_tick, liquidity_from_amounts},
+    state::{Market, PreLaunchEscrow, TranchePlan, TrancheEntry},
+    utils::{
+        transfer_from_user_to_vault_unchecked, sqrt_price_from_tick, liquidity_from_amounts,
+    },
 };
 
 /// Number of steps in the stair pattern
@@ -63,7 +65,7 @@ pub struct DeployInitialLiquidity<'info> {
     /// Vault 0
     #[account(
         mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_0.as_ref()],
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
         bump = market.vault_0_bump,
     )]
     pub vault_0: Account<'info, TokenAccount>,
@@ -71,7 +73,7 @@ pub struct DeployInitialLiquidity<'info> {
     /// Vault 1
     #[account(
         mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_1.as_ref()],
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
         bump = market.vault_1_bump,
     )]
     pub vault_1: Account<'info, TokenAccount>,
@@ -142,6 +144,14 @@ pub struct DeployInitialLiquidity<'info> {
     
     /// System program
     pub system_program: Program<'info, System>,
+
+    // Remaining accounts: expected TickArray PDAs for any tick ranges touched.
+    // The handler will initialize any uninitialized arrays it needs from these.
+
+    /// Tranche plan PDA (initialized here if needed)
+    /// CHECK: created and initialized by this instruction
+    #[account(mut)]
+    pub tranche_plan: AccountInfo<'info>,
 }
 
 /// Deploy initial liquidity handler
@@ -201,17 +211,24 @@ pub fn deploy_initial_liquidity<'info>(
     let initial_feelssol_balance = ctx.accounts.escrow_feelssol_vault.amount;
     
     // Deploy protocol liquidity in stair pattern
+    let market_key = ctx.accounts.market.key();
+    let mut tranche_entries: Vec<TrancheEntry> = Vec::with_capacity(STAIR_STEPS);
     deploy_protocol_stair_pattern(
         ctx.accounts.token_program.to_account_info(),
         &ctx.accounts.vault_0,
         &ctx.accounts.vault_1,
-        &mut **ctx.accounts.market,
-        &**ctx.accounts.escrow,
+        ctx.accounts.market.as_mut(),
+        ctx.accounts.escrow.as_ref(),
         ctx.accounts.escrow.key(),
         &ctx.accounts.escrow_token_vault,
         &ctx.accounts.escrow_feelssol_vault,
         &ctx.accounts.escrow_authority,
         params.tick_step_size,
+        &ctx.accounts.deployer,
+        &ctx.accounts.system_program,
+        ctx.remaining_accounts,
+        market_key,
+        &mut tranche_entries,
     )?;
     
     // Update market buffer to track deployment
@@ -366,11 +383,80 @@ pub fn deploy_initial_liquidity<'info>(
         
         msg!("Mint fee transferred to treasury successfully");
     }
-    
+
+    // Initialize TranchePlan PDA with computed ranges + liquidity for crank usage
+    {
+        let tranche_plan_key = ctx.accounts.tranche_plan.key();
+        let (expected, _bump) = Pubkey::find_program_address(
+            &[b"tranche_plan", market.key().as_ref()],
+            ctx.program_id,
+        );
+        require!(tranche_plan_key == expected, FeelsError::InvalidAccount);
+        
+        if ctx.accounts.tranche_plan.data_is_empty() {
+            let lamports = Rent::get()?.minimum_balance(TranchePlan::space_for(STAIR_STEPS));
+            let ix = solana_program::system_instruction::create_account(
+                &ctx.accounts.deployer.key(),
+                &expected,
+                lamports,
+                TranchePlan::space_for(STAIR_STEPS) as u64,
+                ctx.program_id,
+            );
+            solana_program::program::invoke(
+                &ix,
+                &[
+                    ctx.accounts.deployer.to_account_info(),
+                    ctx.accounts.tranche_plan.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+            )?;
+            
+            // Initialize the account data manually
+            let mut data = ctx.accounts.tranche_plan.try_borrow_mut_data()?;
+            
+            // TranchePlan structure:
+            // 8 bytes: discriminator
+            // 32 bytes: market
+            // 1 byte: applied
+            // 1 byte: count
+            // 4 bytes: vec length
+            // N * 24 bytes: entries (4 + 4 + 16 bytes each)
+            
+            // Write discriminator (for Anchor account)
+            let discriminator = [33, 81, 195, 149, 20, 234, 71, 97]; // TranchePlan discriminator
+            data[..8].copy_from_slice(&discriminator);
+            
+            // Write market
+            data[8..40].copy_from_slice(&market.key().to_bytes());
+            
+            // Write applied (false = 0)
+            data[40] = 0;
+            
+            // Write count
+            data[41] = STAIR_STEPS as u8;
+            
+            // Write vec length
+            let vec_len = tranche_entries.len() as u32;
+            data[42..46].copy_from_slice(&vec_len.to_le_bytes());
+            
+            // Write entries
+            let mut offset = 46;
+            for entry in &tranche_entries {
+                data[offset..offset+4].copy_from_slice(&entry.tick_lower.to_le_bytes());
+                offset += 4;
+                data[offset..offset+4].copy_from_slice(&entry.tick_upper.to_le_bytes());
+                offset += 4;
+                data[offset..offset+16].copy_from_slice(&entry.liquidity.to_le_bytes());
+                offset += 16;
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// Deploy protocol liquidity in stair pattern
+#[allow(clippy::too_many_arguments)]
 fn deploy_protocol_stair_pattern<'info>(
     token_program: AccountInfo<'info>,
     vault_0: &Account<'info, TokenAccount>,
@@ -382,6 +468,11 @@ fn deploy_protocol_stair_pattern<'info>(
     escrow_feelssol_vault: &Account<'info, TokenAccount>,
     escrow_authority: &AccountInfo<'info>,
     tick_step_size: i32,
+    _payer: &Signer<'info>,
+    _system_program: &Program<'info, System>,
+    _remaining_accounts: &'info [AccountInfo<'info>],
+    _market_key: Pubkey,
+    entries_out: &mut Vec<TrancheEntry>,
 ) -> Result<()> {
     // Parameters already validated in main handler
     
@@ -504,9 +595,10 @@ fn deploy_protocol_stair_pattern<'info>(
             amount_0,
             amount_1,
         )?;
+        // Record tranche entry for crank usage
+        entries_out.push(TrancheEntry { tick_lower, tick_upper, liquidity });
         
-        // TODO: In production, update tick arrays and create position NFTs
-        // For now, just track the liquidity
+        // Track active liquidity contribution for the tranche that includes current price
         if market.current_tick >= tick_lower && market.current_tick < tick_upper {
             total_liquidity_added = total_liquidity_added.saturating_add(liquidity);
         }
@@ -532,3 +624,5 @@ fn deploy_protocol_stair_pattern<'info>(
     
     Ok(())
 }
+
+// Bonding-curve tranche tick array initialization can be handled by a follow-up crank.

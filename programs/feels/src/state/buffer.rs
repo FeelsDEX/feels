@@ -41,8 +41,9 @@ pub struct Buffer {
     /// SECURITY: Storing the bump prevents ambiguity and improves performance
     pub buffer_authority_bump: u8,
     
-    /// Reserved space for future expansion
-    pub _reserved: [u8; 8],
+    /// JIT per-slot tracking (quote units)
+    pub jit_last_slot: u64,
+    pub jit_slot_used_q: u128,
 }
 
 impl Buffer {
@@ -61,7 +62,8 @@ impl Buffer {
         8 + // last_rebase
         16 + // total_distributed (u128)
         1 + // buffer_authority_bump
-        8; // _reserved
+        8 + // jit_last_slot
+        16; // jit_slot_used_q
     
     /// Get total τ across all partitions
     pub fn get_total_tau(&self) -> u128 {

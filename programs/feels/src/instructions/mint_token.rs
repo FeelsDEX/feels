@@ -67,7 +67,7 @@ pub struct MintToken<'info> {
         associated_token::mint = token_mint,
         associated_token::authority = escrow_authority,
     )]
-    pub escrow_token_vault: Account<'info, TokenAccount>,
+    pub escrow_token_vault: Box<Account<'info, TokenAccount>>,
     
     /// Escrow's FeelsSOL vault (holds mint fee)
     #[account(
@@ -76,7 +76,7 @@ pub struct MintToken<'info> {
         associated_token::mint = feelssol_mint,
         associated_token::authority = escrow_authority,
     )]
-    pub escrow_feelssol_vault: Account<'info, TokenAccount>,
+    pub escrow_feelssol_vault: Box<Account<'info, TokenAccount>>,
     
     /// Escrow authority PDA
     /// CHECK: PDA that controls escrow vaults
@@ -105,14 +105,14 @@ pub struct MintToken<'info> {
         constraint = creator_feelssol.owner == creator.key() @ FeelsError::InvalidAuthority,
         constraint = creator_feelssol.mint == feelssol_mint.key() @ FeelsError::InvalidMint,
     )]
-    pub creator_feelssol: Account<'info, TokenAccount>,
+    pub creator_feelssol: Box<Account<'info, TokenAccount>>,
     
     /// Protocol config account
     #[account(
         seeds = [ProtocolConfig::SEED],
         bump,
     )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
     
     /// Metaplex token metadata program
     /// CHECK: The metadata program ID is validated by address constraint

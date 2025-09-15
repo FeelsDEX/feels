@@ -12,6 +12,7 @@ pub const BUFFER_SEED: &[u8] = b"buffer"; // For market fee buffer (τ)
 pub const ESCROW_SEED: &[u8] = b"escrow"; // For pre-launch token escrow
 pub const ESCROW_AUTHORITY_SEED: &[u8] = b"escrow_authority"; // Authority for pre-launch escrow
 pub const MARKET_SEED: &[u8] = b"market";
+pub const FEELS_HUB_SEED: &[u8] = b"feels_hub";
 pub const VAULT_SEED: &[u8] = b"vault";
 pub const TICK_ARRAY_SEED: &[u8] = b"tick_array";
 pub const POSITION_SEED: &[u8] = b"position";

@@ -28,7 +28,7 @@ pub enum FeelsError {
     InvalidPrice,
     
     // Routing errors
-    #[msg("Invalid route - must use FeelsSOL hub")]
+    #[msg("Invalid route: All swaps must route through FeelsSOL hub. Direct swaps between non-FeelsSOL tokens are not supported.")]
     InvalidRoute,
     
     #[msg("Route too long - maximum 2 hops")]
@@ -38,7 +38,7 @@ pub enum FeelsError {
     #[msg("Invalid token mint")]
     InvalidMint,
     
-    #[msg("Invalid token order - token_0 must be < token_1")]
+    #[msg("Invalid token order: FeelsSOL must be token_0. When creating a market, FeelsSOL should always be the first token (token_0) in the pair.")]
     InvalidTokenOrder,
     
     #[msg("Insufficient balance")]
@@ -168,7 +168,7 @@ pub enum FeelsError {
     #[msg("Only protocol-minted tokens can create markets")]
     TokenNotProtocolMinted,
     
-    #[msg("One token must be FeelsSOL")]
+    #[msg("Invalid market: One token must be FeelsSOL. All markets require FeelsSOL as one of the tokens due to the hub-and-spoke architecture.")]
     RequiresFeelsSOLPair,
     
     #[msg("Token not found in protocol registry")]
@@ -185,4 +185,12 @@ pub enum FeelsError {
     
     #[msg("Market already initialized")]
     MarketAlreadyInitialized,
+
+    // Fee cap errors
+    #[msg("Computed fee exceeds caller-provided maximum total fee bps")]
+    FeeCapExceeded,
+
+    // Rate limit errors
+    #[msg("Rate limit exceeded for this slot")]
+    RateLimitExceeded,
 }

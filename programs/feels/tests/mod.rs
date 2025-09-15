@@ -22,6 +22,3 @@ pub mod property;
 #[cfg(test)]
 pub mod e2e;
 
-// Legacy helpers (to be migrated to common)
-#[cfg(test)]
-pub mod helpers;

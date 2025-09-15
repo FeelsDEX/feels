@@ -1,5 +1,7 @@
 use crate::common::*;
 
+// MVP: Ensure non-protocol tokens cannot create markets; basic FeelsSOL infra sanity
+
 test_all_environments!(test_initialize_simple_market, |ctx: TestContext| async move {
     println!("\n=== Test: Basic Market Initialization ===");
     println!("This test verifies market initialization requirements");
@@ -39,60 +41,4 @@ test_all_environments!(test_initialize_simple_market, |ctx: TestContext| async m
     Ok::<(), Box<dyn std::error::Error>>(())
 });
 
-test_in_memory!(test_initialize_market_with_raydium_style, |ctx: TestContext| async move {
-    println!("\n=== Test: Market with Raydium-style configuration ===");
-    
-    // This test requires protocol token functionality
-    // For MVP, we're skipping tests that require non-FeelsSOL tokens to be protocol minted
-    println!("Note: This test requires protocol token functionality");
-    println!("In production, tokens would be minted via mint_token instruction");
-    println!("Skipping for MVP testing");
-    
-    // TODO: Once mint_token is fully integrated in tests, uncomment this:
-    // let token_1 = create_protocol_token(&ctx, "TEST", 6).await?;
-    // let market_id = ctx.market_helper()
-    //     .create_raydium_market(&ctx.feelssol_mint, &token_1, initial_price)
-    //     .await?;
-    
-    println!("✓ Test marked as TODO - requires protocol token integration");
-    
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
-
-test_in_memory!(test_initialize_market_with_liquidity, |ctx: TestContext| async move {
-    println!("\n=== Test: Market with Initial Liquidity ===");
-    
-    // This test requires protocol token functionality
-    println!("Note: This test requires protocol token functionality");
-    println!("And liquidity provision features which depend on working markets");
-    println!("Skipping for MVP testing");
-    
-    println!("✓ Test marked as TODO - requires protocol token + liquidity features");
-    
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
-
-test_in_memory!(test_cannot_initialize_duplicate_market, |ctx: TestContext| async move {
-    println!("\n=== Test: Duplicate Market Prevention ===");
-    
-    // This test requires protocol token functionality
-    println!("Note: This test requires creating a market first");
-    println!("Which needs protocol token functionality");
-    println!("Skipping for MVP testing");
-    
-    println!("✓ Test marked as TODO - requires protocol token integration");
-    
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
-
-test_in_memory!(test_initialize_multiple_markets, |ctx: TestContext| async move {
-    println!("\n=== Test: Multiple Market Creation ===");
-    
-    // This test requires protocol token functionality
-    println!("Note: Creating multiple markets requires protocol tokens");
-    println!("Skipping for MVP testing");
-    
-    println!("✓ Test marked as TODO - requires protocol token integration");
-    
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
+// Post-MVP tests for market styles, liquidity details, and duplicates are removed for now.

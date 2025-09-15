@@ -12,6 +12,7 @@ pub const TICK_ARRAY_SIZE: usize = 64;
 /// Individual tick within an array
 /// Must be exactly aligned with no padding for zero_copy
 #[zero_copy]
+#[derive(Default)]
 #[repr(C)]
 pub struct Tick {
     pub liquidity_net: i128,              // 16 bytes
@@ -22,18 +23,6 @@ pub struct Tick {
     pub _pad: [u8; 15],                   // 15 bytes to make total 80 (16-aligned)
 }
 
-impl Default for Tick {
-    fn default() -> Self {
-        Self {
-            liquidity_net: 0,
-            liquidity_gross: 0,
-            fee_growth_outside_0_x64: 0,
-            fee_growth_outside_1_x64: 0,
-            initialized: 0,
-            _pad: [0; 15],
-        }
-    }
-}
 
 #[account(zero_copy)]
 #[repr(C)]

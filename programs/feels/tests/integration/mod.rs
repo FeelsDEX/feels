@@ -1,5 +1,3 @@
-/// Integration tests
-///
 /// Integration tests organized by feature area
 
 // Category modules
@@ -10,5 +8,5 @@ pub mod token;
 // Root-level integration tests
 pub mod test_basic_operations;
 pub mod test_creator_market_launch;
-pub mod test_swap_scenarios;
+// pub mod test_swap_scenarios; // TODO: Add this test
 

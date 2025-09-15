@@ -5,8 +5,8 @@
 //! the market initialization process.
 
 use crate::common::*;
-use feels::state::{Market, TokenType, TokenOrigin, PolicyV1};
-use anchor_lang::prelude::*;
+use crate::unit::test_helpers::create_test_market;
+use feels::state::Market;
 
 #[tokio::test]
 async fn test_race_condition_attack_scenario() -> TestResult<()> {
@@ -186,44 +186,6 @@ async fn test_pda_consistency_after_fix() -> TestResult<()> {
 }
     
 // Helper functions
-fn create_test_market() -> Market {
-        Market {
-            version: 1,
-            is_initialized: false,
-            is_paused: false,
-            token_0: Pubkey::new_unique(),
-            token_1: Pubkey::new_unique(),
-            feelssol_mint: Pubkey::new_unique(),
-            token_0_type: TokenType::Spl,
-            token_1_type: TokenType::Spl,
-            token_0_origin: TokenOrigin::ProtocolMinted,
-            token_1_origin: TokenOrigin::ProtocolMinted,
-            sqrt_price: 1 << 64,
-            liquidity: 0,
-            current_tick: 0,
-            tick_spacing: 64,
-            global_lower_tick: -887220,
-            global_upper_tick: 887220,
-            floor_liquidity: 0,
-            fee_growth_global_0_x64: 0,
-            fee_growth_global_1_x64: 0,
-            base_fee_bps: 30,
-            buffer: Pubkey::new_unique(),
-            authority: Pubkey::default(), // Will be set by test
-            last_epoch_update: 0,
-            epoch_number: 0,
-            oracle: Pubkey::default(),
-            oracle_bump: 0,
-            policy: PolicyV1::default(),
-            market_authority_bump: 0,
-            vault_0_bump: 0,
-            vault_1_bump: 0,
-            reentrancy_guard: false,
-            initial_liquidity_deployed: false,
-            _reserved: [0; 31],
-        }
-    }
-
 fn create_test_market_with_authority(authority: Pubkey) -> Market {
         let mut market = create_test_market();
         market.authority = authority;

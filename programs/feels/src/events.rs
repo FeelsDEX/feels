@@ -13,9 +13,96 @@ pub struct SwapExecuted {
     pub amount_in: u64,
     pub amount_out: u64,
     pub fee_paid: u64,
+    pub base_fee_paid: u64,
     pub sqrt_price_after: u128,
     pub timestamp: i64,
     pub version: u8,
+}
+
+/// Event emitted with fee breakdown (MVP: base + impact, post-swap applied on output)
+#[event]
+pub struct FeeSplitApplied {
+    pub market: Pubkey,
+    pub base_fee_bps: u16,
+    pub impact_fee_bps: u16,
+    pub total_fee_bps: u16,
+    pub fee_denom_mint: Pubkey,  // Mint of the token the fee was taken in (output token)
+    pub fee_amount: u64,         // Amount of fee taken in fee_denom_mint
+    pub to_buffer_amount: u64,   // Amount routed to Buffer (τ)
+    pub to_treasury_amount: u64, // Amount routed to Protocol Treasury (MVP: 0)
+    pub to_creator_amount: u64,  // Amount accrued to Creator (MVP: 0)
+    pub jit_consumed_quote: u64, // Quote units reserved by JIT v0 in this swap
+    // Future: to_reserve, to_treasury, to_creator when split is implemented
+    pub timestamp: i64,
+}
+
+/// Event emitted on protocol oracle update
+#[event]
+pub struct OracleUpdatedProtocol {
+    pub native_q64: u128,
+    pub dex_twap_q64: u128,
+    pub min_rate_q64: u128,
+    pub div_bps: u16,
+    pub threshold_bps: u16,
+    pub window_secs: u32,
+    pub paused: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct CircuitBreakerActivated {
+    pub threshold_bps: u16,
+    pub window_secs: u32,
+}
+
+#[event]
+pub struct RedemptionsPaused {
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct RedemptionsResumed {
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct SafetyPaused {
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct SafetyResumed {
+    pub timestamp: i64,
+}
+
+/// Event emitted when a rate limit is triggered
+#[event]
+pub struct RateLimitTriggered {
+    /// 0 = mint, 1 = redeem
+    pub scope: u8,
+    pub amount: u64,
+    pub cap: u64,
+    pub slot: u64,
+    pub timestamp: i64,
+}
+/// Event emitted when protocol params are updated (snapshot)
+#[event]
+pub struct ProtocolParamsUpdated {
+    pub authority: Pubkey,
+    pub depeg_threshold_bps: u16,
+    pub depeg_required_obs: u8,
+    pub clear_required_obs: u8,
+    pub dex_twap_window_secs: u32,
+    pub dex_twap_stale_age_secs: u32,
+    pub dex_twap_updater: Pubkey,
+}
+
+#[event]
+pub struct FloorRatcheted {
+    pub market: Pubkey,
+    pub old_floor_tick: i32,
+    pub new_floor_tick: i32,
+    pub timestamp: i64,
 }
 
 /// Event emitted when floor liquidity is placed
@@ -223,5 +310,3 @@ pub struct TokenDestroyed {
     pub destroyer_reward: u64,
     pub treasury_amount: u64,
 }
-
-

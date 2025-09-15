@@ -5,7 +5,6 @@
 
 use crate::common::*;
 use feels::constants::MIN_LIQUIDITY;
-use feels::error::FeelsError;
 
 test_in_memory!(test_min_liquidity_constant, |ctx: TestContext| async move {
     // Verify the MIN_LIQUIDITY constant is set to a reasonable value

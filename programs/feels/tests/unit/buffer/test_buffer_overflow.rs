@@ -3,7 +3,6 @@
 use crate::common::*;
 use feels::state::Buffer;
 use feels::state::FeeDomain;
-use anchor_lang::prelude::*;
 
 test_in_memory!(test_floor_placement_due_no_overflow, |ctx: TestContext| async move {
     // Create a buffer with a reasonable threshold
@@ -22,7 +21,8 @@ test_in_memory!(test_floor_placement_due_no_overflow, |ctx: TestContext| async m
         last_rebase: 0,
         total_distributed: 0,
         buffer_authority_bump: 0,
-        _reserved: [0; 8],
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
     };
 
     // Test with values that would overflow u64 if added naively
@@ -54,7 +54,8 @@ test_in_memory!(test_floor_placement_due_normal_case, |ctx: TestContext| async m
         last_rebase: 0,
         total_distributed: 0,
         buffer_authority_bump: 0,
-        _reserved: [0; 8],
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
     };
 
     // Test with values below threshold
@@ -94,7 +95,8 @@ test_in_memory!(test_buffer_tau_overflow_protection, |ctx: TestContext| async mo
         last_rebase: 0,
         total_distributed: 0,
         buffer_authority_bump: 0,
-        _reserved: [0; 8],
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
     };
 
     // Test get_total_tau with near-max values
@@ -125,7 +127,8 @@ test_in_memory!(test_buffer_fee_collection_overflow_protection, |ctx: TestContex
         last_rebase: 0,
         total_distributed: 0,
         buffer_authority_bump: 0,
-        _reserved: [0; 8],
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
     };
 
     // Test that collect_fee handles overflow correctly

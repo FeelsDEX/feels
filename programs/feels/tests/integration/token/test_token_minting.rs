@@ -53,7 +53,7 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
         Ok(_) => println!("✓ mint_token instruction executed successfully"),
         Err(e) => {
             println!("✗ mint_token instruction failed: {:?}", e);
-            return Err(e.into());
+            return Err(e);
         }
     }
     
@@ -81,7 +81,7 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
         },
         Err(e) => {
             println!("✗ Error reading escrow account: {:?}", e);
-            return Err(e.into());
+            return Err(e);
         }
     };
     

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use feels::state::{Buffer, FeeDomain};
-    use anchor_lang::prelude::*;
+    use solana_sdk::pubkey::Pubkey;
 
     #[test]
     fn test_floor_placement_due_no_overflow() {
@@ -21,7 +21,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
 
         // Test with values that would overflow u64 if added naively
@@ -52,7 +53,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
 
         // Test with values below threshold
@@ -91,7 +93,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
 
         // Test get_total_tau with near-max values
@@ -121,7 +124,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
 
         // Test that collect_fee handles overflow correctly
@@ -167,7 +171,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
 
         // Test case 1: tau overflow - should fail without modifying any state
@@ -195,7 +200,8 @@ mod tests {
             last_rebase: 0,
             total_distributed: 0,
             buffer_authority_bump: 0,
-            _reserved: [0; 8],
+            jit_last_slot: 0,
+            jit_slot_used_q: 0,
         };
         
         let initial_tau2 = buffer2.tau_spot;

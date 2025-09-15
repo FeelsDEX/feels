@@ -49,3 +49,20 @@ pub use initialize_protocol::*;
 pub mod destroy_expired_token;
 pub use destroy_expired_token::*;
 
+pub mod graduate_pool;
+pub use graduate_pool::*;
+
+pub mod initialize_tranche_ticks;
+pub use initialize_tranche_ticks::*;
+
+pub mod cleanup_bonding_curve;
+pub use cleanup_bonding_curve::*;
+
+pub mod update_protocol_oracle;
+pub use update_protocol_oracle::*;
+
+pub mod initialize_hub;
+pub use initialize_hub::*;
+
+// Additional specific exports for Anchor
+pub use update_protocol_oracle::{UpdateDexTwap, UpdateDexTwapParams, UpdateNativeRate, UpdateNativeRateParams, update_dex_twap, update_native_rate};

@@ -9,7 +9,7 @@ macro_rules! test_all_environments {
             
             #[tokio::test]
             async fn in_memory() {
-                use crate::common::{TestContext, TestEnvironment};
+                use $crate::common::{TestContext, TestEnvironment};
                 let ctx = TestContext::new(TestEnvironment::in_memory()).await
                     .expect("Failed to create in-memory test context");
                     
@@ -19,7 +19,7 @@ macro_rules! test_all_environments {
             #[tokio::test]
             #[ignore = "Run with RUN_DEVNET_TESTS=1"]
             async fn devnet() {
-                use crate::common::{TestContext, TestEnvironment, should_run_devnet_tests};
+                use $crate::common::{TestContext, TestEnvironment, should_run_devnet_tests};
                 if !should_run_devnet_tests() {
                     return;
                 }
@@ -53,7 +53,7 @@ macro_rules! test_in_memory {
     ($name:ident, $test_fn:expr) => {
         #[tokio::test]
         async fn $name() {
-            use crate::common::{TestContext, TestEnvironment};
+            use $crate::common::{TestContext, TestEnvironment};
             let ctx = TestContext::new(TestEnvironment::in_memory()).await
                 .expect("Failed to create test context");
                 

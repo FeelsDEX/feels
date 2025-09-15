@@ -69,8 +69,8 @@ pub fn calculate_volatility(
         let (curr_time, curr_tick) = observations[i];
         
         if curr_time > prev_time {
-            let tick_change = (curr_tick - prev_tick).abs() as u128;
-            sum_squared_changes = sum_squared_changes.saturating_add(tick_change * tick_change);
+            let tick_change = (curr_tick - prev_tick).unsigned_abs();
+            sum_squared_changes = sum_squared_changes.saturating_add((tick_change as u128) * (tick_change as u128));
             count += 1;
         }
     }
@@ -121,7 +121,7 @@ pub fn interpolate_observation(
     let ratio = elapsed_time as u128 * 1_000_000 / total_time as u128; // Fixed point ratio
     
     let tick_cum_interpolated = tick_cum_0 + 
-        ((tick_cum_1 - tick_cum_0) as i128 * ratio as i128 / 1_000_000);
+        ((tick_cum_1 - tick_cum_0) * ratio as i128 / 1_000_000);
     
     let liq_cum_interpolated = liq_cum_0 + 
         ((liq_cum_1 - liq_cum_0) * ratio / 1_000_000);

@@ -3,7 +3,7 @@
 //! Ensures that position fee calculations match Uniswap V3 spec
 
 use crate::common::*;
-use feels::logic::position_fees::{calculate_position_fee_accrual, PositionFeeAccrual};
+use feels::logic::position_fees::calculate_position_fee_accrual;
 use feels::state::Tick;
 
 fn create_tick(fee_growth_0: u128, fee_growth_1: u128) -> Tick {

@@ -2,8 +2,11 @@
 resolver = "2"
 members = [
     "programs/feels",
-    "programs/feels-jupiter-adapter",
     "sdk",
+]
+# Exclude Jupiter adapter from workspace as it's a library not for BPF deployment
+exclude = [
+    "programs/feels-jupiter-adapter",
 ]
 
 [workspace.dependencies]
@@ -37,6 +40,8 @@ fixed = { version = "1.28", features = ["serde", "num-traits"] }
 num-traits = "0.2"
 # Test dependencies disabled due to yanked solana_rbpf dependency
 solana-program-test = "2.2.1"
+
+# Patch section removed - using dependency overrides instead
 
 [profile.release]
 overflow-checks = true

@@ -6,12 +6,13 @@ use anchor_spl::token::{Token, TokenAccount};
 use crate::{
     constants::{MARKET_AUTHORITY_SEED, VAULT_SEED, MAX_TICKS_CROSSED},
     error::FeelsError,
-    events::SwapExecuted,
+    events::{SwapExecuted, FeeSplitApplied},
     logic::{
         maybe_pomm_add_liquidity, 
         SwapDirection, StepOutcome, compute_swap_step, TickArrayIterator, 
         update_fee_growth_segment, MAX_SWAP_STEPS, SwapContext
     },
+    logic::fees::{calculate_impact_bps, combine_base_and_impact},
     state::{Market, Buffer, FeeDomain, TICK_ARRAY_SIZE, OracleState},
     utils::{
         validate_amount, validate_slippage, validate_swap_route, 
@@ -19,6 +20,41 @@ use crate::{
         sqrt_price_from_tick, tick_from_sqrt_price, apply_liquidity_net,
     },
 };
+
+/// Split and apply impact fees according to MVP split (Buffer only)
+fn split_and_apply_fees(
+    _market: &Market,
+    buffer: &mut Account<Buffer>,
+    fee_amount: u64,
+    token_index: usize,
+) -> Result<(u64, u64, u64)> {
+    if fee_amount == 0 { return Ok((0, 0, 0)); }
+    // MVP: 100% to Buffer (τ). Treasury and Creator shares are 0 for now.
+    buffer.collect_fee(fee_amount, token_index, FeeDomain::Spot)?;
+    Ok((fee_amount, 0, 0))
+}
+
+fn do_floor_ratchet(market: &mut Account<Market>, clock: &Sysvar<Clock>) -> Result<()> {
+    let old_floor = market.floor_tick;
+    if clock.unix_timestamp.saturating_sub(market.last_floor_ratchet_ts) >= market.floor_cooldown_secs {
+        let candidate = current_candidate_floor(market)?;
+        if candidate > market.floor_tick {
+            market.floor_tick = candidate;
+            market.last_floor_ratchet_ts = clock.unix_timestamp;
+            emit!(crate::events::FloorRatcheted {
+                market: market.key(),
+                old_floor_tick: old_floor,
+                new_floor_tick: market.floor_tick,
+                timestamp: clock.unix_timestamp,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn current_candidate_floor(market: &Market) -> Result<i32> {
+    Ok(market.current_tick.saturating_sub(market.floor_buffer_ticks))
+}
 
 /// Swap accounts
 #[derive(Accounts)]
@@ -36,26 +72,25 @@ pub struct Swap<'info> {
         mut,
         constraint = market.is_initialized @ FeelsError::MarketNotInitialized,
         constraint = !market.is_paused @ FeelsError::MarketPaused,
+        constraint = !market.reentrancy_guard @ FeelsError::ReentrancyDetected,
     )]
     pub market: Account<'info, Market>,
     
-    /// Vault for token 0 - derived from market and token_0
-    /// CHECK: Validated as PDA in handler
+    /// Vault for token 0 - PDA derived from token order
     #[account(
         mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_0.as_ref()],
-        bump,
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
+        bump = market.vault_0_bump,
     )]
-    pub vault_0: UncheckedAccount<'info>,
+    pub vault_0: Account<'info, TokenAccount>,
     
-    /// Vault for token 1 - derived from market and token_1
-    /// CHECK: Validated as PDA in handler
+    /// Vault for token 1 - PDA derived from token order
     #[account(
         mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_1.as_ref()],
-        bump,
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
+        bump = market.vault_1_bump,
     )]
-    pub vault_1: UncheckedAccount<'info>,
+    pub vault_1: Account<'info, TokenAccount>,
     
     /// Unified market authority PDA
     /// CHECK: PDA signer for all market operations
@@ -106,6 +141,8 @@ pub struct SwapParams {
     pub minimum_amount_out: u64,
     /// Optional: maximum number of ticks to cross (0 = unlimited)
     pub max_ticks_crossed: u8,
+    /// Optional: caller-provided fee cap in bps (0 = no cap)
+    pub max_total_fee_bps: u16,
 }
 
 
@@ -116,6 +153,8 @@ pub fn swap<'info>(
     params: SwapParams,
 ) -> Result<()> {
     let market = &mut ctx.accounts.market;
+    // SECURITY: set reentrancy guard
+    market.reentrancy_guard = true;
     let buffer = &mut ctx.accounts.buffer;
     let oracle = &mut ctx.accounts.oracle;
     let clock = &ctx.accounts.clock;
@@ -131,13 +170,15 @@ pub fn swap<'info>(
         );
     }
     
-    // Manually deserialize vault accounts (already validated as PDAs in account constraints)
-    let _vault_0 = TokenAccount::try_deserialize(&mut &ctx.accounts.vault_0.data.borrow()[..])?;
-    let _vault_1 = TokenAccount::try_deserialize(&mut &ctx.accounts.vault_1.data.borrow()[..])?;
+    // Validate vault SPL properties match market (vaults are already deserialized as Account<TokenAccount>)
+    require!(ctx.accounts.vault_0.mint == market.token_0, FeelsError::InvalidVault);
+    require!(ctx.accounts.vault_1.mint == market.token_1, FeelsError::InvalidVault);
+    require!(ctx.accounts.vault_0.owner == ctx.accounts.market_authority.key(), FeelsError::InvalidVault);
+    require!(ctx.accounts.vault_1.owner == ctx.accounts.market_authority.key(), FeelsError::InvalidVault);
     
     // Manually deserialize and validate user token accounts
-    let user_token_in = TokenAccount::try_deserialize(&mut &ctx.accounts.user_token_in.data.borrow()[..])?;
-    let user_token_out = TokenAccount::try_deserialize(&mut &ctx.accounts.user_token_out.data.borrow()[..])?;
+    let user_token_in = TokenAccount::try_deserialize(&mut &ctx.accounts.user_token_in.to_account_info().data.borrow()[..])?;
+    let user_token_out = TokenAccount::try_deserialize(&mut &ctx.accounts.user_token_out.to_account_info().data.borrow()[..])?;
     
     // Validate user token accounts
     require!(
@@ -210,10 +251,11 @@ pub fn swap<'info>(
     
     // Initialize swap state
     let mut amount_remaining = params.amount_in;
-    let mut amount_out = 0u64;
+    let mut amount_out = 0u64; // gross amount_out before post-swap impact fee
     let mut total_fee_paid = 0u64;
     let mut sqrt_price = market.sqrt_price;
     let mut current_tick = market.current_tick;
+    let start_tick = current_tick; // Track for post-swap impact calculation
     let mut liquidity = market.liquidity;
     let mut ticks_crossed = 0u8;
     let mut steps_taken = 0u16;
@@ -224,7 +266,7 @@ pub fn swap<'info>(
     
     // Create tick array iterator from remaining accounts
     let tick_arrays = TickArrayIterator::new(
-        &ctx.remaining_accounts,
+        ctx.remaining_accounts,
         current_tick,
         market.tick_spacing,
         direction,
@@ -241,12 +283,56 @@ pub fn swap<'info>(
         direction,
         sqrt_price,
         liquidity,
-        market.base_fee_bps,
+        market.base_fee_bps, // Base fee accrues to LPs via fee growth
         market.global_lower_tick,
         market.global_upper_tick,
         market.tick_spacing,
     );
     
+    // Optional: JIT v0 budgeting (feature-gated; no placement yet)
+    let mut jit_consumed_quote: u64 = 0;
+    #[allow(unused_mut)]
+    let mut _jit_budget = if market.jit_enabled {
+        Some(crate::logic::jit::JitBudget::begin(buffer, Clock::get()?.slot, market.jit_per_swap_q_bps, market.jit_per_slot_q_bps))
+    } else {
+        None
+    };
+    // Floor guard: do not place protocol-owned asks below safe floor ask tick
+    let safe_ask_tick = market.floor_tick.saturating_add(market.floor_buffer_ticks);
+    let floor_guard_ok = current_tick >= safe_ask_tick;
+    // Reserve JIT quote (burn-by-default) only when floor guard is ok and contrarian direction supported
+    if let Some(b) = &mut _jit_budget {
+        if floor_guard_ok {
+            // Reserve up to per-swap cap from PoolBuffer (quote units)
+            let desired_q = b.per_swap_cap_q;
+            let used_q = b.reserve(buffer, desired_q);
+            jit_consumed_quote = used_q.min(u128::from(u64::MAX)) as u64;
+        }
+    }
+
+    // Optional: ephemeral JIT micro-band as a liquidity boost (placement → execute → remove)
+    let mut jit_liq_boost: u128 = 0;
+    if market.jit_enabled && jit_consumed_quote > 0 {
+        // Compute 1-tick band width around current tick on contrarian side
+        let sqrt_current = sqrt_price;
+        let neighbor_tick = match direction {
+            SwapDirection::ZeroForOne => current_tick.saturating_sub(market.tick_spacing as i32),
+            SwapDirection::OneForZero => current_tick.saturating_add(market.tick_spacing as i32),
+        };
+        let sqrt_neighbor = sqrt_price_from_tick(neighbor_tick)?;
+        let width = if sqrt_neighbor > sqrt_current { sqrt_neighbor - sqrt_current } else { sqrt_current - sqrt_neighbor };
+        if width > 0 {
+            // L ≈ amount1 * Q64 / (sqrt_p - sqrt_pl) for a below-current band (ZeroForOne)
+            // We use the same formula as an approximation for the above-current case.
+            let l_from_quote = ((jit_consumed_quote as u128) << 64) / width;
+            // Cap boost to 5% of current liquidity to bound impact
+            let cap = market.liquidity / 20; // 5%
+            jit_liq_boost = l_from_quote.min(cap);
+            // Apply boost to swap context only (no persistent state)
+            swap_ctx.liquidity = swap_ctx.liquidity.saturating_add(jit_liq_boost);
+        }
+    }
+
     // Execute swap in steps with maximum step guard
     while amount_remaining > 0 && steps_taken < MAX_SWAP_STEPS {
         steps_taken += 1;
@@ -409,8 +495,23 @@ pub fn swap<'info>(
     // Final tick update - compute current tick from final sqrt price
     current_tick = tick_from_sqrt_price(sqrt_price)?;
     
-    // Check slippage
-    validate_slippage(amount_out, params.minimum_amount_out)?;
+    // Calculate post-swap impact fee (MVP: base + impact; impact applied on output)
+    let impact_bps = calculate_impact_bps(start_tick, current_tick);
+    let (total_fee_bps, impact_only_bps) = combine_base_and_impact(market.base_fee_bps, impact_bps);
+    // Enforce optional caller-provided fee cap
+    if params.max_total_fee_bps > 0 {
+        require!(
+            total_fee_bps <= params.max_total_fee_bps,
+            FeelsError::FeeCapExceeded
+        );
+    }
+    let impact_fee_amount = ((amount_out as u128)
+        .saturating_mul(impact_only_bps as u128)
+        / 10_000u128) as u64;
+    let amount_out_net = amount_out.saturating_sub(impact_fee_amount);
+
+    // Check slippage against net amount
+    validate_slippage(amount_out_net, params.minimum_amount_out)?;
     
     // Execute transfers
     let (vault_in, vault_out) = if is_token_0_to_1 {
@@ -445,12 +546,17 @@ pub fn swap<'info>(
         &ctx.accounts.market_authority,
         &ctx.accounts.token_program,
         signer_seeds,
-        amount_out,
+        amount_out_net,
     )?;
     
-    // Update buffer with fees
-    let token_index = if is_token_0_to_1 { 0 } else { 1 };
-    buffer.collect_fee(total_fee_paid, token_index, FeeDomain::Spot)?;
+    // After-swap fee distribution (MVP: impact to Buffer; base to LPs via fee growth)
+    let token_index = if is_token_0_to_1 { 1 } else { 0 }; // fee is in output token
+    let (to_buffer, to_treasury, to_creator) = split_and_apply_fees(
+        market,
+        buffer,
+        impact_fee_amount,
+        token_index,
+    )?;
     
     // Update global fee growth
     market.fee_growth_global_0_x64 = market.fee_growth_global_0_x64
@@ -468,18 +574,36 @@ pub fn swap<'info>(
     // Always update the oracle (Uniswap V3 style)
     oracle.update(current_tick, clock.unix_timestamp)?;
     
-    // Emit event
+    // After-swap pipeline: floor ratchet step
+    do_floor_ratchet(market, clock)?;
+
+    // Emit events
     emit!(SwapExecuted {
         market: market.key(),
         user: ctx.accounts.user.key(),
         token_in,
         token_out,
         amount_in: params.amount_in,
-        amount_out,
+        amount_out: amount_out_net,
         fee_paid: total_fee_paid,
+        base_fee_paid: total_fee_paid,
         sqrt_price_after: sqrt_price,
         timestamp: clock.unix_timestamp,
         version: 2, // Version 2 indicates new engine
+    });
+
+    emit!(FeeSplitApplied {
+        market: market.key(),
+        base_fee_bps: market.base_fee_bps,
+        impact_fee_bps: impact_only_bps,
+        total_fee_bps,
+        fee_denom_mint: token_out,
+        fee_amount: impact_fee_amount,
+        to_buffer_amount: to_buffer,
+        to_treasury_amount: to_treasury,
+        to_creator_amount: to_creator,
+        jit_consumed_quote,
+        timestamp: clock.unix_timestamp,
     });
     
     // Hook: Pool-owned market maker maintenance
@@ -490,5 +614,7 @@ pub fn swap<'info>(
         clock.unix_timestamp,
     )?;
     
+    // SECURITY: clear reentrancy guard
+    market.reentrancy_guard = false;
     Ok(())
 }

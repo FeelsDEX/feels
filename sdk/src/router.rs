@@ -130,6 +130,19 @@ impl HubRouter {
         let pools = self.get_route_pools(route);
         pools.iter().map(|p| p.fee_rate).sum()
     }
+
+    /// Estimate total fee for a route with base-only or provided impact estimate
+    pub fn calculate_route_fee_estimate(&self, route: &Route, impact_bps_per_hop: Option<u16>) -> u16 {
+        let base = self.calculate_route_fee(route);
+        if let Some(impact) = impact_bps_per_hop {
+            // Add the same impact estimate per hop (MVP simplification)
+            let hops = match route { Route::Direct { .. } => 1, Route::TwoHop { .. } => 2 } as u16;
+            base.saturating_add(impact.saturating_mul(hops))
+        } else {
+            // Degrade to base-only estimate if impact unknown
+            base
+        }
+    }
     
     /// Order tokens consistently
     fn order_tokens(a: Pubkey, b: Pubkey) -> (Pubkey, Pubkey) {

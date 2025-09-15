@@ -198,10 +198,17 @@ impl TestContext {
         // Get the payer to be the authority
         let payer_pubkey = self.payer().await;
         
-        // Create initialization parameters with 0 mint fee for testing
+        // Create initialization parameters with 0 mint fee for testing and sane oracle/safety defaults
         let params = InitializeProtocolParams {
             mint_fee: 0, // No fee for testing
             treasury: payer_pubkey, // Use payer as treasury for simplicity
+            dex_twap_updater: payer_pubkey,
+            depeg_threshold_bps: 500, // 5%
+            depeg_required_obs: 2,
+            clear_required_obs: 2,
+            dex_twap_window_secs: 1800, // 30m
+            dex_twap_stale_age_secs: 1800,
+            dex_whitelist: vec![],
         };
         
         // Build the instruction

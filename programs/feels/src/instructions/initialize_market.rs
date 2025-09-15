@@ -229,6 +229,12 @@ pub fn initialize_market(
         FeelsError::RequiresFeelsSOLPair
     );
     
+    // Additional validation: FeelsSOL must be token_0
+    require!(
+        token_0_is_feelssol,
+        FeelsError::InvalidTokenOrder
+    );
+    
     // 4. If initial buy requested, validate accounts exist
     if params.initial_buy_feelssol_amount > 0 {
         require!(
@@ -445,6 +451,15 @@ pub fn initialize_market(
     market.vault_1_bump = ctx.bumps.vault_1;
     market.reentrancy_guard = false;
     market.initial_liquidity_deployed = false;
+    market.jit_enabled = true; // default on per docs
+    market.jit_per_swap_q_bps = 50; // 0.5%
+    market.jit_per_slot_q_bps = 200; // 2%
+    market.floor_tick = market.global_lower_tick; // start at lowest
+    market.floor_buffer_ticks = (market.tick_spacing as i32) * 2;
+    market.last_floor_ratchet_ts = 0;
+    market.floor_cooldown_secs = 300; // 5 minutes default
+    market.steady_state_seeded = false;
+    market.cleanup_complete = false;
     market._reserved = [0; 31];
     
     // Initialize buffer
@@ -462,7 +477,8 @@ pub fn initialize_market(
     buffer.last_rebase = clock.unix_timestamp;
     buffer.total_distributed = 0;
     buffer.buffer_authority_bump = 0; // Will be set if needed
-    buffer._reserved = [0; 8];
+    buffer.jit_last_slot = 0;
+    buffer.jit_slot_used_q = 0;
     
     // Initialize oracle
     oracle.initialize(

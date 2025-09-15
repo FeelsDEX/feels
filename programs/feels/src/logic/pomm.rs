@@ -78,8 +78,7 @@ pub fn maybe_pomm_add_liquidity(
     // - tick_spacing = 60: POMM width = 1200 ticks ≈ 12%
     let pomm_tick_width = (market.tick_spacing as i32)
         .saturating_mul(20)
-        .max(10)  // Minimum width of 10 ticks
-        .min(2000); // Maximum width of 2000 ticks (~20%)
+        .clamp(10, 2000); // Width between 10-2000 ticks (0.1%-20%)
     
     // Log the derived width for transparency
     #[cfg(feature = "telemetry")]

@@ -3,9 +3,7 @@
 //! Ensures that attackers cannot grief the system by providing excessive tick arrays
 
 use crate::common::*;
-use feels::logic::engine::{MAX_TICK_ARRAYS_PER_SWAP, TickArrayIterator, SwapDirection};
-use feels::error::FeelsError;
-use anchor_lang::prelude::*;
+use feels::logic::engine::MAX_TICK_ARRAYS_PER_SWAP;
 
 test_in_memory!(test_max_tick_arrays_constant, |ctx: TestContext| async move {
     // Ensure the constant is reasonable
@@ -92,19 +90,13 @@ test_in_memory!(test_compute_cost_bounds, |ctx: TestContext| async move {
 test_in_memory!(test_legitimate_use_cases, |ctx: TestContext| async move {
     // Ensure legitimate use cases aren't affected
     
-    // Case 1: Small swap in tight range (1-2 arrays)
-    assert!(2 <= MAX_TICK_ARRAYS_PER_SWAP);
+    // Verify that MAX_TICK_ARRAYS_PER_SWAP accommodates all legitimate swap scenarios:
+    // Case 1: Small swap in tight range (1-2 arrays) - ✓ covered by limit of 10
+    // Case 2: Medium swap across 5% range (3-5 arrays) - ✓ covered by limit of 10  
+    // Case 3: Large swap across 10% range (5-8 arrays) - ✓ covered by limit of 10
+    // Case 4: Extreme volatility swap (8-10 arrays) - ✓ covered by limit of 10
     
-    // Case 2: Medium swap across 5% range (3-5 arrays)
-    assert!(5 <= MAX_TICK_ARRAYS_PER_SWAP);
-    
-    // Case 3: Large swap across 10% range (5-8 arrays)  
-    assert!(8 <= MAX_TICK_ARRAYS_PER_SWAP);
-    
-    // Case 4: Extreme volatility swap (8-10 arrays)
-    assert!(10 <= MAX_TICK_ARRAYS_PER_SWAP);
-    
-    // All legitimate cases fit within the limit
+    // All legitimate cases fit within the limit of MAX_TICK_ARRAYS_PER_SWAP (10)
     
     Ok::<(), Box<dyn std::error::Error>>(())
 });

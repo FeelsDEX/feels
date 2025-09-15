@@ -85,9 +85,9 @@ pub fn update_position_fee_upper(ctx: Context<UpdatePositionFeeUpper>) -> Result
     let fee_growth_delta_1 = fee_growth_inside_1
         .wrapping_sub(position.fee_growth_inside_1_last_x64);
     
-    let fees_owed_0 = ((position.liquidity as u128)
+    let fees_owed_0 = (position.liquidity
         .saturating_mul(fee_growth_delta_0) >> 64) as u64;
-    let fees_owed_1 = ((position.liquidity as u128)
+    let fees_owed_1 = (position.liquidity
         .saturating_mul(fee_growth_delta_1) >> 64) as u64;
     
     // Update position state

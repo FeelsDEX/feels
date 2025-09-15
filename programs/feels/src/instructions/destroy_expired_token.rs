@@ -30,7 +30,7 @@ pub struct DestroyExpiredToken<'info> {
         constraint = protocol_token.mint == token_mint.key() @ FeelsError::InvalidMint,
         close = destroyer, // Return rent to destroyer
     )]
-    pub protocol_token: Account<'info, ProtocolToken>,
+    pub protocol_token: Box<Account<'info, ProtocolToken>>,
     
     /// Pre-launch escrow account for this token
     #[account(
@@ -48,7 +48,7 @@ pub struct DestroyExpiredToken<'info> {
         associated_token::authority = escrow_authority,
         close = destroyer, // Return rent to destroyer
     )]
-    pub escrow_token_vault: Account<'info, TokenAccount>,
+    pub escrow_token_vault: Box<Account<'info, TokenAccount>>,
     
     /// Escrow's FeelsSOL vault (contains mint fee)
     #[account(
@@ -56,7 +56,7 @@ pub struct DestroyExpiredToken<'info> {
         constraint = escrow_feelssol_vault.mint == escrow.feelssol_mint @ FeelsError::InvalidMint,
         close = destroyer, // Return rent to destroyer
     )]
-    pub escrow_feelssol_vault: Account<'info, TokenAccount>,
+    pub escrow_feelssol_vault: Box<Account<'info, TokenAccount>>,
     
     /// Escrow authority PDA
     /// CHECK: PDA that controls escrow vaults
@@ -71,14 +71,14 @@ pub struct DestroyExpiredToken<'info> {
         seeds = [ProtocolConfig::SEED],
         bump,
     )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
     
     /// Treasury to receive 50% of mint fee
     #[account(
         mut,
         constraint = treasury.key() == protocol_config.treasury @ FeelsError::InvalidAuthority,
     )]
-    pub treasury: Account<'info, TokenAccount>,
+    pub treasury: Box<Account<'info, TokenAccount>>,
     
     /// Destroyer's FeelsSOL account to receive 50% of mint fee
     #[account(
@@ -86,7 +86,7 @@ pub struct DestroyExpiredToken<'info> {
         constraint = destroyer_feelssol.owner == destroyer.key() @ FeelsError::InvalidAuthority,
         constraint = destroyer_feelssol.mint == escrow.feelssol_mint @ FeelsError::InvalidMint,
     )]
-    pub destroyer_feelssol: Account<'info, TokenAccount>,
+    pub destroyer_feelssol: Box<Account<'info, TokenAccount>>,
     
     /// Optional: Market account if it was created
     /// CHECK: Market may or may not exist

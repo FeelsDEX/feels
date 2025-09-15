@@ -13,6 +13,7 @@ pub mod macros;
 pub mod state;
 pub mod utils;
 
+
 use anchor_lang::prelude::*;
 
 // Import instruction modules using Raydium pattern
@@ -128,6 +129,19 @@ pub mod feels {
     ) -> Result<()> {
         instructions::deploy_initial_liquidity(ctx, params)
     }
+
+    /// Permissionless crank to initialize tranche TickArrays and boundary ticks
+    pub fn initialize_tranche_ticks<'info>(
+        ctx: Context<'_, '_, 'info, 'info, InitializeTrancheTicks<'info>>,
+        params: InitializeTrancheTicksParams,
+    ) -> Result<()> {
+        instructions::initialize_tranche_ticks(ctx, params)
+    }
+
+    /// Cleanup bonding curve plan and mark cleanup complete
+    pub fn cleanup_bonding_curve(ctx: Context<CleanupBondingCurve>) -> Result<()> {
+        instructions::cleanup_bonding_curve(ctx)
+    }
     
     /// Open a position with NFT metadata
     pub fn open_position_with_metadata(
@@ -158,7 +172,21 @@ pub mod feels {
     pub fn destroy_expired_token(ctx: Context<DestroyExpiredToken>) -> Result<()> {
         instructions::destroy_expired_token(ctx)
     }
+
+    /// Graduate pool to steady state (idempotent)
+    pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
+        instructions::graduate_pool(ctx)
+    }
     
+    /// Update DEX TWAP for protocol oracle (keeper-updated)
+    pub fn update_dex_twap(ctx: Context<UpdateDexTwap>, params: UpdateDexTwapParams) -> Result<()> {
+        instructions::update_dex_twap(ctx, params)
+    }
+
+    /// Update native reserve rate for protocol oracle (authority)
+    pub fn update_native_rate(ctx: Context<UpdateNativeRate>, params: UpdateNativeRateParams) -> Result<()> {
+        instructions::update_native_rate(ctx, params)
+    }
 }
 
 // Create a processor function for tests that calls the Anchor-generated entry point

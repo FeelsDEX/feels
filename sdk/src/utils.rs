@@ -121,11 +121,35 @@ pub fn calculate_slippage_bps(
 }
 
 /// Sort tokens for consistent ordering
+/// DEPRECATED: Use sort_tokens_with_feelssol instead to ensure FeelsSOL is always token_0
 pub fn sort_tokens(token_0: Pubkey, token_1: Pubkey) -> (Pubkey, Pubkey) {
     if token_0 < token_1 {
         (token_0, token_1)
     } else {
         (token_1, token_0)
+    }
+}
+
+/// Sort tokens ensuring FeelsSOL is always token_0
+/// Returns (token_0, token_1) where token_0 is FeelsSOL if present
+/// Returns error if neither token is FeelsSOL
+pub fn sort_tokens_with_feelssol(
+    token_a: Pubkey, 
+    token_b: Pubkey,
+    feelssol_mint: Pubkey
+) -> Result<(Pubkey, Pubkey)> {
+    // Validate at least one token is FeelsSOL
+    if token_a != feelssol_mint && token_b != feelssol_mint {
+        return Err(SdkError::InvalidParameters(
+            "Invalid market: One token must be FeelsSOL. All markets require FeelsSOL as one of the tokens due to the hub-and-spoke architecture.".to_string()
+        ));
+    }
+    
+    // Ensure FeelsSOL is token_0
+    if token_a == feelssol_mint {
+        Ok((token_a, token_b))
+    } else {
+        Ok((token_b, token_a))
     }
 }
 
@@ -147,4 +171,46 @@ pub fn derive_pool(
         ],
         program_id,
     )
+}
+
+/// Compute TickArray start index for a given tick and spacing (matches on-chain)
+pub fn get_tick_array_start_index(tick_index: i32, tick_spacing: u16) -> i32 {
+    let ticks_per_array = 64i32 * tick_spacing as i32; // on-chain TICK_ARRAY_SIZE = 64
+    let array_index = tick_index.div_euclid(ticks_per_array);
+    array_index * ticks_per_array
+}
+
+/// Derive TickArray PDA for a market and start tick index
+pub fn find_tick_array_address(market: &Pubkey, start_tick_index: i32) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            b"tick_array",
+            market.as_ref(),
+            &start_tick_index.to_le_bytes(),
+        ],
+        &crate::program_id(),
+    )
+}
+
+/// Derive the set of TickArray PDAs required for a stair pattern
+pub fn derive_tranche_tick_arrays(
+    market: &Pubkey,
+    current_tick: i32,
+    tick_spacing: u16,
+    tick_step_size: i32,
+    num_steps: u8,
+) -> Vec<Pubkey> {
+    let mut out = Vec::with_capacity((num_steps as usize) * 2);
+    for i in 0..num_steps {
+        let tick_lower = (current_tick + (i as i32 * tick_step_size)) / tick_spacing as i32 * tick_spacing as i32;
+        let tick_upper = tick_lower + tick_step_size;
+        for t in [tick_lower, tick_upper] {
+            let start = get_tick_array_start_index(t, tick_spacing);
+            let (pda, _) = find_tick_array_address(market, start);
+            if !out.contains(&pda) {
+                out.push(pda);
+            }
+        }
+    }
+    out
 }

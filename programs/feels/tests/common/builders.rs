@@ -234,7 +234,8 @@ impl SwapBuilder {
         front_run_amount: u64,
     ) -> Self {
         // Front-run transaction
-        let attacker_keypair = Keypair::from_bytes(&attacker.to_bytes()).expect("Failed to clone keypair");
+        let attacker_bytes = attacker.to_bytes();
+        let attacker_keypair = Keypair::from_bytes(&attacker_bytes).expect("Failed to clone keypair");
         self = self.add_swap(market, attacker_keypair, token_in, token_out, front_run_amount);
         
         // Victim transaction

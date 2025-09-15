@@ -3,9 +3,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::{
-    constants::{MINT_AUTHORITY_SEED, JITOSOL_VAULT_SEED},
+    constants::{MINT_AUTHORITY_SEED, JITOSOL_VAULT_SEED, FEELS_HUB_SEED},
     error::FeelsError,
     events::FeelsSOLMinted,
+    state::FeelsHub,
     utils::{validate_amount, transfer_from_user_to_vault, mint_to_with_authority},
 };
 
@@ -42,6 +43,15 @@ pub struct EnterFeelsSOL<'info> {
     /// FeelsSOL mint
     #[account(mut)]
     pub feelssol_mint: Account<'info, Mint>,
+
+    /// FeelsHub PDA for reentrancy guard
+    #[account(
+        mut,
+        seeds = [FEELS_HUB_SEED, feelssol_mint.key().as_ref()],
+        bump,
+        constraint = !hub.reentrancy_guard @ FeelsError::ReentrancyDetected,
+    )]
+    pub hub: Account<'info, FeelsHub>,
     
     /// JitoSOL vault (pool-owned by the FeelsSOL hub pool)
     #[account(
@@ -68,6 +78,8 @@ pub struct EnterFeelsSOL<'info> {
 
 /// Enter FeelsSOL handler
 pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
+    // SECURITY: Set guard early
+    ctx.accounts.hub.reentrancy_guard = true;
     // Validate amount
     validate_amount(amount)?;
     
@@ -107,6 +119,7 @@ pub fn enter_feelssol(ctx: Context<EnterFeelsSOL>, amount: u64) -> Result<()> {
         timestamp: Clock::get()?.unix_timestamp,
         version: 1,
     });
-    
+    // Clear guard
+    ctx.accounts.hub.reentrancy_guard = false;
     Ok(())
 }

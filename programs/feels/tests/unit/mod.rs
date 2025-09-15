@@ -19,3 +19,9 @@ pub mod test_static_assertions;
 
 // Simple example test
 pub mod test_simple_example;
+
+// Token ordering validation tests
+pub mod test_token_ordering;
+
+// Test helpers
+pub mod test_helpers;

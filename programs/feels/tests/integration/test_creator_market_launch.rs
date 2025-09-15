@@ -1,6 +1,5 @@
 //! Tests for creator-only market launch and initial buy functionality
 use crate::common::*;
-use feels::state::{Market, ProtocolToken, PreLaunchEscrow};
 use feels_sdk as sdk;
 
 test_all_environments!(test_creator_only_can_launch_market, |ctx: TestContext| async move {

@@ -3,10 +3,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::{
-    constants::{VAULT_AUTHORITY_SEED, JITOSOL_VAULT_SEED, MARKET_SEED},
+    constants::{VAULT_AUTHORITY_SEED, JITOSOL_VAULT_SEED, FEELS_HUB_SEED},
     error::FeelsError,
     events::FeelsSOLBurned,
-    state::Market,
+    state::{FeelsHub, SafetyController, ProtocolConfig},
     utils::{validate_amount, transfer_from_vault_to_user, burn_from_user},
 };
 
@@ -44,15 +44,30 @@ pub struct ExitFeelsSOL<'info> {
     #[account(mut)]
     pub feelssol_mint: Account<'info, Mint>,
     
-    /// Market account for FeelsSOL hub
+    /// FeelsHub PDA for FeelsSOL mint
     /// SECURITY: Provides re-entrancy guard protection
     #[account(
         mut,
-        seeds = [MARKET_SEED, feelssol_mint.key().as_ref(), feelssol_mint.key().as_ref()],
+        seeds = [FEELS_HUB_SEED, feelssol_mint.key().as_ref()],
         bump,
-        constraint = !market.reentrancy_guard @ FeelsError::ReentrancyDetected
+        constraint = !hub.reentrancy_guard @ FeelsError::ReentrancyDetected
     )]
-    pub market: Account<'info, Market>,
+    pub hub: Account<'info, FeelsHub>,
+
+    /// Safety controller (protocol-level)
+    #[account(
+        seeds = [SafetyController::SEED],
+        bump,
+        constraint = !safety.redemptions_paused @ FeelsError::MarketPaused
+    )]
+    pub safety: Account<'info, SafetyController>,
+
+    /// Protocol config (for rate limits)
+    #[account(
+        seeds = [ProtocolConfig::SEED],
+        bump,
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     
     /// JitoSOL vault (pool-owned by the FeelsSOL hub pool)
     #[account(
@@ -72,19 +87,39 @@ pub struct ExitFeelsSOL<'info> {
     
     /// Token program
     pub token_program: Program<'info, Token>,
-    
-    /// System program
-    pub system_program: Program<'info, System>,
 }
 
 /// Exit FeelsSOL handler
 pub fn exit_feelssol(ctx: Context<ExitFeelsSOL>, amount: u64) -> Result<()> {
     // SECURITY: Set re-entrancy guard at the very beginning
-    // This prevents re-entrant calls during the burn-transfer sequence
-    ctx.accounts.market.reentrancy_guard = true;
+    ctx.accounts.hub.reentrancy_guard = true;
     
     // Validate amount
     validate_amount(amount)?;
+
+    // Rate limit: enforce per-slot redemption cap if configured BEFORE burning
+    let current_slot = Clock::get()?.slot;
+    let safety = &mut ctx.accounts.safety;
+    // Reset counter on new slot
+    if safety.redeem_last_slot != current_slot {
+        safety.redeem_last_slot = current_slot;
+        safety.redeem_slot_amount = 0;
+    }
+    let cap = ctx.accounts.protocol_config.redeem_per_slot_cap_feelssol;
+    if cap > 0 {
+        let new_used = safety.redeem_slot_amount.saturating_add(amount);
+        if new_used > cap {
+            emit!(crate::events::RateLimitTriggered {
+                scope: 1,
+                amount,
+                cap,
+                slot: current_slot,
+                timestamp: Clock::get()?.unix_timestamp,
+            });
+            return err!(FeelsError::RateLimitExceeded);
+        }
+        safety.redeem_slot_amount = new_used;
+    }
     
     // Burn FeelsSOL from user
     // CRITICAL: This CPI could potentially be exploited if the token program
@@ -96,6 +131,7 @@ pub fn exit_feelssol(ctx: Context<ExitFeelsSOL>, amount: u64) -> Result<()> {
         &ctx.accounts.token_program,
         amount,
     )?;
+    
     
     // Transfer JitoSOL from vault to user (1:1 for MVP)
     let vault_authority_bump = ctx.bumps.vault_authority;
@@ -117,8 +153,7 @@ pub fn exit_feelssol(ctx: Context<ExitFeelsSOL>, amount: u64) -> Result<()> {
     )?;
     
     // SECURITY: Clear re-entrancy guard before returning
-    // This must happen after all state changes are complete
-    ctx.accounts.market.reentrancy_guard = false;
+    ctx.accounts.hub.reentrancy_guard = false;
     
     // Emit event
     emit!(FeelsSOLBurned {

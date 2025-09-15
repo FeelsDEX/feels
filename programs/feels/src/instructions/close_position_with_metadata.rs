@@ -156,7 +156,7 @@ pub fn close_position_with_metadata(
     let clock = Clock::get()?;
     
     // Validate market is active
-    validate_market_active(&market)?;
+    validate_market_active(market)?;
     
     // Manually deserialize and validate position mint
     let position_mint = Mint::try_deserialize(&mut &ctx.accounts.position_mint.data.borrow()[..])?;

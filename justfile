@@ -36,7 +36,7 @@ default:
 # Build the protocol using Anchor (default)
 build:
     @echo "Building Feels Protocol..."
-    nix develop --command anchor build --no-idl
+    nix develop --command anchor build --no-idl --program-name feels
     @echo "Programs built and available in target/deploy/"
 
 # Build with Nix BPF builder

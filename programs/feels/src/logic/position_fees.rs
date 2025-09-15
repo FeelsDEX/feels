@@ -26,6 +26,7 @@ pub struct PositionFeeAccrual {
 /// - Incremental fees owed since last update
 /// 
 /// This follows the Uniswap V3 formula for tracking fees within a position's range.
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_position_fee_accrual(
     current_tick: i32,
     position_tick_lower: i32,
@@ -79,14 +80,14 @@ pub fn calculate_position_fee_accrual(
     // over the lifetime of a pool. The delta calculation handles this correctly.
     let tokens_owed_0_increment = if position_liquidity > 0 {
         let fee_growth_delta_0 = fee_growth_inside_0.wrapping_sub(last_fee_growth_inside_0);
-        ((fee_growth_delta_0 as u128).saturating_mul(position_liquidity) >> 64) as u64
+        (fee_growth_delta_0.saturating_mul(position_liquidity) >> 64) as u64
     } else {
         0
     };
 
     let tokens_owed_1_increment = if position_liquidity > 0 {
         let fee_growth_delta_1 = fee_growth_inside_1.wrapping_sub(last_fee_growth_inside_1);
-        ((fee_growth_delta_1 as u128).saturating_mul(position_liquidity) >> 64) as u64
+        (fee_growth_delta_1.saturating_mul(position_liquidity) >> 64) as u64
     } else {
         0
     };

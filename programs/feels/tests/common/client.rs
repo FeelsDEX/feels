@@ -318,7 +318,8 @@ impl InMemoryClient {
             lamports,
         );
         
-        let payer = Keypair::from_bytes(&self.payer.to_bytes())?;
+        let payer_bytes = self.payer.to_bytes();
+        let payer = Keypair::from_bytes(&payer_bytes)?;
         self.process_instruction(ix, &[&payer]).await
     }
 

@@ -135,11 +135,10 @@ impl OracleState {
         // Search through initialized observations
         for i in 0..self.observation_cardinality as usize {
             let obs = &self.observations[i];
-            if obs.initialized && obs.block_timestamp <= target_timestamp {
-                if !found || obs.block_timestamp > self.observations[old_observation_index].block_timestamp {
-                    old_observation_index = i;
-                    found = true;
-                }
+            if obs.initialized && obs.block_timestamp <= target_timestamp 
+                && (!found || obs.block_timestamp > self.observations[old_observation_index].block_timestamp) {
+                old_observation_index = i;
+                found = true;
             }
         }
         

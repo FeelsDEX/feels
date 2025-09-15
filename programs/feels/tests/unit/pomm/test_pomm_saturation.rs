@@ -6,8 +6,6 @@
 
 use crate::common::*;
 use feels::state::{Buffer, FeeDomain};
-use feels::error::FeelsError;
-use anchor_lang::prelude::*;
 
 test_in_memory!(test_normal_threshold_check, |ctx: TestContext| async move {
     // Normal case: fees below threshold
@@ -151,7 +149,8 @@ fn create_test_buffer() -> Buffer {
         last_rebase: 0,
         total_distributed: 0,
         buffer_authority_bump: 0,
-        _reserved: [0; 8],
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
     }
 }
 

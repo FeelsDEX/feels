@@ -15,6 +15,7 @@ const SWAP_DISCRIMINATOR: [u8; 8] = [0xf8, 0xc6, 0x9e, 0x91, 0xe1, 0x75, 0x87, 0
 const INITIALIZE_MARKET_DISCRIMINATOR: [u8; 8] = [0x23, 0x23, 0xbd, 0xc1, 0x9b, 0x30, 0xaa, 0xcb];
 const MINT_TOKEN_DISCRIMINATOR: [u8; 8] = [0xac, 0x89, 0xb7, 0x0e, 0xcf, 0x6e, 0xea, 0x38];
 const DEPLOY_INITIAL_LIQUIDITY_DISCRIMINATOR: [u8; 8] = [0x9f, 0xf7, 0xd1, 0x43, 0xb6, 0x5f, 0x8a, 0x2d];
+const INITIALIZE_TRANCHE_TICKS_DISCRIMINATOR: [u8; 8] = [0x4b, 0x77, 0x1a, 0x93, 0x2c, 0x10, 0xe5, 0x6f];
 
 // Instruction data types
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -48,6 +49,7 @@ pub struct SwapParams {
     pub amount_in: u64,
     pub minimum_amount_out: u64,
     pub max_ticks_crossed: u8,
+    pub max_total_fee_bps: u16,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -128,33 +130,43 @@ pub fn exit_feelssol(
     jitosol_mint: Pubkey,
     amount: u64,
 ) -> Instruction {
+    // FeelsSOL hub market uses (feelssol, feelssol) seeds
+    let (market, _) = Pubkey::find_program_address(
+        &[b"market", feelssol_mint.as_ref(), feelssol_mint.as_ref()],
+        &crate::program_id(),
+    );
+    let (safety, _) = Pubkey::find_program_address(&[b"safety_controller"], &crate::program_id());
+    let (protocol_config, _) = Pubkey::find_program_address(&[b"protocol_config"], &crate::program_id());
     let (jitosol_vault, _) = Pubkey::find_program_address(
         &[b"jitosol_vault", feelssol_mint.as_ref()],
         &crate::program_id(),
     );
-    
     let (vault_authority, _) = Pubkey::find_program_address(
         &[b"vault_authority", feelssol_mint.as_ref()],
         &crate::program_id(),
     );
-    
     Instruction {
         program_id: crate::program_id(),
         accounts: vec![
             AccountMeta::new(user, true),
-            AccountMeta::new(user_feelssol, false),
             AccountMeta::new(user_jitosol, false),
-            AccountMeta::new(feelssol_mint, false),
+            AccountMeta::new(user_feelssol, false),
             AccountMeta::new_readonly(jitosol_mint, false),
+            AccountMeta::new(feelssol_mint, false),
+            AccountMeta::new(market, false),
+            AccountMeta::new_readonly(safety, false),
+            AccountMeta::new_readonly(protocol_config, false),
             AccountMeta::new(jitosol_vault, false),
             AccountMeta::new_readonly(vault_authority, false),
             AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
         ],
         data: ExitFeelssolInstructionData { amount }.data(),
     }
 }
 
 /// Build swap instruction (unified engine)
+#[allow(clippy::too_many_arguments)]
 pub fn swap(
     user: Pubkey,
     market: Pubkey,
@@ -167,19 +179,27 @@ pub fn swap(
     minimum_amount_out: u64,
     max_ticks_crossed: u8,
 ) -> Result<Instruction> {
+    // Validate token ordering
+    if token_0_mint >= token_1_mint {
+        return Err(SdkError::InvalidParameters(
+            "Invalid token order: token_0 must be less than token_1 in market.".to_string()
+        ));
+    }
     let (buffer, _) = find_buffer_address(&market);
     let (vault_0, _) = crate::find_vault_0_address(&token_0_mint, &token_1_mint);
     let (vault_1, _) = crate::find_vault_1_address(&token_0_mint, &token_1_mint);
     let (vault_authority, _) = find_vault_authority_address(&market);
+    let (oracle, _) = Pubkey::find_program_address(&[b"oracle", market.as_ref()], &crate::program_id());
     
+    // Accounts must match on-chain order
     let mut accounts = vec![
         AccountMeta::new(user, true),
         AccountMeta::new(market, false),
-        AccountMeta::new_readonly(Pubkey::default(), false), // No oracle
         AccountMeta::new(vault_0, false),
         AccountMeta::new(vault_1, false),
         AccountMeta::new_readonly(vault_authority, false),
         AccountMeta::new(buffer, false),
+        AccountMeta::new(oracle, false),
         AccountMeta::new(user_token_in, false),
         AccountMeta::new(user_token_out, false),
         AccountMeta::new_readonly(spl_token::id(), false),
@@ -199,12 +219,43 @@ pub fn swap(
                 amount_in,
                 minimum_amount_out,
                 max_ticks_crossed,
+                // Default to 0 (no cap) unless a higher-level helper wraps this
+                max_total_fee_bps: 0,
             }
         }.data(),
     })
 }
 
+/// Build graduate_pool instruction
+pub fn graduate_pool(authority: Pubkey, market: Pubkey) -> Instruction {
+    let accounts = vec![
+        AccountMeta::new(authority, true),
+        AccountMeta::new(market, false),
+    ];
+    // Use a simple discriminator for graduate_pool
+    let data = vec![0x8a, 0xfe, 0x97, 0xd3, 0x84, 0xcc, 0x40, 0x3f]; // graduate_pool discriminator
+    Instruction { program_id: crate::program_id(), accounts, data }
+}
+
+/// Build cleanup_bonding_curve instruction (closes tranche plan)
+pub fn cleanup_bonding_curve(authority: Pubkey, market: Pubkey) -> Instruction {
+    let (tranche_plan, _) = Pubkey::find_program_address(
+        &[b"tranche_plan", market.as_ref()],
+        &crate::program_id(),
+    );
+    Instruction {
+        program_id: crate::program_id(),
+        accounts: vec![
+            AccountMeta::new(authority, true),
+            AccountMeta::new(market, false),
+            AccountMeta::new(tranche_plan, false), // closed to authority
+        ],
+        data: vec![0x31, 0x55, 0x26, 0x90, 0xaa, 0x7e, 0x01, 0x42], // cleanup_bonding_curve discriminator
+    }
+}
+
 /// Build initialize market instruction (includes buffer initialization)
+#[allow(clippy::too_many_arguments)]
 pub fn initialize_market(
     creator: Pubkey,
     token_0: Pubkey,
@@ -217,6 +268,33 @@ pub fn initialize_market(
     creator_feelssol: Option<Pubkey>,
     creator_token_out: Option<Pubkey>,
 ) -> Result<Instruction> {
+    // Validate parameters
+    if base_fee_bps > 10000 {
+        return Err(SdkError::InvalidParameters(
+            "Invalid fee: base_fee_bps must be <= 10000 (100%)".to_string()
+        ));
+    }
+    
+    // Validate FeelsSOL is one of the tokens
+    if token_0 != feelssol_mint && token_1 != feelssol_mint {
+        return Err(SdkError::InvalidParameters(
+            "Invalid market: One token must be FeelsSOL. All markets require FeelsSOL as one of the tokens due to the hub-and-spoke architecture.".to_string()
+        ));
+    }
+    
+    // Validate FeelsSOL is token_0 (hub-and-spoke requirement)
+    if token_0 != feelssol_mint {
+        return Err(SdkError::InvalidParameters(
+            "Invalid token order: FeelsSOL must be token_0 in the market pair. Please swap the token order.".to_string()
+        ));
+    }
+    
+    // Validate token ordering (token_0 < token_1)
+    if token_0 >= token_1 {
+        return Err(SdkError::InvalidParameters(
+            "Invalid token order: token_0 must be less than token_1. Ensure tokens are sorted by their public key values.".to_string()
+        ));
+    }
     let (market, _) = find_market_address(&token_0, &token_1);
     let (buffer, _) = find_buffer_address(&market);
     let (oracle, _) = Pubkey::find_program_address(
@@ -428,6 +506,7 @@ impl DeployInitialLiquidityInstructionData {
 }
 
 /// Build deploy_initial_liquidity instruction
+#[allow(clippy::too_many_arguments)]
 pub fn deploy_initial_liquidity(
     deployer: Pubkey,
     market: Pubkey,
@@ -597,13 +676,69 @@ pub fn initialize_protocol(
         &crate::program_id(),
     );
     
+    let (protocol_oracle, _) = Pubkey::find_program_address(
+        &[b"protocol_oracle"],
+        &crate::program_id(),
+    );
+    
+    let (safety_controller, _) = Pubkey::find_program_address(
+        &[b"safety_controller"],
+        &crate::program_id(),
+    );
+    
     Ok(Instruction {
         program_id: crate::program_id(),
         accounts: vec![
             AccountMeta::new(authority, true),
             AccountMeta::new(protocol_config, false),
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+            AccountMeta::new(protocol_oracle, false),
+            AccountMeta::new(safety_controller, false),
         ],
         data: InitializeProtocolInstructionData { params }.data(),
     })
+}
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct InitializeTrancheTicksParams {
+    pub tick_step_size: i32,
+    pub num_steps: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct InitializeTrancheTicksInstructionData {
+    pub params: InitializeTrancheTicksParams,
+}
+
+impl InitializeTrancheTicksInstructionData {
+    fn data(&self) -> Vec<u8> {
+        let mut data = INITIALIZE_TRANCHE_TICKS_DISCRIMINATOR.to_vec();
+        data.extend_from_slice(&self.try_to_vec().unwrap());
+        data
+    }
+}
+
+/// Build initialize_tranche_ticks crank instruction
+pub fn initialize_tranche_ticks(
+    crank: Pubkey,
+    market: Pubkey,
+    tick_step_size: i32,
+    num_steps: u8,
+    tick_arrays: Vec<Pubkey>,
+) -> Instruction {
+    let mut accounts = vec![
+        AccountMeta::new(crank, true),
+        AccountMeta::new(market, false),
+        AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+    ];
+    for ta in tick_arrays {
+        accounts.push(AccountMeta::new(ta, false));
+    }
+    Instruction {
+        program_id: crate::program_id(),
+        accounts,
+        data: InitializeTrancheTicksInstructionData {
+            params: InitializeTrancheTicksParams { tick_step_size, num_steps },
+        }
+        .data(),
+    }
 }

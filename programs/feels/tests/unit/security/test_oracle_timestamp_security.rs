@@ -5,8 +5,6 @@
 
 use crate::common::*;
 use feels::state::oracle::{OracleState, Observation, MAX_OBSERVATIONS};
-use feels::error::FeelsError;
-use anchor_lang::prelude::*;
 
 test_in_memory!(test_minimum_twap_duration, |ctx: TestContext| async move {
     // Verify the minimum TWAP duration is enforced

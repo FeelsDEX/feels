@@ -166,6 +166,7 @@ impl TimeScenarios {
 /// Helper trait for time-based assertions
 pub trait TimeAssertions {
     /// Assert that operation completed within time window
+    #[allow(async_fn_in_trait)]
     async fn assert_completed_within<F, T>(
         &self,
         max_duration: Duration,

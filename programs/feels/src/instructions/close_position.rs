@@ -170,7 +170,7 @@ pub fn close_position(
     let clock = Clock::get()?;
     
     // Validate market is active
-    validate_market_active(&market)?;
+    validate_market_active(market)?;
     
     // Manually deserialize and validate position mint
     let position_mint = Mint::try_deserialize(&mut &ctx.accounts.position_mint.data.borrow()[..])?;
@@ -363,8 +363,8 @@ pub fn close_position(
         tick_lower,
         tick_upper,
         liquidity,
-        amount_0: amount_0,
-        amount_1: amount_1,
+        amount_0,
+        amount_1,
         fees_collected_0: fees_0.saturating_add(position.tokens_owed_0),
         fees_collected_1: fees_1.saturating_add(position.tokens_owed_1),
         operation: PositionOperation::Close,

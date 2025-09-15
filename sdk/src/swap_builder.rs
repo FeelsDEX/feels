@@ -156,6 +156,7 @@ impl SwapBuilder {
             amount_in: self.params.amount_in,
             minimum_amount_out: self.params.minimum_amount_out,
             max_ticks_crossed: self.params.max_ticks_crossed as u8,
+            max_total_fee_bps: 0, // 0 = no cap
         };
         
         // Serialize params using Anchor's serialization

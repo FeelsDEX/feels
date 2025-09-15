@@ -4,9 +4,8 @@
 //! during the exit_feelssol burn-transfer sequence
 
 use crate::common::*;
-use feels::state::{Market, TokenType, TokenOrigin, PolicyV1};
-use feels::error::FeelsError;
-use anchor_lang::prelude::*;
+use crate::unit::test_helpers::create_test_market;
+use feels::state::Market;
 
 test_in_memory!(test_reentrancy_guard_initialization, |ctx: TestContext| async move {
     // Verify that reentrancy_guard is properly initialized to false
@@ -123,41 +122,3 @@ test_in_memory!(test_multiple_operations_sequential, |ctx: TestContext| async mo
     Ok::<(), Box<dyn std::error::Error>>(())
 });
 
-// Helper function to create a test market
-fn create_test_market() -> Market {
-    Market {
-        version: 1,
-        is_initialized: true,
-        is_paused: false,
-        token_0: Pubkey::default(),
-        token_1: Pubkey::default(),
-        feelssol_mint: Pubkey::default(),
-        token_0_type: TokenType::Spl,
-        token_1_type: TokenType::Spl,
-        token_0_origin: TokenOrigin::ProtocolMinted,
-        token_1_origin: TokenOrigin::ProtocolMinted,
-        sqrt_price: 1 << 64,
-        liquidity: 0,
-        current_tick: 0,
-        tick_spacing: 10,
-        global_lower_tick: -887220,
-        global_upper_tick: 887220,
-        floor_liquidity: 0,
-        fee_growth_global_0_x64: 0,
-        fee_growth_global_1_x64: 0,
-        base_fee_bps: 30,
-        buffer: Pubkey::default(),
-        authority: Pubkey::default(),
-        last_epoch_update: 0,
-        epoch_number: 0,
-        oracle: Pubkey::default(),
-        oracle_bump: 0,
-        policy: PolicyV1::default(),
-        market_authority_bump: 0,
-        vault_0_bump: 0,
-        vault_1_bump: 0,
-        reentrancy_guard: false,
-        initial_liquidity_deployed: false,
-        _reserved: [0; 31],
-    }
-}

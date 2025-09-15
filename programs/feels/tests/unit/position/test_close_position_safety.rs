@@ -5,8 +5,6 @@
 
 use crate::common::*;
 use feels::state::Position;
-use feels::error::FeelsError;
-use anchor_lang::prelude::*;
 
 test_in_memory!(test_position_not_closed_on_slippage_failure, |ctx: TestContext| async move {
     // Simulate the vulnerable scenario:
