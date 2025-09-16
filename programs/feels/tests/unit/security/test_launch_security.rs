@@ -121,7 +121,12 @@ test_in_memory!(
             tokens_owed_0: 0,
             tokens_owed_1: 0,
             position_bump: 0,
-            _reserved: [0; 8],
+            is_pomm: false,
+            last_updated_slot: 0,
+            fee_growth_inside_0_last: 0,
+            fee_growth_inside_1_last: 0,
+            fees_owed_0: 0,
+            fees_owed_1: 0,
         };
 
         // Pool can:

@@ -160,6 +160,9 @@ fn create_test_buffer() -> Buffer {
         buffer_authority_bump: 0,
         jit_last_slot: 0,
         jit_slot_used_q: 0,
+        protocol_owned_override: 0,
+        pomm_position_count: 0,
+        _padding: [0; 7],
     }
 }
 

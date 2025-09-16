@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(feature, values("no-entrypoint", "cpi", "idl-build", "anchor-debug", "telemetry", "size-checks", "custom-heap", "custom-panic", "no-idl", "no-log-ix-name"))'
+] }
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -56,3 +59,4 @@ rand = "0.8"
 criterion = "0.5"
 static_assertions = "1.1"
 mpl-token-metadata = "5.0"
+hex = "0.4"

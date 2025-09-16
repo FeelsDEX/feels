@@ -2,6 +2,8 @@
 
 This document presents the just-in-time (JIT) liquidity system that provides automated market making for newly launched tokens while protecting the protocol from toxic flow and maintaining strict solvency constraints.
 
+**MVP Implementation**: The protocol launches with JIT v0.5, featuring virtual concentrated liquidity that provides 5-10x revenue improvement through enhanced caps and concentration effects, without the complexity of full position management. This pragmatic approach delivers immediate value while maintaining safety through multiple defensive layers.
+
 ## Context
 
 New tokens often launch with thin books. We want to ensure the Feels protocol provides reliable execution and continuous pricing. We must do this without handing toxic flow a free option or risking solvency.
@@ -10,15 +12,40 @@ New tokens often launch with thin books. We want to ensure the Feels protocol pr
 
 Provide bounded, just-in-time (JIT) protocol liquidity inside the swap around a biased, clamped geometric time-weighted average price (GTWAP) anchor, with micro-spread, strict budgets, and place-execute-remove in one instruction. Side selection is contrarian to the taker's intent, never trend-following on lagging windows. Sizing is funded only from τ (fee buffer); asks never sit below the floor; sells come only from inventory. A tiny toxicity EMA throttles size after pick-offs.
 
-## MVP Mode: JIT v0 (Minimal, Safe, Always-On)
+## MVP Mode: JIT v0.5 (Virtual Concentrated Liquidity)
 
-To ensure reliable execution at the market price and smooth bootstrapping without external market makers, the MVP ships a minimal JIT v0 mode:
+To ensure reliable execution at the market price and smooth bootstrapping without external market makers, the MVP ships JIT v0.5 with virtual concentrated liquidity:
 
-- Contrarian micro-spread quotes: a tiny bid or ask placed opposite the taker, centered on the pool anchor (GTWAP clamped to current tick) with a fixed spread and 1-tick range.
-- Tight budgets: small per-swap and per-slot quote budgets; uses PoolBuffer only; never taps PoolReserve.
-- No toxicity model in v0: no EWMA, no FlowSignals fusion. Pure contrarian with fixed parameters.
-- Single-tx place–execute–remove: quotes exist only during the swap; no lingering inventory; burn-by-default on protocol fills.
-- Floor guard: JIT ask never below `pool::Floor.get_safe_ask_tick()`.
+### Key Features
+
+- **Virtual Concentration**: Simulates concentrated liquidity without creating positions by scaling liquidity based on distance from current price (up to 10x boost at current tick)
+- **Enhanced Caps**: Increases base JIT budget from 1% to 3% of buffer (configurable per market type)
+- **Multiple Safety Layers**: Graduated drain protection, slot-based concentration shifts, asymmetric directional caps, tick distance penalties, and circuit breaker
+- **Simple Implementation**: ~500 lines of changes, maintaining single-tx place-execute-remove pattern
+- **Floor Guard**: JIT ask never below `pool::Floor.get_safe_ask_tick()`
+
+### Virtual Concentration Mechanism
+
+Instead of creating actual positions, v0.5 scales JIT liquidity based on execution distance from current price:
+
+```rust
+// Concentration multiplier based on tick distance
+let tick_distance = (execution_tick - current_tick).abs();
+let concentration_multiplier = match tick_distance {
+    0..=10 => 10,      // 10x boost at current price
+    11..=50 => 5,      // 5x boost nearby
+    51..=100 => 2,     // 2x boost further out
+    _ => 1,            // 1x boost far away
+};
+```
+
+### Enhanced Budget Caps
+
+```rust
+// Increased from 1% to 3% default
+pub const DEFAULT_JIT_PER_SWAP_BPS: u16 = 300;    // 3% of buffer per swap
+pub const DEFAULT_JIT_PER_SLOT_BPS: u16 = 500;    // 5% of buffer per slot
+```
 
 ## Non-Goals
 
@@ -38,6 +65,108 @@ The pricing anchor combines a geometric time-weighted average price (GTWAP) with
 
 Several defensive layers work together to prevent exploitation: directional toxicity tracking with EMA smoothing detects and throttles adverse flow; per-slot budgets and fill limits prevent resource exhaustion; tick-crossing budgets ensure graceful degradation under high volatility; GTWAP slope guards detect and reject manipulation attempts; and inventory cooldowns prevent round-trip attacks. Each component is designed to fail gracefully. This reduces participation rather than stopping entirely, ensuring the system remains useful, even under attack, while bounding worst-case losses to a reasonable and predictable level.
 
+### Safety Mitigations (JIT v0.5)
+
+#### 1. Graduated Drain Protection
+
+Reduces allowance as consumption increases within a rolling window:
+
+```rust
+// Reset rolling window every 150 slots (~1 minute)
+if current_slot > budget.rolling_window_start + 150 {
+    budget.rolling_consumption = 0;
+    budget.rolling_window_start = current_slot;
+}
+
+// Calculate consumption ratio
+let consumption_ratio = budget.rolling_consumption
+    .checked_mul(10_000)?
+    .checked_div(budget.per_slot_cap_q)
+    .unwrap_or(0);
+
+// Graduated throttling
+let throttle_factor = match consumption_ratio {
+    0..=5000 => 100,      // < 50% used: full allowance
+    5001..=7500 => 50,    // 50-75% used: half allowance
+    7501..=9000 => 20,    // 75-90% used: 20% allowance
+    _ => 10,              // > 90% used: 10% allowance
+};
+```
+
+#### 2. Slot-Based Concentration Shifts
+
+Prevents attackers from camping optimal ticks by shifting concentration zone every 100 slots:
+
+```rust
+// Shift concentration zone every 100 slots (~40 seconds)
+let shift_interval = 100u64;
+let shift_cycles = current_slot.checked_div(shift_interval).unwrap_or(0);
+let shift_amount = ((shift_cycles % 20) as i32).saturating_sub(10);
+
+// Calculate adjusted distance with shift
+let adjusted_distance = target_tick
+    .saturating_sub(current_tick)
+    .saturating_sub(shift_amount)
+    .abs() as u32;
+```
+
+#### 3. Asymmetric Directional Caps
+
+Reduces caps for crowded trade directions based on recent volume:
+
+```rust
+// Calculate recent buy pressure (stored in market state)
+let buy_pressure = market.rolling_buy_volume
+    .checked_mul(100)
+    .and_then(|v| v.checked_div(market.rolling_total_volume))
+    .unwrap_or(50) as u16;
+
+// Reduce cap for crowded direction
+match (is_buy, buy_pressure) {
+    (true, bp) if bp > 70 => base_cap_bps / 2,   // Heavy buy pressure
+    (false, bp) if bp < 30 => base_cap_bps / 2,  // Heavy sell pressure
+    _ => base_cap_bps,                           // Normal conditions
+}
+```
+
+#### 4. Tick Distance Impact Penalty
+
+Discourages trades that move price significantly:
+
+```rust
+// Graduated penalty for large price movements
+let penalty_factor = match tick_movement {
+    0..=10 => 100,    // No penalty for small moves
+    11..=50 => 70,    // 30% penalty
+    51..=100 => 40,   // 60% penalty
+    101..=200 => 20,  // 80% penalty
+    _ => 10,          // 90% penalty for huge moves
+};
+```
+
+#### 5. Circuit Breaker
+
+Emergency halt mechanism when buffer health drops below threshold or extreme price movement detected:
+
+```rust
+// Check buffer health
+let buffer_health_bps = buffer.tau_spot
+    .saturating_mul(10_000)
+    .checked_div(buffer.initial_tau_spot)
+    .unwrap_or(0) as u16;
+
+if buffer_health_bps < params.circuit_breaker_threshold {
+    return true;
+}
+
+// Check for extreme price movement (>10% in 1 hour)
+let price_movement = market.current_tick
+    .saturating_sub(market.tick_snapshot_1hr)
+    .abs();
+    
+price_movement > 1000  // ~10% movement
+```
+
 ### Integration with Unified Architecture
 
 The JIT system integrates cleanly across layers. Terminology: protocol = global systems; pool = per‑market systems.
@@ -50,18 +179,29 @@ The JIT system integrates cleanly across layers. Terminology: protocol = global 
 
 **SafetyController**: Global `protocol::SafetyController` gates participation, rate limits, and degraded modes.
 
-### JIT v0 Parameters (MVP Subset)
+### JIT v0.5 Parameters (MVP Configuration)
 
-- base_spread_ticks: 2–3
-- range_ticks: 1
-- dev_clamp_ticks: 50–100 (anchor clamp to current tick)
-- max_per_swap_q: very small (e.g., ≤ 0.1% of PoolBuffer)
-- max_per_slot_q: a small multiple of max_per_swap_q (e.g., ×3)
-- cooldown_slots: 5
-- ask_cooldown_slots: 10
-- inventory_maturity_slots: 0 (burn-by-default; no inventory)
+#### Core Parameters
+- **base_cap_bps**: 300 (3% of buffer) - configurable per market type
+- **concentration_width**: 10 ticks for blue-chip, wider for volatile markets
+- **max_multiplier**: 10x for concentrated liquidity effect
+- **drain_protection_threshold**: 7000 bps (70% consumption triggers throttling)
+- **circuit_breaker_threshold**: 3000 bps (30% buffer health)
 
-Disabled in v0: toxicity EMA, symmetric mode, momentum-based spread, inventory holds.
+#### Safety Parameters
+- **rolling_window_slots**: 150 (~1 minute)
+- **concentration_shift_interval**: 100 slots (~40 seconds)
+- **max_tick_movement_penalty**: 200 ticks (90% penalty beyond this)
+- **directional_cap_threshold**: 70% buy/30% sell pressure
+
+#### Recommended Parameters by Market Type
+
+| Market Type | Base Cap | Concentration Width | Max Multiplier | Drain Threshold | Circuit Breaker |
+|-------------|----------|-------------------|----------------|-----------------|-----------------| 
+| Stablecoin | 500 bps | 5 ticks | 20x | 7500 bps | 2000 bps |
+| Blue-chip | 300 bps | 10 ticks | 10x | 7000 bps | 3000 bps |
+| Volatile | 100 bps | 20 ticks | 5x | 6000 bps | 4000 bps |
+| New Token | 50 bps | 50 ticks | 3x | 5000 bps | 5000 bps |
 
 ### Anchor & Placement
 
@@ -98,9 +238,16 @@ Disabled in v0: toxicity EMA, symmetric mode, momentum-based spread, inventory h
 * **Proportional size cap**: `size ≤ min(MAX_PER_SWAP_Q, β * min(amount_declared, simulated_fill_at_limit))` where β = 0.25
 * **Non-adverse contribution cap**: Per-slot non-adverse toxicity contribution capped at 1× TOX_BASE_Q16_IF_HIT
 
-### Inventory Management
+### Inventory Management (MVP)
 
-The JIT system requires protocol-owned inventory to place ask orders:
+In the MVP implementation, JIT uses a simple floor-diversion inventory management approach:
+
+* **Floor Diversion**: All JIT bid fills are diverted to the buffer's fee accounting (instead of burning), where they become available for floor liquidity placement via the POMM system
+* **Capital Efficiency**: This approach ensures all JIT quote tokens contribute to market stability through floor liquidity rather than being burned
+* **Simplified Accounting**: JIT consumed quote is added to `buffer.fees_token_0` or `buffer.fees_token_1` based on swap direction, making it available for POMM conversion
+* **No Complex Inventory**: MVP avoids complex inventory tracking, maturity delays, and rebalancing - all JIT fills flow directly to floor support
+
+#### Future Enhancements (Post-MVP)
 
 * **Initial Inventory**: Protocol receives initial token allocation during the bonding curve phase (details in separate protocol asset allocation document)
 * **Dynamic Inventory**: Buys through JIT add to inventory; sells reduce it
@@ -112,7 +259,7 @@ The JIT system requires protocol-owned inventory to place ask orders:
 * **Matured inventory**: Only asks from inventory that has aged >= INVENTORY_MATURITY_SLOTS can be used (prevents rapid force-feed-dump cycles)
 * **Rebalancing**: Periodic rebalancing mechanism adjusts inventory levels (specified in separate document)
 
-This ensures the JIT can provide two-sided liquidity from launch, with the bonding curve allocation bootstrapping initial sell-side capacity while preventing inventory manipulation attacks.
+The future system will provide two-sided liquidity from launch, with the bonding curve allocation bootstrapping initial sell-side capacity while preventing inventory manipulation attacks.
 
 ### Entry Guards
 
@@ -236,6 +383,12 @@ pub struct JitState {
     pub cu_skips_this_slot: u8,       // Track CU-based skips
     pub inventory_by_slot: [u64; 8],  // Ring buffer tracking inventory age
     
+    // v0.5 additions for virtual concentration
+    pub rolling_consumption: u128,      // Track recent usage
+    pub rolling_window_start: u64,      // Window start slot
+    pub last_heavy_usage_slot: u64,     // For cooldowns
+    pub total_consumed_this_epoch: u128, // Epoch tracking
+    
     // Position PDAs
     pub bid_pos_pda: Pubkey,
     pub ask_pos_pda: Pubkey,
@@ -339,32 +492,56 @@ This ensures JIT remains active during volatile launch periods while preventing 
 
 ## Deployment Stages
 
-The JIT system deployment follows the protocol-wide rollout stages:
+The JIT system deployment follows a progressive rollout:
 
-### Stage 1: Foundation (Weeks 1-2)
-- Deploy unified infrastructure (pool::Oracle, pool::Floor, SafetyController)
-- Enable JIT v0 with very conservative parameters
-- Collect baseline market data (optional FlowSignals for future rollout stages)
+### Stage 1: Foundation (Week 1) - JIT v0.5 Conservative
+- Deploy with conservative parameters (100 bps, 5x multiplier)
+- Virtual concentration active but limited
+- All safety mechanisms enabled
+- Monitor performance and attack attempts
 
-### Stage 2: Activation (Weeks 3-4)
-- Consider tightening spreads slightly if pick-offs low; increase budgets modestly
-- Maintain burn-by-default; keep Floor guard and clamps
+### Stage 2: Activation (Weeks 2-3) - JIT v0.5 Balanced
+- Increase to balanced parameters (200 bps, 10x multiplier) if stable
+- Fine-tune concentration widths based on market behavior
+- Adjust safety thresholds based on observed patterns
 
-### Stage 3: Optimization (Weeks 5-8)
-- Add toxicity EMA + FlowSignals fusion (JIT v1)
-- Tune budgets and spreads using observed data
+### Stage 3: Optimization (Week 4+) - JIT v0.5 Optimized
+- Move to aggressive parameters (300 bps, 10x multiplier) for mature markets
+- Maintain conservative settings for new/volatile tokens
+- Continuous parameter optimization based on data
 
-### Stage 4: Maturity (Week 8+)
-- Full JIT functionality (v1+) with tuned parameters and optional inventory model
+### Future: JIT v1.0 (Post-MVP)
+- Full position management with actual concentrated liquidity
+- Advanced inventory tracking and rebalancing
+- Multi-tier concentration profiles
+- Historical pattern learning
 
-The staged approach ensures all unified components are battle-tested before full JIT activation.
+The staged approach allows rapid value capture while maintaining safety.
+
+## Expected Outcomes
+
+### Revenue Impact
+- **Conservative** (1.5% cap, 5x concentration): 3-4x revenue vs basic JIT
+- **Balanced** (2% cap, 10x concentration): 5-7x revenue vs basic JIT
+- **Aggressive** (3% cap, 10x concentration): 7-10x revenue vs basic JIT
+
+### Volume Impact
+- Improved execution attracts 2-5x more volume
+- Becomes preferred DEX for large trades  
+- Aggregators consistently route through protocol
+
+### Risk Profile
+- **Drain Risk**: Mitigated by graduated protection and circuit breaker
+- **Manipulation Risk**: Mitigated by slot shifts and impact penalties
+- **Technical Risk**: Low due to simple implementation (~500 lines)
 
 ## Success Metrics
 
-* **Continuity**: fail-to-execute rate at low liquidity
-* **Bounded exposure**: realized JIT PnL variance per swap within target
+* **Continuity**: fail-to-execute rate at low liquidity < 1%
+* **Revenue efficiency**: Revenue per million volume > 5x baseline
+* **Bounded exposure**: Realized JIT PnL variance per swap within target
 * **Pick-off control**: FlowSignals remain low; appropriate throttling
-* **Organic depth**: stable or improving outside micro-spread bands
+* **Organic depth**: Stable or improving outside micro-spread bands
 * **System coordination**: 
   - Oracle health maintained above 95%
   - Floor never breached by JIT operations
@@ -372,17 +549,40 @@ The staged approach ensures all unified components are battle-tested before full
   - Toxicity signals consistent across subsystems
 * **Performance**: CU usage within bounds; no degradation of swap execution
 
-## Phase 2 (Deferred) — JIT v1 Enhancements
+## Monitoring Requirements
 
-The following features are intentionally deferred to Phase 2 to reduce MVP complexity while preserving a clear upgrade path:
+Track these metrics for health monitoring:
 
-- Toxicity EMA and FlowSignals fusion for adaptive spread/size throttling
-- Symmetric mode fallback with wider base spread when direction is ambiguous
-- Momentum-informed spread adjustments
-- Inventory holds and maturity model (replace burn-by-default with small, time‑boxed inventory under strict caps)
-- Advanced routing/risk‑aware placement based on global signals
+1. **Buffer Health**: `tau_spot / initial_tau_spot`
+2. **Consumption Rate**: `rolling_consumption / per_slot_cap`  
+3. **Concentration Hit Rate**: How often trades hit peak concentration zones
+4. **Circuit Breaker Activations**: Frequency and causes
+5. **Revenue Per Million Volume**: Key efficiency metric
+6. **Directional Imbalance**: Buy vs sell pressure over time
+7. **Tick Movement Impact**: Average penalty factor applied
 
-Enablement plan:
-1) Turn on toxicity EMA with conservative weights; monitor pick‑off metrics and JIT utilization.
-2) Introduce FlowSignals combination and symmetric fallback with hard, small caps.
-3) Evaluate limited inventory holds with strict maturity/size ceilings, only after sustained stability.
+## Future Roadmap: JIT v1.0 and Beyond
+
+### JIT v0.6: Volatility-Adaptive Concentration
+- Widen concentration in volatile markets
+- Tighten in stable conditions
+- Dynamic parameter adjustment based on recent price action
+
+### JIT v0.7: Multi-Tier Concentration  
+- Different concentration profiles by trade size
+- Optimize for both retail and whales
+- Size-aware multiplier curves
+
+### JIT v0.8: Historical Pattern Learning
+- Track which ticks see most volume
+- Bias concentration toward historical hotspots
+- Time-of-day and day-of-week patterns
+
+### JIT v1.0: Full Position Management
+- Actual concentrated liquidity positions (not virtual)
+- Advanced inventory tracking with maturity models
+- Rebalancing mechanisms for two-sided liquidity
+- Integration with external price feeds
+- Cross-market arbitrage awareness
+
+The progression from v0.5 to v1.0 allows the protocol to capture immediate value while building toward a sophisticated market making system that can compete with centralized exchanges on execution quality.

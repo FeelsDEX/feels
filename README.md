@@ -25,11 +25,11 @@ Feels Protocol implements Uniswap V3-style concentrated liquidity with a key inn
 - NFT-based tick position tracking with accumulated fees
 - Tick-based pricing with configurable spacing
 
-### 3D Trading Model
-- **Spot Dimension**: Traditional price discovery
-- **Time Dimension**: Duration-based positions (Flash, Weekly, Monthly, etc.)
-- **Leverage Dimension**: Risk-adjusted leveraged positions
-- Unified physics-based fee model across all dimensions
+### Dynamic Fee Model
+- **Base Fees**: Configurable per-market base trading fees
+- **Impact Fees**: Dynamic fees based on price movement (ticks crossed)
+- **Fee Distribution**: Split between LPs, protocol treasury, and creators
+- **Floor Protection**: Monotonic floor ratchet mechanism
 
 ### Architecture
 - **Routing Constraints**: MAX_ROUTE_HOPS = 2, MAX_SEGMENTS_PER_HOP = 10
@@ -41,10 +41,9 @@ Feels Protocol implements Uniswap V3-style concentrated liquidity with a key inn
 ## Quick Start
 
 ### Entry Flow
-1. Convert JitoSOL to FeelsSOL using `enter_system`
+1. Convert JitoSOL to FeelsSOL using `enter_feelssol`
 2. Use FeelsSOL to trade any token in the protocol
 3. Provide liquidity to any FeelsSOL pair
-4. Enter time or leverage positions
 
 ### Trading Flow
 ```rust
@@ -57,7 +56,7 @@ USDC → FeelsSOL → SOL
 
 ### Exit Flow
 1. Exit positions to FeelsSOL
-2. Convert FeelsSOL back to JitoSOL using `exit_system`
+2. Convert FeelsSOL back to JitoSOL using `exit_feelssol`
 
 ## Building
 
@@ -73,37 +72,39 @@ anchor build
 ## Testing
 
 ```bash
-# Unit tests
-cargo test
+# Run all tests
+just test
 
-# Integration tests
-cargo test integration
+# Run specific test categories
+just test-unit           # Unit tests only
+just test-integration    # Integration tests only
+just test-e2e           # End-to-end tests only
+just test-property      # Property-based tests only
 
-# Routing tests
-cargo test routing
+# Run specific tests
+cargo test test_swap_exact_amount
+
+# Run with output
+cargo test -- --nocapture
 ```
 
 ## SDK Usage
 
 ```rust
-use feels_sdk::{HubRouter, instructions::*};
+use feels_sdk::{FeelsClient, SdkConfig};
 
-// Initialize router
-let router = HubRouter::new(FEELSSOL_MINT);
+// Initialize client
+let config = SdkConfig::localnet(payer);
+let client = FeelsClient::new(config)?;
 
-// Find route
-let route = router.find_route(&token_0, &token_1)?;
-
-// Build swap instructions
-let ixs = hub_swap(
-    &program_id,
-    &token_in,
-    &token_out, 
-    &feelssol_mint,
-    &user,
-    amount,
-    min_out,
-    &router
+// Execute swap
+let sig = client.swap(
+    &user_token_in,
+    &user_token_out,
+    &token_in_mint,
+    &token_out_mint,
+    amount_in,
+    minimum_amount_out,
 )?;
 ```
 
@@ -114,8 +115,8 @@ let ixs = hub_swap(
 
 ## Documentation
 
-- [Routing Architecture](docs/routing_architecture.md)
 - [System Overview](docs/000_system_overview.md)
-- [Instantaneous Fees](docs/001_instantaneous_fees.md)
+- [Dynamic Fees](docs/001_instantaneous_fees.md)
 - [Continuous Rebasing](docs/002_continuous_rebasing.md)
 - [Verification and Policy](docs/003_verification_and_policy.md)
+- [MVP Checklist](docs/100_mvp_checklist_work_plan.md)

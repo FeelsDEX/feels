@@ -255,6 +255,8 @@ impl TestContext {
     /// Create a mock protocol token for testing
     /// This creates a simple token mint without using mint_token instruction
     /// since Metaplex is not available in test environment
+    /// NOTE: This method does NOT guarantee token ordering constraints.
+    /// For creating markets, use create_test_market_with_feelssol which ensures proper ordering.
     pub async fn mint_protocol_token(
         &self,
         token_name: &str,
@@ -265,6 +267,7 @@ impl TestContext {
         let creator = self.accounts.market_creator.insecure_clone();
 
         // Create the token mint
+        // WARNING: This may not satisfy ordering constraints for market creation
         let token_mint = self.create_mint(&creator.pubkey(), decimals).await?;
         println!(
             "Created mock protocol token {} at {}",
@@ -303,6 +306,7 @@ impl TestContext {
 
         // Get the payer to be the authority
         let payer_pubkey = self.payer().await;
+        println!("Using payer as authority: {}", payer_pubkey);
 
         // Create initialization parameters with 0 mint fee for testing and sane oracle/safety defaults
         let params = InitializeProtocolParams {
@@ -320,14 +324,52 @@ impl TestContext {
             dex_whitelist: vec![],
         };
 
-        // Build the instruction
-        let ix = sdk::initialize_protocol(payer_pubkey, params)?;
+        // Clone params before passing to SDK
+        let ix = sdk::instructions::initialize_protocol(payer_pubkey, params.clone())?;
+        println!("Built initialize_protocol instruction successfully");
+        println!("Instruction data length: {}", ix.data.len());
+        println!("Instruction program_id: {}", ix.program_id);
+        println!("Number of accounts: {}", ix.accounts.len());
 
         // Get the payer keypair based on environment
         let payer = match &*self.client.lock().await {
             TestClient::InMemory(client) => client.payer.insecure_clone(),
             TestClient::Devnet(client) => client.payer.insecure_clone(),
         };
+
+        // Check if the payer has enough SOL
+        let payer_balance = self.get_balance(&payer_pubkey).await?;
+        println!("Payer balance: {} SOL", payer_balance as f64 / 1e9);
+        
+        // If payer has insufficient balance, this is a test setup issue
+        if payer_balance < 1_000_000 {
+            println!("WARNING: Payer has insufficient balance for protocol initialization");
+        }
+        
+        // Check if the program is deployed
+        match self.get_account_raw(&PROGRAM_ID).await {
+            Ok(data) => println!("Program {} is deployed (size: {} bytes)", PROGRAM_ID, data.data.len()),
+            Err(_) => println!("WARNING: Program {} is NOT deployed!", PROGRAM_ID),
+        }
+        
+        // Log first 8 bytes of instruction data (discriminator)
+        println!("Instruction discriminator: {:?}", &ix.data[..8]);
+        
+        // Log the raw bytes of the instruction data for debugging
+        println!("Full instruction data (hex): {}", hex::encode(&ix.data));
+        
+        // Try to manually verify the params serialization
+        use anchor_lang::AnchorSerialize;
+        let test_params = params.clone();
+        match test_params.try_to_vec() {
+            Ok(serialized) => {
+                println!("Params serialized successfully, length: {}", serialized.len());
+                println!("Params data (hex): {}", hex::encode(&serialized));
+            }
+            Err(e) => {
+                println!("ERROR: Failed to serialize params: {:?}", e);
+            }
+        }
 
         // Process the instruction
         match self.process_instruction(ix, &[&payer]).await {
@@ -445,6 +487,73 @@ impl TestContext {
         Ok(mint)
     }
 
+    /// Create a new SPL token mint with ordering constraint
+    /// Ensures the generated mint pubkey is greater than the reference pubkey
+    /// This is needed for hub-and-spoke model where FeelsSOL must always be token_0
+    pub async fn create_mint_with_ordering_constraint(
+        &self, 
+        authority: &Pubkey, 
+        decimals: u8,
+        reference_pubkey: &Pubkey
+    ) -> TestResult<Keypair> {
+        let max_attempts = 1000; // Prevent infinite loop
+        for _ in 0..max_attempts {
+            let mint = Keypair::new();
+            
+            // Check if this mint satisfies the ordering constraint
+            // We need mint.pubkey() > reference_pubkey for proper token ordering
+            if mint.pubkey() > *reference_pubkey {
+                // This mint satisfies our constraint, create it
+                let payer_pubkey = self.payer().await;
+
+                // Calculate rent for mint account
+                let rent = solana_program::sysvar::rent::Rent::default();
+                let mint_rent = rent.minimum_balance(spl_token::state::Mint::LEN);
+
+                let instructions = vec![
+                    solana_sdk::system_instruction::create_account(
+                        &payer_pubkey,
+                        &mint.pubkey(),
+                        mint_rent,
+                        spl_token::state::Mint::LEN as u64,
+                        &spl_token::id(),
+                    ),
+                    spl_token::instruction::initialize_mint(
+                        &spl_token::id(),
+                        &mint.pubkey(),
+                        authority,
+                        None,
+                        decimals,
+                    )?,
+                ];
+
+                // Get the payer keypair from the client
+                let payer = match &*self.client.lock().await {
+                    TestClient::InMemory(client) => {
+                        // For in-memory tests, we need to use the payer from the client
+                        client.payer.insecure_clone()
+                    }
+                    TestClient::Devnet(_) => {
+                        // For devnet tests, use the market creator as payer
+                        self.accounts.market_creator.insecure_clone()
+                    }
+                };
+
+                self.process_transaction(&instructions, &[&payer, &mint])
+                    .await?;
+
+                println!("Created mint {} (> {}) after generating keypairs", mint.pubkey(), reference_pubkey);
+                return Ok(mint);
+            }
+        }
+        
+        Err(format!(
+            "Failed to generate mint with pubkey > {} after {} attempts", 
+            reference_pubkey, 
+            max_attempts
+        ).into())
+    }
+
     /// Create associated token account
     pub async fn create_ata(&self, owner: &Pubkey, mint: &Pubkey) -> TestResult<Pubkey> {
         let ata = spl_associated_token_account::get_associated_token_address(owner, mint);
@@ -500,10 +609,12 @@ impl TestContext {
         &self,
         address: &Pubkey,
     ) -> TestResult<solana_sdk::account::Account> {
+        // For simplicity, create a minimal account with the data
+        // The actual lamports will be checked separately in the banks client
         let data = self.client.lock().await.get_account_data(address).await?;
         match data {
             Some(data) => Ok(solana_sdk::account::Account {
-                lamports: 0, // Placeholder
+                lamports: 1_000_000_000, // Default 1 SOL for testing
                 data,
                 owner: PROGRAM_ID,
                 executable: false,
@@ -511,6 +622,11 @@ impl TestContext {
             }),
             None => Err("Account not found".into()),
         }
+    }
+    
+    /// Get SOL balance for an account
+    pub async fn get_balance(&self, address: &Pubkey) -> TestResult<u64> {
+        self.client.lock().await.get_balance(address).await
     }
 
     /// Get token account

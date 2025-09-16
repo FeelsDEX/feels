@@ -39,7 +39,7 @@ impl TestEnvironment {
     pub fn localnet() -> Self {
         TestEnvironment::Localnet {
             url: "http://localhost:8899".to_string(),
-            payer_path: Some("keypairs/payer.json".to_string()),
+            payer_path: Some("/Users/hxrts/projects/timewave/feels-solana/keypairs/payer.json".to_string()),
         }
     }
 

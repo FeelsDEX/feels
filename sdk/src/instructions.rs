@@ -34,7 +34,8 @@ pub struct EnterFeelssolInstructionData {
 impl EnterFeelssolInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = ENTER_FEELSSOL_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the amount field
+        data.extend_from_slice(&self.amount.to_le_bytes());
         data
     }
 }
@@ -47,7 +48,8 @@ pub struct ExitFeelssolInstructionData {
 impl ExitFeelssolInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = EXIT_FEELSSOL_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the amount field
+        data.extend_from_slice(&self.amount.to_le_bytes());
         data
     }
 }
@@ -77,7 +79,8 @@ pub struct SwapInstructionData {
 impl SwapInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = SWAP_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }
@@ -108,7 +111,8 @@ pub struct UpdateDexTwapInstructionData { pub params: UpdateDexTwapParams }
 impl UpdateDexTwapInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut v = UPDATE_DEX_TWAP_DISCRIMINATOR.to_vec();
-        v.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        v.extend_from_slice(&self.params.try_to_vec().unwrap());
         v
     }
 }
@@ -120,7 +124,8 @@ pub struct UpdateNativeRateInstructionData { pub params: UpdateNativeRateParams 
 impl UpdateNativeRateInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut v = UPDATE_NATIVE_RATE_DISCRIMINATOR.to_vec();
-        v.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        v.extend_from_slice(&self.params.try_to_vec().unwrap());
         v
     }
 }
@@ -128,7 +133,8 @@ impl UpdateNativeRateInstructionData {
 impl InitializeMarketInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = INITIALIZE_MARKET_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }
@@ -187,6 +193,11 @@ pub fn initialize_hub(payer: Pubkey, feelssol_mint: Pubkey, jitosol_mint: Pubkey
         &crate::program_id(),
     );
 
+    let (vault_authority, _) = Pubkey::find_program_address(
+        &[b"vault_authority", feelssol_mint.as_ref()],
+        &crate::program_id(),
+    );
+
     Instruction {
         program_id: crate::program_id(),
         accounts: vec![
@@ -195,6 +206,7 @@ pub fn initialize_hub(payer: Pubkey, feelssol_mint: Pubkey, jitosol_mint: Pubkey
             AccountMeta::new_readonly(jitosol_mint, false),
             AccountMeta::new(hub, false),
             AccountMeta::new(jitosol_vault, false),
+            AccountMeta::new_readonly(vault_authority, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
         ],
@@ -688,7 +700,8 @@ pub struct MintTokenInstructionData {
 impl MintTokenInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = MINT_TOKEN_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }
@@ -710,7 +723,8 @@ pub struct DeployInitialLiquidityInstructionData {
 impl DeployInitialLiquidityInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = DEPLOY_INITIAL_LIQUIDITY_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }
@@ -875,7 +889,8 @@ pub struct InitializeProtocolInstructionData {
 impl InitializeProtocolInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = INITIALIZE_PROTOCOL_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }
@@ -920,7 +935,8 @@ pub struct InitializeTrancheTicksInstructionData {
 impl InitializeTrancheTicksInstructionData {
     fn data(&self) -> Vec<u8> {
         let mut data = INITIALIZE_TRANCHE_TICKS_DISCRIMINATOR.to_vec();
-        data.extend_from_slice(&self.try_to_vec().unwrap());
+        // Serialize just the params, not the wrapper struct
+        data.extend_from_slice(&self.params.try_to_vec().unwrap());
         data
     }
 }

@@ -23,9 +23,14 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             buffer: Pubkey::new_unique(),
             user_token_in: Pubkey::new_unique(),
             user_token_out: Pubkey::new_unique(),
+            protocol_config: Pubkey::new_unique(),
+            protocol_treasury: Pubkey::new_unique(),
+            protocol_token: None,
+            creator_token_account: None,
             amount_in: 1_000_000,        // 1 token
             minimum_amount_out: 950_000, // 5% slippage
             max_ticks_crossed: 0,        // No limit
+            max_fee_bps: 0,              // No fee cap
         };
 
         let swap_instruction = SwapBuilder::new(params)
@@ -59,9 +64,14 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             buffer: Pubkey::new_unique(),
             user_token_in: Pubkey::new_unique(),
             user_token_out: Pubkey::new_unique(),
+            protocol_config: Pubkey::new_unique(),
+            protocol_treasury: Pubkey::new_unique(),
+            protocol_token: None,
+            creator_token_account: None,
             amount_in: 5_000_000,
             minimum_amount_out: 4_800_000,
             max_ticks_crossed: 100,
+            max_fee_bps: 0,
         };
 
         // Manually specify tick arrays for precise control
@@ -96,9 +106,14 @@ fn main() -> std::result::Result<(), Box<dyn Error>> {
             buffer: Pubkey::new_unique(),
             user_token_in: Pubkey::new_unique(),
             user_token_out: Pubkey::new_unique(),
+            protocol_config: Pubkey::new_unique(),
+            protocol_treasury: Pubkey::new_unique(),
+            protocol_token: None,
+            creator_token_account: None,
             amount_in: 2_000_000,
             minimum_amount_out: 1_950_000,
             max_ticks_crossed: 200,
+            max_fee_bps: 0,
         };
 
         let _swap_instruction = SwapBuilder::new(params)
@@ -218,9 +233,14 @@ fn advanced_swap_example() -> std::result::Result<(), Box<dyn Error>> {
         buffer: Pubkey::new_unique(),
         user_token_in: Pubkey::new_unique(),
         user_token_out: Pubkey::new_unique(),
+        protocol_config: Pubkey::new_unique(),
+        protocol_treasury: Pubkey::new_unique(),
+        protocol_token: None,
+        creator_token_account: None,
         amount_in: 1_000_000,
         minimum_amount_out: 0, // Will calculate slippage
         max_ticks_crossed: 0,
+        max_fee_bps: 0,
     };
 
     // Calculate expected output and slippage

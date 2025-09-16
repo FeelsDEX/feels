@@ -8,7 +8,7 @@
 //! ## Usage Guide:
 //!
 //! ### Normal Positions (common case):
-//! ```ignore
+//! ```text
 //! // Provide tick arrays in remaining_accounts
 //! collect_fees {
 //!     accounts: { position, owner, vaults, ... },
@@ -18,7 +18,7 @@
 //!
 //! ### Wide Positions (tick arrays too far apart):
 //! If you get a MissingTickArrayCoverage error, use the 3-step process:
-//! ```ignore
+//! ```text
 //! // Step 1: Calculate fees for lower tick
 //! update_position_fee_lower { ... }
 //!
@@ -33,7 +33,7 @@
 //! ```
 //!
 //! ### Already Calculated Fees:
-//! ```ignore
+//! ```text
 //! // If tokens_owed > 0, just call without tick arrays
 //! collect_fees {
 //!     accounts: { position, owner, vaults, ... },

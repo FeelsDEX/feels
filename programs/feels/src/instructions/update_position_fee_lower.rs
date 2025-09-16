@@ -81,12 +81,9 @@ pub fn update_position_fee_lower(ctx: Context<UpdatePositionFeeLower>) -> Result
     // _reserved[3..4]: Market current tick snapshot (truncated to u8)
     // _reserved[4..8]: Reserved for future use
 
-    // Mark lower tick as updated
-    position._reserved[0..2].copy_from_slice(&1u16.to_le_bytes());
-
-    // Store current market tick (for validation in upper tick update)
-    let tick_snapshot = (market.current_tick.clamp(i8::MIN as i32, i8::MAX as i32) as i8) as u8;
-    position._reserved[3] = tick_snapshot;
+    // Mark lower tick as updated by setting the slot
+    let current_slot = Clock::get()?.slot;
+    position.last_updated_slot = current_slot;
 
     // Calculate partial fee accrual for the lower tick only
     // This will be combined with upper tick in the second instruction

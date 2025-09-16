@@ -18,8 +18,9 @@ use anchor_lang::prelude::*;
 // Import instruction modules using Raydium pattern
 // This makes all Accounts structs available at crate root
 use instructions::*;
+use state::PoolPhase;
 
-declare_id!("2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1");
+declare_id!("Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*
@@ -47,6 +48,39 @@ pub mod feels {
         params: UpdateProtocolParams,
     ) -> Result<()> {
         instructions::update_protocol(ctx, params)
+    }
+
+    /// Set protocol owned override for floor calculation (governance only)
+    pub fn set_protocol_owned_override(
+        ctx: Context<SetProtocolOwnedOverride>,
+        override_amount: u64,
+    ) -> Result<()> {
+        instructions::set_protocol_owned_override(ctx, override_amount)
+    }
+
+    /// Initialize the pool registry (one-time setup)
+    pub fn initialize_pool_registry(ctx: Context<InitializePoolRegistry>) -> Result<()> {
+        instructions::initialize_pool_registry(ctx)
+    }
+
+    /// Register a pool in the registry
+    pub fn register_pool(ctx: Context<RegisterPool>) -> Result<()> {
+        instructions::register_pool(ctx)
+    }
+
+    /// Update pool phase in registry
+    pub fn update_pool_phase(ctx: Context<UpdatePoolPhase>, new_phase: PoolPhase) -> Result<()> {
+        instructions::update_pool_phase(ctx, new_phase)
+    }
+    
+    /// Manage POMM (Protocol-Owned Market Making) positions
+    pub fn manage_pomm_position(ctx: Context<ManagePommPosition>, params: ManagePommParams) -> Result<()> {
+        instructions::manage_pomm_position(ctx, params)
+    }
+    
+    /// Transition market between phases
+    pub fn transition_market_phase(ctx: Context<TransitionMarketPhase>, params: TransitionPhaseParams) -> Result<()> {
+        instructions::transition_market_phase(ctx, params)
     }
 
     /// Initialize a new market with commitment for initial liquidity

@@ -3,8 +3,8 @@
 //! Provides a reusable stepper function that handles
 //! the core math for concentrated liquidity swaps.
 //!
-//! IMPORTANT: Rounding Behavior
-//! ----------------------------
+//! Rounding Behavior:
+//! ------------------
 //! The Orca Whirlpools core functions handle rounding correctly:
 //! - try_get_amount_delta_* with round_up=false: rounds DOWN (for output amounts)
 //! - try_get_amount_delta_* with round_up=true: rounds UP (for input amounts)
@@ -120,11 +120,10 @@ impl SwapContext {
 /// can be swapped before hitting the target price or exhausting input.
 /// The function properly handles bounds and returns the reason for termination.
 ///
-/// SECURITY: This function is NOT vulnerable to flash loan attacks because:
+/// This function avoids flash loan attacks because:
 /// 1. All calculations use only market.sqrt_price and market.liquidity from on-chain state
-/// 2. Vault balances are NEVER read or used in price calculations
+/// 2. Vault balances are never read or used in price calculations
 /// 3. Amounts are computed using the constant product formula x*y=k via sqrt price
-/// 4. This follows the Uniswap V3 security model exactly
 pub fn compute_swap_step(
     ctx: &SwapContext,
     target_sqrt_price: u128,

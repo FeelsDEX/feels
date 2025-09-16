@@ -39,18 +39,19 @@ Tools for testing time-dependent features:
 
 ### Macros
 Test macros for different execution patterns:
-- `test_all_environments!`: Run test in all available environments
-- `test_in_memory!`: Run test only in-memory
-- `test_devnet!`: Run test only on devnet
-- `assert_instruction_error!`: Assert specific errors
+- `assert_tx_success!`: Assert transaction success with detailed output
+- `assert_error!`: Assert specific program errors
+- `assert_balance_change!`: Assert token balance changes
+- Custom assertion traits for comprehensive validation
 
 ## Usage Examples
 
 ### Basic Market Creation and Swap
 
 ```rust
-#[test_in_memory!(test_basic_swap)]
-async fn test_basic_swap(ctx: TestContext) -> TestResult<()> {
+#[tokio::test]
+async fn test_basic_swap() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
     // Create tokens
     let token_0 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 9).await?;
     let token_1 = ctx.create_mint(&ctx.accounts.market_creator.pubkey(), 6).await?;
@@ -77,25 +78,27 @@ async fn test_basic_swap(ctx: TestContext) -> TestResult<()> {
 }
 ```
 
-### Multi-Environment Testing
+### Using Assertion Utilities
 
 ```rust
-#[test_all_environments!(test_position_management)]
-async fn test_position_management(ctx: TestContext) -> TestResult<()> {
-    // This test will run in:
-    // - In-memory (always)
-    // - Devnet (if RUN_DEVNET_TESTS=1)
-    // - Localnet (if RUN_LOCALNET_TESTS=1)
+#[tokio::test]
+async fn test_position_management() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
     
-    // Test implementation...
+    // Use assertion macros for comprehensive validation
+    assert_tx_success!(result, "Position creation should succeed");
+    assert_balance_change!(ctx, &user_account, expected_change);
+    
+    Ok(())
 }
 ```
 
 ### Complex Scenarios
 
 ```rust
-#[test_in_memory!(test_sandwich_attack)]
-async fn test_sandwich_attack(ctx: TestContext) -> TestResult<()> {
+#[tokio::test]
+async fn test_sandwich_attack() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
     // Setup market...
     
     let results = ctx.swap_builder()
@@ -118,13 +121,14 @@ async fn test_sandwich_attack(ctx: TestContext) -> TestResult<()> {
 ### Time-Based Testing
 
 ```rust
-#[with_time_test!(test_twap)]
-async fn test_twap(ctx: &TestContext) -> TestResult<()> {
+#[tokio::test]
+async fn test_twap() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
     // Create market...
     
     // Simulate price movement over time
     TimeScenarios::simulate_price_movement(
-        ctx,
+        &ctx,
         &market,
         vec![
             (60, new_price_1),   // After 60 seconds
@@ -143,44 +147,33 @@ async fn test_twap(ctx: &TestContext) -> TestResult<()> {
 cargo test
 ```
 
-### Devnet Tests
+### All Tests
 ```bash
-RUN_DEVNET_TESTS=1 cargo test -- --ignored
+cargo test --features test-utils
 ```
 
-### Localnet Tests
+### Specific Test Categories
 ```bash
-# Start local validator first
-RUN_LOCALNET_TESTS=1 cargo test -- --ignored
+cargo test --features test-utils unit::
+cargo test --features test-utils integration::
+cargo test --features test-utils e2e::
 ```
 
-### Custom RPC Endpoint
-```bash
-TEST_RPC_URL=http://custom-rpc:8899 cargo test -- --ignored
-```
+## Test Environment
 
-## Environment Detection
-
-The test infrastructure automatically detects the environment based on:
-1. `TEST_RPC_URL` env var → Use custom RPC endpoint
-2. `RUN_DEVNET_TESTS=1` → Use devnet
-3. Default → In-memory testing
+The test infrastructure primarily uses in-memory testing with `solana-program-test` for:
+- Fast execution
+- Deterministic results
+- No network dependencies
+- Complete isolation
 
 ## Best Practices
 
 1. **Use builders for complex setups**: Builders provide a clean API and handle common setup tasks
 2. **Prefer helpers over raw SDK calls**: Helpers include proper error handling and result parsing
-3. **Test in multiple environments**: Use `test_all_environments!` for critical functionality
-4. **Use time utilities for TWAP/oracle tests**: Ensures consistent behavior across environments
+3. **Use assertion utilities**: Leverage `assert_tx_success!`, `assert_error!`, and custom traits
+4. **Use time utilities for TWAP/oracle tests**: Ensures consistent behavior in time-based scenarios
 5. **Leverage pre-configured accounts**: Use `ctx.accounts` for consistent test identities
-
-## Integration with devnet.nix
-
-When testing against localnet started with `devnet.nix`:
-1. Set `RUN_LOCALNET_TESTS=1`
-2. The infrastructure will automatically connect to `http://localhost:8899`
-3. Program deployment and account setup is handled by devnet.nix
-4. Test accounts are automatically funded via airdrop
 
 ## Extending the Infrastructure
 

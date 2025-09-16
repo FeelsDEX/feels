@@ -141,10 +141,12 @@ impl MarketHelper {
         println!("Creating test market with FeelsSOL...");
         use sdk::instructions::mint_token as build_mint_token_ix;
         let creator = &self.ctx.accounts.market_creator;
-        // Create a new protocol token mint keypair
+        
+        // Create a new protocol token mint keypair that satisfies ordering constraint
+        // Since FeelsSOL must be token_0, we need a token with pubkey > feelssol_mint
         let token_mint = self
             .ctx
-            .create_mint(&creator.pubkey(), token_decimals)
+            .create_mint_with_ordering_constraint(&creator.pubkey(), token_decimals, &self.ctx.feelssol_mint)
             .await?;
         // Creator's FeelsSOL ATA (for mint fee; protocol sets mint_fee=0 for tests)
         let creator_feelssol_ata = self
@@ -288,6 +290,63 @@ impl MarketHelper {
         println!("Created position with mint: {} and liquidity: {}", position_mint, liquidity_amount);
 
         Ok(setup)
+    }
+
+    /// Create a test market with an existing protocol token
+    pub async fn create_test_market_with_protocol_token(
+        &self,
+        creator: &Keypair,
+        token_mint: &Keypair,
+    ) -> TestResult<TestMarketSetup> {
+        println!("Creating test market with protocol token...");
+        
+        // Determine token order (FeelsSOL must be token_0)
+        let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {
+            (self.ctx.feelssol_mint, token_mint.pubkey())
+        } else {
+            (token_mint.pubkey(), self.ctx.feelssol_mint)
+        };
+
+        // Initialize market
+        let ix_init = sdk::initialize_market(
+            creator.pubkey(),
+            token_0,
+            token_1,
+            self.ctx.feelssol_mint,
+            30,                                // base_fee_bps
+            64,                                // tick_spacing
+            79228162514264337593543950336u128, // sqrt price = 1:1
+            0,                                 // no initial buy
+            None,
+            None,
+        )?;
+        
+        self.ctx.process_instruction(ix_init, &[creator]).await?;
+
+        // Deploy initial liquidity (staircase)
+        let (market_id, _) = sdk::find_market_address(&token_0, &token_1);
+        let ix_deploy = sdk::deploy_initial_liquidity(
+            creator.pubkey(),
+            market_id,
+            token_0,
+            token_1,
+            self.ctx.feelssol_mint,
+            100, // tick_step_size
+            0,   // no initial buy
+            None,
+            None,
+        )?;
+        
+        self.ctx.process_instruction(ix_deploy, &[creator]).await?;
+
+        Ok(TestMarketSetup {
+            market_id,
+            feelssol_mint: self.ctx.feelssol_mint,
+            custom_token_mint: token_mint.pubkey(),
+            custom_token_keypair: Keypair::try_from(&token_mint.to_bytes()[..]).unwrap(),
+            token_0,
+            token_1,
+        })
     }
 }
 
@@ -465,6 +524,10 @@ impl SwapHelper {
     }
 
     /// Execute swap with exact output
+    /// 
+    /// This uses a binary search algorithm to find the input amount that yields
+    /// the desired output. Since the protocol doesn't natively support exact output
+    /// swaps, this simulates multiple swaps to find the right input amount.
     pub async fn swap_exact_out(
         &self,
         market: &Pubkey,
@@ -474,21 +537,105 @@ impl SwapHelper {
         max_amount_in: u64,
         trader: &Keypair,
     ) -> TestResult<SwapResult> {
-        // Note: The current SDK doesn't support exact output swaps
-        // For now, we'll approximate by doing a regular swap
-        // In a real implementation, this would need SDK support
-
-        // Estimate amount in needed (very rough approximation)
-        let estimated_amount_in = amount_out; // 1:1 for simplicity
-
-        self.swap(
-            market,
-            token_in,
-            token_out,
-            estimated_amount_in.min(max_amount_in),
-            trader,
-        )
-        .await
+        // Get market state for initial price estimation
+        let market_state = self.ctx.get_account::<Market>(market).await?.unwrap();
+        let sqrt_price = market_state.sqrt_price;
+        let zero_for_one = token_in == &market_state.token_0;
+        
+        // Use SDK's estimation function to get initial bounds
+        let (min_estimate, max_estimate) = sdk::estimate_input_for_output(
+            amount_out,
+            sqrt_price,
+            zero_for_one,
+            market_state.base_fee_bps,
+        );
+        
+        // Ensure we respect the user's max_amount_in
+        let search_max = max_estimate.min(max_amount_in);
+        
+        // Binary search parameters
+        let mut low = min_estimate;
+        let mut high = search_max;
+        let mut best_result = None;
+        let tolerance_bps = 10; // 0.1% tolerance
+        let max_iterations = 15;
+        let mut iterations = 0;
+        
+        // Calculate absolute tolerance
+        let tolerance = (amount_out as u128 * tolerance_bps as u128 / 10_000) as u64;
+        
+        println!("Starting exact output swap search:");
+        println!("  Target output: {}", amount_out);
+        println!("  Initial range: {} - {}", low, high);
+        println!("  Tolerance: {} ({}bps)", tolerance, tolerance_bps);
+        
+        while low <= high && iterations < max_iterations {
+            let mid = low + (high - low) / 2;
+            
+            println!("  Iteration {}: trying input amount {}", iterations + 1, mid);
+            
+            // Simulate swap with current input amount
+            match self.swap(market, token_in, token_out, mid, trader).await {
+                Ok(result) => {
+                    let diff = if result.amount_out > amount_out {
+                        result.amount_out - amount_out
+                    } else {
+                        amount_out - result.amount_out
+                    };
+                    
+                    println!("    Got output: {} (diff: {})", result.amount_out, diff);
+                    
+                    // Check if we're within tolerance
+                    if diff <= tolerance {
+                        best_result = Some(result.clone());
+                        
+                        // Try to optimize further
+                        if result.amount_out > amount_out {
+                            // Too much output, try less input
+                            high = mid - 1;
+                        } else if result.amount_out < amount_out {
+                            // Too little output, try more input
+                            low = mid + 1;
+                        } else {
+                            // Exact match!
+                            println!("  Found exact match!");
+                            return Ok(result);
+                        }
+                    } else if result.amount_out < amount_out {
+                        // Need more output, increase input
+                        low = mid + 1;
+                    } else {
+                        // Too much output, decrease input
+                        high = mid - 1;
+                    }
+                },
+                Err(e) => {
+                    // Swap failed, likely due to slippage or insufficient liquidity
+                    println!("    Swap failed: {}", e);
+                    // Try with less input
+                    high = mid - 1;
+                }
+            }
+            
+            iterations += 1;
+        }
+        
+        match best_result {
+            Some(result) => {
+                println!(
+                    "Best result found: input {} -> output {} (target was {})",
+                    result.amount_in, result.amount_out, amount_out
+                );
+                Ok(result)
+            }
+            None => {
+                Err(format!(
+                    "Could not find input amount that yields {} output within {} iterations. \
+                     Try increasing max_amount_in (currently {}) or tolerance.",
+                    amount_out, max_iterations, max_amount_in
+                ).into())
+            }
+        }
     }
 
     /// Perform multiple swaps in sequence
@@ -638,20 +785,80 @@ impl PositionHelper {
         upper_tick: i32,
         liquidity: u128,
     ) -> TestResult<PositionInfo> {
-        // This is a placeholder for position creation with NFT metadata
-        // In a real implementation, this would create the NFT metadata alongside the position
-        let position_pubkey = self
-            .open_position(market, owner, lower_tick, upper_tick, liquidity)
+        // Get market state to find token vaults
+        let market_state = self.ctx.get_account::<Market>(market).await?.unwrap();
+        
+        // Create position mint
+        let position_mint = Keypair::new();
+        let position_token_account = self.ctx.create_ata(&owner.pubkey(), &position_mint.pubkey()).await?;
+        
+        // Create provider token accounts if they don't exist
+        let provider_token_0 = self.ctx.create_ata(&owner.pubkey(), &market_state.token_0).await?;
+        let provider_token_1 = self.ctx.create_ata(&owner.pubkey(), &market_state.token_1).await?;
+        
+        // Derive position PDA
+        let (position_pda, _) = sdk::utils::find_position_address(&position_mint.pubkey());
+        
+        // Derive vaults
+        let (vault_0, _) = sdk::find_vault_address(market, &market_state.token_0);
+        let (vault_1, _) = sdk::find_vault_address(market, &market_state.token_1);
+        
+        // Calculate tick array addresses
+        let lower_array_start = utils::get_tick_array_start_index(lower_tick, market_state.tick_spacing);
+        let upper_array_start = utils::get_tick_array_start_index(upper_tick, market_state.tick_spacing);
+        let (lower_tick_array, _) = utils::find_tick_array_address(market, lower_array_start);
+        let (upper_tick_array, _) = utils::find_tick_array_address(market, upper_array_start);
+        
+        // Derive metadata account
+        let position_mint_pubkey = position_mint.pubkey();
+        let metadata_seeds = &[
+            b"metadata",
+            mpl_token_metadata::ID.as_ref(),
+            position_mint_pubkey.as_ref(),
+        ];
+        let (metadata_account, _) = Pubkey::find_program_address(metadata_seeds, &mpl_token_metadata::ID);
+        
+        // Build instruction manually since SDK doesn't have this yet
+        let discriminator: [u8; 8] = anchor_lang::solana_program::hash::hash(b"global:open_position_with_metadata").to_bytes()[..8].try_into().unwrap();
+        let mut data: Vec<u8> = discriminator.to_vec();
+        data.extend_from_slice(&lower_tick.to_le_bytes());
+        data.extend_from_slice(&upper_tick.to_le_bytes());
+        data.extend_from_slice(&liquidity.to_le_bytes());
+        
+        let accounts = vec![
+            AccountMeta::new(owner.pubkey(), true),
+            AccountMeta::new(*market, false),
+            AccountMeta::new(position_mint.pubkey(), true),
+            AccountMeta::new(position_token_account, false),
+            AccountMeta::new(position_pda, false),
+            AccountMeta::new(provider_token_0, false),
+            AccountMeta::new(provider_token_1, false),
+            AccountMeta::new(vault_0, false),
+            AccountMeta::new(vault_1, false),
+            AccountMeta::new(lower_tick_array, false),
+            AccountMeta::new(upper_tick_array, false),
+            AccountMeta::new(metadata_account, false),
+            AccountMeta::new_readonly(mpl_token_metadata::ID, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+        ];
+        
+        let ix = Instruction {
+            program_id: sdk::program_id(),
+            accounts,
+            data,
+        };
+        
+        self.ctx
+            .process_instruction(ix, &[owner, &position_mint])
             .await?;
-
-        // Create mock NFT info
-        let mint = Pubkey::new_unique();
-        let token_account = Pubkey::new_unique();
-
+        
         Ok(PositionInfo {
-            pubkey: position_pubkey,
-            mint,
-            token_account,
+            pubkey: position_pda,
+            mint: position_mint.pubkey(),
+            token_account: position_token_account,
         })
     }
 
@@ -661,8 +868,66 @@ impl PositionHelper {
         position_info: &PositionInfo,
         owner: &Keypair,
     ) -> TestResult<()> {
-        // This is a placeholder for closing a position that has NFT metadata
-        self.close_position(&position_info.pubkey, owner).await
+        // Get position state
+        let position = self.ctx.get_account::<Position>(&position_info.pubkey).await?.unwrap();
+        
+        // Get market state
+        let market_state = self.ctx.get_account::<Market>(&position.market).await?.unwrap();
+        
+        // Create owner token accounts if they don't exist
+        let owner_token_0 = self.ctx.create_ata(&owner.pubkey(), &market_state.token_0).await?;
+        let owner_token_1 = self.ctx.create_ata(&owner.pubkey(), &market_state.token_1).await?;
+        
+        // Derive vaults
+        let (vault_0, _) = sdk::find_vault_address(&position.market, &market_state.token_0);
+        let (vault_1, _) = sdk::find_vault_address(&position.market, &market_state.token_1);
+        
+        // Calculate tick array addresses
+        let lower_array_start = utils::get_tick_array_start_index(position.tick_lower, market_state.tick_spacing);
+        let upper_array_start = utils::get_tick_array_start_index(position.tick_upper, market_state.tick_spacing);
+        let (lower_tick_array, _) = utils::find_tick_array_address(&position.market, lower_array_start);
+        let (upper_tick_array, _) = utils::find_tick_array_address(&position.market, upper_array_start);
+        
+        // Derive metadata account
+        let metadata_seeds = &[
+            b"metadata",
+            mpl_token_metadata::ID.as_ref(),
+            position_info.mint.as_ref(),
+        ];
+        let (metadata_account, _) = Pubkey::find_program_address(metadata_seeds, &mpl_token_metadata::ID);
+        
+        // Build instruction manually since SDK doesn't have this yet
+        let discriminator: [u8; 8] = anchor_lang::solana_program::hash::hash(b"global:close_position_with_metadata").to_bytes()[..8].try_into().unwrap();
+        let mut data: Vec<u8> = discriminator.to_vec();
+        data.extend_from_slice(&0u64.to_le_bytes()); // amount_0_min
+        data.extend_from_slice(&0u64.to_le_bytes()); // amount_1_min
+        
+        let accounts = vec![
+            AccountMeta::new(owner.pubkey(), true),
+            AccountMeta::new(position.market, false),
+            AccountMeta::new(position_info.mint, false),
+            AccountMeta::new(position_info.token_account, false),
+            AccountMeta::new(position_info.pubkey, false),
+            AccountMeta::new(owner_token_0, false),
+            AccountMeta::new(owner_token_1, false),
+            AccountMeta::new(vault_0, false),
+            AccountMeta::new(vault_1, false),
+            AccountMeta::new(lower_tick_array, false),
+            AccountMeta::new(upper_tick_array, false),
+            AccountMeta::new(metadata_account, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+        ];
+        
+        let ix = Instruction {
+            program_id: sdk::program_id(),
+            accounts,
+            data,
+        };
+        
+        self.ctx.process_instruction(ix, &[owner]).await?;
+        
+        Ok(())
     }
 
     /// Get position state
@@ -736,9 +1001,20 @@ impl PositionHelper {
         _owner: &Keypair,
         _liquidity_delta: u128,
     ) -> TestResult<()> {
-        // Note: Liquidity modification requires a new instruction to be added to the program
-        // Current implementation only supports opening new positions
-        Ok::<(), Box<dyn std::error::Error>>(())
+        // The Feels protocol currently does not support modifying liquidity in existing positions.
+        // This is a deliberate design choice to keep the protocol simpler and more efficient.
+        // 
+        // To add liquidity at the same price range:
+        // 1. Open a new position with the additional liquidity
+        // 2. Keep track of multiple position NFTs
+        // 
+        // This approach:
+        // - Simplifies the protocol implementation
+        // - Makes fee accounting cleaner (each position tracks its own fees)
+        // - Allows for more granular position management
+        // - Enables easier position transfers (NFT-based)
+        
+        Err("Adding liquidity to existing positions is not supported. Please open a new position instead.".into())
     }
 
     /// Remove liquidity from position
@@ -748,13 +1024,27 @@ impl PositionHelper {
         _owner: &Keypair,
         _liquidity_delta: u128,
     ) -> TestResult<()> {
-        // Note: Liquidity modification requires a new instruction to be added to the program
-        // Current implementation only supports closing entire positions
-        Ok::<(), Box<dyn std::error::Error>>(())
+        // The Feels protocol currently does not support partial liquidity removal.
+        // Positions must be closed entirely to remove liquidity.
+        // 
+        // To partially remove liquidity:
+        // 1. Close the entire position
+        // 2. Open a new position with the remaining liquidity
+        // 
+        // This design choice:
+        // - Keeps the protocol simpler and more gas-efficient
+        // - Avoids complex partial fee calculations
+        // - Maintains clear position lifecycle (open -> collect fees -> close)
+        // 
+        // For testing partial liquidity scenarios, use multiple smaller positions
+        // instead of one large position.
+        
+        Err("Partial liquidity removal is not supported. Please close the entire position and open a new one with desired liquidity.".into())
     }
 }
 
 // Result types
+#[derive(Clone, Debug)]
 pub struct SwapResult {
     pub amount_in: u64,
     pub amount_out: u64,

@@ -44,6 +44,29 @@ pub fn transfer_from_vault_to_user<'info>(
     token::transfer(cpi_ctx, amount)
 }
 
+/// Transfer tokens from buffer vault to market vault using PDA authority
+pub fn transfer_from_buffer_vault<'info>(
+    buffer_vault: &AccountInfo<'info>,
+    market_vault: &AccountInfo<'info>,
+    buffer_authority: &AccountInfo<'info>,
+    authority_seeds: &[&[u8]],
+    amount: u64,
+    token_program: &Program<'info, Token>,
+) -> Result<()> {
+    let cpi_accounts = Transfer {
+        from: buffer_vault.to_account_info(),
+        to: market_vault.to_account_info(),
+        authority: buffer_authority.to_account_info(),
+    };
+    let seeds = [authority_seeds];
+    let cpi_ctx = CpiContext::new_with_signer(
+        token_program.to_account_info(),
+        cpi_accounts,
+        &seeds,
+    );
+    token::transfer(cpi_ctx, amount)
+}
+
 /// Transfer between two accounts with PDA authority
 pub fn transfer_with_authority<'info>(
     from: &Account<'info, TokenAccount>,

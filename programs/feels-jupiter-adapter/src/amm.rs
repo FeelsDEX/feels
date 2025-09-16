@@ -147,8 +147,9 @@ impl Amm for FeelsAmm {
         let reserve_mints = [market.token_0, market.token_1];
         
         // Pre-compute tick array addresses for liquidity calculations
+        // Start with a conservative window that can be expanded if needed
         let tick_spacing = market.tick_spacing;
-        let arrays = derive_tick_arrays_for_quote(&market_key, market.current_tick, tick_spacing, 2);
+        let arrays = derive_tick_arrays_for_quote(&market_key, market.current_tick, tick_spacing, 3);
 
         Ok(Self {
             key: keyed_account.key,
@@ -237,12 +238,20 @@ impl Amm for FeelsAmm {
             anyhow::bail!("Invalid input mint for this market");
         };
         
+        // Estimate required tick coverage based on input size and current liquidity
+        let estimated_ticks = estimate_ticks_to_cross(
+            &self.market,
+            amount_in,
+            is_token_0_to_1,
+        );
+        
         // Calculate swap output using Feels concentrated liquidity math
-        let (amount_out, fee_amount) = calculate_swap_output(
+        let (amount_out, fee_amount) = calculate_swap_output_with_coverage_check(
             &self.market,
             &self.tick_arrays,
             amount_in,
             is_token_0_to_1,
+            estimated_ticks,
         )?;
         
         // Calculate fee percentage for Jupiter interface
@@ -267,7 +276,7 @@ impl Amm for FeelsAmm {
 
     /// Return the number of accounts required for a Feels swap instruction
     fn get_accounts_len(&self) -> usize {
-        13 // Matches the account count in Swap struct from swap.rs
+        17 // Updated for fee distribution accounts: protocol_config, treasury, protocol_token, creator_account
     }
 
     /// Generate swap instruction and account metas for Jupiter routing
@@ -293,6 +302,17 @@ impl Amm for FeelsAmm {
             anyhow::bail!("Invalid mint pair for this market");
         };
         
+        // Derive required PDAs for fee distribution
+        let (protocol_config, _) = Pubkey::find_program_address(
+            &[b"protocol_config"], 
+            &feels::id()
+        );
+        
+        // Derive protocol treasury token account for the output token
+        // Note: In a full implementation, we would need to fetch the protocol config
+        // to get the treasury pubkey. For MVP, we'll use a derived treasury address.
+        let protocol_treasury = derive_protocol_treasury_token_account(destination_mint);
+
         // Build account metas matching the Swap struct from swap.rs
         // Order is critical - must match exactly for instruction parsing
         let account_metas = vec![
@@ -314,6 +334,14 @@ impl Amm for FeelsAmm {
             // System programs
             AccountMeta::new_readonly(spl_token::id(), false), // token_program
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // clock
+            
+            // Fee distribution accounts (required for v2+ fee system)
+            AccountMeta::new_readonly(protocol_config, false), // protocol_config
+            AccountMeta::new(protocol_treasury, false), // protocol_treasury
+            
+            // Optional accounts for protocol tokens - Jupiter adapter defaults to None
+            AccountMeta::new_readonly(Pubkey::default(), false), // protocol_token (None placeholder)
+            AccountMeta::new_readonly(Pubkey::default(), false), // creator_token_account (None placeholder)
         ];
         
         Ok(SwapAndAccountMetas {
@@ -346,12 +374,70 @@ impl Amm for FeelsAmm {
 // SWAP CALCULATION FUNCTIONS
 // =============================================================================
 
+/// Estimate the number of ticks likely to be crossed in a swap
+///
+/// This provides a rough estimate based on current liquidity and input size
+/// to help determine if we have sufficient tick array coverage.
+fn estimate_ticks_to_cross(
+    market: &Market,
+    amount_in: u64,
+    _is_token_0_to_1: bool,
+) -> i32 {
+    // Calculate net input after base fee
+    let fee_bps = market.base_fee_bps as u64;
+    let fee_amount = (amount_in as u128 * fee_bps as u128 / 10_000) as u64;
+    let amount_after_fee = amount_in.saturating_sub(fee_amount);
+    
+    // Rough estimate: assume average liquidity and calculate price impact
+    // This is intentionally conservative to avoid underestimating
+    if market.liquidity == 0 {
+        return 0;
+    }
+    
+    // Estimate price movement as a percentage
+    let price_impact_estimate = (amount_after_fee as f64) / (market.liquidity as f64);
+    
+    // Convert to ticks (very rough - assumes ~0.01% per tick for common tick spacings)
+    let estimated_ticks = (price_impact_estimate * 10000.0 / (market.tick_spacing as f64)) as i32;
+    
+    // Add safety margin
+    estimated_ticks.saturating_mul(2).max(10)
+}
+
+/// Calculate swap output with coverage validation
+///
+/// This enhanced version checks if we have sufficient tick array coverage
+/// and returns an error if the swap would exceed our cached data.
+fn calculate_swap_output_with_coverage_check(
+    market: &Market,
+    tick_arrays: &AHashMap<i32, TickArrayView>,
+    amount_in: u64,
+    is_token_0_to_1: bool,
+    estimated_ticks: i32,
+) -> Result<(u64, u64)> {
+    // Check if we have sufficient coverage
+    let arrays_needed = (estimated_ticks / TICK_ARRAY_SIZE).max(1) + 1;
+    let arrays_loaded = tick_arrays.len() as i32;
+    
+    if arrays_needed > arrays_loaded {
+        anyhow::bail!(
+            "Insufficient tick array coverage for large quote. Need {} arrays but only have {}. \
+             Consider reducing quote size or updating more tick arrays.",
+            arrays_needed,
+            arrays_loaded
+        );
+    }
+    
+    // Delegate to original calculation with coverage tracking
+    calculate_swap_output_with_tracking(market, tick_arrays, amount_in, is_token_0_to_1)
+}
+
 /// Calculate swap output using Feels concentrated liquidity math
 ///
 /// This function simulates a swap through the concentrated liquidity engine,
 /// crossing ticks and applying liquidity changes as needed to determine the
 /// final output amount and total fees.
-fn calculate_swap_output(
+fn calculate_swap_output_with_tracking(
     market: &Market,
     tick_arrays: &AHashMap<i32, TickArrayView>,
     amount_in: u64,
@@ -373,10 +459,31 @@ fn calculate_swap_output(
     // Validate market has sufficient liquidity and valid price
     ensure!(liquidity > 0 && sqrt_price > 0, "Insufficient liquidity or invalid price");
 
+    // Track arrays searched to detect coverage limits
+    let mut arrays_searched = 0;
+    
     // Execute swap simulation across ticks
     while remaining_input > 0 {
         // Find next initialized tick in the swap direction
-        let next_tick = next_initialized_tick(tick_arrays, current_tick, tick_spacing, is_token_0_to_1);
+        let (next_tick, searched) = next_initialized_tick_with_coverage(
+            tick_arrays, 
+            current_tick, 
+            tick_spacing, 
+            is_token_0_to_1
+        )?;
+        arrays_searched += searched;
+        
+        // Check if we've hit coverage limits
+        if next_tick.is_none() && searched >= 3 {
+            anyhow::bail!(
+                "Reached tick array coverage limit. Quote may be incomplete. \
+                 Arrays searched: {}, Current tick: {}, Direction: {}",
+                arrays_searched,
+                current_tick,
+                if is_token_0_to_1 { "0->1" } else { "1->0" }
+            );
+        }
+        
         let target_tick = next_tick.unwrap_or(if is_token_0_to_1 { i32::MIN / 2 } else { i32::MAX / 2 });
 
         // Calculate target sqrt price for the tick boundary
@@ -396,7 +503,7 @@ fn calculate_swap_output(
                 try_get_amount_delta_a(U128::from(sqrt_price), new_sqrt_price, U128::from(liquidity), false)
             }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
             
-            total_output = total_output.saturating_add(segment_output);
+            total_output = total_output.saturating_add(segment_output as u128);
             break;
         };
 
@@ -407,7 +514,7 @@ fn calculate_swap_output(
             try_get_amount_delta_b(U128::from(sqrt_price), target_sqrt_price, U128::from(liquidity), false)
         }.map_err(|e| anyhow::anyhow!("Input calculation error: {:?}", e))?;
 
-        if remaining_input as u128 >= input_to_target {
+        if remaining_input as u128 >= input_to_target as u128 {
             // We can cross the tick - calculate output for this segment
             let segment_output = if is_token_0_to_1 {
                 try_get_amount_delta_b(target_sqrt_price, U128::from(sqrt_price), U128::from(liquidity), false)
@@ -415,9 +522,9 @@ fn calculate_swap_output(
                 try_get_amount_delta_a(U128::from(sqrt_price), target_sqrt_price, U128::from(liquidity), false)
             }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
             
-            total_output = total_output.saturating_add(segment_output);
+            total_output = total_output.saturating_add(segment_output as u128);
             remaining_input = remaining_input.saturating_sub(u64::try_from(input_to_target).unwrap_or(u64::MAX));
-            sqrt_price = target_sqrt_price.as_u128();
+            sqrt_price = target_sqrt_price.into();
             current_tick = target_tick;
             
             // Apply liquidity change at crossed tick (Uniswap V3 convention)
@@ -454,7 +561,7 @@ fn calculate_swap_output(
                 try_get_amount_delta_a(U128::from(sqrt_price), new_sqrt_price, U128::from(liquidity), false)
             }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
             
-            total_output = total_output.saturating_add(segment_output);
+            total_output = total_output.saturating_add(segment_output as u128);
             break;
         }
     }
@@ -524,8 +631,25 @@ pub(crate) fn derive_tick_arrays_for_quote(market: &Pubkey, current_tick: i32, t
 /// This function deserializes the on-chain tick array data and extracts
 /// only the initialized ticks for efficient lookup during quotes.
 pub(crate) fn parse_tick_array(data: &[u8], tick_spacing: u16) -> Result<TickArrayView> {
-    // Validate minimum size for Anchor discriminator + TickArray header
-    anyhow::ensure!(data.len() >= 8 + 32 + 4 + 12, "Tick array data too small");
+    // Calculate expected size: discriminator(8) + market(32) + start_tick_index(4) + pad0(12) + 
+    // ticks(80*64) + initialized_tick_count(2) + pad1(14) + reserved(32)
+    const EXPECTED_LEN: usize = 8 + 32 + 4 + 12 + (80 * TICK_ARRAY_SIZE as usize) + 2 + 14 + 32;
+    
+    // Validate exact size match
+    anyhow::ensure!(
+        data.len() == EXPECTED_LEN, 
+        "Invalid tick array data length: expected {}, got {}", 
+        EXPECTED_LEN, 
+        data.len()
+    );
+    
+    // Validate discriminator (Anchor uses 8-byte discriminator)
+    const TICK_ARRAY_DISCRIMINATOR: [u8; 8] = [249, 200, 168, 102, 16, 153, 250, 241];
+    let discriminator = &data[..8];
+    anyhow::ensure!(
+        discriminator == TICK_ARRAY_DISCRIMINATOR,
+        "Invalid tick array discriminator"
+    );
     
     // Skip Anchor discriminator and parse header
     let mut cursor = &data[8..];
@@ -540,6 +664,15 @@ pub(crate) fn parse_tick_array(data: &[u8], tick_spacing: u16) -> Result<TickArr
     // Parse individual tick entries
     let mut initialized_ticks = AHashMap::new();
     let tick_entry_size = 80usize; // Size of each tick entry in bytes
+    
+    // Validate we have enough data for all ticks
+    let expected_ticks_size = (TICK_ARRAY_SIZE as usize) * tick_entry_size;
+    anyhow::ensure!(
+        ticks_bytes.len() >= expected_ticks_size,
+        "Insufficient tick data: expected at least {} bytes, got {}",
+        expected_ticks_size,
+        ticks_bytes.len()
+    );
     
     for i in 0..TICK_ARRAY_SIZE {
         let offset = (i as usize) * tick_entry_size;
@@ -561,29 +694,32 @@ pub(crate) fn parse_tick_array(data: &[u8], tick_spacing: u16) -> Result<TickArr
     })
 }
 
-/// Find the next initialized tick in the given direction
+/// Find the next initialized tick with coverage tracking
 ///
-/// Searches through cached tick arrays to find the next tick with liquidity
-/// in the specified swap direction.
-pub(crate) fn next_initialized_tick(
+/// Returns the next initialized tick and the number of arrays searched.
+/// This allows callers to detect when coverage limits are reached.
+pub(crate) fn next_initialized_tick_with_coverage(
     arrays: &AHashMap<i32, TickArrayView>,
     current_tick: i32,
     tick_spacing: i32,
     zero_for_one: bool,
-) -> Option<i32> {
+) -> Result<(Option<i32>, i32)> {
     let ticks_per_array = TICK_ARRAY_SIZE * tick_spacing;
     let start_array_index = current_tick.div_euclid(ticks_per_array) * ticks_per_array;
     let mut array_index = start_array_index;
+    let mut arrays_searched = 0;
     
-    // Search through up to 5 arrays in the given direction
-    for _ in 0..5 {
+    // Search through available arrays
+    while arrays_searched < arrays.len() as i32 {
         if let Some(view) = arrays.get(&array_index) {
+            arrays_searched += 1;
+            
             if zero_for_one {
                 // Search downward from current_tick - tick_spacing
                 let mut tick = current_tick - tick_spacing;
                 while tick >= view.start_tick_index {
                     if view.inits.contains_key(&tick) {
-                        return Some(tick);
+                        return Ok((Some(tick), arrays_searched));
                     }
                     tick -= tick_spacing;
                 }
@@ -593,18 +729,21 @@ pub(crate) fn next_initialized_tick(
                 let array_end = view.start_tick_index + (TICK_ARRAY_SIZE * tick_spacing);
                 while tick < array_end {
                     if view.inits.contains_key(&tick) {
-                        return Some(tick);
+                        return Ok((Some(tick), arrays_searched));
                     }
                     tick += tick_spacing;
                 }
             }
+        } else {
+            // Array not loaded - we've hit coverage limit
+            break;
         }
         
         // Move to next array in the search direction
         array_index += if zero_for_one { -ticks_per_array } else { ticks_per_array };
     }
     
-    None
+    Ok((None, arrays_searched))
 }
 
 /// Get the liquidity_net value for a specific tick
@@ -618,4 +757,23 @@ pub(crate) fn liquidity_net_at(arrays: &AHashMap<i32, TickArrayView>, tick_index
         }
     }
     None
+}
+
+/// Derive the protocol treasury token account for a given mint
+///
+/// This function derives the associated token account for the protocol treasury.
+/// In a production implementation, this would fetch the treasury pubkey from
+/// the protocol config account. For now, we use a deterministic derivation.
+pub(crate) fn derive_protocol_treasury_token_account(mint: &Pubkey) -> Pubkey {
+    // Derive the protocol treasury authority (would come from protocol config)
+    let (treasury_authority, _) = Pubkey::find_program_address(
+        &[b"treasury"],
+        &feels::ID,
+    );
+    
+    // Derive the associated token account for this mint
+    spl_associated_token_account::get_associated_token_address(
+        &treasury_authority,
+        mint
+    )
 }

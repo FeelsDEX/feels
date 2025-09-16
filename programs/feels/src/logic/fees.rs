@@ -1,6 +1,4 @@
 //! Fee calculation utilities for MVP (base + impact only)
-//!
-//! Note: Keep code concise — no legacy/back-compat paths.
 
 /// Minimum and maximum total fee bounds (in basis points)
 pub const MIN_TOTAL_FEE_BPS: u16 = 10; // 0.10%

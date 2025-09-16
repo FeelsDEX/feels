@@ -4,12 +4,12 @@ This directory contains comprehensive tests for the Feels protocol, organized by
 
 ## Overview
 
-The test suite has been refactored to support multiple testing environments:
+The test suite supports multiple testing environments:
 - **In-Memory**: Fast unit tests using `solana-program-test` 
-- **Devnet**: Integration tests against devnet (requires `RUN_DEVNET_TESTS=1`)
+- **Devnet**: Integration tests against devnet
 - **Localnet**: Integration tests against local validator
 
-The test suite provides coverage for:
+Test coverage includes:
 - Mathematical operations and utilities (unit tests)
 - Security features and vulnerability regression tests
 - Protocol lifecycle and cross-instruction interactions (integration tests)
@@ -68,15 +68,42 @@ cargo build-sbf
 
 ### Running Tests
 
-```bash
-# Using the justfile (recommended)
-just test               # Run all tests
-just test-unit         # Run unit tests only
-just test-integration  # Run integration tests only
-just test-e2e          # Run end-to-end tests only
-just test-property     # Run property-based tests only
+The test suite uses a modular justfile system with all test commands imported into the root justfile:
 
-# Or use cargo directly
+```bash
+# From project root
+just test               # Run all tests
+just test-unit          # Run unit tests only
+just test-integration   # Run integration tests only
+just test-property      # Run property tests only
+just test-e2e           # Run e2e tests only
+
+# Advanced test commands
+just filter test_swap         # Run tests matching "test_swap"
+just verbose                  # Run with verbose output
+just parallel 4               # Run with 4 threads
+just nocapture                # Don't capture output
+just release                  # Run in release mode
+just coverage                 # Generate coverage report
+just watch                    # Watch mode (auto-rerun)
+
+# Direct justfile usage (from tests directory)
+cd programs/feels/tests
+just --list             # Show all test commands
+just all                # Run all tests
+just unit               # Run unit tests
+just integration        # Run integration tests
+just property           # Run property tests
+just e2e                # Run e2e tests
+```
+
+#### Using cargo directly (within Nix environment)
+
+```bash
+# Enter Nix development shell first
+nix develop
+
+# Run tests
 cargo test --features test-utils                        # Run all tests
 cargo test --features test-utils unit::                # Unit tests only
 cargo test --features test-utils integration::         # Integration tests only  
@@ -167,23 +194,13 @@ The test infrastructure provides macros for environment-specific testing:
 ```rust
 use crate::common::*;
 
-// Run test in in-memory environment only (fastest)
-test_in_memory!(test_name, |ctx: TestContext| async move {
+// Standard Rust test (converted from custom macros)
+#[tokio::test]
+async fn test_name() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
     // Test logic here
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
-
-// Run test in all environments
-test_all_environments!(test_name, |ctx: TestContext| async move {
-    // Test logic here
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
-
-// Run test on devnet only
-test_devnet!(test_name, |ctx: TestContext| async move {
-    // Test logic here
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
+    Ok(())
+}
 ```
 
 ### Using Test Helpers
@@ -238,7 +255,10 @@ let position = ctx.position_helper()
 ```rust
 use crate::common::*;  // Import common test infrastructure
 
-test_in_memory!(test_my_feature, |ctx: TestContext| async move {
+#[tokio::test]
+async fn test_my_feature() -> TestResult<()> {
+    let ctx = TestContext::new(TestEnvironment::in_memory()).await?;
+    
     // Setup
     let creator = Keypair::new();
     ctx.airdrop(&creator.pubkey(), 1_000_000_000).await?;
@@ -250,8 +270,8 @@ test_in_memory!(test_my_feature, |ctx: TestContext| async move {
     assert!(result.is_ok());
     assert_eq!(result.value, expected_value);
     
-    Ok::<(), Box<dyn std::error::Error>>(())
-});
+    Ok(())
+}
 ```
 
 ## Key Test Coverage Areas
@@ -293,36 +313,11 @@ test_in_memory!(test_my_feature, |ctx: TestContext| async move {
 7. **Avoid test interdependencies**: Tests should run successfully in any order
 8. **Test both success and failure cases**: Verify error conditions are handled correctly
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Tests fail with "Program processor not available"**
-   - Make sure you've built the BPF program: `cargo build-sbf`
-   - The test infrastructure will automatically find the binary in `target/deploy/feels.so`
-
-2. **Tests fail with "KeypairPubkeyMismatch"**
-   - This indicates an issue with account ownership or signing
-   - Check that the correct keypair is being used for signing
-   - Ensure account ownership is properly set up
-
-3. **Environment-specific test issues**
-   - For devnet tests: Set `RUN_DEVNET_TESTS=1`
-   - For localnet tests: Set `RUN_LOCALNET_TESTS=1`
-   - Network tests require appropriate connectivity
-
-4. **Compilation errors**
-   - Ensure all dependencies are built: `cargo build`
-   - Check that the SDK is properly built
-   - Verify Anchor version matches: `anchor --version`
-
 ## Maintenance
 
-Test commands are managed through the project's justfile in the root directory:
-- `just test` - Run all tests
-- `just test-unit` - Run unit tests only
-- `just test-integration` - Run integration tests only
-- `just test-e2e` - Run end-to-end tests only
-- `just test-property` - Run property-based tests only
+The test infrastructure uses a modular justfile system:
+- Test commands are defined in `programs/feels/tests/justfile`
+- Commands are imported into the root `justfile` for convenient access
+- All tests run within the Nix environment for consistency
 
 Test reorganization has been completed and the structure is now stable. When adding new tests, follow the established patterns and directory structure documented above.

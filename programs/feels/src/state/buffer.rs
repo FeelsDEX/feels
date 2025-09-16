@@ -1,4 +1,4 @@
-//! Buffer (τ) state for MVP
+//! Buffer (τ) state
 //!
 //! Pool buffer that collects fees and manages floor LP
 
@@ -44,6 +44,26 @@ pub struct Buffer {
     /// JIT per-slot tracking (quote units)
     pub jit_last_slot: u64,
     pub jit_slot_used_q: u128,
+    
+    /// JIT v0.5 rolling consumption tracking
+    pub jit_rolling_consumption: u128,
+    pub jit_rolling_window_start: u64,
+    pub jit_last_heavy_usage_slot: u64,
+    pub jit_total_consumed_epoch: u128,
+    
+    /// Initial buffer size for circuit breaker calculations
+    pub initial_tau_spot: u128,
+    
+    /// Protocol-owned token amount override for floor calculation
+    /// If non-zero, this value is used instead of dynamically calculating
+    /// Allows governance to set a fixed protocol-owned amount
+    pub protocol_owned_override: u64,
+    
+    /// Number of active POMM positions
+    pub pomm_position_count: u8,
+    
+    /// Padding for future use
+    pub _padding: [u8; 7],
 }
 
 impl Buffer {
@@ -63,7 +83,16 @@ impl Buffer {
         16 + // total_distributed (u128)
         1 + // buffer_authority_bump
         8 + // jit_last_slot
-        16; // jit_slot_used_q
+        16 + // jit_slot_used_q
+        16 + // jit_rolling_consumption (u128)
+        8 + // jit_rolling_window_start
+        8 + // jit_last_heavy_usage_slot
+        16 + // jit_total_consumed_epoch (u128)
+        16 + // initial_tau_spot (u128)
+        8 + // protocol_owned_override
+        1 + // pomm_position_count
+        7 + // _padding
+        11; // Rust compiler padding for alignment
 
     /// Get total τ across all partitions
     pub fn get_total_tau(&self) -> u128 {
@@ -81,7 +110,7 @@ impl Buffer {
     }
 
     /// Collect fee to appropriate partition (MVP only uses spot)
-    /// SECURITY: This function is transactional - it only modifies state if all operations succeed
+    /// This function is transactional, only modifying state if all operations succeed
     pub fn collect_fee(
         &mut self,
         amount: u64,

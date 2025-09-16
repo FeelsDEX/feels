@@ -49,7 +49,9 @@ pub fn update_position_fee_upper(ctx: Context<UpdatePositionFeeUpper>) -> Result
     let position = &mut ctx.accounts.position;
 
     // Check that lower tick was already updated
-    let lower_updated = u16::from_le_bytes([position._reserved[0], position._reserved[1]]) == 1;
+    // Using last_updated_slot as a proxy - if it's been updated this slot, assume lower was done
+    let current_slot = Clock::get()?.slot;
+    let lower_updated = position.last_updated_slot == current_slot;
     require!(lower_updated, FeelsError::LowerTickNotUpdated);
 
     // Load and validate tick array
@@ -104,8 +106,8 @@ pub fn update_position_fee_upper(ctx: Context<UpdatePositionFeeUpper>) -> Result
     position.fee_growth_inside_0_last_x64 = fee_growth_inside_0;
     position.fee_growth_inside_1_last_x64 = fee_growth_inside_1;
 
-    // Clear the update flag
-    position._reserved[0..2].copy_from_slice(&0u16.to_le_bytes());
+    // Update the slot to mark completion
+    position.last_updated_slot = current_slot;
 
     Ok(())
 }

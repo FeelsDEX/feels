@@ -1,6 +1,6 @@
 # Feels Protocol SDK
 
-The Feels SDK provides a convenient interface for interacting with the Feels thermodynamic AMM protocol on Solana.
+The Feels SDK provides a convenient interface for interacting with the Feels concentrated liquidity AMM protocol on Solana.
 
 ## Features
 
@@ -20,11 +20,14 @@ sdk/
 │   ├── error.rs        # Error types
 │   ├── instructions.rs # Instruction builders
 │   ├── router.rs       # Hub-constrained router
+│   ├── swap_builder.rs # Swap instruction builder
+│   ├── testing.rs      # Test utilities
 │   ├── types.rs        # Common types
 │   └── utils.rs        # Utility functions
 └── examples/
     ├── basic_usage.rs    # Simple SDK demonstration
-    └── complete_flow.rs  # Comprehensive example
+    ├── complete_flow.rs  # Comprehensive example
+    └── swap_usage.rs     # Swap-focused example
 ```
 
 ## Installation
@@ -56,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &jitosol_mint,
         &feelssol_mint,
         1_000_000_000, // 1 JitoSOL
-    ).await?;
+    )?;
     
     println!("Transaction: {}", sig);
     Ok(())

@@ -162,7 +162,7 @@ impl TickArray {
     }
 }
 
-// Compile-time size assertions to guarantee zero_copy layout stays stable
+// Compile-time size assertions guarantee zero_copy layout stays stable
 const _: [(); 80] = [(); core::mem::size_of::<Tick>()];
 const _: [(); 8 + 32 + 4 + 12 + (80 * crate::state::tick::TICK_ARRAY_SIZE) + 2 + 14 + 32] =
     [(); TickArray::LEN];

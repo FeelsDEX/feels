@@ -45,6 +45,14 @@ pub enum SdkError {
     #[error("Invalid parameters: {0}")]
     InvalidParameters(String),
 
+    /// Swap simulation failed
+    #[error("Swap simulation failed: {0}")]
+    SwapSimulationFailed(String),
+
+    /// Not implemented
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     /// Other error
     #[error("SDK error: {0}")]
     Other(String),

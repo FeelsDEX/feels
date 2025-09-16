@@ -1,4 +1,4 @@
-//! Epoch parameters for MVP
+//! Epoch parameters
 //!
 //! Frozen parameters per epoch for deterministic pricing
 
@@ -44,7 +44,8 @@ impl EpochParams {
         2 + // weight_s
         2 + // weight_t
         2 + // weight_l
-        32; // _reserved
+        32 + // _reserved
+        4; // padding added by Rust compiler for alignment
 
     /// Seeds for PDA derivation
     pub fn seeds(market: &Pubkey) -> Vec<Vec<u8>> {

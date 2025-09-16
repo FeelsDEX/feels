@@ -177,6 +177,12 @@ pub enum FeelsError {
     #[msg("Token has not expired yet")]
     TokenNotExpired,
 
+    #[msg("Pool already exists in registry")]
+    PoolAlreadyExists,
+
+    #[msg("Pool not found in registry")]
+    PoolNotFound,
+
     #[msg("Market already has active liquidity")]
     MarketAlreadyActive,
 
@@ -193,4 +199,44 @@ pub enum FeelsError {
     // Rate limit errors
     #[msg("Rate limit exceeded for this slot")]
     RateLimitExceeded,
+
+    // Vault validation errors
+    #[msg("Invalid vault mint")]
+    InvalidVaultMint,
+
+    // Project mint errors
+    #[msg("Invalid project mint")]
+    InvalidProjectMint,
+    
+    // POMM errors
+    #[msg("POMM cooldown is active, please wait before next operation")]
+    PommCooldownActive,
+    
+    #[msg("Insufficient buffer fees for POMM operation")]
+    InsufficientBufferFees,
+    
+    #[msg("Invalid position index")]
+    InvalidPositionIndex,
+    
+    #[msg("Feature not implemented")]
+    NotImplemented,
+    
+    // Phase errors
+    #[msg("Invalid market phase")]
+    InvalidPhase,
+    
+    #[msg("Invalid phase transition")]
+    InvalidPhaseTransition,
+    
+    #[msg("Graduation criteria not met")]
+    GraduationCriteriaNotMet,
+    
+    #[msg("Invalid protocol configuration")]
+    InvalidProtocol,
+    
+    #[msg("Invalid buffer vault")]
+    InvalidBufferVault,
+    
+    #[msg("Unauthorized access")]
+    Unauthorized,
 }

@@ -55,5 +55,6 @@ impl ProtocolToken {
         1 + // token_type
         8 + // created_at
         1 + // can_create_markets
-        32; // _reserved
+        32 + // _reserved
+        6; // padding added by Rust compiler for alignment
 }

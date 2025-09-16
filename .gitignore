@@ -105,7 +105,8 @@ ext/
 # Generated SDK files
 generated-sdk/
 
-# Claude AI documentation
+# AI documentation
 CLAUDE.md
+AGENTS.md
 
 

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, TokenAccount};
 use crate::{
+    constants::VAULT_SEED,
     error::FeelsError,
     events::FloorRatcheted,
     state::{Market, Buffer},
@@ -12,12 +13,47 @@ use ethnum::U256;
 pub struct UpdateFloor<'info> {
     #[account(mut, constraint = market.is_initialized @ FeelsError::MarketNotInitialized)]
     pub market: Account<'info, Market>,
+    
+    /// Buffer must be associated with this market
+    #[account(
+        constraint = buffer.market == market.key() @ FeelsError::InvalidAuthority
+    )]
     pub buffer: Account<'info, Buffer>,
-    #[account(mut)]
+    
+    /// Vault 0 - must be the correct PDA for this market
+    #[account(
+        mut,
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
+        bump = market.vault_0_bump,
+        constraint = vault_0.mint == market.token_0 @ FeelsError::InvalidVaultMint
+    )]
     pub vault_0: Account<'info, TokenAccount>,
-    #[account(mut)]
+    
+    /// Vault 1 - must be the correct PDA for this market
+    #[account(
+        mut,
+        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
+        bump = market.vault_1_bump,
+        constraint = vault_1.mint == market.token_1 @ FeelsError::InvalidVaultMint
+    )]
     pub vault_1: Account<'info, TokenAccount>,
+    
+    /// Project mint must be the non-FeelsSOL token in this market
+    #[account(
+        constraint = (project_mint.key() == market.token_0 && market.token_1 == market.feelssol_mint) ||
+                    (project_mint.key() == market.token_1 && market.token_0 == market.feelssol_mint) 
+                    @ FeelsError::InvalidProjectMint
+    )]
     pub project_mint: Account<'info, Mint>,
+    
+    /// Optional: Pre-launch escrow token account (if tokens still in escrow)
+    /// CHECK: Validated in handler if present
+    pub escrow_token_account: Option<UncheckedAccount<'info>>,
+    
+    /// Optional: Other protocol-owned token accounts to exclude
+    /// These would be accounts holding tokens that should not be considered circulating
+    /// Note: This is handled as remaining_accounts in the instruction handler
+    
     pub clock: Sysvar<'info, Clock>,
 }
 
@@ -37,8 +73,49 @@ pub fn update_floor(ctx: Context<UpdateFloor>) -> Result<()> {
     // Compute reserves and circulating supply
     let feels_reserve: u128 = buffer.tau_spot.saturating_add(feels_vault.amount as u128);
     let total_supply: u128 = ctx.accounts.project_mint.supply as u128;
-    let pool_owned: u128 = project_vault.amount as u128;
-    let circulating: u128 = total_supply.saturating_sub(pool_owned).max(1);
+    
+    // Start with pool-owned tokens
+    let mut non_circulating: u128 = project_vault.amount as u128;
+    
+    // Add escrow balance if provided
+    if let Some(escrow_account) = &ctx.accounts.escrow_token_account {
+        // Deserialize and validate escrow token account
+        let escrow_token = TokenAccount::try_deserialize(
+            &mut &escrow_account.to_account_info().data.borrow()[..]
+        )?;
+        
+        // Verify it's for the correct mint
+        require!(
+            escrow_token.mint == ctx.accounts.project_mint.key(),
+            FeelsError::InvalidMint
+        );
+        
+        non_circulating = non_circulating.saturating_add(escrow_token.amount as u128);
+    }
+    
+    // Add any other protocol-owned accounts from remaining_accounts
+    for account_info in ctx.remaining_accounts {
+        // Deserialize and validate as token account
+        let token_account = TokenAccount::try_deserialize(
+            &mut &account_info.data.borrow()[..]
+        )?;
+        
+        // Verify it's for the correct mint
+        require!(
+            token_account.mint == ctx.accounts.project_mint.key(),
+            FeelsError::InvalidMint
+        );
+        non_circulating = non_circulating.saturating_add(token_account.amount as u128);
+    }
+    
+    // Check if there's a governance override for protocol-owned amount
+    if buffer.protocol_owned_override > 0 {
+        // Use the override value instead of dynamically calculated amount
+        non_circulating = buffer.protocol_owned_override as u128;
+    }
+    
+    // Calculate actual circulating supply
+    let circulating: u128 = total_supply.saturating_sub(non_circulating).max(1);
 
     // Binary search tick for floor price where price = feels/circulating
     // Compare price_num * circulating <= feels << 128, where price_num = (sqrt_price_q64^2)

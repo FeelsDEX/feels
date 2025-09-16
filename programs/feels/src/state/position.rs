@@ -31,11 +31,22 @@ pub struct Position {
     pub tokens_owed_1: u64,
 
     /// Canonical bump for position PDA
-    /// SECURITY: Storing prevents recomputation when minting/burning
+    /// Storing prevents recomputation when minting/burning
     pub position_bump: u8,
+    
+    /// Whether this is a POMM position
+    pub is_pomm: bool,
+    
+    /// Last slot this position was updated
+    pub last_updated_slot: u64,
 
-    /// Reserved for future use
-    pub _reserved: [u8; 8],
+    /// Fee growth inside at last action (for proper accounting)
+    pub fee_growth_inside_0_last: u128,
+    pub fee_growth_inside_1_last: u128,
+    
+    /// Accumulated fees owed
+    pub fees_owed_0: u64,
+    pub fees_owed_1: u64,
 }
 
 impl Position {
@@ -51,5 +62,14 @@ impl Position {
         8 + // tokens_owed_0
         8 + // tokens_owed_1
         1 + // position_bump
-        8; // _reserved
+        1 + // is_pomm
+        8 + // last_updated_slot
+        16 + // fee_growth_inside_0_last
+        16 + // fee_growth_inside_1_last
+        8 + // fees_owed_0
+        8 + // fees_owed_1
+        6 + // padding for alignment
+        8; // Additional Rust compiler padding
+
+    pub const SIZE: usize = Self::LEN;
 }

@@ -3,7 +3,10 @@
 //! Provides utilities for building swap instructions with automatic
 //! tick array discovery and account management.
 
-use crate::{program_id, SdkError, SdkResult};
+use crate::{
+    fee_estimator::{FeeEstimate, FeeEstimateParams, FeeEstimator},
+    program_id, SdkError, SdkResult,
+};
 use anchor_lang::prelude::*;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 
@@ -35,12 +38,22 @@ pub struct SwapParams {
     pub user_token_in: Pubkey,
     /// User's output token account
     pub user_token_out: Pubkey,
+    /// Protocol configuration PDA
+    pub protocol_config: Pubkey,
+    /// Protocol treasury token account (mandatory)
+    pub protocol_treasury: Pubkey,
+    /// Protocol token registry entry (optional)
+    pub protocol_token: Option<Pubkey>,
+    /// Creator token account (optional)
+    pub creator_token_account: Option<Pubkey>,
     /// Amount to swap in
     pub amount_in: u64,
     /// Minimum amount out (slippage protection)
     pub minimum_amount_out: u64,
     /// Maximum ticks to cross (0 = no limit)
     pub max_ticks_crossed: u16,
+    /// Maximum total fee in bps (0 = no limit)
+    pub max_fee_bps: u16,
 }
 
 /// Builder for constructing swaps with automatic tick array management
@@ -49,6 +62,8 @@ pub struct SwapBuilder {
     tick_arrays: Vec<Pubkey>,
     current_tick: Option<i32>,
     tick_spacing: Option<u16>,
+    liquidity: Option<u128>,
+    base_fee_bps: Option<u16>,
 }
 
 impl SwapBuilder {
@@ -59,6 +74,8 @@ impl SwapBuilder {
             tick_arrays: Vec::new(),
             current_tick: None,
             tick_spacing: None,
+            liquidity: None,
+            base_fee_bps: None,
         }
     }
 
@@ -67,6 +84,31 @@ impl SwapBuilder {
         self.current_tick = Some(current_tick);
         self.tick_spacing = Some(tick_spacing);
         self
+    }
+    
+    /// Set market parameters for fee estimation
+    pub fn with_market_params(mut self, liquidity: u128, base_fee_bps: u16) -> Self {
+        self.liquidity = Some(liquidity);
+        self.base_fee_bps = Some(base_fee_bps);
+        self
+    }
+    
+    /// Estimate fees for this swap
+    pub fn estimate_fees(&self) -> SdkResult<FeeEstimate> {
+        let base_fee = self.base_fee_bps.unwrap_or(30); // Default 0.3%
+        let liquidity = self.liquidity.unwrap_or(1_000_000_000_000); // Default 1M
+        let current_tick = self.current_tick.unwrap_or(0);
+        let tick_spacing = self.tick_spacing.unwrap_or(1);
+        
+        let params = FeeEstimateParams {
+            amount_in: self.params.amount_in,
+            current_tick,
+            liquidity,
+            base_fee_bps: base_fee,
+            tick_spacing,
+        };
+        
+        FeeEstimator::estimate_fees(&params)
     }
 
     /// Manually add tick arrays (for advanced usage)
@@ -133,6 +175,8 @@ impl SwapBuilder {
             AccountMeta::new_readonly(self.params.vault_authority, false),
             // buffer - writable
             AccountMeta::new(self.params.buffer, false),
+            // oracle - writable
+            AccountMeta::new(self.params.oracle, false),
             // user_token_in - writable
             AccountMeta::new(self.params.user_token_in, false),
             // user_token_out - writable
@@ -141,7 +185,27 @@ impl SwapBuilder {
             AccountMeta::new_readonly(spl_token::ID, false),
             // clock sysvar - readonly
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
+            // protocol_config - readonly
+            AccountMeta::new_readonly(self.params.protocol_config, false),
+            // protocol_treasury - writable
+            AccountMeta::new(self.params.protocol_treasury, false),
         ];
+
+        // Add optional protocol token (readonly if present)
+        if let Some(protocol_token) = self.params.protocol_token {
+            account_metas.push(AccountMeta::new_readonly(protocol_token, false));
+        } else {
+            // Add None placeholder for optional account
+            account_metas.push(AccountMeta::new_readonly(Pubkey::default(), false));
+        }
+
+        // Add optional creator token account (writable if present)
+        if let Some(creator_account) = self.params.creator_token_account {
+            account_metas.push(AccountMeta::new(creator_account, false));
+        } else {
+            // Add None placeholder for optional account
+            account_metas.push(AccountMeta::new_readonly(Pubkey::default(), false));
+        }
 
         // Add tick arrays as remaining accounts
         for tick_array in &self.tick_arrays {
@@ -320,9 +384,14 @@ mod tests {
             buffer: Pubkey::new_unique(),
             user_token_in: Pubkey::new_unique(),
             user_token_out: Pubkey::new_unique(),
+            protocol_config: Pubkey::new_unique(),
+            protocol_treasury: Pubkey::new_unique(),
+            protocol_token: None,
+            creator_token_account: None,
             amount_in: 1_000_000,
             minimum_amount_out: 990_000,
             max_ticks_crossed: 0,
+            max_fee_bps: 0,
         };
 
         let builder = SwapBuilder::new(params)

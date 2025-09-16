@@ -23,6 +23,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         // Test with values that would overflow u64 if added naively
@@ -55,6 +63,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         // Test with values below threshold
@@ -95,6 +111,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         // Test get_total_tau with near-max values
@@ -126,6 +150,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         // Test that collect_fee handles overflow correctly
@@ -173,6 +205,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         // Test case 1: tau overflow - should fail without modifying any state
@@ -202,6 +242,14 @@ mod tests {
             buffer_authority_bump: 0,
             jit_last_slot: 0,
             jit_slot_used_q: 0,
+            jit_rolling_consumption: 0,
+            jit_rolling_window_start: 0,
+            jit_last_heavy_usage_slot: 0,
+            jit_total_consumed_epoch: 0,
+            initial_tau_spot: 0,
+            protocol_owned_override: 0,
+            pomm_position_count: 0,
+            _padding: [0; 7],
         };
 
         let initial_tau2 = buffer2.tau_spot;

@@ -39,5 +39,6 @@ impl PreLaunchEscrow {
         8 +  // created_at
         32 + // market
         1 +  // escrow_authority_bump
-        128; // _reserved
+        128 + // _reserved
+        7; // padding added by Rust compiler for alignment
 }

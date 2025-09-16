@@ -3,7 +3,7 @@
 use crate::{
     constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED, VAULT_AUTHORITY_SEED},
     error::FeelsError,
-    events::{FeelsSOLBurned, RedemptionsPaused, RedemptionsResumed},
+    events::FeelsSOLBurned,
     state::{FeelsHub, ProtocolConfig, SafetyController, ProtocolOracle},
     utils::{burn_from_user, transfer_from_vault_to_user, validate_amount},
 };
@@ -59,7 +59,6 @@ pub struct ExitFeelsSOL<'info> {
         mut,
         seeds = [SafetyController::SEED],
         bump,
-        constraint = !safety.redemptions_paused @ FeelsError::MarketPaused
     )]
     pub safety: Account<'info, SafetyController>,
 
@@ -106,39 +105,12 @@ pub fn exit_feelssol(ctx: Context<ExitFeelsSOL>, amount: u64) -> Result<()> {
     // Validate amount
     validate_amount(amount)?;
 
-    // Divergence gating using protocol oracle
-    {
-        let cfg = &ctx.accounts.protocol_config;
-        let oracle = &ctx.accounts.protocol_oracle;
-        let safety = &mut ctx.accounts.safety;
-        let a = oracle.native_rate_q64;
-        let b = oracle.dex_twap_rate_q64;
-        if a > 0 && b > 0 {
-            let (max, min) = if a > b { (a, b) } else { (b, a) };
-            let diff = max - min;
-            let div_bps = ((diff.saturating_mul(10_000)) / min).min(u128::from(u16::MAX)) as u16;
-            if div_bps > cfg.depeg_threshold_bps {
-                safety.consecutive_breaches = safety.consecutive_breaches.saturating_add(1);
-                safety.consecutive_clears = 0;
-                if !safety.redemptions_paused && safety.consecutive_breaches as u16 >= cfg.depeg_required_obs as u16 {
-                    safety.redemptions_paused = true;
-                    safety.last_change_slot = Clock::get()?.slot;
-                    emit!(RedemptionsPaused { timestamp: Clock::get()?.unix_timestamp });
-                    return err!(FeelsError::MarketPaused);
-                }
-            } else {
-                safety.consecutive_clears = safety.consecutive_clears.saturating_add(1);
-                safety.consecutive_breaches = 0;
-                if safety.redemptions_paused && safety.consecutive_clears as u16 >= cfg.clear_required_obs as u16 {
-                    safety.redemptions_paused = false;
-                    safety.last_change_slot = Clock::get()?.slot;
-                    emit!(RedemptionsResumed { timestamp: Clock::get()?.unix_timestamp });
-                }
-            }
-        }
-        // If paused, abort
-        require!(!safety.redemptions_paused, FeelsError::MarketPaused);
-    }
+    // Check if redemptions are allowed (read-only check, no state updates)
+    ctx.accounts.safety.check_redemptions_allowed(
+        &ctx.accounts.protocol_oracle,
+        &ctx.accounts.protocol_config,
+        Clock::get()?.unix_timestamp,
+    )?;
 
     // Rate limit: enforce per-slot redemption cap if configured BEFORE burning
     let current_slot = Clock::get()?.slot;

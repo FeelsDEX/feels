@@ -5,7 +5,7 @@ seeds = true
 anchor_version = "0.31.1"
 
 [programs.localnet]
-feels = "Fee1sProtoco11111111111111111111111111111111"
+feels = "2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1"
 
 [registry]
 url = "https://anchor.projectserum.com"

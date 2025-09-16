@@ -5,6 +5,8 @@
 pub mod client;
 pub mod config;
 pub mod error;
+pub mod exact_output_swap;
+pub mod fee_estimator;
 pub mod instructions;
 pub mod router;
 pub mod swap_builder;
@@ -15,6 +17,11 @@ pub mod utils;
 pub use client::FeelsClient;
 pub use config::SdkConfig;
 pub use error::{SdkError, SdkResult};
+pub use exact_output_swap::{
+    ExactOutputSwapParams, ExactOutputSwapSolver, SimulationResult,
+    build_exact_output_swap, estimate_input_for_output,
+};
+pub use fee_estimator::{FeeEstimate, FeeEstimateParams, FeeEstimator};
 pub use instructions::*;
 pub use router::{HubRouter, PoolInfo};
 pub use swap_builder::{SwapBuilder, SwapDirection, SwapParams};
@@ -27,7 +34,7 @@ pub use utils::*;
 use anchor_lang::prelude::*;
 
 /// Program ID for Feels Protocol
-pub const PROGRAM_ID: &str = "2FgA6YfdFNGgX8YyPKqSzhFGNvatRD5zi1yqCCFaSjq1";
+pub const PROGRAM_ID: &str = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N";
 
 /// Get the program ID as a Pubkey
 pub fn program_id() -> Pubkey {

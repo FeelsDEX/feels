@@ -67,6 +67,24 @@ pub use update_protocol_oracle::*;
 pub mod initialize_hub;
 pub use initialize_hub::*;
 
+pub mod set_protocol_owned_override;
+pub use set_protocol_owned_override::*;
+
+pub mod initialize_pool_registry;
+pub use initialize_pool_registry::*;
+
+pub mod register_pool;
+pub use register_pool::*;
+
+pub mod update_pool_phase;
+pub use update_pool_phase::*;
+
+pub mod manage_pomm_position;
+pub use manage_pomm_position::*;
+
+pub mod transition_market_phase;
+pub use transition_market_phase::*;
+
 // Additional specific exports for Anchor
 pub use update_protocol_oracle::{
     update_dex_twap, update_native_rate, UpdateDexTwap, UpdateDexTwapParams, UpdateNativeRate,

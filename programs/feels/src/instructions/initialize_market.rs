@@ -8,8 +8,8 @@ use crate::{
     error::FeelsError,
     events::MarketInitialized,
     state::{
-        Buffer, Market, OracleState, PolicyV1, PreLaunchEscrow, ProtocolToken, TokenOrigin,
-        TokenType,
+        Buffer, Market, MarketPhase, OracleState, PhaseTrigger, PolicyV1, PreLaunchEscrow, 
+        ProtocolToken, TokenOrigin, TokenType,
     },
     utils::{calculate_token_out_from_sqrt_price, tick_from_sqrt_price},
 };
@@ -449,15 +449,37 @@ pub fn initialize_market(
     market.reentrancy_guard = false;
     market.initial_liquidity_deployed = false;
     market.jit_enabled = true; // default on per docs
-    market.jit_per_swap_q_bps = 50; // 0.5%
-    market.jit_per_slot_q_bps = 200; // 2%
+    market.jit_base_cap_bps = 300; // 3% base cap
+    market.jit_per_slot_cap_bps = 500; // 5% per slot cap
+    market.jit_concentration_width = 10; // 10 ticks concentration width
+    market.jit_max_multiplier = 10; // 10x max concentration
+    market.jit_drain_protection_bps = 7000; // 70% drain protection threshold
+    market.jit_circuit_breaker_bps = 3000; // 30% circuit breaker threshold
     market.floor_tick = market.global_lower_tick; // start at lowest
     market.floor_buffer_ticks = (market.tick_spacing as i32) * 2;
     market.last_floor_ratchet_ts = 0;
     market.floor_cooldown_secs = 300; // 5 minutes default
     market.steady_state_seeded = false;
     market.cleanup_complete = false;
-    market._reserved = [0; 31];
+    
+    // Initialize phase tracking
+    market.phase = MarketPhase::Created as u8;
+    market.phase_start_slot = clock.slot;
+    market.phase_start_timestamp = clock.unix_timestamp;
+    market.last_phase_transition_slot = 0;
+    market.last_phase_trigger = PhaseTrigger::Creator as u8;
+    market.total_volume_token_0 = 0;
+    market.total_volume_token_1 = 0;
+    
+    // Initialize v0.5 directional tracking
+    market.rolling_buy_volume = 0;
+    market.rolling_sell_volume = 0;
+    market.rolling_total_volume = 0;
+    market.rolling_window_start_slot = clock.slot;
+    market.tick_snapshot_1hr = market.current_tick;
+    market.last_snapshot_timestamp = clock.unix_timestamp;
+    
+    market._reserved = [0; 1];
 
     // Initialize buffer
     buffer.market = market.key();
@@ -476,6 +498,13 @@ pub fn initialize_market(
     buffer.buffer_authority_bump = 0; // Will be set if needed
     buffer.jit_last_slot = 0;
     buffer.jit_slot_used_q = 0;
+    
+    // Initialize v0.5 JIT tracking
+    buffer.jit_rolling_consumption = 0;
+    buffer.jit_rolling_window_start = clock.slot;
+    buffer.jit_last_heavy_usage_slot = 0;
+    buffer.jit_total_consumed_epoch = 0;
+    buffer.initial_tau_spot = 0; // Will be set when buffer receives initial funding
 
     // Initialize oracle
     oracle.initialize(

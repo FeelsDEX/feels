@@ -13,11 +13,10 @@ use anchor_lang::prelude::*;
 /// Opportunistic upkeep: if pool buffer meets threshold, convert accounting τ into
 /// additional floor liquidity at a wide range around current price/tick.
 ///
-/// SECURITY: This function addresses two critical vulnerabilities:
-/// 1. Uses only buffer fee accounting, never vault balances, to prevent flash loan attacks
-/// 2. Uses TWAP (Time-Weighted Average Price) instead of spot price for liquidity placement
-///    to prevent price manipulation attacks. An attacker cannot manipulate TWAP within a
-///    single transaction or block.
+/// This function ensures POMM security by:
+/// 1. Using only buffer fee accounting, never vault balances, to prevent flash loan attacks
+/// 2. Using TWAP instead of spot price for liquidity placement to prevent price manipulation
+/// attacks. An attacker cannot manipulate TWAP within a single transaction or block.
 pub fn maybe_pomm_add_liquidity(
     market: &mut Account<Market>,
     buffer: &mut Account<Buffer>,
@@ -33,7 +32,7 @@ pub fn maybe_pomm_add_liquidity(
     // Check if buffer has accumulated enough fees to trigger floor placement
     // Use buffer's fee accounting directly instead of vault balances to prevent manipulation
     //
-    // SECURITY: To avoid u128 saturation edge case where both fees are near u128::MAX,
+    // To avoid u128 saturation edge case where both fees are near u128::MAX,
     // we check if either individual fee amount exceeds the threshold first.
     // This prevents the extremely unlikely scenario where saturation at u128::MAX
     // would cause unintended frequent POMM executions.
@@ -58,7 +57,7 @@ pub fn maybe_pomm_add_liquidity(
         return Ok(());
     }
 
-    // SECURITY: Use TWAP price instead of spot price to prevent manipulation attacks
+    // Use TWAP price instead of spot price to prevent manipulation attacks
     // Calculate average price over the last 5 minutes (300 seconds)
     let twap_seconds_ago = 300u32;
 
@@ -70,7 +69,7 @@ pub fn maybe_pomm_add_liquidity(
     let current_tick = twap_tick;
     let current_sqrt_price = twap_sqrt_price;
 
-    // SECURITY: Derive POMM range width from market's immutable tick spacing
+    // Derive POMM range width from market's immutable tick spacing
     // This prevents manipulation via mutable buffer parameters
     // Formula: POMM width = market tick spacing * 20 (approximately ±2% for common tick spacings)
     // Examples:

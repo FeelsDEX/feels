@@ -3,7 +3,7 @@
 //! ## Usage Guide:
 //!
 //! ### Close position and keep account (for reuse):
-//! ```ignore
+//! ```text
 //! close_position {
 //!     params: {
 //!         amount_0_min: 100,
@@ -14,7 +14,7 @@
 //! ```
 //!
 //! ### Close position and account (one transaction):
-//! ```ignore
+//! ```text
 //! close_position {
 //!     params: {
 //!         amount_0_min: 100,

@@ -1,1 +1,4 @@
-// pub mod test_swap; // Temporarily disabled - needs test infrastructure
+pub mod test_initialize_protocol;
+pub mod test_initialize_hub;
+pub mod test_initialize_market;
+pub mod test_swap;

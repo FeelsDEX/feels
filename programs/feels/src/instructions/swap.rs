@@ -17,6 +17,7 @@ use crate::{
         compute_swap_step, maybe_pomm_add_liquidity, update_fee_growth_segment, StepOutcome,
         SwapContext, SwapDirection, TickArrayIterator, MAX_SWAP_STEPS,
     },
+    logic::jit::{calculate_safe_jit_allowance, update_directional_volume, update_price_snapshot, JitBudget},
     state::{Buffer, FeeDomain, Market, OracleState, ProtocolConfig, ProtocolToken, TICK_ARRAY_SIZE},
     utils::{
         apply_liquidity_net, sqrt_price_from_tick, tick_from_sqrt_price,
@@ -45,7 +46,8 @@ struct SwapState {
     pub steps_taken: u16,
     pub fee_growth_global_delta_0: u128,
     pub fee_growth_global_delta_1: u128,
-    pub jit_consumed_quote: u64,
+    pub jit_consumed_quote: u128,
+    pub base_fees_skipped: u64,
 }
 
 /// Final swap result for transfer and fee processing
@@ -59,7 +61,8 @@ struct SwapResult {
     pub final_liquidity: u128,
     pub fee_growth_global_delta_0: u128,
     pub fee_growth_global_delta_1: u128,
-    pub jit_consumed_quote: u64,
+    pub jit_consumed_quote: u128,
+    pub base_fees_skipped: u64,
 }
 
 /// Parameters for swap execution
@@ -292,73 +295,75 @@ fn validate_swap_inputs(
 // EXECUTION FUNCTIONS
 // =============================================================================
 
-/// Initialize JIT (Just-In-Time) liquidity provisioning
+/// Initialize JIT v0.5 concentrated virtual liquidity provisioning
 ///
-/// Sets up experimental JIT liquidity boost by reserving quote tokens from the buffer
-/// and calculating ephemeral liquidity to add for this swap only.
+/// Calculates safe JIT allowance with all mitigations and applies virtual concentrated
+/// liquidity boost for this swap only
 fn initialize_jit_liquidity(
     market: &Market,
     buffer: &mut Account<Buffer>,
     current_tick: i32,
-    sqrt_price: u128,
+    target_tick: i32,
     direction: SwapDirection,
     swap_ctx: &mut SwapContext,
-) -> Result<u64> {
-    let mut jit_consumed_quote: u64 = 0;
-
+    trader: &Pubkey,
+    current_slot: u64,
+) -> Result<u128> {
     if !market.jit_enabled {
-        return Ok(jit_consumed_quote);
+        return Ok(0);
     }
 
-    // Initialize JIT budget tracking
-    #[allow(unused_mut)]
-    let mut _jit_budget = Some(crate::logic::jit::JitBudget::begin(
+    // Initialize JIT budget for this slot
+    let mut jit_budget = JitBudget::begin(buffer, market, current_slot);
+
+    // Determine if this is a buy or sell
+    let is_buy = matches!(direction, SwapDirection::OneForZero);
+
+    // Calculate safe JIT allowance with all v0.5 mitigations
+    let jit_allowance = calculate_safe_jit_allowance(
+        &mut jit_budget,
         buffer,
-        Clock::get()?.slot,
-        market.jit_per_swap_q_bps,
-        market.jit_per_slot_q_bps,
-    ));
+        market,
+        current_slot,
+        current_tick,
+        target_tick,
+        is_buy,
+        trader,
+    )?;
 
-    // Calculate safe ask tick to prevent floor violations
-    let safe_ask_tick = market.floor_tick.saturating_add(market.floor_buffer_ticks);
-    let floor_guard_ok = current_tick >= safe_ask_tick;
-
-    // Reserve JIT quote tokens for liquidity boost (if conditions met)
-    if let Some(b) = &mut _jit_budget {
-        if floor_guard_ok {
-            let desired_q = b.per_swap_cap_q;
-            let used_q = b.reserve(buffer, desired_q);
-            jit_consumed_quote = used_q.min(u128::from(u64::MAX)) as u64;
-        }
-    }
-
-    // Apply ephemeral JIT liquidity boost for this swap
-    if jit_consumed_quote > 0 {
-        // Calculate contrarian tick to place JIT liquidity
-        let sqrt_current = sqrt_price;
-        let neighbor_tick = match direction {
-            SwapDirection::ZeroForOne => current_tick.saturating_sub(market.tick_spacing as i32),
-            SwapDirection::OneForZero => current_tick.saturating_add(market.tick_spacing as i32),
-        };
-        let sqrt_neighbor = sqrt_price_from_tick(neighbor_tick)?;
-        let width = if sqrt_neighbor > sqrt_current {
-            sqrt_neighbor - sqrt_current
+    // Apply virtual concentrated liquidity boost
+    if jit_allowance > 0 {
+        // Calculate liquidity boost based on distance to current price
+        // The closer to current price, the more effective the liquidity
+        let tick_distance = (target_tick - current_tick).abs() as u32;
+        
+        // Use market's concentration width to determine effectiveness
+        let effectiveness = if tick_distance <= market.jit_concentration_width {
+            100 // Full effectiveness at current price
+        } else if tick_distance <= market.jit_concentration_width * 2 {
+            50  // Half effectiveness nearby
         } else {
-            sqrt_current - sqrt_neighbor
+            20  // Minimal effectiveness far away
         };
 
-        if width > 0 {
-            // Calculate liquidity from quote amount: L ≈ amount1 * Q64 / (sqrt_p - sqrt_pl)
-            let l_from_quote = ((jit_consumed_quote as u128) << 64) / width;
-            // Cap boost to 5% of existing liquidity to prevent excessive impact
-            let cap = market.liquidity / 20;
-            let jit_liq_boost = l_from_quote.min(cap);
-            // Apply temporary boost to swap context only
-            swap_ctx.liquidity = swap_ctx.liquidity.saturating_add(jit_liq_boost);
-        }
+        // Calculate virtual liquidity boost
+        // JIT allowance represents quote tokens, convert to liquidity units
+        let sqrt_price = swap_ctx.sqrt_price;
+        let virtual_liquidity = if sqrt_price > 0 {
+            // L = amount / sqrt_price for rough approximation
+            ((jit_allowance as u128) << 64)
+                .saturating_div(sqrt_price)
+                .saturating_mul(effectiveness as u128)
+                .saturating_div(100)
+        } else {
+            0
+        };
+
+        // Apply boost to swap context
+        swap_ctx.liquidity = swap_ctx.liquidity.saturating_add(virtual_liquidity);
     }
 
-    Ok(jit_consumed_quote)
+    Ok(jit_allowance)
 }
 
 /// Execute the core swap loop with tick array traversal
@@ -372,6 +377,8 @@ fn execute_swap_steps<'info>(
     mut swap_state: SwapState,
     direction: SwapDirection,
     is_token_0_to_1: bool,
+    jit_active: bool,
+    trader: &Pubkey,
 ) -> Result<SwapState> {
     // Pre-compute boundary sqrt prices to avoid recalculation
     let floor_lower_sqrt = sqrt_price_from_tick(market.global_lower_tick)?;
@@ -397,14 +404,25 @@ fn execute_swap_steps<'info>(
         market.tick_spacing,
     );
 
+    // Track base fees skipped due to JIT
+    let mut base_fees_skipped = 0u64;
+
     // Initialize JIT liquidity if enabled
+    // For initial target, use a tick one spacing away in swap direction
+    let initial_target_tick = match direction {
+        SwapDirection::ZeroForOne => swap_state.current_tick.saturating_sub(market.tick_spacing as i32),
+        SwapDirection::OneForZero => swap_state.current_tick.saturating_add(market.tick_spacing as i32),
+    };
+    
     let jit_consumed_quote = initialize_jit_liquidity(
         market,
         &mut ctx.accounts.buffer.clone(),
         swap_state.current_tick,
-        swap_state.sqrt_price,
+        initial_target_tick,
         direction,
         &mut swap_ctx,
+        trader,
+        Clock::get()?.slot,
     )?;
 
     // Execute swap in discrete steps, crossing ticks as needed
@@ -495,21 +513,28 @@ fn execute_swap_steps<'info>(
         swap_ctx.sqrt_price = step.sqrt_next;
 
         // Update fee growth for this segment before crossing tick
+        // MVP: Skip base fee growth updates when JIT is active to avoid accounting mismatch
+        // When JIT is active, the base fees go to the protocol via impact fees instead
         if step.fee > 0 && swap_state.liquidity > 0 {
-            let segment_fee_growth =
-                update_fee_growth_segment(step.fee, swap_state.liquidity, is_token_0_to_1)?;
+            if !jit_active {
+                let segment_fee_growth =
+                    update_fee_growth_segment(step.fee, swap_state.liquidity, is_token_0_to_1)?;
 
-            // Add to the appropriate token's delta based on swap direction
-            if is_token_0_to_1 {
-                swap_state.fee_growth_global_delta_0 = swap_state
-                    .fee_growth_global_delta_0
-                    .checked_add(segment_fee_growth)
-                    .ok_or(FeelsError::MathOverflow)?;
+                // Add to the appropriate token's delta based on swap direction
+                if is_token_0_to_1 {
+                    swap_state.fee_growth_global_delta_0 = swap_state
+                        .fee_growth_global_delta_0
+                        .checked_add(segment_fee_growth)
+                        .ok_or(FeelsError::MathOverflow)?;
+                } else {
+                    swap_state.fee_growth_global_delta_1 = swap_state
+                        .fee_growth_global_delta_1
+                        .checked_add(segment_fee_growth)
+                        .ok_or(FeelsError::MathOverflow)?;
+                }
             } else {
-                swap_state.fee_growth_global_delta_1 = swap_state
-                    .fee_growth_global_delta_1
-                    .checked_add(segment_fee_growth)
-                    .ok_or(FeelsError::MathOverflow)?;
+                // Track skipped base fees when JIT is active
+                base_fees_skipped = base_fees_skipped.saturating_add(step.fee);
             }
         }
 
@@ -581,6 +606,7 @@ fn execute_swap_steps<'info>(
     // Final tick update - compute current tick from final sqrt price
     swap_state.current_tick = tick_from_sqrt_price(swap_state.sqrt_price)?;
     swap_state.jit_consumed_quote = jit_consumed_quote;
+    swap_state.base_fees_skipped = base_fees_skipped;
 
     Ok(swap_state)
 }
@@ -741,6 +767,7 @@ pub fn swap<'info>(
         fee_growth_global_delta_0: 0,
         fee_growth_global_delta_1: 0,
         jit_consumed_quote: 0,
+        base_fees_skipped: 0,
     };
 
     // Execute the core swap logic
@@ -751,6 +778,8 @@ pub fn swap<'info>(
         swap_state,
         direction,
         is_token_0_to_1,
+        ctx.accounts.market.jit_enabled, // Use market's JIT config
+        &ctx.accounts.user.key(),
     )?;
 
     // Create swap result for transfer processing
@@ -764,17 +793,21 @@ pub fn swap<'info>(
         fee_growth_global_delta_0: final_state.fee_growth_global_delta_0,
         fee_growth_global_delta_1: final_state.fee_growth_global_delta_1,
         jit_consumed_quote: final_state.jit_consumed_quote,
+        base_fees_skipped: final_state.base_fees_skipped,
     };
 
     // --- TRANSFERS AND STATE UPDATES
 
+    // Calculate fee amounts before the block (needed for event emission)
+    let impact_bps = calculate_impact_bps(swap_result.start_tick, swap_result.final_tick);
+    let (total_fee_bps, impact_only_bps) = combine_base_and_impact(ctx.accounts.market.base_fee_bps, impact_bps);
+    let impact_fee_amount = ((swap_result.amount_out as u128)
+        .saturating_mul(impact_only_bps as u128)
+        / 10_000u128) as u64;
+    let amount_out_net = swap_result.amount_out.saturating_sub(impact_fee_amount);
+
     // Execute token transfers and fee distribution
     {
-        // Calculate post-swap impact fee (MVP: base + impact; impact applied on output)
-        let impact_bps = calculate_impact_bps(swap_result.start_tick, swap_result.final_tick);
-        let (total_fee_bps, impact_only_bps) =
-            combine_base_and_impact(ctx.accounts.market.base_fee_bps, impact_bps);
-
         // Enforce optional caller-provided fee cap
         if params.max_total_fee_bps > 0 {
             require!(
@@ -782,11 +815,6 @@ pub fn swap<'info>(
                 FeelsError::FeeCapExceeded
             );
         }
-
-        let impact_fee_amount = ((swap_result.amount_out as u128)
-            .saturating_mul(impact_only_bps as u128)
-            / 10_000u128) as u64;
-        let amount_out_net = swap_result.amount_out.saturating_sub(impact_fee_amount);
 
         // Check slippage against net amount
         validate_slippage(amount_out_net, params.minimum_amount_out)?;
@@ -914,7 +942,7 @@ pub fn swap<'info>(
             to_buffer_amount: to_buffer,
             to_treasury_amount: to_treasury,
             to_creator_amount: to_creator,
-            jit_consumed_quote: swap_result.jit_consumed_quote,
+            jit_consumed_quote: swap_result.jit_consumed_quote.min(u64::MAX as u128) as u64,
             timestamp: ctx.accounts.clock.unix_timestamp,
         });
     }
@@ -938,6 +966,16 @@ pub fn swap<'info>(
     ctx.accounts.market.current_tick = swap_result.final_tick;
     ctx.accounts.market.liquidity = swap_result.final_liquidity;
 
+    // Update cumulative volume for phase tracking
+    // Track the input amount as it represents the actual volume traded
+    if is_token_0_to_1 {
+        ctx.accounts.market.total_volume_token_0 = ctx.accounts.market.total_volume_token_0
+            .saturating_add(params.amount_in);
+    } else {
+        ctx.accounts.market.total_volume_token_1 = ctx.accounts.market.total_volume_token_1
+            .saturating_add(params.amount_in);
+    }
+
     // Always update the oracle
     ctx.accounts
         .oracle
@@ -948,25 +986,71 @@ pub fn swap<'info>(
     // Execute floor ratchet mechanism to protect against downside
     do_floor_ratchet(&mut ctx.accounts.market, &ctx.accounts.clock)?;
 
-    // Emit swap execution event
+    // Emit swap execution event with exact net amount
     emit!(SwapExecuted {
         market: ctx.accounts.market.key(),
         user: ctx.accounts.user.key(),
         token_in,
         token_out,
         amount_in: params.amount_in,
-        amount_out: swap_result.amount_out.saturating_sub(
-            // Subtract impact fee to show net amount user received
-            ((swap_result.amount_out as u128
-                * calculate_impact_bps(swap_result.start_tick, swap_result.final_tick) as u128)
-                / 10_000u128) as u64
-        ),
+        amount_out: amount_out_net, // Use the exact net amount transferred to user
         fee_paid: swap_result.total_fee_paid,
         base_fee_paid: swap_result.total_fee_paid,
+        impact_bps: impact_only_bps, // Include impact bps for indexers
         sqrt_price_after: swap_result.final_sqrt_price,
         timestamp: ctx.accounts.clock.unix_timestamp,
         version: 2, // Version 2 indicates refactored engine
     });
+
+    // Emit event if JIT caused base fees to be skipped
+    if swap_result.base_fees_skipped > 0 {
+        emit!(crate::events::JitBaseFeeSkipped {
+            market: ctx.accounts.market.key(),
+            swap_id: ctx.accounts.user.key(),
+            base_fees_skipped: swap_result.base_fees_skipped,
+            jit_consumed_quote: swap_result.jit_consumed_quote.min(u64::MAX as u128) as u64,
+            timestamp: ctx.accounts.clock.unix_timestamp,
+        });
+    }
+
+    // Divert JIT bid fills to floor liquidity via buffer accounting
+    // Instead of burning, we add the JIT consumed quote to the buffer's fee accounting
+    // This allows the POMM system to convert it to floor liquidity
+    if swap_result.jit_consumed_quote > 0 {
+        // Determine which token the JIT quote represents based on swap direction
+        // For 0->1 swaps, JIT provides token 1 liquidity (quote is in token 1)
+        // For 1->0 swaps, JIT provides token 0 liquidity (quote is in token 0)
+        if is_token_0_to_1 {
+            // JIT provided token 1 liquidity, add to token 1 fees
+            ctx.accounts.buffer.fees_token_1 = ctx.accounts.buffer.fees_token_1
+                .saturating_add(swap_result.jit_consumed_quote);
+        } else {
+            // JIT provided token 0 liquidity, add to token 0 fees
+            ctx.accounts.buffer.fees_token_0 = ctx.accounts.buffer.fees_token_0
+                .saturating_add(swap_result.jit_consumed_quote);
+        }
+        
+        // Note: tau_spot remains unchanged as it represents the virtual budget capacity
+        // The JIT quote is now tracked in the fee accounting for floor conversion
+    }
+
+    // Update JIT v0.5 tracking
+    if ctx.accounts.market.jit_enabled {
+        // Update directional volume tracking
+        let volume = params.amount_in as u128;
+        update_directional_volume(
+            &mut ctx.accounts.market,
+            is_token_0_to_1,
+            volume,
+            ctx.accounts.clock.slot,
+        )?;
+        
+        // Update price snapshot for circuit breaker
+        update_price_snapshot(
+            &mut ctx.accounts.market,
+            ctx.accounts.clock.unix_timestamp,
+        )?;
+    }
 
     // Execute protocol-owned market maker maintenance if enabled
     maybe_pomm_add_liquidity(

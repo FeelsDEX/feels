@@ -20,7 +20,7 @@ pub struct FeatureFlags {
     pub _reserved: [bool; 9], // Reserved for future flags
 }
 
-/// Policy configuration (minimal for MVP)
+/// Policy configuration
 #[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize)]
 pub struct PolicyV1 {
     pub version: u8,
@@ -66,6 +66,13 @@ pub struct Market {
     /// Token origins (for market creation restrictions)
     pub token_0_origin: TokenOrigin,
     pub token_1_origin: TokenOrigin,
+    
+    /// Vault accounts
+    pub vault_0: Pubkey,
+    pub vault_1: Pubkey,
+    
+    /// Hub protocol reference (optional)
+    pub hub_protocol: Option<Pubkey>,
 
     /// Spot AMM state (simplified constant product for MVP)
     pub sqrt_price: u128, // Q64 sqrt(price = token1/token0)
@@ -87,6 +94,10 @@ pub struct Market {
     /// Global fee growth (Q64) per liquidity unit
     pub fee_growth_global_0_x64: u128,
     pub fee_growth_global_1_x64: u128,
+    
+    /// Global fee growth without x64 suffix (for compatibility)
+    pub fee_growth_global_0: u128,
+    pub fee_growth_global_1: u128,
 
     /// Fee configuration
     pub base_fee_bps: u16, // Base fee only for MVP
@@ -112,7 +123,7 @@ pub struct Market {
     pub policy: PolicyV1,
 
     /// Canonical bump for market authority PDA
-    /// SECURITY: Storing prevents recomputation and ensures consistency
+    /// Storing prevents recomputation and ensures consistency
     pub market_authority_bump: u8,
 
     /// Canonical bumps for vault PDAs
@@ -120,18 +131,22 @@ pub struct Market {
     pub vault_1_bump: u8,
 
     /// Re-entrancy guard
-    /// SECURITY: Set to true at the start of sensitive operations and false at the end
+    /// Set to true at the start of sensitive operations and false at the end
     /// Prevents re-entrant calls during critical state transitions
     pub reentrancy_guard: bool,
 
     /// Initial liquidity deployment status
     pub initial_liquidity_deployed: bool,
 
-    /// JIT v0 feature flag (per-market)
+    /// JIT v0.5 parameters (per-market)
     pub jit_enabled: bool,
-    /// JIT budget caps (bps of Buffer.tau_spot)
-    pub jit_per_swap_q_bps: u16,
-    pub jit_per_slot_q_bps: u16,
+    /// JIT v0.5 configuration
+    pub jit_base_cap_bps: u16,              // Base cap (300 = 3%)
+    pub jit_per_slot_cap_bps: u16,          // Per-slot cap (500 = 5%)
+    pub jit_concentration_width: u32,        // Width of concentration zone in ticks
+    pub jit_max_multiplier: u8,              // Maximum concentration multiplier
+    pub jit_drain_protection_bps: u16,       // When to throttle (7000 = 70%)
+    pub jit_circuit_breaker_bps: u16,        // When to halt (3000 = 30%)
 
     /// Floor management (MVP)
     pub floor_tick: i32,
@@ -142,9 +157,32 @@ pub struct Market {
     /// Graduation flags (idempotent)
     pub steady_state_seeded: bool,
     pub cleanup_complete: bool,
+    
+    /// Market phase tracking
+    pub phase: u8, // MarketPhase enum stored as u8
+    pub phase_start_slot: u64,
+    pub phase_start_timestamp: i64,
+    
+    /// Phase transition history (last transition)
+    pub last_phase_transition_slot: u64,
+    pub last_phase_trigger: u8, // PhaseTrigger enum as u8
+    
+    /// Cumulative metrics for phase transitions
+    pub total_volume_token_0: u64,
+    pub total_volume_token_1: u64,
+
+    /// JIT v0.5 directional tracking (rolling window)
+    pub rolling_buy_volume: u128,
+    pub rolling_sell_volume: u128,
+    pub rolling_total_volume: u128,
+    pub rolling_window_start_slot: u64,
+    
+    /// Price movement tracking for circuit breaker
+    pub tick_snapshot_1hr: i32,
+    pub last_snapshot_timestamp: i64,
 
     /// Reserved space for future expansion
-    pub _reserved: [u8; 31], // Extra space for future upgrades - reduced by 1 for initial_liquidity_deployed
+    pub _reserved: [u8; 1], // Reduced for new fields
 }
 
 impl Market {
@@ -159,6 +197,9 @@ impl Market {
         1 + // token_1_type
         1 + // token_0_origin
         1 + // token_1_origin
+        32 + // vault_0
+        32 + // vault_1
+        1 + 32 + // hub_protocol (Option<Pubkey>)
         16 + // sqrt_price
         16 + // liquidity
         4 +  // current_tick (i32)
@@ -168,6 +209,8 @@ impl Market {
         16 + // floor_liquidity
         16 + // fee_growth_global_0_x64
         16 + // fee_growth_global_1_x64
+        16 + // fee_growth_global_0
+        16 + // fee_growth_global_1
         2 + // base_fee_bps
         32 + // buffer
         32 + // authority
@@ -182,15 +225,34 @@ impl Market {
         1 + // reentrancy_guard
         1 + // initial_liquidity_deployed
         1 + // jit_enabled
-        2 + // jit_per_swap_q_bps
-        2 + // jit_per_slot_q_bps
+        2 + // jit_base_cap_bps
+        2 + // jit_per_slot_cap_bps
+        4 + // jit_concentration_width
+        1 + // jit_max_multiplier
+        2 + // jit_drain_protection_bps
+        2 + // jit_circuit_breaker_bps
         4 + // floor_tick
         4 + // floor_buffer_ticks
         8 + // last_floor_ratchet_ts
         8 + // floor_cooldown_secs
         1 + // steady_state_seeded
         1 + // cleanup_complete
-        31; // _reserved
+        1 + // phase
+        8 + // phase_start_slot
+        8 + // phase_start_timestamp
+        8 + // last_phase_transition_slot
+        1 + // last_phase_trigger
+        8 + // total_volume_token_0
+        8 + // total_volume_token_1
+        16 + // rolling_buy_volume (u128)
+        16 + // rolling_sell_volume (u128)
+        16 + // rolling_total_volume (u128)
+        8 + // rolling_window_start_slot
+        4 + // tick_snapshot_1hr
+        8 + // last_snapshot_timestamp
+        1 + // _reserved
+        10 + // padding added by Rust compiler for alignment
+        6; // Additional alignment padding (increased from 3 to match actual size)
 
     /// Get the current tick from sqrt_price
     pub fn get_current_tick(&self) -> i32 {
@@ -204,7 +266,7 @@ impl Market {
     }
 
     /// Derive vault address for a given mint
-    /// SECURITY: This ensures vaults are always derived deterministically and cannot be spoofed
+    /// This ensures vaults are always derived deterministically and cannot be spoofed
     /// Note: market_key must be passed in since self doesn't have access to its own key
     pub fn derive_vault_address_with_key(
         &self,
@@ -237,7 +299,7 @@ impl Market {
     }
 
     /// Derive the unified market authority address
-    /// SECURITY: Single authority for all market operations
+    /// Single authority for all market operations
     /// Note: market_key must be passed in since self doesn't have access to its own key
     pub fn derive_market_authority_with_key(
         &self,

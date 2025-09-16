@@ -8,6 +8,11 @@ repository = "https://github.com/timewave/feels-solana"
 keywords = ["solana", "sdk", "amm", "defi", "client"]
 categories = ["api-bindings", "cryptography::cryptocurrencies"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(feature, values("default", "advanced"))'
+] }
+
 [features]
 default = ["advanced"]
 advanced = []

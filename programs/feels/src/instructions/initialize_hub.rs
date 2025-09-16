@@ -1,7 +1,7 @@
 //! Initialize FeelsHub (MVP)
 
 use crate::{
-    constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED},
+    constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED, VAULT_AUTHORITY_SEED},
     state::FeelsHub,
 };
 use anchor_lang::prelude::*;
@@ -35,11 +35,19 @@ pub struct InitializeHub<'info> {
         init,
         payer = payer,
         token::mint = jitosol_mint,
-        token::authority = jitosol_vault,
+        token::authority = vault_authority,
         seeds = [JITOSOL_VAULT_SEED, feelssol_mint.key().as_ref()],
         bump,
     )]
     pub jitosol_vault: Account<'info, TokenAccount>,
+
+    /// Vault authority PDA
+    /// CHECK: PDA that controls the JitoSOL vault
+    #[account(
+        seeds = [VAULT_AUTHORITY_SEED, feelssol_mint.key().as_ref()],
+        bump,
+    )]
+    pub vault_authority: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

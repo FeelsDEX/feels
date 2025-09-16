@@ -14,6 +14,7 @@ pub struct SwapExecuted {
     pub amount_out: u64,
     pub fee_paid: u64,
     pub base_fee_paid: u64,
+    pub impact_bps: u16,
     pub sqrt_price_after: u128,
     pub timestamp: i64,
     pub version: u8,
@@ -74,6 +75,15 @@ pub struct SafetyResumed {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct SafetyDegradeMatrixUpdated {
+    pub gtwap_stale: bool,
+    pub oracle_stale: bool,
+    pub high_volatility: bool,
+    pub low_liquidity: bool,
+    pub timestamp: i64,
+}
+
 /// Event emitted when a rate limit is triggered
 #[event]
 pub struct RateLimitTriggered {
@@ -116,6 +126,16 @@ pub struct FloorLiquidityPlaced {
     pub liquidity_added: u128,
     pub timestamp: i64,
     pub version: u8,
+}
+
+/// Event emitted when JIT liquidity affects base fee distribution
+#[event]
+pub struct JitBaseFeeSkipped {
+    pub market: Pubkey,
+    pub swap_id: Pubkey, // User pubkey for correlation
+    pub base_fees_skipped: u64,
+    pub jit_consumed_quote: u64,
+    pub timestamp: i64,
 }
 
 /// Event emitted when epoch is bumped
@@ -307,4 +327,52 @@ pub struct TokenDestroyed {
     pub mint_fee_returned: u64,
     pub destroyer_reward: u64,
     pub treasury_amount: u64,
+}
+
+/// Event emitted when a pool is registered
+#[event]
+pub struct PoolRegistered {
+    pub market: Pubkey,
+    pub token_mint: Pubkey,
+    pub feelssol_mint: Pubkey,
+    pub creator: Pubkey,
+    pub symbol: String,
+    pub phase: u8,
+    pub timestamp: i64,
+}
+
+/// Event emitted when pool phase is updated
+#[event]
+pub struct PoolPhaseUpdated {
+    pub market: Pubkey,
+    pub old_phase: u8,
+    pub new_phase: u8,
+    pub timestamp: i64,
+}
+
+/// POMM position updated
+#[event]
+pub struct PommPositionUpdated {
+    pub market: Pubkey,
+    pub position_index: u8,
+    pub action: String,
+    pub tick_lower: i32,
+    pub tick_upper: i32,
+    pub liquidity: u128,
+    pub amount_0: u64,
+    pub amount_1: u64,
+    pub timestamp: i64,
+}
+
+/// Market phase transitioned
+#[event]
+pub struct MarketPhaseTransitioned {
+    pub market: Pubkey,
+    pub from_phase: u8,
+    pub to_phase: u8,
+    pub trigger: u8,
+    pub total_volume: u64,
+    pub total_liquidity: u128,
+    pub timestamp: i64,
+    pub slot: u64,
 }

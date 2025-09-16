@@ -48,7 +48,8 @@ impl OracleState {
         2 + // observation_cardinality_next
         1 + // oracle_bump
         (32 * MAX_OBSERVATIONS) + // observations (8+16+1+7 = 32 bytes each)
-        4; // _reserved
+        4 + // _reserved
+        5; // padding added by Rust compiler for alignment
 }
 
 impl Default for OracleState {
@@ -112,7 +113,7 @@ impl OracleState {
                 .ok_or(FeelsError::MathOverflow)?;
 
             // Move to next observation slot
-            // Ensure observation_cardinality is at least 1 to avoid division by zero
+            // Ensure observation_cardinality is 1 or greater to avoid division by zero
             let cardinality = self.observation_cardinality.max(1);
             self.observation_index = (self.observation_index + 1) % cardinality;
 
@@ -188,7 +189,7 @@ impl OracleState {
         require!(time_delta > 0, FeelsError::InvalidTimestamp);
 
         // Additional check to ensure we have a meaningful time period
-        // SECURITY: This prevents extremely short TWAPs that could be manipulated
+        // This prevents extremely short TWAPs that could be manipulated
         require!(
             time_delta >= MIN_TWAP_DURATION as i64,
             FeelsError::InsufficientTWAPDuration
@@ -212,7 +213,10 @@ mod tests {
     #[test]
     fn test_oracle_size() {
         assert_eq!(std::mem::size_of::<Observation>(), 32);
-        // OracleState size calculation
-        assert_eq!(OracleState::LEN, 8 + 32 + 2 + 2 + 2 + 1 + (32 * 12) + 4);
+        // OracleState size calculation: discriminator + pool_id + observation_index + 
+        // observation_cardinality + observation_cardinality_next + oracle_bump + observations + _reserved + padding
+        assert_eq!(OracleState::LEN, 8 + 32 + 2 + 2 + 2 + 1 + (32 * 12) + 4 + 5);
+        // Verify against actual struct size (excluding discriminator)
+        assert_eq!(std::mem::size_of::<OracleState>(), OracleState::LEN - 8);
     }
 }

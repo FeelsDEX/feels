@@ -57,3 +57,22 @@ pub const PROTOCOL_TOKEN_SEED: &[u8] = b"protocol_token";
 /// Minimum threshold for floor liquidity placement (100 tokens with 6 decimals)
 /// This prevents griefing by requiring economically significant amounts
 pub const MIN_FLOOR_PLACEMENT_THRESHOLD: u64 = 100_000_000;
+
+// POMM constants
+/// Maximum number of POMM positions per market
+pub const MAX_POMM_POSITIONS: u8 = 8;
+
+/// POMM cooldown in seconds
+pub const POMM_COOLDOWN_SECONDS: i64 = 60;
+
+/// POMM TWAP window in seconds
+pub const POMM_TWAP_SECONDS: u32 = 300;
+
+/// POMM tick width multiplier
+pub const POMM_WIDTH_MULTIPLIER: i32 = 20;
+
+/// POMM minimum tick width
+pub const POMM_MIN_WIDTH: i32 = 10;
+
+/// POMM maximum tick width
+pub const POMM_MAX_WIDTH: i32 = 2000;

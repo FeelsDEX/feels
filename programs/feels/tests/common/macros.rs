@@ -73,6 +73,7 @@ macro_rules! test_devnet {
         #[tokio::test]
         #[ignore = "Run with RUN_DEVNET_TESTS=1"]
         async fn $name() {
+            use $crate::common::{should_run_devnet_tests, TestContext, TestEnvironment};
             if !should_run_devnet_tests() {
                 return;
             }

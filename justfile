@@ -1,6 +1,9 @@
 # Feels Protocol Task Runner
 # Run `just` to see all available tasks
 
+# Import test justfile
+import? 'programs/feels/tests/justfile'
+
 # Default task - show help
 default:
     @echo "Feels Protocol Development Tasks"
@@ -194,35 +197,15 @@ balance:
     @echo "Account balance:"
     nix develop --command solana balance
 
-# Run all tests
+# Run all tests (alias to imported 'all' from test justfile)
 test:
-    @echo "Running all tests..."
-    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
-    nix develop --command cargo test -p feels --test '*' -- --test-threads=1
+    @just all
 
-# Run unit tests only
-test-unit:
-    @echo "Running unit tests..."
-    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
-    nix develop --command cargo test -p feels unit:: -- --test-threads=1
-
-# Run integration tests only  
-test-integration:
-    @echo "Running integration tests..."
-    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
-    nix develop --command cargo test -p feels integration:: -- --test-threads=1
-
-# Run end-to-end tests only
-test-e2e:
-    @echo "Running end-to-end tests..."
-    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
-    nix develop --command cargo test -p feels e2e:: -- --test-threads=1
-
-# Run property-based tests only
-test-property:
-    @echo "Running property-based tests..."
-    @if [ ! -f target/deploy/feels.so ]; then echo "Building BPF program first..."; just build; fi
-    nix develop --command cargo test -p feels property:: -- --test-threads=1
+# Backward compatibility aliases
+test-unit: unit
+test-integration: integration
+test-property: property
+test-e2e: e2e
 
 # Reset local development environment
 reset:

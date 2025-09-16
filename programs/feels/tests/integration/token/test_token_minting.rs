@@ -15,13 +15,26 @@ test_all_environments!(test_mint_token_basic, |ctx: TestContext| async move {
         .create_ata(&creator.pubkey(), &ctx.feelssol_mint)
         .await?;
 
-    // Even though mint fee is 0, mint a small amount of FeelsSOL to the creator
-    // to ensure the account is properly initialized
+    // Create JitoSOL account for the creator
+    let creator_jitosol = ctx
+        .create_ata(&creator.pubkey(), &ctx.jitosol_mint)
+        .await?;
+    
+    // Mint some JitoSOL to the creator (for testing, we control the mock JitoSOL mint)
     ctx.mint_to(
-        &ctx.feelssol_mint,
+        &ctx.jitosol_mint,
+        &creator_jitosol,
+        &ctx.jitosol_authority,
+        10_000_000, // 10 JitoSOL
+    )
+    .await?;
+    
+    // Use enter_feelssol to get FeelsSOL (this is the proper way)
+    ctx.enter_feelssol(
+        &creator,
+        &creator_jitosol,
         &creator_feelssol,
-        &ctx.feelssol_authority,
-        1_000_000,
+        1_000_000, // 1 JitoSOL worth
     )
     .await?;
 

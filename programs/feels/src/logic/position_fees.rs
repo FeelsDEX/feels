@@ -46,7 +46,7 @@ pub fn calculate_position_fee_accrual(
     let upper_outside_1 = upper_tick.fee_growth_outside_1_x64;
 
     // Calculate fee growth inside based on current tick position
-    // CRITICAL: This follows Uniswap V3 formula exactly. Do NOT use wrapping arithmetic here!
+    // This follows Uniswap V3 formula exactly. Do NOT use wrapping arithmetic here.
     // The fee growth inside represents actual accumulated fees within the position range.
     let (fee_growth_inside_0, fee_growth_inside_1) = if current_tick < position_tick_lower {
         // Current price is below the range

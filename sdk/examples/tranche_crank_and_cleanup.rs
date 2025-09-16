@@ -9,7 +9,7 @@
 //! script, wire your RPC URL and payer keypair via SdkConfig/FeelsClient.
 
 use feels_sdk::{instructions, utils::derive_tranche_tick_arrays, FeelsClient, SdkConfig};
-use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 fn main() -> anyhow::Result<()> {
     // Configure client (adjust to your environment)
@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     // Build crank instruction
-    let crank = client.config.payer.pubkey();
+    let crank = client.config.payer.as_ref().pubkey();
     let ix_crank = instructions::initialize_tranche_ticks(
         crank,
         market,

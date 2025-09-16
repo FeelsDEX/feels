@@ -1,84 +1,160 @@
 # Feels Jupiter Adapter
 
-This crate provides the Jupiter AMM interface implementation for the Feels Protocol, enabling Jupiter aggregator to route swaps through Feels markets.
+This crate provides the Jupiter AMM interface implementation for the Feels Protocol concentrated liquidity AMM, enabling Jupiter aggregator to route swaps through Feels markets with accurate cross-tick price calculations.
 
 ## Overview
 
 The adapter implements the `jupiter_amm_interface::Amm` trait for Feels markets, allowing Jupiter to:
-- Discover Feels markets
-- Get quotes for swaps
-- Build swap transactions
-- Route user swaps through the most efficient path
+- Discover Feels concentrated liquidity markets
+- Calculate accurate quotes using tick array data
+- Generate swap transaction instructions
+- Route swaps through the hub-and-spoke FeelsSOL model
+- Handle complex multi-tick price movements
 
 ## Architecture
 
 ### FeelsAmm
 
-The main component is the `FeelsAmm` struct which implements the Jupiter AMM interface:
+The main component implementing the Jupiter AMM interface with concentrated liquidity support:
 
 ```rust
 pub struct FeelsAmm {
-    key: Pubkey,                    // Market address
-    market: Market,                 // Feels market state
-    authority: Pubkey,             // Market authority PDA
-    program_id: Pubkey,            // Feels program ID
-    reserve_mints: [Pubkey; 2],    // Token mints
-    reserves: [u64; 2],            // Token reserves
-    vault_0: Pubkey,               // Vault for token 0
-    vault_1: Pubkey,               // Vault for token 1
+    key: Pubkey,                              // Market account public key
+    market: Market,                           // Deserialized market state
+    authority: Pubkey,                        // Market authority PDA
+    program_id: Pubkey,                       // Feels program ID
+    reserve_mints: [Pubkey; 2],              // Token mints [token_0, token_1]
+    reserves: [u64; 2],                      // Current vault balances
+    vault_0: Pubkey,                         // Token vault addresses
+    vault_1: Pubkey,
+    tick_spacing: u16,                       // Price granularity
+    tick_arrays: AHashMap<i32, TickArrayView>, // Cached liquidity data
+    tick_array_keys: Vec<Pubkey>,            // Monitored tick arrays
+}
+```
+
+### TickArrayView
+
+Cached representation of on-chain tick arrays for efficient quote calculations:
+
+```rust
+struct TickArrayView {
+    start_tick_index: i32,                   // Array starting tick
+    inits: AHashMap<i32, i128>,             // Sparse map of initialized ticks
 }
 ```
 
 ### Key Methods
 
-1. **from_keyed_account**: Deserializes a Feels market account into a FeelsAmm instance
-2. **update**: Updates reserve balances from vault accounts
-3. **quote**: Calculates swap output amounts and fees
-4. **get_swap_and_account_metas**: Builds the instruction accounts for swap execution
+1. **from_keyed_account**: Deserializes market account and derives PDAs
+2. **update**: Refreshes vault balances and tick array cache from account data
+3. **quote**: Simulates concentrated liquidity swaps across multiple ticks
+4. **get_swap_and_account_metas**: Generates complete account list for swap instruction
+
+## Quote Calculation Process
+
+The adapter performs sophisticated concentrated liquidity calculations:
+
+1. **Initialize State**: Load market state and current liquidity/price
+2. **Tick Traversal**: Simulate crossing ticks and applying liquidity changes
+3. **Price Impact**: Calculate output using Orca Whirlpools math primitives
+4. **Fee Calculation**: Apply base fees + impact fees based on ticks moved
+5. **Account Generation**: Build complete account list for swap execution
+
+### Concentrated Liquidity Features
+
+- **Cross-Tick Quotes**: Accurately handles swaps that cross multiple price ranges
+- **Liquidity Tracking**: Maintains sparse tick array cache for efficient calculations  
+- **Impact Fees**: Calculates dynamic fees based on price movement (up to 25% cap)
+- **Hub-and-Spoke**: Supports routing through FeelsSOL for token-to-token swaps
 
 ## Usage
 
 ### For Jupiter Integration
 
-Jupiter will automatically discover and use Feels markets by:
+Jupiter automatically discovers and uses Feels markets:
 
-1. Finding all Feels market accounts on-chain
-2. Creating FeelsAmm instances for each market
-3. Including Feels markets in its routing algorithm
-4. Executing swaps through the standard Feels swap instruction
+1. **Discovery**: Finds Feels market accounts using program ID filter
+2. **Initialization**: Creates FeelsAmm instances with tick array monitoring
+3. **Routing**: Includes Feels in multi-hop route calculations
+4. **Execution**: Generates proper swap instructions with all required accounts
 
-### Example
+### Example Integration
 
 ```rust
 use feels_jupiter_adapter::FeelsAmm;
 use jupiter_amm_interface::{Amm, KeyedAccount, QuoteParams};
 
-// Create AMM from market account
-let feels_amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context)?;
+// Jupiter creates AMM from discovered market account
+let feels_amm = FeelsAmm::from_keyed_account(&market_account, &context)?;
 
-// Get a quote
+// Update with latest on-chain data
+feels_amm.update(&account_map)?;
+
+// Get concentrated liquidity quote
 let quote = feels_amm.quote(&QuoteParams {
     amount: 1_000_000,
-    input_mint: token_0_mint,
-    output_mint: token_1_mint,
-    swap_mode: SwapMode::ExactIn,
+    input_mint: usdc_mint,
+    output_mint: feelssol_mint,
 })?;
 
-// Build swap transaction
-let swap_accounts = feels_amm.get_swap_and_account_metas(&swap_params)?;
+// Generate swap instruction accounts
+let SwapAndAccountMetas { swap, account_metas } = 
+    feels_amm.get_swap_and_account_metas(&swap_params)?;
 ```
 
-## Integration Status
+## Technical Implementation
 
-- Implements Jupiter AMM interface v0.6.0
-- Compatible with Feels Protocol concentrated liquidity
-- Supports exact input swaps
-- Calculates fees based on market parameters
-- Provides account metadata for swap execution
+### Concentrated Liquidity Math
 
-## Future Enhancements
+Uses Orca Whirlpools core primitives for accurate calculations:
+- `try_get_next_sqrt_price_from_a/b`: Price movement within liquidity ranges
+- `try_get_amount_delta_a/b`: Input/output amounts for price changes
+- Uniswap V3 tick crossing conventions for liquidity updates
 
-- [ ] Implement exact output swaps
-- [ ] Add dynamic fee calculations based on volatility
-- [ ] Support for multi-hop routes through FeelsSOL hub
-- [ ] Integration with Jupiter's priority fee system
+### Tick Array Management
+
+- **Sparse Representation**: Only stores initialized ticks to save memory
+- **Efficient Lookup**: HashMap-based tick search across multiple arrays
+- **PDA Derivation**: Generates tick array addresses around current price
+- **Cache Management**: Updates tick data when Jupiter refreshes accounts
+
+### Fee Structure
+
+- **Base Fee**: Configurable per-market base fee (e.g., 30 bps)
+- **Impact Fee**: Dynamic fee based on ticks crossed (linear, capped at 25%)
+- **Total Fees**: Combined base + impact, applied to output amount
+
+## Current Status
+
+**Implemented Features**:
+- Jupiter AMM interface compliance
+- Concentrated liquidity quote calculations  
+- Cross-tick swap simulation
+- Dynamic impact fee calculation
+- Complete account metadata generation
+- Tick array caching and management
+- Hub-and-spoke routing support
+
+**Limitations**:
+- Exact-out swaps use exact-in simulation (close approximation)
+- Tick array coverage limited to ±2 arrays from current price
+- Impact fee uses simplified linear model
+
+## Integration Notes
+
+### For Jupiter Developers
+
+The adapter is designed to work seamlessly with Jupiter's routing engine:
+- Implements all required `Amm` trait methods
+- Provides accurate quotes for route optimization
+- Generates complete instruction account lists
+- Handles Feels-specific PDA derivations automatically
+
+### For Feels Protocol
+
+The adapter maintains compatibility with the core protocol:
+- Uses standard Feels swap instruction format
+- Respects market pause states and validation
+- Integrates with protocol fee distribution
+- Supports all market configurations (tick spacing, fees, etc.)

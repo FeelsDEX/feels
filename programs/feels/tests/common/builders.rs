@@ -79,14 +79,33 @@ impl MarketBuilder {
 
         let market_helper = self.ctx.market_helper();
 
+        // Verify token ordering constraint for hub-and-spoke model
+        // FeelsSOL must always be token_0 (lower pubkey)
+        let feelssol_mint = self.ctx.feelssol_mint;
+        if token_0 != feelssol_mint && token_1 != feelssol_mint {
+            return Err("One of the tokens must be FeelsSOL for hub-and-spoke model".into());
+        }
+        
+        // Ensure proper ordering
+        let (ordered_token_0, ordered_token_1) = if token_0 < token_1 {
+            (token_0, token_1)
+        } else {
+            (token_1, token_0)
+        };
+        
+        // Verify FeelsSOL is token_0 after ordering
+        if ordered_token_0 != feelssol_mint {
+            return Err("FeelsSOL must be token_0 (lower pubkey) in hub-and-spoke model".into());
+        }
+
         // Create market based on configuration
         let market_id = if let Some(initial_price) = self.initial_price {
             market_helper
-                .create_raydium_market(&token_0, &token_1, initial_price)
+                .create_raydium_market(&ordered_token_0, &ordered_token_1, initial_price)
                 .await?
         } else {
             market_helper
-                .create_simple_market(&token_0, &token_1)
+                .create_simple_market(&ordered_token_0, &ordered_token_1)
                 .await?
         };
 
@@ -266,7 +285,7 @@ impl SwapBuilder {
         // Front-run transaction
         let attacker_bytes = attacker.to_bytes();
         let attacker_keypair =
-            Keypair::from_bytes(&attacker_bytes).expect("Failed to clone keypair");
+            Keypair::try_from(&attacker_bytes[..]).expect("Failed to clone keypair");
         self = self.add_swap(
             market,
             attacker_keypair,

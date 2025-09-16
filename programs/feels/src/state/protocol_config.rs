@@ -67,7 +67,8 @@ impl ProtocolConfig {
         1 + // dex_whitelist_len
         7 +  // _reserved
         8 +  // mint_per_slot_cap_feelssol
-        8; // redeem_per_slot_cap_feelssol
+        8 + // redeem_per_slot_cap_feelssol
+        6; // padding added by Rust compiler for alignment
 
     /// Seed for deriving the protocol config PDA
     pub const SEED: &'static [u8] = b"protocol_config";

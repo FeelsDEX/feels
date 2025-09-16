@@ -1,4 +1,4 @@
-//! MVP utility functions
+//! Utility functions
 //!
 //! Pure utility functions for validation, transfers, and helpers
 

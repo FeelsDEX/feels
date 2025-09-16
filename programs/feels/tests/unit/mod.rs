@@ -24,3 +24,6 @@ pub mod test_token_ordering;
 
 // Test helpers
 pub mod test_helpers;
+
+// Protocol initialization test
+pub mod test_protocol_init;
