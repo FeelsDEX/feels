@@ -105,15 +105,38 @@ pub fn initialize_protocol(
         params.dex_twap_stale_age_secs >= params.dex_twap_window_secs,
         FeelsError::InvalidMarket
     );
+    // Validate fee parameters
+    let default_protocol_fee = params.default_protocol_fee_rate.unwrap_or(100); // Default 1%
+    let default_creator_fee = params.default_creator_fee_rate.unwrap_or(50); // Default 0.5%
+    let max_protocol_fee = params.max_protocol_fee_rate.unwrap_or(1000); // Default max 10%
+    
+    // Enforce reasonable fee bounds
+    require!(
+        default_protocol_fee <= 1000, // Max 10%
+        FeelsError::InvalidMarket
+    );
+    require!(
+        default_creator_fee <= 500, // Max 5%
+        FeelsError::InvalidMarket
+    );
+    require!(
+        max_protocol_fee <= 1000 && max_protocol_fee >= default_protocol_fee, // Max 10% and must be >= default
+        FeelsError::InvalidMarket
+    );
+    require!(
+        default_protocol_fee + default_creator_fee <= 1000, // Combined max 10%
+        FeelsError::InvalidMarket
+    );
+    
     let config = &mut ctx.accounts.protocol_config;
 
     // Set initial configuration
     config.authority = ctx.accounts.authority.key();
     config.mint_fee = params.mint_fee;
     config.treasury = params.treasury;
-    config.default_protocol_fee_rate = params.default_protocol_fee_rate.unwrap_or(1000); // Default 10%
-    config.default_creator_fee_rate = params.default_creator_fee_rate.unwrap_or(500); // Default 5%
-    config.max_protocol_fee_rate = params.max_protocol_fee_rate.unwrap_or(2500); // Max 25%
+    config.default_protocol_fee_rate = default_protocol_fee;
+    config.default_creator_fee_rate = default_creator_fee;
+    config.max_protocol_fee_rate = max_protocol_fee;
     config.token_expiration_seconds = 7 * 24 * 60 * 60; // 7 days default
                                                         // Oracle + safety params
     config.dex_twap_updater = params.dex_twap_updater;
@@ -161,9 +184,18 @@ pub fn initialize_protocol(
     msg!("  Authority: {}", config.authority);
     msg!("  Mint fee: {} FeelsSOL", config.mint_fee);
     msg!("  Treasury: {}", config.treasury);
-    msg!("  Default protocol fee rate: {} bps", config.default_protocol_fee_rate);
-    msg!("  Default creator fee rate: {} bps", config.default_creator_fee_rate);
-    msg!("  Max protocol fee rate: {} bps", config.max_protocol_fee_rate);
+    msg!(
+        "  Default protocol fee rate: {} bps",
+        config.default_protocol_fee_rate
+    );
+    msg!(
+        "  Default creator fee rate: {} bps",
+        config.default_creator_fee_rate
+    );
+    msg!(
+        "  Max protocol fee rate: {} bps",
+        config.max_protocol_fee_rate
+    );
 
     emit!(crate::events::ProtocolParamsUpdated {
         authority: config.authority,
@@ -249,17 +281,28 @@ pub fn update_protocol(ctx: Context<UpdateProtocol>, params: UpdateProtocolParam
             FeelsError::InvalidMarket
         );
         config.default_protocol_fee_rate = protocol_fee_rate;
-        msg!("Updated default protocol fee rate to: {} bps", protocol_fee_rate);
+        msg!(
+            "Updated default protocol fee rate to: {} bps",
+            protocol_fee_rate
+        );
     }
 
     if let Some(creator_fee_rate) = params.default_creator_fee_rate {
-        require!(creator_fee_rate <= 1000, FeelsError::InvalidMarket); // Max 10% creator fee
+        require!(creator_fee_rate <= 500, FeelsError::InvalidMarket); // Max 5% creator fee
+        // Ensure combined fees don't exceed 10%
+        require!(
+            config.default_protocol_fee_rate + creator_fee_rate <= 1000,
+            FeelsError::InvalidMarket
+        );
         config.default_creator_fee_rate = creator_fee_rate;
-        msg!("Updated default creator fee rate to: {} bps", creator_fee_rate);
+        msg!(
+            "Updated default creator fee rate to: {} bps",
+            creator_fee_rate
+        );
     }
 
     if let Some(max_fee_rate) = params.max_protocol_fee_rate {
-        require!(max_fee_rate <= 5000, FeelsError::InvalidMarket); // Max 50% total protocol fee
+        require!(max_fee_rate <= 1000, FeelsError::InvalidMarket); // Max 10% total protocol fee
         require!(
             max_fee_rate >= config.default_protocol_fee_rate,
             FeelsError::InvalidMarket

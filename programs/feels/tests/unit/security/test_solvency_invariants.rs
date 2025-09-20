@@ -46,17 +46,18 @@ async fn test_backing_invariant_always_holds() -> TestResult<()> {
 
     for test in tests {
         println!("Test {}: {}", test.operation, test.description);
-        
+
         let invariant_holds = test.jitosol_reserves >= test.feelssol_supply;
-        
+
         if test.should_succeed {
             assert!(invariant_holds, "Backing invariant violated!");
         } else {
             assert!(!invariant_holds, "Invalid state should be rejected");
             println!("  Operation would be rejected to maintain invariant");
         }
-        
-        let collateralization = (test.jitosol_reserves as f64 / test.feelssol_supply as f64 * 100.0);
+
+        let collateralization =
+            test.jitosol_reserves as f64 / test.feelssol_supply as f64 * 100.0;
         println!("  Collateralization: {:.2}%", collateralization);
     }
 
@@ -69,7 +70,7 @@ async fn test_conservation_invariant() -> TestResult<()> {
 
     // Test: Σw_i ln(g_i) = 0 (conservation of geometric mean)
     // In practice, this means no value created or destroyed
-    
+
     struct ConservationTest {
         initial_reserves: Vec<u128>,
         final_reserves: Vec<u128>,
@@ -100,19 +101,19 @@ async fn test_conservation_invariant() -> TestResult<()> {
 
     for test in tests {
         println!("Test operation: {}", test.operation);
-        
+
         // Calculate products (simplified constant product for illustration)
         let initial_product: u128 = test.initial_reserves.iter().product();
         let final_product: u128 = test.final_reserves.iter().product();
-        
+
         // Allow 0.1% deviation for fees/rounding
         let tolerance = initial_product / 1000;
         let conserved = (initial_product as i128 - final_product as i128).abs() < tolerance as i128;
-        
+
         println!("  Initial product: {}", initial_product);
         println!("  Final product: {}", final_product);
         println!("  Conserved: {}", conserved);
-        
+
         if test.conserves_value {
             assert!(conserved, "Conservation invariant violated");
         } else {
@@ -158,16 +159,16 @@ async fn test_supply_invariant() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         let accounted_supply = test.user_held + test.pool_escrowed.iter().sum::<u128>();
         let matches = accounted_supply == test.total_supply;
-        
+
         println!("  Total supply: {}", test.total_supply);
         println!("  User held: {}", test.user_held);
         println!("  Pool escrowed: {:?}", test.pool_escrowed);
         println!("  Accounted: {}", accounted_supply);
         println!("  Match: {}", matches);
-        
+
         if test.description.contains("Valid") {
             assert!(matches, "Supply invariant violated");
         } else {
@@ -217,13 +218,13 @@ async fn test_isolation_invariant() -> TestResult<()> {
 
     for test in tests {
         println!("Pool {} - {}", test.pool_id, test.operation);
-        
+
         let invariant_holds = test.feelssol_outflow <= test.feelssol_inflow;
-        
+
         println!("  Inflow: {}", test.feelssol_inflow);
         println!("  Outflow: {}", test.feelssol_outflow);
         println!("  Valid: {}", invariant_holds);
-        
+
         if test.should_succeed {
             assert!(invariant_holds, "Pool isolation violated");
         } else {
@@ -274,10 +275,13 @@ async fn test_oracle_rate_monotonicity() -> TestResult<()> {
     ];
 
     for test in tests {
-        println!("Test {}: {} -> {}", test.rate_type, test.previous_rate, test.new_rate);
-        
+        println!(
+            "Test {}: {} -> {}",
+            test.rate_type, test.previous_rate, test.new_rate
+        );
+
         let is_monotonic = test.new_rate >= test.previous_rate && test.new_rate > 0;
-        
+
         if test.should_accept {
             assert!(is_monotonic, "Rate update should be monotonic");
         } else {
@@ -324,16 +328,16 @@ async fn test_fee_extraction_limits() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         let remaining = test.pool_reserves.saturating_sub(test.fee_amount);
         let maintains_minimum = remaining >= test.min_reserves_required;
         let valid_extraction = test.fee_amount <= test.pool_reserves && maintains_minimum;
-        
+
         println!("  Reserves: {}", test.pool_reserves);
         println!("  Fee: {}", test.fee_amount);
         println!("  Remaining: {}", remaining);
         println!("  Valid: {}", valid_extraction);
-        
+
         if test.description.contains("Normal") {
             assert!(valid_extraction, "Valid fee extraction rejected");
         } else {
@@ -357,7 +361,7 @@ fn test_arithmetic_overflow_protection() {
 
     for (a, b, op, should_succeed, description) in overflow_tests {
         println!("Test: {}", description);
-        
+
         let result = match op {
             "add" => a.checked_add(b),
             "sub" => a.checked_sub(b),
@@ -365,7 +369,7 @@ fn test_arithmetic_overflow_protection() {
             "div" => a.checked_div(b),
             _ => None,
         };
-        
+
         if should_succeed {
             assert!(result.is_some(), "Safe operation failed");
             println!("  Result: {}", result.unwrap());
@@ -384,11 +388,11 @@ async fn test_multi_pool_solvency_stress() -> TestResult<()> {
     const NUM_POOLS: usize = 10;
     const TOTAL_FEELSSOL: u128 = 10_000_000_000; // 10B total
     const JITOSOL_RESERVES: u128 = 10_100_000_000; // 10.1B (1% surplus)
-    
+
     // Distribute FeelsSOL across pools
     let mut pool_balances = vec![0u128; NUM_POOLS];
     let mut remaining = TOTAL_FEELSSOL;
-    
+
     // Simulate random distribution
     for i in 0..NUM_POOLS {
         let allocation = if i == NUM_POOLS - 1 {
@@ -399,41 +403,44 @@ async fn test_multi_pool_solvency_stress() -> TestResult<()> {
         pool_balances[i] = allocation;
         remaining -= allocation;
     }
-    
+
     println!("Initial distribution across {} pools:", NUM_POOLS);
     for (i, balance) in pool_balances.iter().enumerate() {
         println!("  Pool {}: {}", i, balance);
     }
-    
+
     // Verify initial invariants
     let total_in_pools: u128 = pool_balances.iter().sum();
     assert_eq!(total_in_pools, TOTAL_FEELSSOL, "Distribution mismatch");
-    assert!(JITOSOL_RESERVES >= TOTAL_FEELSSOL, "Initial undercollateralization");
-    
+    assert!(
+        JITOSOL_RESERVES >= TOTAL_FEELSSOL,
+        "Initial undercollateralization"
+    );
+
     // Simulate trading activity
     println!("\nSimulating trading activity...");
     let mut operations = 0;
-    
+
     for _ in 0..100 {
         // Random pool-to-pool transfer
         let from_pool = operations % NUM_POOLS;
         let to_pool = (operations + 3) % NUM_POOLS;
         let amount = pool_balances[from_pool] / 10; // Transfer 10%
-        
+
         if amount > 0 {
             pool_balances[from_pool] -= amount;
             pool_balances[to_pool] += amount;
             operations += 1;
         }
     }
-    
+
     // Verify invariants still hold
     let final_total: u128 = pool_balances.iter().sum();
     assert_eq!(final_total, TOTAL_FEELSSOL, "FeelsSOL created/destroyed!");
-    
+
     println!("\nAfter {} operations:", operations);
     println!("Total FeelsSOL preserved: {}", final_total);
     println!("Backing maintained: {}", JITOSOL_RESERVES >= final_total);
-    
+
     Ok(())
 }

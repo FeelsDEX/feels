@@ -69,12 +69,12 @@ test_in_memory!(test_pomm_width_immutable, |ctx: TestContext| async move {
         }
 
         println!(
-            "✓ Tick spacing {} consistently produces width {}",
+            "Tick spacing {} consistently produces width {}",
             tick_spacing, width
         );
     }
 
-    println!("✅ POMM width derivation verified - immutable based on tick_spacing");
+    println!("POMM width derivation verified - immutable based on tick_spacing");
 
     Ok::<(), Box<dyn std::error::Error>>(())
 });

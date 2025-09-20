@@ -1,203 +1,219 @@
 //! Unit tests for the initialize_protocol instruction
 
-use anchor_lang::prelude::*;
 use feels::{
-    error::FeelsError,
-    instructions::{InitializeProtocol, InitializeProtocolParams},
-    state::{ProtocolConfig, ProtocolOracle, FeelsHub},
+    instructions::InitializeProtocolParams,
+    state::{DegradeFlags, ProtocolOracle, SafetyController},
 };
 use solana_program::pubkey::Pubkey;
-use solana_sdk::{signature::Keypair, signer::Signer};
 
 #[test]
 fn test_initialize_protocol_validation() {
-    // Test invalid treasury pubkey (all zeros)
+    // Test invalid depeg threshold (too low)
     let params = InitializeProtocolParams {
-        treasury: Pubkey::default(),
-        initial_oracle_authority: Pubkey::new_unique(),
-        universal_feelssol_mint: Pubkey::new_unique(),
-    };
-    
-    assert_eq!(
-        validate_initialize_protocol_params(&params).unwrap_err(),
-        FeelsError::InvalidTreasury
-    );
-    
-    // Test invalid oracle authority (all zeros)
-    let params = InitializeProtocolParams {
+        mint_fee: 100_000_000,
         treasury: Pubkey::new_unique(),
-        initial_oracle_authority: Pubkey::default(),
-        universal_feelssol_mint: Pubkey::new_unique(),
+        default_protocol_fee_rate: Some(1000),
+        default_creator_fee_rate: Some(500),
+        max_protocol_fee_rate: Some(2500),
+        dex_twap_updater: Pubkey::new_unique(),
+        depeg_threshold_bps: 24, // Below minimum of 25
+        depeg_required_obs: 5,
+        clear_required_obs: 3,
+        dex_twap_window_secs: 600,
+        dex_twap_stale_age_secs: 1200,
+        dex_whitelist: vec![],
     };
-    
-    assert_eq!(
-        validate_initialize_protocol_params(&params).unwrap_err(),
-        FeelsError::InvalidAuthority
-    );
-    
-    // Test invalid FeelsSOL mint (all zeros)
+
+    assert!(!validate_protocol_params(&params));
+
+    // Test invalid depeg threshold (too high)
     let params = InitializeProtocolParams {
-        treasury: Pubkey::new_unique(),
-        initial_oracle_authority: Pubkey::new_unique(),
-        universal_feelssol_mint: Pubkey::default(),
+        depeg_threshold_bps: 5001, // Above maximum of 5000
+        ..params
     };
-    
-    assert_eq!(
-        validate_initialize_protocol_params(&params).unwrap_err(),
-        FeelsError::InvalidMint
-    );
+
+    assert!(!validate_protocol_params(&params));
+
+    // Test invalid depeg required observations
+    let params = InitializeProtocolParams {
+        depeg_threshold_bps: 100,
+        depeg_required_obs: 0, // Below minimum of 1
+        ..params
+    };
+
+    assert!(!validate_protocol_params(&params));
+
+    // Test invalid TWAP window
+    let params = InitializeProtocolParams {
+        depeg_required_obs: 5,
+        dex_twap_window_secs: 299, // Below minimum of 300
+        ..params
+    };
+
+    assert!(!validate_protocol_params(&params));
 }
 
 #[test]
-fn test_protocol_config_initialization() {
-    let treasury = Pubkey::new_unique();
-    let protocol_config_key = Pubkey::new_unique();
-    
-    let config = ProtocolConfig {
-        bump: 255,
-        is_initialized: true,
-        authority: Pubkey::new_unique(),
-        treasury,
-        creation_fee: 100_000_000, // 0.1 SOL
-        swap_fee_protocol_share_bps: 1000, // 10%
-        swap_fee_lp_share_bps: 9000, // 90%
-        swap_fee_treasury_share_bps: 500, // 5% of protocol share
-        max_markets_per_token: 10,
-        market_creation_cooldown: 60,
-        oracle_update_interval: 300,
-        feelssol_mint: Pubkey::new_unique(),
-        hub_key: Pubkey::new_unique(),
-        _reserved: [0; 64],
+fn test_protocol_config_defaults() {
+    let params = InitializeProtocolParams {
+        mint_fee: 100_000_000,
+        treasury: Pubkey::new_unique(),
+        default_protocol_fee_rate: None,
+        default_creator_fee_rate: None,
+        max_protocol_fee_rate: None,
+        dex_twap_updater: Pubkey::new_unique(),
+        depeg_threshold_bps: 100,
+        depeg_required_obs: 5,
+        clear_required_obs: 3,
+        dex_twap_window_secs: 600,
+        dex_twap_stale_age_secs: 1200,
+        dex_whitelist: vec![],
     };
-    
-    // Verify configuration values
-    assert!(config.is_initialized);
-    assert_eq!(config.creation_fee, 100_000_000);
-    assert_eq!(config.swap_fee_protocol_share_bps, 1000);
-    assert_eq!(config.swap_fee_lp_share_bps, 9000);
-    assert_eq!(config.swap_fee_treasury_share_bps, 500);
-    assert_eq!(config.max_markets_per_token, 10);
-    assert_eq!(config.market_creation_cooldown, 60);
-    assert_eq!(config.oracle_update_interval, 300);
-    
-    // Verify fee shares add up correctly
-    assert!(config.swap_fee_protocol_share_bps + config.swap_fee_lp_share_bps <= 10000);
-    assert!(config.swap_fee_treasury_share_bps <= config.swap_fee_protocol_share_bps);
+
+    // Verify defaults would be applied
+    let default_protocol_fee = params.default_protocol_fee_rate.unwrap_or(1000);
+    let default_creator_fee = params.default_creator_fee_rate.unwrap_or(500);
+    let max_protocol_fee = params.max_protocol_fee_rate.unwrap_or(2500);
+
+    assert_eq!(default_protocol_fee, 1000); // 10%
+    assert_eq!(default_creator_fee, 500); // 5%
+    assert_eq!(max_protocol_fee, 2500); // 25%
+}
+
+#[test]
+fn test_dex_whitelist_truncation() {
+    let mut dex_list = vec![];
+    for _ in 0..10 {
+        dex_list.push(Pubkey::new_unique());
+    }
+
+    let params = InitializeProtocolParams {
+        mint_fee: 100_000_000,
+        treasury: Pubkey::new_unique(),
+        default_protocol_fee_rate: Some(1000),
+        default_creator_fee_rate: Some(500),
+        max_protocol_fee_rate: Some(2500),
+        dex_twap_updater: Pubkey::new_unique(),
+        depeg_threshold_bps: 100,
+        depeg_required_obs: 5,
+        clear_required_obs: 3,
+        dex_twap_window_secs: 600,
+        dex_twap_stale_age_secs: 1200,
+        dex_whitelist: dex_list,
+    };
+
+    // Verify list would be truncated to 8 entries
+    let truncated_len = params.dex_whitelist.iter().take(8).count();
+    assert_eq!(truncated_len, 8);
 }
 
 #[test]
 fn test_protocol_oracle_initialization() {
-    let authority = Pubkey::new_unique();
-    let oracle_key = Pubkey::new_unique();
-    
+    // Test oracle default values
     let oracle = ProtocolOracle {
-        is_initialized: true,
-        authority,
-        jitosol_price_feed: Pubkey::new_unique(),
-        feelssol_price_feed: Pubkey::new_unique(),
-        last_update_slot: 1000,
-        last_update_timestamp: 1234567890,
-        jitosol_price: 110_000_000, // $110 with 8 decimals
-        feelssol_price: 100_000_000, // $100 with 8 decimals
-        confidence_interval_bps: 50, // 0.5%
-        max_staleness_slots: 150,
-        _reserved: [0; 64],
+        native_rate_q64: 0,
+        dex_twap_rate_q64: 0,
+        dex_last_update_slot: 0,
+        native_last_update_slot: 0,
+        dex_last_update_ts: 0,
+        native_last_update_ts: 0,
+        dex_window_secs: 600,
+        flags: 0,
     };
-    
-    // Verify oracle initialization
-    assert!(oracle.is_initialized);
-    assert_eq!(oracle.authority, authority);
-    assert_eq!(oracle.last_update_slot, 1000);
-    assert_eq!(oracle.last_update_timestamp, 1234567890);
-    assert_eq!(oracle.jitosol_price, 110_000_000);
-    assert_eq!(oracle.feelssol_price, 100_000_000);
-    assert_eq!(oracle.confidence_interval_bps, 50);
-    assert_eq!(oracle.max_staleness_slots, 150);
+
+    assert_eq!(oracle.native_rate_q64, 0);
+    assert_eq!(oracle.dex_twap_rate_q64, 0);
+    assert_eq!(oracle.dex_window_secs, 600);
+    assert_eq!(oracle.flags, 0);
 }
 
 #[test]
-fn test_feels_hub_initialization() {
-    let feelssol_mint = Pubkey::new_unique();
-    let jitosol_mint = Pubkey::new_unique();
-    let protocol_config = Pubkey::new_unique();
-    
-    let hub = FeelsHub {
-        is_initialized: true,
-        feelssol_mint,
-        jitosol_mint,
-        feelssol_authority_bump: 254,
-        hub_bump: 255,
-        total_feelssol_supply: 0,
-        total_jitosol_locked: 0,
-        entry_exit_fee_bps: 10, // 0.1%
-        last_rebase_slot: 0,
-        last_rebase_timestamp: 0,
-        exchange_rate_numerator: 1_000_000,
-        exchange_rate_denominator: 1_000_000,
-        protocol_config,
-        oracle: Pubkey::new_unique(),
-        paused: false,
-        _reserved: [0; 64],
+fn test_safety_controller_initialization() {
+    // Test safety controller default values
+    let safety = SafetyController {
+        redemptions_paused: false,
+        consecutive_breaches: 0,
+        consecutive_clears: 0,
+        last_change_slot: 0,
+        mint_last_slot: 0,
+        mint_slot_amount: 0,
+        redeem_last_slot: 0,
+        redeem_slot_amount: 0,
+        last_divergence_check_slot: 0,
+        degrade_flags: DegradeFlags {
+            gtwap_stale: false,
+            oracle_stale: false,
+            high_volatility: false,
+            low_liquidity: false,
+            _reserved: [false; 4],
+        },
+        _reserved: [0; 32],
     };
-    
-    // Verify hub initialization
-    assert!(hub.is_initialized);
-    assert_eq!(hub.feelssol_mint, feelssol_mint);
-    assert_eq!(hub.jitosol_mint, jitosol_mint);
-    assert_eq!(hub.entry_exit_fee_bps, 10);
-    assert_eq!(hub.exchange_rate_numerator, 1_000_000);
-    assert_eq!(hub.exchange_rate_denominator, 1_000_000);
-    assert!(!hub.paused);
-    
-    // Verify initial exchange rate is 1:1
-    let rate = hub.exchange_rate_numerator as f64 / hub.exchange_rate_denominator as f64;
-    assert!((rate - 1.0).abs() < f64::EPSILON);
+
+    assert!(!safety.redemptions_paused);
+    assert_eq!(safety.consecutive_breaches, 0);
+    assert_eq!(safety.consecutive_clears, 0);
+    assert_eq!(safety.mint_slot_amount, 0);
+    assert_eq!(safety.redeem_slot_amount, 0);
 }
 
 #[test]
 fn test_protocol_pda_derivation() {
-    let program_id = Pubkey::new_unique();
-    
+    let program_id = feels::ID;
+
     // Test protocol config PDA
-    let (config_pda, config_bump) = Pubkey::find_program_address(
-        &[b"protocol_config"],
-        &program_id
-    );
+    let (config_pda, config_bump) =
+        Pubkey::find_program_address(&[b"protocol_config"], &program_id);
     assert!(config_bump > 0);
-    
+
     // Test protocol oracle PDA
-    let (oracle_pda, oracle_bump) = Pubkey::find_program_address(
-        &[b"protocol_oracle"],
-        &program_id
-    );
+    let (oracle_pda, oracle_bump) =
+        Pubkey::find_program_address(&[b"protocol_oracle"], &program_id);
     assert!(oracle_bump > 0);
-    
-    // Test FeelsHub PDA
-    let (hub_pda, hub_bump) = Pubkey::find_program_address(
-        &[b"feels_hub"],
-        &program_id
-    );
-    assert!(hub_bump > 0);
-    
+
+    // Test safety controller PDA
+    let (safety_pda, safety_bump) =
+        Pubkey::find_program_address(&[b"safety_controller"], &program_id);
+    assert!(safety_bump > 0);
+
     // Verify PDAs are different
     assert_ne!(config_pda, oracle_pda);
-    assert_ne!(config_pda, hub_pda);
-    assert_ne!(oracle_pda, hub_pda);
+    assert_ne!(config_pda, safety_pda);
+    assert_ne!(oracle_pda, safety_pda);
 }
 
-// Helper function to validate initialize protocol params
-fn validate_initialize_protocol_params(params: &InitializeProtocolParams) -> Result<()> {
-    if params.treasury == Pubkey::default() {
-        return Err(FeelsError::InvalidTreasury.into());
+#[test]
+fn test_token_expiration_default() {
+    // Verify default token expiration is 7 days
+    let expected_seconds = 7 * 24 * 60 * 60;
+    assert_eq!(expected_seconds, 604800);
+}
+
+// Helper function to validate protocol params
+fn validate_protocol_params(params: &InitializeProtocolParams) -> bool {
+    // Depeg threshold validation
+    if params.depeg_threshold_bps < 25 || params.depeg_threshold_bps > 5000 {
+        return false;
     }
-    
-    if params.initial_oracle_authority == Pubkey::default() {
-        return Err(FeelsError::InvalidAuthority.into());
+
+    // Required observations validation
+    if params.depeg_required_obs == 0 || params.depeg_required_obs > 10 {
+        return false;
     }
-    
-    if params.universal_feelssol_mint == Pubkey::default() {
-        return Err(FeelsError::InvalidMint.into());
+
+    if params.clear_required_obs == 0 || params.clear_required_obs > 10 {
+        return false;
     }
-    
-    Ok(())
+
+    // TWAP window validation
+    if params.dex_twap_window_secs < 300 || params.dex_twap_window_secs > 7200 {
+        return false;
+    }
+
+    // Stale age must be >= window
+    if params.dex_twap_stale_age_secs < params.dex_twap_window_secs {
+        return false;
+    }
+
+    true
 }

@@ -45,7 +45,7 @@ impl MarketBuilder {
         self
     }
 
-    pub fn tick_spacing(mut self, _spacing: u16) -> Self {
+    pub fn tick_spacing(self, _spacing: u16) -> Self {
         // Tick spacing is determined by fee rate in the actual implementation
         // This is just for compatibility with tests
         self
@@ -85,14 +85,14 @@ impl MarketBuilder {
         if token_0 != feelssol_mint && token_1 != feelssol_mint {
             return Err("One of the tokens must be FeelsSOL for hub-and-spoke model".into());
         }
-        
+
         // Ensure proper ordering
         let (ordered_token_0, ordered_token_1) = if token_0 < token_1 {
             (token_0, token_1)
         } else {
             (token_1, token_0)
         };
-        
+
         // Verify FeelsSOL is token_0 after ordering
         if ordered_token_0 != feelssol_mint {
             return Err("FeelsSOL must be token_0 (lower pubkey) in hub-and-spoke model".into());
@@ -112,28 +112,38 @@ impl MarketBuilder {
         // Add liquidity positions if any
         if !self.liquidity_positions.is_empty() {
             let position_helper = self.ctx.position_helper();
-            
+
             for (provider, lower_tick, upper_tick, liquidity) in self.liquidity_positions {
                 // Fund the provider with tokens if needed
                 let market_state = self.ctx.get_account::<Market>(&market_id).await?.unwrap();
-                
+
                 // Calculate required token amounts (simplified - assumes 1:1 price)
                 let amount_0 = liquidity / 2;
                 let amount_1 = liquidity / 2;
-                
+
                 // Mint tokens to provider
                 let mint_authority = &self.ctx.accounts.market_creator;
-                self.ctx.mint_to(&market_state.token_0, &provider.pubkey(), mint_authority, amount_0 as u64).await?;
-                self.ctx.mint_to(&market_state.token_1, &provider.pubkey(), mint_authority, amount_1 as u64).await?;
-                
+                self.ctx
+                    .mint_to(
+                        &market_state.token_0,
+                        &provider.pubkey(),
+                        mint_authority,
+                        amount_0 as u64,
+                    )
+                    .await?;
+                self.ctx
+                    .mint_to(
+                        &market_state.token_1,
+                        &provider.pubkey(),
+                        mint_authority,
+                        amount_1 as u64,
+                    )
+                    .await?;
+
                 // Open position
-                position_helper.open_position(
-                    &market_id,
-                    &provider,
-                    lower_tick,
-                    upper_tick,
-                    liquidity,
-                ).await?;
+                position_helper
+                    .open_position(&market_id, &provider, lower_tick, upper_tick, liquidity)
+                    .await?;
             }
         }
 

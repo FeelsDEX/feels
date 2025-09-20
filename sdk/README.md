@@ -1,186 +1,79 @@
 # Feels Protocol SDK
 
-The Feels SDK provides a convenient interface for interacting with the Feels concentrated liquidity AMM protocol on Solana.
-
-## Features
-
-- **Client Interface**: High-level client for protocol interactions
-- **Hub-Constrained Router**: Automatic route finding through FeelsSOL hub token
-- **Instruction Builders**: Type-safe instruction construction with proper discriminators
-- **PDA Utilities**: Helper functions for deriving program addresses
-- **Error Handling**: Comprehensive error types for all SDK operations
-
-## Structure
-
-```
-sdk/
-├── src/
-│   ├── client.rs       # Main FeelsClient interface
-│   ├── config.rs       # SDK configuration
-│   ├── error.rs        # Error types
-│   ├── instructions.rs # Instruction builders
-│   ├── router.rs       # Hub-constrained router
-│   ├── swap_builder.rs # Swap instruction builder
-│   ├── testing.rs      # Test utilities
-│   ├── types.rs        # Common types
-│   └── utils.rs        # Utility functions
-└── examples/
-    ├── basic_usage.rs    # Simple SDK demonstration
-    ├── complete_flow.rs  # Comprehensive example
-    └── swap_usage.rs     # Swap-focused example
-```
+A modern, service-based Rust SDK for interacting with the Feels Protocol concentrated liquidity AMM on Solana.
 
 ## Installation
 
-Add to your `Cargo.toml`:
-
 ```toml
 [dependencies]
-feels-sdk = { path = "../path/to/feels-solana/sdk" }
+feels-sdk = "0.1.0"
 ```
+
+## Architecture
+
+The SDK is organized into four main modules:
+
+- **`core`** - Core types, constants, and errors
+- **`protocol`** - Protocol math, PDA derivation, and fee calculations  
+- **`instructions`** - Type-safe instruction builders
+- **`client`** - Service-based API for protocol interaction
 
 ## Quick Start
 
 ```rust
-use feels_sdk::{FeelsClient, SdkConfig};
-use solana_sdk::signature::Keypair;
+use feels_sdk::FeelsClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create client
-    let payer = Keypair::new();
-    let config = SdkConfig::localnet(payer);
-    let client = FeelsClient::new(config)?;
+    let client = FeelsClient::new("https://api.mainnet-beta.solana.com").await?;
     
-    // Enter FeelsSOL (deposit JitoSOL)
-    let sig = client.enter_feelssol(
-        &user_jitosol_account,
-        &user_feelssol_account,
-        &jitosol_mint,
-        &feelssol_mint,
-        1_000_000_000, // 1 JitoSOL
-    )?;
+    // Get market info
+    let market = client.market.get_market_by_tokens(&token_0, &token_1).await?;
     
-    println!("Transaction: {}", sig);
+    // Execute swap
+    let result = client.swap.swap_exact_in(
+        &signer,
+        market.address,
+        user_token_in,
+        user_token_out,
+        1_000_000,     // amount in
+        950_000,       // min amount out
+        Some(100),     // 1% slippage
+    ).await?;
+    
     Ok(())
 }
 ```
 
-## Hub-Constrained Routing
+## Services
 
-All swaps in Feels must route through the FeelsSOL hub token:
+### Market Service
+- Find markets by token pair
+- Get market state and oracle data
+- Query liquidity and pricing
 
-```rust
-use feels_sdk::{HubRouter, PoolInfo};
+### Swap Service  
+- Execute swaps (exact input/output)
+- Simulate swaps without execution
+- Estimate fees and find routes
 
-let mut router = HubRouter::new(feelssol_mint);
-
-// Add pool (must include FeelsSOL)
-router.add_pool(PoolInfo {
-    address: pool_address,
-    token_0: usdc_mint,
-    token_1: feelssol_mint,
-    fee_rate: 30, // 0.3%
-})?;
-
-// Find route
-let route = router.find_route(&usdc_mint, &sol_mint)?;
-match route {
-    Route::Direct { from, to } => {
-        println!("Direct: {} -> {}", from, to);
-    }
-    Route::TwoHop { from, intermediate, to } => {
-        println!("Two-hop: {} -> {} -> {}", from, intermediate, to);
-    }
-}
-```
-
-## Available Operations
-
-### Market Operations
-- `initialize_market` - Create new CLMM market
-- `swap` - Execute token swaps with tick arrays
-- `open_position` - Create liquidity position
-- `close_position` - Remove liquidity position
-- `collect_fees` - Harvest accumulated trading fees
-
-### Oracle Operations
-- `initialize_oracle` - Create price oracle for market
-- `observe_oracle` - Query historical price data
-
-### FeelsSOL Operations  
-- `enter_feelssol` - Deposit JitoSOL to mint FeelsSOL
-- `exit_feelssol` - Burn FeelsSOL to redeem JitoSOL
+### Liquidity Service
+- Enter/exit FeelsSOL
+- Open/close positions
+- Initialize new markets
 
 ## Examples
 
-### Basic Usage
+See the [`examples/`](examples/) directory for complete usage examples:
+- `basic_usage.rs` - Getting started with the SDK
+- `swap_flow.rs` - Complete swap execution flow
 
-```bash
-cargo run --example basic_usage
-```
+## Features
 
-Demonstrates:
-- SDK configuration
-- PDA derivation
-- Hub router setup
-- Basic route finding
-
-### Complete Flow
-
-```bash
-cargo run --example complete_flow
-```
-
-Comprehensive example showing:
-- Full client setup
-- Token configuration  
-- Advanced routing scenarios
-- Transaction examples (dry run)
-- Error handling patterns
-
-## PDA Derivation
-
-```rust
-use feels_sdk::{find_market_address, find_buffer_address};
-
-// Derive market PDA
-let (market, bump) = find_market_address(&token_0, &token_1);
-
-// Derive buffer PDA
-let (buffer, bump) = find_buffer_address(&market);
-
-// Sort tokens for consistent ordering
-let (sorted_0, sorted_1) = sort_tokens(token_0, token_1);
-```
-
-## Error Handling
-
-The SDK provides comprehensive error types:
-
-```rust
-match client.swap(...) {
-    Ok(sig) => println!("Success: {}", sig),
-    Err(SdkError::SlippageExceeded { expected, actual }) => {
-        println!("Slippage too high: {} vs {}", expected, actual);
-    }
-    Err(SdkError::InvalidRoute(msg)) => {
-        println!("Invalid route: {}", msg);
-    }
-    Err(e) => eprintln!("Error: {}", e),
-}
-```
-
-## Testing
-
-Run all tests:
-
-```bash
-cargo test -p feels-sdk
-```
-
-Run specific test module:
-
-```bash
-cargo test -p feels-sdk router
-```
+- Async-first design
+- Type-safe instruction building
+- Automatic PDA derivation with caching
+- Comprehensive error handling
+- Zero-copy account parsing
+- Service-oriented architecture

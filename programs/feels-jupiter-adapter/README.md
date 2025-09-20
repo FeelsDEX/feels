@@ -158,3 +158,67 @@ The adapter maintains compatibility with the core protocol:
 - Respects market pause states and validation
 - Integrates with protocol fee distribution
 - Supports all market configurations (tick spacing, fees, etc.)
+
+## Fee Account Handling
+
+**CRITICAL**: The adapter must provide correct fee accounts to prevent swap failures.
+
+### Protocol Treasury Account
+
+The protocol treasury must be an Associated Token Account (ATA) owned by `protocol_config.treasury`:
+
+1. The treasury pubkey is stored in the on-chain ProtocolConfig account
+2. For each output token, the treasury ATA is derived as:
+   ```rust
+   spl_associated_token_account::get_associated_token_address(
+       &protocol_config.treasury,
+       &output_mint
+   )
+   ```
+3. Swaps will fail with `InvalidAuthority` if the treasury account owner doesn't match
+
+### Creator Fee Accounts
+
+Creator fees only apply to protocol-minted tokens:
+
+1. Check if input token has a ProtocolToken registry entry
+2. If yes, creator fees go to `protocol_token.creator`'s ATA for output token
+3. Creator account can be `None` for non-protocol tokens
+
+### Initialization
+
+Before using the adapter in production, configure it with the correct treasury:
+
+```rust
+use feels_jupiter_adapter::config::{set_treasury, add_protocol_token};
+use solana_program::pubkey::Pubkey;
+use std::str::FromStr;
+
+// Set the protocol treasury (must match on-chain ProtocolConfig)
+let treasury = Pubkey::from_str("ACTUAL_TREASURY_PUBKEY").unwrap();
+feels_jupiter_adapter::config::set_treasury(treasury);
+
+// Register known protocol tokens for creator fees
+let protocol_token = Pubkey::from_str("PROTOCOL_TOKEN_MINT").unwrap();
+feels_jupiter_adapter::config::add_protocol_token(protocol_token);
+```
+
+### Jupiter Fee Override
+
+Jupiter can provide fee accounts via `quote_mint_to_referrer`:
+- If provided, these override the default treasury/creator derivations
+- Useful for custom fee routing or referral programs
+- Must still pass on-chain validation
+
+### Common Errors
+
+- **InvalidAuthority**: Treasury account owner ≠ protocol_config.treasury
+- **InvalidMint**: Treasury account mint ≠ output token mint
+- **Missing account**: Creator account not provided for protocol token
+
+### Testing Fee Handling
+
+The adapter includes tests to verify correct fee account generation:
+```bash
+cargo test test_fee_account_handling
+```

@@ -24,10 +24,11 @@ custom-heap = []
 custom-panic = []
 no-idl = []
 no-log-ix-name = []
+localnet = []
 
 [dependencies]
-anchor-lang = { version = "0.31.1", features = ["idl-build"] }
-anchor-spl = { version = "0.31.1", features = ["idl-build"] }
+anchor-lang = { version = "0.31.1" }
+anchor-spl = { version = "0.31.1" }
 solana-program = { version = "2.2.1" }
 borsh = { version = "0.10.3" }
 bytemuck = { version = "1.14" }
@@ -60,3 +61,5 @@ criterion = "0.5"
 static_assertions = "1.1"
 mpl-token-metadata = "5.0"
 hex = "0.4"
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }

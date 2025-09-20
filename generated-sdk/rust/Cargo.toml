@@ -1,0 +1,14 @@
+[package]
+name = "feels-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anchor-client = "0.31.1"
+anchor-lang = "0.31.1"
+solana-sdk = "2.3.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+cpi = ["anchor-lang/cpi"]

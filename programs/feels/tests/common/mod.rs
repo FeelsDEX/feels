@@ -10,6 +10,7 @@ pub mod environment;
 pub mod fixtures;
 pub mod helpers;
 pub mod jito;
+pub mod sdk_compat;
 pub mod time;
 pub mod tracing;
 #[macro_use]
@@ -26,7 +27,7 @@ pub use builders::MarketBuilder;
 pub use client::TestClient;
 pub use context::TestContext;
 pub use environment::{should_run_devnet_tests, should_run_localnet_tests, TestEnvironment};
-pub use helpers::SwapResult;
+pub use helpers::{MarketHelper, SwapHelper, SwapResult, TestMarketSetup};
 
 // Re-export assertion utilities
 pub use assertions::{
@@ -62,7 +63,8 @@ pub struct MarketInfo {
 }
 
 // SDK imports
-use feels_sdk as sdk;
+pub use sdk_compat::*;
+pub use sdk_compat::sdk;
 
 // Constants
 pub mod constants {
@@ -106,7 +108,8 @@ pub mod constants {
 
 // Utils module for test helpers
 pub mod utils {
-
+    use super::*;
+    
     // Re-export PDA derivation functions
     pub use feels::utils::seeds::{
         derive_buffer, derive_epoch_params, derive_market_authority, derive_oracle,
@@ -117,4 +120,7 @@ pub mod utils {
     pub use feels::utils::seeds::{
         derive_jitosol_vault, derive_mint_authority, derive_vault_authority,
     };
+    
+    // Re-export tick array utilities from sdk_compat
+    pub use super::sdk_compat::utils::{find_position_address, find_tick_array_address, get_tick_array_start_index};
 }

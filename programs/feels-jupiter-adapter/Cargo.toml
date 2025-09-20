@@ -21,6 +21,8 @@ default = []
 anchor-debug = []
 custom-heap = []
 custom-panic = []
+# Enable RPC client for config initialization (not for BPF)
+rpc-init = ["solana-client"]
 
 [dependencies]
 anchor-lang = "0.31.1"
@@ -34,9 +36,12 @@ spl-associated-token-account = "6.0"
 bytemuck = "1.14"
 rust_decimal = "1.0"
 ahash = "0.8"
+once_cell = "1.19"
 # Fix getrandom for BPF
 getrandom = { version = "0.2", features = ["custom"] }
 orca_whirlpools_core = { version = "2.0.0", default-features = false }
+feels-sdk = { path = "../../sdk" }
+solana-client = { version = "2.2.1", optional = true }
 
 [dev-dependencies]
 solana-sdk = "2.2.1"

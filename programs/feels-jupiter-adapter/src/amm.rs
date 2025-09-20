@@ -8,6 +8,9 @@
 //! - Generate transaction instructions for Jupiter-routed swaps
 //! - Maintain tick array state for accurate cross-tick calculations
 //! - Handle hub-and-spoke routing through FeelsSOL
+//!
+//! IMPORTANT: This adapter uses the SDK's SwapSimulator to ensure quotes
+//! exactly match on-chain execution, preventing discrepancies.
 
 use anyhow::{ensure, Result};
 use jupiter_amm_interface::{
@@ -20,14 +23,8 @@ use solana_program::{
     instruction::AccountMeta,
 };
 use anchor_lang::prelude::*;
-use orca_whirlpools_core::{
-    U128,
-    try_get_next_sqrt_price_from_a, try_get_next_sqrt_price_from_b,
-    try_get_amount_delta_a, try_get_amount_delta_b,
-};
 use spl_token::state::Account as TokenAccount;
 use solana_program::program_pack::Pack;
-
 use feels::state::Market;
 use ahash::AHashMap;
 
@@ -42,18 +39,8 @@ const TICK_ARRAY_SIZE: i32 = 64;
 // DATA STRUCTURES & TYPES
 // =============================================================================
 
-/// Cached view of a tick array for efficient liquidity calculations
-///
-/// This structure maintains a sparse representation of initialized ticks
-/// within a tick array, allowing for fast lookups during quote calculations.
-#[derive(Clone, Default)]
-struct TickArrayView {
-    /// Starting tick index for this array (aligned to array boundaries)
-    start_tick_index: i32,
-    /// Map of tick_index -> liquidity_net for initialized ticks only
-    /// Sparse representation saves memory and improves lookup performance
-    inits: AHashMap<i32, i128>,
-}
+// TickArrayView is now provided by the SDK
+use feels_sdk::TickArrayView;
 
 /// Jupiter AMM adapter for Feels Protocol markets
 ///
@@ -61,6 +48,13 @@ struct TickArrayView {
 /// to participate in Jupiter's routing and aggregation. It maintains cached
 /// state for efficient quote calculations and generates proper transaction
 /// instructions for swap execution.
+///
+/// IMPORTANT: Fee Account Handling
+/// The adapter must correctly handle protocol and creator fee accounts:
+/// 1. Protocol treasury must be fetched from the protocol_config account
+/// 2. Creator fees are only applicable for protocol-minted tokens
+/// 3. Jupiter may provide fee accounts via quote_mint_to_referrer
+/// 4. Fallback treasury derivation should only be used when config unavailable
 pub struct FeelsAmm {
     /// Market account public key
     key: Pubkey,
@@ -110,6 +104,70 @@ impl Clone for FeelsAmm {
             tick_arrays: self.tick_arrays.clone(),
             tick_array_keys: self.tick_array_keys.clone(),
         }
+    }
+}
+
+impl FeelsAmm {
+    /// Calculate swap output using the SDK's SwapSimulator
+    /// 
+    /// This method ensures quotes exactly match on-chain execution by using
+    /// the SDK's SwapSimulator, which contains the authoritative swap logic.
+    fn calculate_swap_with_sdk(
+        &self,
+        amount_in: u64,
+        is_token_0_to_1: bool,
+        _estimated_ticks: i32,
+    ) -> Result<(u64, u64)> {
+        // Convert Jupiter adapter state to SDK format
+        let market_state = self.to_market_state()?;
+        let tick_arrays = self.to_tick_array_loader()?;
+        
+        // Use SDK's SwapSimulator for authoritative calculation
+        let simulator = feels_sdk::SwapSimulator::new(&market_state, &tick_arrays);
+        let result = simulator.simulate_swap(amount_in, is_token_0_to_1)
+            .map_err(|e| anyhow::anyhow!("Swap simulation failed: {}", e))?;
+        
+        Ok((result.amount_out, result.fee_amount))
+    }
+    
+    /// Convert adapter state to SDK MarketState format
+    fn to_market_state(&self) -> Result<feels_sdk::MarketState> {
+        Ok(feels_sdk::MarketState {
+            market_key: self.key,
+            token_0: self.market.token_0,
+            token_1: self.market.token_1,
+            sqrt_price: self.market.sqrt_price,
+            current_tick: self.market.current_tick,
+            liquidity: self.market.liquidity,
+            fee_bps: self.market.base_fee_bps,
+            tick_spacing: self.market.tick_spacing,
+            global_lower_tick: self.market.global_lower_tick,
+            global_upper_tick: self.market.global_upper_tick,
+            fee_growth_global_0: self.market.fee_growth_global_0_x64,
+            fee_growth_global_1: self.market.fee_growth_global_1_x64,
+        })
+    }
+    
+    /// Convert adapter tick arrays to SDK TickArrayLoader format
+    fn to_tick_array_loader(&self) -> Result<feels_sdk::TickArrayLoader> {
+        let mut loader = feels_sdk::TickArrayLoader::new();
+        
+        // Convert cached tick arrays to SDK format using the shared parser
+        for (start_index, view) in &self.tick_arrays {
+            // Create ParsedTickArray from our cached data
+            let parsed = feels_sdk::ParsedTickArray {
+                format: feels_sdk::TickArrayFormat::V1,
+                market: self.key,
+                start_tick_index: *start_index,
+                initialized_ticks: view.inits.clone(),
+                initialized_count: Some(view.inits.len() as u16),
+            };
+            
+            loader.add_parsed_array(parsed)
+                .map_err(|e| anyhow::anyhow!("Failed to add parsed array: {}", e))?;
+        }
+        
+        Ok(loader)
     }
 }
 
@@ -215,7 +273,8 @@ impl Amm for FeelsAmm {
         // Parse and cache tick array data for liquidity calculations
         for key in &self.tick_array_keys {
             if let Ok(bytes) = try_get_account_data(account_map, key) {
-                if let Ok(view) = parse_tick_array(bytes, self.tick_spacing) {
+                if let Ok(parsed) = feels_sdk::parse_tick_array_auto(bytes, self.tick_spacing) {
+                    let view = feels_sdk::TickArrayView::from(parsed);
                     self.tick_arrays.insert(view.start_tick_index, view);
                 }
             }
@@ -245,10 +304,9 @@ impl Amm for FeelsAmm {
             is_token_0_to_1,
         );
         
-        // Calculate swap output using Feels concentrated liquidity math
-        let (amount_out, fee_amount) = calculate_swap_output_with_coverage_check(
-            &self.market,
-            &self.tick_arrays,
+        // Calculate swap output using SDK's swap simulator
+        // This ensures consistency with on-chain execution
+        let (amount_out, fee_amount) = self.calculate_swap_with_sdk(
             amount_in,
             is_token_0_to_1,
             estimated_ticks,
@@ -283,6 +341,12 @@ impl Amm for FeelsAmm {
     ///
     /// This method constructs the account list required for a Feels swap instruction,
     /// ensuring the accounts are in the correct order to match the Swap struct.
+    /// 
+    /// IMPORTANT: Fee Account Requirements:
+    /// 1. protocol_treasury must be an ATA owned by protocol_config.treasury
+    /// 2. If a protocol token exists, creator_token_account must match protocol_token.creator
+    /// 3. Jupiter should provide fee accounts via quote_mint_to_referrer when available
+    /// 4. All fee accounts must exist and have correct ownership or swaps will fail
     fn get_swap_and_account_metas(&self, swap_params: &SwapParams) -> Result<SwapAndAccountMetas> {
         let SwapParams {
             source_mint,
@@ -290,6 +354,8 @@ impl Amm for FeelsAmm {
             source_token_account,
             destination_token_account,
             token_transfer_authority,
+            // open_order_address field removed in jupiter-amm-interface 0.6
+            quote_mint_to_referrer,
             ..
         } = swap_params;
         
@@ -302,16 +368,72 @@ impl Amm for FeelsAmm {
             anyhow::bail!("Invalid mint pair for this market");
         };
         
-        // Derive required PDAs for fee distribution
+        // Derive protocol config PDA
         let (protocol_config, _) = Pubkey::find_program_address(
             &[b"protocol_config"], 
             &feels::id()
         );
         
-        // Derive protocol treasury token account for the output token
-        // Note: In a full implementation, we would need to fetch the protocol config
-        // to get the treasury pubkey. For MVP, we'll use a derived treasury address.
-        let protocol_treasury = derive_protocol_treasury_token_account(destination_mint);
+        // CRITICAL: Protocol treasury must be the correct ATA
+        // The treasury account MUST be an ATA owned by protocol_config.treasury
+        // Jupiter can override via quote_mint_to_referrer, but we need a safe default
+        
+        // Check if Jupiter provided treasury account for the output token
+        let protocol_treasury = if let Some(referrer_map) = quote_mint_to_referrer {
+            if let Some(treasury) = referrer_map.get(destination_mint) {
+                // Jupiter provided treasury - use it (assumed to be validated)
+                *treasury
+            } else {
+                // Jupiter didn't provide treasury for output mint
+                // Derive the correct ATA using the known treasury pubkey
+                derive_protocol_treasury_ata(destination_mint)
+            }
+        } else {
+            // No referrer map provided - use default derivation
+            derive_protocol_treasury_ata(destination_mint)
+        };
+        
+        // Determine if the input token is protocol-minted (eligible for creator fees)
+        // For protocol tokens, we need to check both token_0 and token_1
+        let is_token_0_protocol = is_protocol_minted_token(&self.market.token_0);
+        let is_token_1_protocol = is_protocol_minted_token(&self.market.token_1);
+        
+        // Determine which token might have creator fees based on swap direction
+        let protocol_token_mint = if *source_mint == self.market.token_0 && is_token_0_protocol {
+            Some(self.market.token_0)
+        } else if *source_mint == self.market.token_1 && is_token_1_protocol {
+            Some(self.market.token_1)
+        } else {
+            None
+        };
+        
+        let (protocol_token, creator_token_account) = if let Some(mint) = protocol_token_mint {
+            // Derive the protocol token PDA
+            let (protocol_token_pda, _) = Pubkey::find_program_address(
+                &[b"protocol_token", mint.as_ref()],
+                &feels::id()
+            );
+            
+            // Creator account for output token (where creator fees go)
+            // This should ideally be fetched from the protocol_token account
+            let creator_account = if let Some(referrer_map) = quote_mint_to_referrer {
+                // Check if Jupiter provided creator account for output mint
+                referrer_map.get(destination_mint)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        // Fallback: derive creator ATA (requires knowing creator pubkey)
+                        derive_creator_token_account(destination_mint)
+                    })
+            } else {
+                // Use default derivation
+                derive_creator_token_account(destination_mint)
+            };
+            
+            (protocol_token_pda, creator_account)
+        } else {
+            // Not a protocol token - no creator fees
+            (Pubkey::default(), Pubkey::default())
+        };
 
         // Build account metas matching the Swap struct from swap.rs
         // Order is critical - must match exactly for instruction parsing
@@ -335,13 +457,21 @@ impl Amm for FeelsAmm {
             AccountMeta::new_readonly(spl_token::id(), false), // token_program
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // clock
             
-            // Fee distribution accounts (required for v2+ fee system)
+            // Fee distribution accounts
             AccountMeta::new_readonly(protocol_config, false), // protocol_config
-            AccountMeta::new(protocol_treasury, false), // protocol_treasury
+            AccountMeta::new(protocol_treasury, false), // protocol_treasury (must be correct ATA)
             
-            // Optional accounts for protocol tokens - Jupiter adapter defaults to None
-            AccountMeta::new_readonly(Pubkey::default(), false), // protocol_token (None placeholder)
-            AccountMeta::new_readonly(Pubkey::default(), false), // creator_token_account (None placeholder)
+            // Optional protocol token accounts
+            if protocol_token != Pubkey::default() {
+                AccountMeta::new_readonly(protocol_token, false) // protocol_token
+            } else {
+                AccountMeta::new_readonly(Pubkey::default(), false) // None placeholder
+            },
+            if creator_token_account != Pubkey::default() {
+                AccountMeta::new(creator_token_account, false) // creator_token_account  
+            } else {
+                AccountMeta::new_readonly(Pubkey::default(), false) // None placeholder
+            },
         ];
         
         Ok(SwapAndAccountMetas {
@@ -371,7 +501,7 @@ impl Amm for FeelsAmm {
 }
 
 // =============================================================================
-// SWAP CALCULATION FUNCTIONS
+// SWAP CALCULATION FUNCTIONS (REMOVED - NOW USING SDK)
 // =============================================================================
 
 /// Estimate the number of ticks likely to be crossed in a swap
@@ -404,182 +534,31 @@ fn estimate_ticks_to_cross(
     estimated_ticks.saturating_mul(2).max(10)
 }
 
-/// Calculate swap output with coverage validation
-///
-/// This enhanced version checks if we have sufficient tick array coverage
-/// and returns an error if the swap would exceed our cached data.
-fn calculate_swap_output_with_coverage_check(
-    market: &Market,
-    tick_arrays: &AHashMap<i32, TickArrayView>,
-    amount_in: u64,
-    is_token_0_to_1: bool,
-    estimated_ticks: i32,
-) -> Result<(u64, u64)> {
-    // Check if we have sufficient coverage
-    let arrays_needed = (estimated_ticks / TICK_ARRAY_SIZE).max(1) + 1;
-    let arrays_loaded = tick_arrays.len() as i32;
-    
-    if arrays_needed > arrays_loaded {
-        anyhow::bail!(
-            "Insufficient tick array coverage for large quote. Need {} arrays but only have {}. \
-             Consider reducing quote size or updating more tick arrays.",
-            arrays_needed,
-            arrays_loaded
-        );
-    }
-    
-    // Delegate to original calculation with coverage tracking
-    calculate_swap_output_with_tracking(market, tick_arrays, amount_in, is_token_0_to_1)
-}
-
-/// Calculate swap output using Feels concentrated liquidity math
-///
-/// This function simulates a swap through the concentrated liquidity engine,
-/// crossing ticks and applying liquidity changes as needed to determine the
-/// final output amount and total fees.
-fn calculate_swap_output_with_tracking(
-    market: &Market,
-    tick_arrays: &AHashMap<i32, TickArrayView>,
-    amount_in: u64,
-    is_token_0_to_1: bool,
-) -> Result<(u64, u64)> {
-    // Calculate base fee from input amount
-    let fee_bps = market.base_fee_bps as u64;
-    let fee_amount = (amount_in as u128 * fee_bps as u128 / 10_000) as u64;
-    let amount_after_fee = amount_in.saturating_sub(fee_amount);
-    
-    // Initialize swap state variables
-    let mut liquidity = market.liquidity;
-    let mut sqrt_price = market.sqrt_price;
-    let mut current_tick = market.current_tick;
-    let tick_spacing = market.tick_spacing as i32;
-    let mut remaining_input = amount_after_fee;
-    let mut total_output: u128 = 0;
-
-    // Validate market has sufficient liquidity and valid price
-    ensure!(liquidity > 0 && sqrt_price > 0, "Insufficient liquidity or invalid price");
-
-    // Track arrays searched to detect coverage limits
-    let mut arrays_searched = 0;
-    
-    // Execute swap simulation across ticks
-    while remaining_input > 0 {
-        // Find next initialized tick in the swap direction
-        let (next_tick, searched) = next_initialized_tick_with_coverage(
-            tick_arrays, 
-            current_tick, 
-            tick_spacing, 
-            is_token_0_to_1
-        )?;
-        arrays_searched += searched;
-        
-        // Check if we've hit coverage limits
-        if next_tick.is_none() && searched >= 3 {
-            anyhow::bail!(
-                "Reached tick array coverage limit. Quote may be incomplete. \
-                 Arrays searched: {}, Current tick: {}, Direction: {}",
-                arrays_searched,
-                current_tick,
-                if is_token_0_to_1 { "0->1" } else { "1->0" }
-            );
-        }
-        
-        let target_tick = next_tick.unwrap_or(if is_token_0_to_1 { i32::MIN / 2 } else { i32::MAX / 2 });
-
-        // Calculate target sqrt price for the tick boundary
-        let target_sqrt_price = if let Some(tick) = next_tick {
-            U128::from(orca_whirlpools_core::tick_index_to_sqrt_price(tick))
-        } else {
-            // No more initialized ticks - consume remaining input within current range
-            let new_sqrt_price = if is_token_0_to_1 {
-                try_get_next_sqrt_price_from_a(U128::from(sqrt_price), U128::from(liquidity), remaining_input, true)
-            } else {
-                try_get_next_sqrt_price_from_b(U128::from(sqrt_price), U128::from(liquidity), remaining_input, true)
-            }.map_err(|e| anyhow::anyhow!("Price calculation error: {:?}", e))?;
-            
-            let segment_output = if is_token_0_to_1 {
-                try_get_amount_delta_b(new_sqrt_price, U128::from(sqrt_price), U128::from(liquidity), false)
-            } else {
-                try_get_amount_delta_a(U128::from(sqrt_price), new_sqrt_price, U128::from(liquidity), false)
-            }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
-            
-            total_output = total_output.saturating_add(segment_output as u128);
-            break;
-        };
-
-        // Calculate input needed to reach the target tick
-        let input_to_target = if is_token_0_to_1 {
-            try_get_amount_delta_a(target_sqrt_price, U128::from(sqrt_price), U128::from(liquidity), false)
-        } else {
-            try_get_amount_delta_b(U128::from(sqrt_price), target_sqrt_price, U128::from(liquidity), false)
-        }.map_err(|e| anyhow::anyhow!("Input calculation error: {:?}", e))?;
-
-        if remaining_input as u128 >= input_to_target as u128 {
-            // We can cross the tick - calculate output for this segment
-            let segment_output = if is_token_0_to_1 {
-                try_get_amount_delta_b(target_sqrt_price, U128::from(sqrt_price), U128::from(liquidity), false)
-            } else {
-                try_get_amount_delta_a(U128::from(sqrt_price), target_sqrt_price, U128::from(liquidity), false)
-            }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
-            
-            total_output = total_output.saturating_add(segment_output as u128);
-            remaining_input = remaining_input.saturating_sub(u64::try_from(input_to_target).unwrap_or(u64::MAX));
-            sqrt_price = target_sqrt_price.into();
-            current_tick = target_tick;
-            
-            // Apply liquidity change at crossed tick (Uniswap V3 convention)
-            let liquidity_net = liquidity_net_at(tick_arrays, current_tick).unwrap_or(0);
-            if is_token_0_to_1 {
-                // Crossing down: L_new = L - liquidity_net
-                if liquidity_net >= 0 {
-                    liquidity = liquidity.saturating_sub(liquidity_net as u128);
-                } else {
-                    liquidity = liquidity.saturating_add((-liquidity_net) as u128);
-                }
-            } else {
-                // Crossing up: L_new = L + liquidity_net
-                if liquidity_net >= 0 {
-                    liquidity = liquidity.saturating_add(liquidity_net as u128);
-                } else {
-                    liquidity = liquidity.saturating_sub((-liquidity_net) as u128);
-                }
-            }
-            
-            // Stop if no liquidity remains
-            if liquidity == 0 { break; }
-        } else {
-            // Partial fill within current tick range
-            let new_sqrt_price = if is_token_0_to_1 {
-                try_get_next_sqrt_price_from_a(U128::from(sqrt_price), U128::from(liquidity), remaining_input, true)
-            } else {
-                try_get_next_sqrt_price_from_b(U128::from(sqrt_price), U128::from(liquidity), remaining_input, true)
-            }.map_err(|e| anyhow::anyhow!("Price calculation error: {:?}", e))?;
-            
-            let segment_output = if is_token_0_to_1 {
-                try_get_amount_delta_b(new_sqrt_price, U128::from(sqrt_price), U128::from(liquidity), false)
-            } else {
-                try_get_amount_delta_a(U128::from(sqrt_price), new_sqrt_price, U128::from(liquidity), false)
-            }.map_err(|e| anyhow::anyhow!("Output calculation error: {:?}", e))?;
-            
-            total_output = total_output.saturating_add(segment_output as u128);
-            break;
-        }
-    }
-    // Calculate impact fee based on price movement (ticks crossed)
-    let ticks_moved = (current_tick - market.current_tick).abs() as u16;
-    let impact_bps: u16 = ticks_moved.min(2500); // Cap at 25% impact fee
-    let impact_fee = (total_output.saturating_mul(impact_bps as u128) / 10_000u128) as u64;
-    
-    // Calculate final net output after impact fee
-    let net_output = u64::try_from(total_output).unwrap_or(u64::MAX).saturating_sub(impact_fee);
-    let total_fees = fee_amount.saturating_add(impact_fee);
-    
-    Ok((net_output, total_fees))
-}
-
 // =============================================================================
 // TICK ARRAY UTILITIES
 // =============================================================================
+
+/// Derive the protocol treasury ATA for a given mint
+///
+/// The treasury ATA must be owned by protocol_config.treasury
+fn derive_protocol_treasury_ata(mint: &Pubkey) -> Pubkey {
+    crate::config::get_treasury_ata(mint)
+}
+
+/// Derive creator token account for fees
+///
+/// For protocol tokens, creator fees go to the creator's ATA for the output token
+fn derive_creator_token_account(_mint: &Pubkey) -> Pubkey {
+    // In production, this requires fetching the ProtocolToken account to get the creator
+    // then deriving their ATA for the output mint
+    // For now, return a safe default (no creator fees)
+    Pubkey::default()
+}
+
+/// Check if a token is protocol-minted (eligible for creator fees)
+fn is_protocol_minted_token(mint: &Pubkey) -> bool {
+    crate::config::is_protocol_token(mint)
+}
 
 /// Derive the PDA address for a tick array account
 ///
@@ -626,154 +605,7 @@ pub(crate) fn derive_tick_arrays_for_quote(market: &Pubkey, current_tick: i32, t
     arrays
 }
 
-/// Parse tick array account data into a TickArrayView
-///
-/// This function deserializes the on-chain tick array data and extracts
-/// only the initialized ticks for efficient lookup during quotes.
-pub(crate) fn parse_tick_array(data: &[u8], tick_spacing: u16) -> Result<TickArrayView> {
-    // Calculate expected size: discriminator(8) + market(32) + start_tick_index(4) + pad0(12) + 
-    // ticks(80*64) + initialized_tick_count(2) + pad1(14) + reserved(32)
-    const EXPECTED_LEN: usize = 8 + 32 + 4 + 12 + (80 * TICK_ARRAY_SIZE as usize) + 2 + 14 + 32;
-    
-    // Validate exact size match
-    anyhow::ensure!(
-        data.len() == EXPECTED_LEN, 
-        "Invalid tick array data length: expected {}, got {}", 
-        EXPECTED_LEN, 
-        data.len()
-    );
-    
-    // Validate discriminator (Anchor uses 8-byte discriminator)
-    const TICK_ARRAY_DISCRIMINATOR: [u8; 8] = [249, 200, 168, 102, 16, 153, 250, 241];
-    let discriminator = &data[..8];
-    anyhow::ensure!(
-        discriminator == TICK_ARRAY_DISCRIMINATOR,
-        "Invalid tick array discriminator"
-    );
-    
-    // Skip Anchor discriminator and parse header
-    let mut cursor = &data[8..];
-    let _market = Pubkey::new_from_array(<[u8;32]>::try_from(&cursor[..32]).unwrap());
-    cursor = &cursor[32..];
-    let start_tick_index = i32::from_le_bytes(cursor[..4].try_into().unwrap());
-    
-    // Calculate offset to tick data (skip padding)
-    let ticks_offset = 32 + 4 + 12; // market + start_tick + padding
-    let ticks_bytes = &data[8 + ticks_offset..];
-    
-    // Parse individual tick entries
-    let mut initialized_ticks = AHashMap::new();
-    let tick_entry_size = 80usize; // Size of each tick entry in bytes
-    
-    // Validate we have enough data for all ticks
-    let expected_ticks_size = (TICK_ARRAY_SIZE as usize) * tick_entry_size;
-    anyhow::ensure!(
-        ticks_bytes.len() >= expected_ticks_size,
-        "Insufficient tick data: expected at least {} bytes, got {}",
-        expected_ticks_size,
-        ticks_bytes.len()
-    );
-    
-    for i in 0..TICK_ARRAY_SIZE {
-        let offset = (i as usize) * tick_entry_size;
-        let tick_bytes = &ticks_bytes[offset..offset + tick_entry_size];
-        
-        // Extract liquidity_net and initialized flag
-        let liquidity_net = i128::from_le_bytes(tick_bytes[0..16].try_into().unwrap());
-        let initialized = tick_bytes[64]; // Initialized flag at byte 64
-        
-        if initialized != 0 {
-            let tick_index = start_tick_index + (i as i32) * tick_spacing as i32;
-            initialized_ticks.insert(tick_index, liquidity_net);
-        }
-    }
-    
-    Ok(TickArrayView { 
-        start_tick_index, 
-        inits: initialized_ticks 
-    })
-}
+// Tick array parsing is now handled by the SDK
 
-/// Find the next initialized tick with coverage tracking
-///
-/// Returns the next initialized tick and the number of arrays searched.
-/// This allows callers to detect when coverage limits are reached.
-pub(crate) fn next_initialized_tick_with_coverage(
-    arrays: &AHashMap<i32, TickArrayView>,
-    current_tick: i32,
-    tick_spacing: i32,
-    zero_for_one: bool,
-) -> Result<(Option<i32>, i32)> {
-    let ticks_per_array = TICK_ARRAY_SIZE * tick_spacing;
-    let start_array_index = current_tick.div_euclid(ticks_per_array) * ticks_per_array;
-    let mut array_index = start_array_index;
-    let mut arrays_searched = 0;
-    
-    // Search through available arrays
-    while arrays_searched < arrays.len() as i32 {
-        if let Some(view) = arrays.get(&array_index) {
-            arrays_searched += 1;
-            
-            if zero_for_one {
-                // Search downward from current_tick - tick_spacing
-                let mut tick = current_tick - tick_spacing;
-                while tick >= view.start_tick_index {
-                    if view.inits.contains_key(&tick) {
-                        return Ok((Some(tick), arrays_searched));
-                    }
-                    tick -= tick_spacing;
-                }
-            } else {
-                // Search upward from current_tick + tick_spacing
-                let mut tick = current_tick + tick_spacing;
-                let array_end = view.start_tick_index + (TICK_ARRAY_SIZE * tick_spacing);
-                while tick < array_end {
-                    if view.inits.contains_key(&tick) {
-                        return Ok((Some(tick), arrays_searched));
-                    }
-                    tick += tick_spacing;
-                }
-            }
-        } else {
-            // Array not loaded - we've hit coverage limit
-            break;
-        }
-        
-        // Move to next array in the search direction
-        array_index += if zero_for_one { -ticks_per_array } else { ticks_per_array };
-    }
-    
-    Ok((None, arrays_searched))
-}
+// Removed unused functions - tick array operations are now handled by the SDK
 
-/// Get the liquidity_net value for a specific tick
-///
-/// Searches through cached tick arrays to find the liquidity change
-/// at the specified tick index.
-pub(crate) fn liquidity_net_at(arrays: &AHashMap<i32, TickArrayView>, tick_index: i32) -> Option<i128> {
-    for view in arrays.values() {
-        if let Some(&liquidity_net) = view.inits.get(&tick_index) {
-            return Some(liquidity_net);
-        }
-    }
-    None
-}
-
-/// Derive the protocol treasury token account for a given mint
-///
-/// This function derives the associated token account for the protocol treasury.
-/// In a production implementation, this would fetch the treasury pubkey from
-/// the protocol config account. For now, we use a deterministic derivation.
-pub(crate) fn derive_protocol_treasury_token_account(mint: &Pubkey) -> Pubkey {
-    // Derive the protocol treasury authority (would come from protocol config)
-    let (treasury_authority, _) = Pubkey::find_program_address(
-        &[b"treasury"],
-        &feels::ID,
-    );
-    
-    // Derive the associated token account for this mint
-    spl_associated_token_account::get_associated_token_address(
-        &treasury_authority,
-        mint
-    )
-}

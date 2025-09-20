@@ -47,22 +47,25 @@ async fn test_graduated_drain_protection() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         let consumption_ratio = (test.rolling_consumption * 10_000) / test.per_slot_cap;
-        
+
         let throttle_factor = match consumption_ratio {
-            0..=5000 => 100,      // < 50% used
-            5001..=7500 => 50,    // 50-75% used
-            7501..=9000 => 20,    // 75-90% used
-            _ => 10,              // > 90% used
+            0..=5000 => 100,   // < 50% used
+            5001..=7500 => 50, // 50-75% used
+            7501..=9000 => 20, // 75-90% used
+            _ => 10,           // > 90% used
         };
-        
+
         assert_eq!(throttle_factor, test.expected_throttle_factor);
-        
+
         // Test actual allowance calculation
         let base_allowance = 100_000u128;
         let throttled_allowance = (base_allowance * throttle_factor as u128) / 100;
-        println!("  Base: {}, Throttled: {}", base_allowance, throttled_allowance);
+        println!(
+            "  Base: {}, Throttled: {}",
+            base_allowance, throttled_allowance
+        );
     }
 
     Ok(())
@@ -73,7 +76,7 @@ async fn test_rolling_window_reset() -> TestResult<()> {
     let _ctx = TestContext::new(TestEnvironment::in_memory()).await?;
 
     const ROLLING_WINDOW_SLOTS: u64 = 150;
-    
+
     struct WindowTest {
         current_slot: u64,
         window_start: u64,
@@ -110,10 +113,10 @@ async fn test_rolling_window_reset() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         let should_reset = test.current_slot > test.window_start + ROLLING_WINDOW_SLOTS;
         assert_eq!(should_reset, test.should_reset);
-        
+
         if should_reset {
             println!("  Resetting consumption counter and window start");
         }
@@ -127,24 +130,25 @@ async fn test_slot_based_concentration_shifts() -> TestResult<()> {
     let _ctx = TestContext::new(TestEnvironment::in_memory()).await?;
 
     const SHIFT_INTERVAL: u64 = 100;
-    
+
     // Test that concentration zones shift to prevent camping
     let slot_tests = vec![
-        (0, 0, "Initial state - no shift"),
-        (50, 0, "Within first interval"),
-        (100, -10, "First shift at interval boundary"),
-        (150, -5, "Midway through second interval"),
-        (200, 0, "Second shift cycles back"),
-        (1900, -10, "After many cycles"),
-        (2000, 0, "Full cycle return"),
+        (0, -10, "Initial state - starts at -10"),
+        (50, -10, "Within first interval"),
+        (100, -9, "First shift at interval boundary"),
+        (150, -9, "Still in second interval"),
+        (200, -8, "Second shift continues"),
+        (1000, 0, "Cycles to center (10 cycles)"),
+        (1900, 9, "Near max shift"),
+        (2000, -10, "Full cycle return (20 cycles)"),
     ];
 
     for (slot, expected_shift, description) in slot_tests {
         println!("Slot {}: {}", slot, description);
-        
+
         let shift_cycles = slot / SHIFT_INTERVAL;
         let shift_amount = ((shift_cycles % 20) as i32).saturating_sub(10);
-        
+
         println!("  Cycles: {}, Shift: {}", shift_cycles, shift_amount);
         assert_eq!(shift_amount, expected_shift);
     }
@@ -171,7 +175,7 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
         ConcentrationTest {
             current_tick: 1000,
             target_tick: 1000,
-            slot: 0,
+            slot: 1000, // slot 1000 gives shift 0
             concentration_width: 10,
             max_multiplier: 10,
             expected_multiplier: 10,
@@ -180,7 +184,7 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
         ConcentrationTest {
             current_tick: 1000,
             target_tick: 1005,
-            slot: 0,
+            slot: 1000, // slot 1000 gives shift_amount = 0
             concentration_width: 10,
             max_multiplier: 10,
             expected_multiplier: 10,
@@ -189,7 +193,7 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
         ConcentrationTest {
             current_tick: 1000,
             target_tick: 1015,
-            slot: 0,
+            slot: 1000, // slot 1000 gives shift 0
             concentration_width: 10,
             max_multiplier: 10,
             expected_multiplier: 5,
@@ -197,8 +201,8 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
         },
         ConcentrationTest {
             current_tick: 1000,
-            target_tick: 1050,
-            slot: 0,
+            target_tick: 1030,
+            slot: 1000, // slot 1000 gives shift 0
             concentration_width: 10,
             max_multiplier: 10,
             expected_multiplier: 2,
@@ -207,7 +211,7 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
         ConcentrationTest {
             current_tick: 1000,
             target_tick: 1100,
-            slot: 0,
+            slot: 1000, // slot 1000 gives shift 0
             concentration_width: 10,
             max_multiplier: 10,
             expected_multiplier: 1,
@@ -217,25 +221,35 @@ async fn test_concentration_multiplier_with_shift() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         // Calculate shift based on slot
         let shift_cycles = test.slot / 100;
         let shift_amount = ((shift_cycles % 20) as i32).saturating_sub(10);
-        
-        // Calculate adjusted distance
-        let adjusted_distance = test.target_tick
-            .saturating_sub(test.current_tick)
-            .saturating_sub(shift_amount)
-            .abs() as u32;
-        
+
+        // Apply shift to the center point, not the distance
+        let shifted_center = test.current_tick.saturating_add(shift_amount);
+        let adjusted_distance = test.target_tick.saturating_sub(shifted_center).abs() as u32;
+
+        println!(
+            "  Slot: {}, Shift cycles: {}, Shift amount: {}",
+            test.slot, shift_cycles, shift_amount
+        );
+        println!(
+            "  Current tick: {}, Target tick: {}, Shifted center: {}",
+            test.current_tick, test.target_tick, shifted_center
+        );
+
         let multiplier = match adjusted_distance {
             d if d <= test.concentration_width => test.max_multiplier,
             d if d <= test.concentration_width * 2 => test.max_multiplier / 2,
             d if d <= test.concentration_width * 4 => test.max_multiplier / 5,
             _ => 1,
         };
-        
-        println!("  Distance: {}, Multiplier: {}x", adjusted_distance, multiplier);
+
+        println!(
+            "  Distance: {}, Multiplier: {}x",
+            adjusted_distance, multiplier
+        );
         assert_eq!(multiplier, test.expected_multiplier);
     }
 
@@ -293,15 +307,15 @@ async fn test_asymmetric_directional_caps() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         let buy_pressure = (test.buy_volume * 100 / test.total_volume) as u16;
-        
+
         let cap = match (test.is_buy, buy_pressure) {
             (true, bp) if bp > 70 => test.base_cap_bps / 2,
             (false, bp) if bp < 30 => test.base_cap_bps / 2,
             _ => test.base_cap_bps,
         };
-        
+
         println!("  Buy pressure: {}%, Cap: {} bps", buy_pressure, cap);
         assert_eq!(cap, test.expected_cap_bps);
     }
@@ -324,7 +338,7 @@ async fn test_tick_distance_impact_penalty() -> TestResult<()> {
 
     for (tick_movement, expected_factor, description) in penalty_tests {
         println!("Move {} ticks: {}", tick_movement, description);
-        
+
         let penalty_factor = match tick_movement {
             0..=10 => 100,
             11..=50 => 70,
@@ -332,9 +346,9 @@ async fn test_tick_distance_impact_penalty() -> TestResult<()> {
             101..=200 => 20,
             _ => 10,
         };
-        
+
         assert_eq!(penalty_factor, expected_factor);
-        
+
         // Apply to allowance
         let base_allowance = 1_000_000u128;
         let penalized = base_allowance * penalty_factor as u128 / 100;
@@ -391,18 +405,21 @@ async fn test_circuit_breaker_activation() -> TestResult<()> {
 
     for test in tests {
         println!("Test: {}", test.description);
-        
+
         // Check buffer health
         let buffer_health_bps = (test.tau_spot * 10_000 / test.initial_tau_spot) as u16;
         let health_triggered = buffer_health_bps < test.threshold_bps;
-        
+
         // Check price movement
         let price_movement = (test.current_tick - test.tick_1hr_ago).abs();
         let movement_triggered = price_movement > 1000; // ~10%
-        
+
         let should_activate = health_triggered || movement_triggered;
-        
-        println!("  Health: {} bps, Movement: {} ticks", buffer_health_bps, price_movement);
+
+        println!(
+            "  Health: {} bps, Movement: {} ticks",
+            buffer_health_bps, price_movement
+        );
         assert_eq!(should_activate, test.should_activate);
     }
 
@@ -415,16 +432,16 @@ async fn test_combined_attack_mitigation() -> TestResult<()> {
 
     // Test multiple safety layers working together
     println!("Simulating coordinated drain attack...");
-    
+
     // Attack parameters
     let mut rolling_consumption = 0u128;
     let per_slot_cap = 1_000_000u128;
     let base_allowance = 100_000u128;
-    
+
     // Simulate 10 rapid trades
     for i in 0..10 {
         println!("\nTrade #{}", i + 1);
-        
+
         // Calculate throttle based on consumption
         let consumption_ratio = (rolling_consumption * 10_000) / per_slot_cap;
         let throttle_factor = match consumption_ratio {
@@ -433,34 +450,43 @@ async fn test_combined_attack_mitigation() -> TestResult<()> {
             7501..=9000 => 20,
             _ => 10,
         };
-        
+
         // Apply concentration (distance 0 = 10x)
         let concentration_multiplier = 10u128;
-        
+
         // Calculate allowed amount
         let mut allowed = base_allowance * throttle_factor as u128 / 100;
         allowed = allowed * concentration_multiplier;
-        
+
         // But also apply per-swap cap
         let max_per_swap = 30_000u128; // 3% of buffer
         allowed = allowed.min(max_per_swap);
-        
+
         println!("  Consumption: {}%", consumption_ratio / 100);
         println!("  Throttle: {}%", throttle_factor);
         println!("  Allowed: {}", allowed);
-        
+
         // Update consumption
         rolling_consumption += allowed;
-        
+
         // Check if we're being throttled effectively
         if i >= 5 {
-            assert!(allowed < base_allowance, "Should be throttled after many trades");
+            assert!(
+                allowed < base_allowance,
+                "Should be throttled after many trades"
+            );
         }
     }
-    
+
     // Verify attack was mitigated
-    assert!(rolling_consumption < per_slot_cap, "Attack should not drain full slot cap");
-    println!("\nAttack mitigated - only {} of {} consumed", rolling_consumption, per_slot_cap);
+    assert!(
+        rolling_consumption < per_slot_cap,
+        "Attack should not drain full slot cap"
+    );
+    println!(
+        "\nAttack mitigated - only {} of {} consumed",
+        rolling_consumption, per_slot_cap
+    );
 
     Ok(())
 }

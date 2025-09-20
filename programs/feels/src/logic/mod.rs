@@ -9,6 +9,7 @@ pub mod jit;
 pub mod liquidity_math;
 pub mod pomm;
 pub mod position_fees;
+pub mod swap_common;
 
 pub use engine::*;
 pub use fees::*;
@@ -17,6 +18,7 @@ pub use jit::*;
 pub use liquidity_math::*;
 pub use pomm::*;
 pub use position_fees::*;
+pub use swap_common::*;
 
 // Re-export specific types that might not be caught by glob exports
 pub use engine::{StepOutcome, SwapContext, SwapDirection};

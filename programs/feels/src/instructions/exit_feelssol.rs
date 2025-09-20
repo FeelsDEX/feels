@@ -4,7 +4,7 @@ use crate::{
     constants::{FEELS_HUB_SEED, JITOSOL_VAULT_SEED, VAULT_AUTHORITY_SEED},
     error::FeelsError,
     events::FeelsSOLBurned,
-    state::{FeelsHub, ProtocolConfig, SafetyController, ProtocolOracle},
+    state::{FeelsHub, ProtocolConfig, ProtocolOracle, SafetyController},
     utils::{burn_from_user, transfer_from_vault_to_user, validate_amount},
 };
 use anchor_lang::prelude::*;

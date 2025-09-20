@@ -2,11 +2,7 @@
 //!
 //! Manages the lifecycle of markets through different phases
 
-use crate::{
-    error::FeelsError,
-    events::MarketPhaseTransitioned,
-    state::*,
-};
+use crate::{error::FeelsError, events::MarketPhaseTransitioned, state::*};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -25,12 +21,12 @@ pub struct TransitionMarketPhase<'info> {
         constraint = protocol_config.key() == market.hub_protocol.unwrap_or_default() @ FeelsError::InvalidProtocol,
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
-    
+
     #[account(
         constraint = oracle.key() == market.oracle @ FeelsError::InvalidOracle,
     )]
     pub oracle: Account<'info, OracleState>,
-    
+
     #[account(
         mut,
         constraint = buffer.key() == market.buffer @ FeelsError::InvalidBuffer,
@@ -53,7 +49,7 @@ pub fn transition_market_phase(
     let market = &mut ctx.accounts.market;
     let _oracle = &ctx.accounts.oracle;
     let _buffer = &ctx.accounts.buffer;
-    
+
     let clock = Clock::get()?;
     let current_slot = clock.slot;
     let current_timestamp = clock.unix_timestamp;
@@ -80,11 +76,15 @@ pub fn transition_market_phase(
         match params.target_phase {
             MarketPhase::SteadyState => {
                 // Check if bonding curve graduation criteria met
-                if market.total_volume_token_0 + market.total_volume_token_1 >= GRADUATION_VOLUME_THRESHOLD {
+                if market.total_volume_token_0 + market.total_volume_token_1
+                    >= GRADUATION_VOLUME_THRESHOLD
+                {
                     PhaseTrigger::VolumeThreshold
                 } else if market.liquidity >= GRADUATION_LIQUIDITY_THRESHOLD {
                     PhaseTrigger::LiquidityThreshold
-                } else if current_timestamp - market.phase_start_timestamp >= GRADUATION_TIME_THRESHOLD {
+                } else if current_timestamp - market.phase_start_timestamp
+                    >= GRADUATION_TIME_THRESHOLD
+                {
                     PhaseTrigger::TimeElapsed
                 } else if params.force {
                     PhaseTrigger::Governance
@@ -120,32 +120,32 @@ pub fn transition_market_phase(
             market.steady_state_seeded = false;
             market.cleanup_complete = false;
         }
-        
+
         (MarketPhase::BondingCurve, MarketPhase::Transitioning) => {
             // Start transition to AMM
             // This is where we'd start moving liquidity from bonding curve to AMM
         }
-        
+
         (MarketPhase::Transitioning, MarketPhase::SteadyState) => {
             // Complete transition
             market.steady_state_seeded = true;
         }
-        
+
         (MarketPhase::SteadyState, MarketPhase::Graduated) => {
             // Cleanup bonding curve
             market.cleanup_complete = true;
         }
-        
+
         (_, MarketPhase::Paused) => {
             // Pause trading
             market.is_paused = true;
         }
-        
+
         (MarketPhase::Paused, _) => {
             // Unpause trading
             market.is_paused = false;
         }
-        
+
         _ => {
             // Other transitions don't require special handling
         }

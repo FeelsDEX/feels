@@ -12,8 +12,9 @@ default:
     @echo "Build & Deploy:"
     @echo "  just build         - Build the protocol with Anchor"
     @echo "  just nix-build     - Build with Nix BPF builder"
-    @echo "  just deploy        - Deploy to local devnet"
-    @echo "  just deploy-devnet - Deploy to Solana devnet"
+    @echo "  just check-env     - Check environment configuration"
+    @echo "  just deploy        - Deploy to local devnet (uses .env PROGRAM_AUTHORITY)"
+    @echo "  just deploy-devnet - Deploy to Solana devnet (uses .env PROGRAM_AUTHORITY)"
     @echo ""
     @echo "Development:"
     @echo "  just clean         - Clean build artifacts"
@@ -27,15 +28,40 @@ default:
     @echo "  just generate-clients - Generate TypeScript & Rust clients from existing IDL"
     @echo ""
     @echo "Testing:"
-    @echo "  just test          - Run all tests"
+    @echo "  just test          - Run all in-memory tests"
+    @echo "  just test-all      - Run ALL tests (in-memory + devnet + localnet)"
     @echo "  just test-unit     - Run unit tests only"
     @echo "  just test-integration - Run integration tests only"
     @echo "  just test-e2e      - Run end-to-end tests only"
     @echo "  just test-property - Run property-based tests only"
+    @echo "  just test-devnet   - Run devnet tests only"
+    @echo "  just test-localnet - Run all localnet tests with full setup"
+    @echo "  just test-localnet-only - Run localnet tests (validator must be running)"
+    @echo "  just setup-localnet - Setup localnet environment for testing"
+    @echo "  just stop-localnet - Stop the localnet validator"
+    @echo "  just localnet-logs - View localnet validator logs"
     @echo ""
     @echo "SDK Generation:"
     @echo "  just generate-sdk  - Generate client SDK (TypeScript & Rust)"
     @echo "  just generate-sdk-with-id ID - Generate SDK with custom program ID"
+    @echo ""
+    @echo "Frontend Application:"
+    @echo "  just app-install   - Install Next.js app dependencies"
+    @echo "  just app-dev       - Start Next.js development server"
+    @echo "  just app-dev-indexer - Start Next.js app with indexer integration"
+    @echo "  just app-dev-with-indexer - Full setup with indexer integration"
+    @echo "  just app-build     - Build Next.js app for production"
+    @echo "  just app-start     - Start production Next.js server"
+    @echo "  just app-lint      - Lint the Next.js application"
+    @echo "  just app-test      - Run Next.js app tests"
+    @echo "  just app-clean     - Clean Next.js build artifacts"
+    @echo ""
+    @echo "Complete E2E Development:"
+    @echo "  just dev-e2e       - Start complete environment (node+streaming+indexer+app)"
+    @echo "  just dev-e2e-simple - Quick E2E startup without full monitoring"
+    @echo "  just dev-e2e-status - Check status of all E2E services"
+    @echo "  just dev-e2e-stop  - Stop all E2E services"
+    @echo "  just dev-e2e-logs [SERVICE] - View logs (validator|streaming-adapter|indexer|app)"
     @echo ""
     @echo "Solana Tools:"
     @echo "  just airdrop [AMT] - Airdrop SOL to wallet (default: 10)"
@@ -64,6 +90,39 @@ clean:
     rm -rf target/
     rm -rf .anchor/
 
+# Check environment configuration
+check-env:
+    #!/usr/bin/env bash
+    echo "Checking environment configuration..."
+    if [ -f .env ]; then
+        echo "[OK] .env file found"
+        export $(grep -v '^#' .env | xargs)
+        if [ -n "$PROGRAM_AUTHORITY" ]; then
+            echo "[OK] PROGRAM_AUTHORITY set to: $PROGRAM_AUTHORITY"
+            # Check if we can find the corresponding keypair
+            found_keypair=false
+            for keypair in ~/.config/solana/id.json keypairs/*.json; do
+                if [ -f "$keypair" ]; then
+                    pubkey=$(solana-keygen pubkey "$keypair" 2>/dev/null || true)
+                    if [ "$pubkey" = "$PROGRAM_AUTHORITY" ]; then
+                        echo "[OK] Found matching keypair at: $keypair"
+                        found_keypair=true
+                        break
+                    fi
+                fi
+            done
+            if [ "$found_keypair" = false ]; then
+                echo "[WARNING] Could not find keypair for authority $PROGRAM_AUTHORITY"
+                echo "   Make sure the keypair is available when deploying"
+            fi
+        else
+            echo "[WARNING] PROGRAM_AUTHORITY not set in .env file"
+        fi
+    else
+        echo "[WARNING] No .env file found"
+        echo "   Create a .env file with: PROGRAM_AUTHORITY=<your-authority-pubkey>"
+    fi
+
 # Start local development network
 local-devnet:
     @echo "Starting local development network..."
@@ -71,12 +130,52 @@ local-devnet:
 
 # Deploy to local devnet
 deploy:
-    @echo "Deploying to local devnet..."
+    #!/usr/bin/env bash
+    echo "Deploying to local devnet..."
+    # Load environment variables from .env if it exists
+    if [ -f .env ]; then
+        echo "Loading environment from .env..."
+        export $(grep -v '^#' .env | xargs)
+    fi
+    if [ -n "$PROGRAM_AUTHORITY" ]; then
+        echo "Using program authority: $PROGRAM_AUTHORITY"
+        # Check for authority keypair
+        for keypair in ~/.config/solana/id.json keypairs/*.json; do
+            if [ -f "$keypair" ]; then
+                pubkey=$(nix develop --command solana-keygen pubkey "$keypair" 2>/dev/null || true)
+                if [ "$pubkey" = "$PROGRAM_AUTHORITY" ]; then
+                    echo "Found authority keypair at: $keypair"
+                    export ANCHOR_WALLET="$keypair"
+                    break
+                fi
+            fi
+        done
+    fi
     nix develop --command anchor deploy --provider.cluster localnet
 
 # Deploy to Solana devnet
 deploy-devnet:
-    @echo "Deploying to Solana devnet..."
+    #!/usr/bin/env bash
+    echo "Deploying to Solana devnet..."
+    # Load environment variables from .env if it exists
+    if [ -f .env ]; then
+        echo "Loading environment from .env..."
+        export $(grep -v '^#' .env | xargs)
+    fi
+    if [ -n "$PROGRAM_AUTHORITY" ]; then
+        echo "Using program authority: $PROGRAM_AUTHORITY"
+        # Check for authority keypair
+        for keypair in ~/.config/solana/id.json keypairs/*.json; do
+            if [ -f "$keypair" ]; then
+                pubkey=$(nix develop --command solana-keygen pubkey "$keypair" 2>/dev/null || true)
+                if [ "$pubkey" = "$PROGRAM_AUTHORITY" ]; then
+                    echo "Found authority keypair at: $keypair"
+                    export ANCHOR_WALLET="$keypair"
+                    break
+                fi
+            fi
+        done
+    fi
     nix develop --command anchor deploy --provider.cluster devnet
 
 # Generate IDL files
@@ -201,11 +300,103 @@ balance:
 test:
     @just all
 
+# Run all tests including devnet and localnet (alias to imported command)
+test-all-full: test-all
+
+# Run devnet tests only
+test-devnet:
+    @just devnet
+
 # Backward compatibility aliases
 test-unit: unit
 test-integration: integration
 test-property: property
 test-e2e: e2e
+
+# Setup localnet for testing
+setup-localnet:
+    @echo "Setting up localnet for tests..."
+    @mkdir -p logs keypairs test-ledger
+    @echo ""
+    @echo "Checking if validator is running..."
+    @if nix develop --command solana cluster-version 2>/dev/null | grep -q "Feature Set"; then \
+        echo "[OK] Localnet validator is already running"; \
+    else \
+        echo "Starting localnet validator..."; \
+        nix develop --command solana-test-validator \
+            --ledger test-ledger \
+            --rpc-port 8899 \
+            --faucet-port 9900 \
+            --quiet \
+            --reset \
+            > logs/validator.log 2>&1 & \
+        echo "Waiting for validator to start..."; \
+        sleep 5; \
+        while ! nix develop --command solana cluster-version >/dev/null 2>&1; do \
+            echo -n "."; \
+            sleep 1; \
+        done; \
+        echo ""; \
+        echo "[OK] Validator started"; \
+    fi
+    @echo ""
+    @echo "Setting up test authority..."
+    @if [ ! -f keypairs/test-authority.json ]; then \
+        nix develop --command solana-keygen new -o keypairs/test-authority.json --no-bip39-passphrase --force; \
+    fi
+    @echo "Setting up payer for tests..."
+    @if [ ! -f keypairs/payer.json ]; then \
+        nix develop --command solana-keygen new -o keypairs/payer.json --no-bip39-passphrase --force; \
+    fi
+    @export ANCHOR_WALLET=keypairs/test-authority.json && \
+        echo "Test authority: $$(nix develop --command solana address -k keypairs/test-authority.json)" && \
+        nix develop --command solana airdrop 100 -k keypairs/test-authority.json --url http://localhost:8899 >/dev/null 2>&1 || true
+    @echo "Funding payer: $$(nix develop --command solana address -k keypairs/payer.json)"
+    @nix develop --command solana airdrop 10 -k keypairs/payer.json --url http://localhost:8899 >/dev/null 2>&1 || true
+    @echo "[OK] Test environment ready"
+
+# Run all tests that require localnet (with setup)
+test-localnet: setup-localnet build deploy
+    @echo ""
+    @echo "Running localnet tests..."
+    @echo "This will run:"
+    @echo "  - Integration tests with localnet (including oracle safety tests)"
+    @echo "  - Exact output swap tests" 
+    @echo "  - SDK tests against localnet"
+    @echo ""
+    @echo "Running localnet integration tests (including oracle safety)..."
+    @export ANCHOR_WALLET=keypairs/test-authority.json && \
+        export ANCHOR_PROVIDER_URL=http://localhost:8899 && \
+        export DISABLE_AIRDROP_RATE_LIMIT=1 && \
+        RUN_LOCALNET_TESTS=1 nix develop --command cargo test -p feels -- --test-threads=1 --nocapture --ignored
+    @echo ""
+    @echo "Running SDK localnet tests..."
+    @export ANCHOR_WALLET=keypairs/test-authority.json && \
+        export ANCHOR_PROVIDER_URL=http://localhost:8899 && \
+        RUN_LOCALNET_TESTS=1 nix develop --command cargo test -p feels-sdk -- --test-threads=1
+    @echo ""
+    @echo "Localnet tests complete!"
+
+# Run localnet tests without setup (assumes validator is running)
+test-localnet-only:
+    @echo "Running localnet tests (assuming validator is already running)..."
+    @export ANCHOR_WALLET=keypairs/test-authority.json && \
+        export ANCHOR_PROVIDER_URL=http://localhost:8899 && \
+        RUN_LOCALNET_TESTS=1 nix develop --command cargo test -- --test-threads=1
+
+# Stop localnet validator
+stop-localnet:
+    @echo "Stopping localnet validator..."
+    @pkill -f solana-test-validator || true
+    @echo "Localnet stopped"
+    
+# View localnet logs
+localnet-logs:
+    @if [ -f logs/validator.log ]; then \
+        tail -f logs/validator.log; \
+    else \
+        echo "No validator logs found. Start localnet first with 'just setup-localnet' or 'just test-localnet'"; \
+    fi
 
 # Reset local development environment
 reset:
@@ -308,3 +499,105 @@ generate-sdk-with-id PROGRAM_ID:
     @echo "For Rust clients, add to Cargo.toml:"
     @echo "  anchor-client = \"0.31.1\""
     @echo "  feels-sdk = { path = \"../sdk\" }"
+# =============================================================================
+# Frontend Application Commands
+# =============================================================================
+
+# Install Next.js app dependencies
+app-install:
+	@echo "Installing Next.js app dependencies..."
+	cd feels-app && npm install
+
+# Start Next.js development server
+app-dev:
+	@echo "Starting Next.js development server..."
+	@echo "App will be available at http://localhost:3000"
+	cd feels-app && npm run dev
+
+# Build Next.js app for production
+app-build:
+	@echo "Building Next.js app for production..."
+	cd feels-app && npm run build
+
+# Start production Next.js server
+app-start: app-build
+	@echo "Starting production Next.js server..."
+	@echo "App will be available at http://localhost:3000"
+	cd feels-app && npm run start
+
+# Lint the Next.js application
+app-lint:
+	@echo "Linting Next.js application..."
+	cd feels-app && npm run lint
+
+# Type check the Next.js application
+app-type-check:
+	@echo "Type checking Next.js application..."
+	cd feels-app && npm run type-check
+
+# Format the Next.js application code
+app-format:
+	@echo "Formatting Next.js application code..."
+	cd feels-app && npm run format
+
+# Run Next.js app tests (placeholder - add when tests are implemented)
+app-test:
+	@echo "Running Next.js app tests..."
+	@echo "Note: Tests not yet implemented. Add test scripts to app/package.json"
+	cd feels-app && npm run type-check
+
+# Clean Next.js build artifacts
+app-clean:
+	@echo "Cleaning Next.js build artifacts..."
+	cd feels-app && rm -rf .next node_modules/.cache
+
+# Full app setup: install dependencies and start development server
+app-setup: app-install
+	@echo "Next.js app setup complete!"
+	@echo "Run 'just app-dev' to start the development server"
+
+# Build app with fresh dependencies
+app-fresh: app-clean app-install app-build
+	@echo "Fresh Next.js app build complete!"
+
+# Development workflow: generate SDK, install deps, and start dev server
+app-dev-full: generate-sdk app-install app-dev
+	@echo "Full development environment ready!"
+
+# Start Next.js app with indexer integration
+app-dev-indexer:
+	@echo "Starting Next.js app with indexer integration..."
+	@echo "App will connect to indexer at http://localhost:8080"
+	cd feels-app && npm run dev:indexer
+
+# Full development setup with indexer
+app-dev-with-indexer: generate-sdk app-install
+	@echo "Starting full development environment with indexer..."
+	@echo "Make sure the indexer is running on http://localhost:8080"
+	cd feels-app && npm run dev:indexer
+
+# =============================================================================
+# Complete E2E Local Development Environment
+# =============================================================================
+
+# Start complete E2E development environment (node + streaming + indexer + app)
+dev-e2e:
+	@just -f e2e/justfile run
+
+# Start development environment with monitoring
+dev-e2e-monitor: dev-e2e
+
+# Quick E2E setup without full monitoring
+dev-e2e-simple: dev-e2e
+
+# Stop all E2E services
+dev-e2e-stop:
+	@just -f e2e/justfile stop
+
+# Show status of E2E services
+dev-e2e-status:
+	@just -f e2e/justfile status
+
+# View logs from E2E services
+dev-e2e-logs SERVICE="all":
+	@just -f e2e/justfile logs {{SERVICE}}

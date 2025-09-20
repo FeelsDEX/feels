@@ -12,6 +12,7 @@ pub enum TestEnvironment {
     Devnet {
         url: String,
         payer_path: Option<String>,
+        disable_airdrop_rate_limit: bool,
     },
 
     /// Testing against localnet
@@ -32,6 +33,16 @@ impl TestEnvironment {
         TestEnvironment::Devnet {
             url: "https://api.devnet.solana.com".to_string(),
             payer_path: None,
+            disable_airdrop_rate_limit: std::env::var("DISABLE_AIRDROP_RATE_LIMIT").is_ok(),
+        }
+    }
+
+    /// Create devnet test environment with airdrop rate limit disabled
+    pub fn devnet_no_rate_limit() -> Self {
+        TestEnvironment::Devnet {
+            url: "https://api.devnet.solana.com".to_string(),
+            payer_path: None,
+            disable_airdrop_rate_limit: true,
         }
     }
 
@@ -39,7 +50,9 @@ impl TestEnvironment {
     pub fn localnet() -> Self {
         TestEnvironment::Localnet {
             url: "http://localhost:8899".to_string(),
-            payer_path: Some("/Users/hxrts/projects/timewave/feels-solana/keypairs/payer.json".to_string()),
+            payer_path: Some(
+                "/Users/hxrts/projects/timewave/feels-solana/keypairs/payer.json".to_string(),
+            ),
         }
     }
 

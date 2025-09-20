@@ -36,9 +36,9 @@ mod tests {
         .unwrap();
 
         // Verify accounts are in correct order
-        assert_eq!(ix.accounts.len(), 18, "Should have 18 accounts");
+        assert_eq!(ix.accounts.len(), 19, "Should have 19 accounts");
 
-        // Check that system program is only at position 15 (index 15)
+        // Check that system program is only at position 16 (index 16)
         let system_program_count = ix
             .accounts
             .iter()
@@ -51,9 +51,9 @@ mod tests {
 
         // Verify System Program is at correct position
         assert_eq!(
-            ix.accounts[15].pubkey,
+            ix.accounts[16].pubkey,
             solana_sdk::system_program::id(),
-            "System Program should be at position 15"
+            "System Program should be at position 16"
         );
 
         // Verify protocol token accounts are unique dummy PDAs when token is FeelsSOL

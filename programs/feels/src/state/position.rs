@@ -33,17 +33,17 @@ pub struct Position {
     /// Canonical bump for position PDA
     /// Storing prevents recomputation when minting/burning
     pub position_bump: u8,
-    
+
     /// Whether this is a POMM position
     pub is_pomm: bool,
-    
+
     /// Last slot this position was updated
     pub last_updated_slot: u64,
 
     /// Fee growth inside at last action (for proper accounting)
     pub fee_growth_inside_0_last: u128,
     pub fee_growth_inside_1_last: u128,
-    
+
     /// Accumulated fees owed
     pub fees_owed_0: u64,
     pub fees_owed_1: u64,

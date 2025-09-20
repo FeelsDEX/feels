@@ -49,4 +49,41 @@ impl ProtocolOracle {
         }
         self.native_rate_q64.min(self.dex_twap_rate_q64)
     }
+
+    /// Check if the DEX TWAP oracle is stale
+    pub fn is_dex_oracle_stale(&self, current_ts: i64, max_age_secs: u32) -> bool {
+        if self.dex_last_update_ts == 0 {
+            // Never updated, consider stale
+            return true;
+        }
+        (current_ts - self.dex_last_update_ts) > max_age_secs as i64
+    }
+
+    /// Check if the native oracle is stale
+    pub fn is_native_oracle_stale(&self, current_ts: i64, max_age_secs: u32) -> bool {
+        if self.native_last_update_ts == 0 {
+            // Never updated, consider stale
+            return true;
+        }
+        (current_ts - self.native_last_update_ts) > max_age_secs as i64
+    }
+
+    /// Get the minimum rate only if oracles are fresh
+    /// Returns None if either oracle is stale
+    pub fn min_rate_q64_checked(&self, current_ts: i64, max_age_secs: u32) -> Option<u128> {
+        // If either oracle that contributes to min_rate is stale, return None
+        if self.dex_twap_rate_q64 > 0 && self.is_dex_oracle_stale(current_ts, max_age_secs) {
+            return None;
+        }
+        if self.native_rate_q64 > 0 && self.is_native_oracle_stale(current_ts, max_age_secs) {
+            return None;
+        }
+        
+        // Both oracles are fresh, return the minimum
+        Some(self.min_rate_q64())
+    }
 }
+
+#[cfg(test)]
+#[path = "protocol_oracle_test.rs"]
+mod protocol_oracle_test;

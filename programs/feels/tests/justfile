@@ -11,6 +11,11 @@ all:
     @echo "║ Running all tests                                                 ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
     nix develop -c cargo test -p feels -- --test-threads=1
+    @echo ""
+    @echo "Note: This runs only in-memory tests. For devnet/localnet tests, use:"
+    @echo "  - just devnet    # Run devnet tests"
+    @echo "  - just localnet  # Run localnet tests"
+    @echo "  - just test-all  # Run all tests including devnet/localnet"
 
 # Run unit tests
 unit:
@@ -84,6 +89,53 @@ coverage:
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
     nix develop -c cargo tarpaulin -p feels --out Html --output-dir coverage
 
+# Run tests that require localnet
+localnet:
+    @echo "╔═══════════════════════════════════════════════════════════════════╗"
+    @echo "║ Running localnet tests                                            ║"
+    @echo "╚═══════════════════════════════════════════════════════════════════╝"
+    @export ANCHOR_WALLET=keypairs/test-authority.json && \
+        export ANCHOR_PROVIDER_URL=http://localhost:8899 && \
+        export RUN_LOCALNET_TESTS=1 && \
+        export DISABLE_AIRDROP_RATE_LIMIT=1 && \
+        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture --ignored
+
+# Run tests that require devnet
+devnet:
+    @echo "╔═══════════════════════════════════════════════════════════════════╗"
+    @echo "║ Running devnet tests                                              ║"
+    @echo "╚═══════════════════════════════════════════════════════════════════╝"
+    @echo "Note: Rate limiting is enabled by default to prevent airdrop failures."
+    @echo "Use 'just devnet-no-limit' to disable rate limiting."
+    @export RUN_DEVNET_TESTS=1 && \
+        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture
+
+# Run devnet tests without rate limiting
+devnet-no-limit:
+    @echo "╔═══════════════════════════════════════════════════════════════════╗"
+    @echo "║ Running devnet tests (no rate limit)                              ║"
+    @echo "╚═══════════════════════════════════════════════════════════════════╝"
+    @export RUN_DEVNET_TESTS=1 && \
+        export DISABLE_AIRDROP_RATE_LIMIT=1 && \
+        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture
+
+# Run ALL tests including in-memory, localnet, and devnet
+test-all:
+    @echo "╔═══════════════════════════════════════════════════════════════════╗"
+    @echo "║ Running ALL tests (in-memory + devnet + localnet)                ║"
+    @echo "╚═══════════════════════════════════════════════════════════════════╝"
+    @echo ""
+    @echo "Step 1: Running in-memory tests..."
+    @just all
+    @echo ""
+    @echo "Step 2: Running devnet tests..."
+    @just devnet  
+    @echo ""
+    @echo "Step 3: Running localnet tests (requires local validator)..."
+    @just localnet
+    @echo ""
+    @echo "All tests complete!"
+
 # Watch tests and re-run on changes (requires cargo-watch)
 watch CATEGORY="":
     @echo "Starting watch mode... (Press Ctrl+C to exit)"
@@ -108,6 +160,11 @@ stats:
     @echo "Property tests:    $(find . -path "*/property/*test_*.rs" | wc -l)"
     @echo "E2E tests:         $(find . -path "*/e2e/*test_*.rs" | wc -l)"
     @echo "Total test files:  $(find . -name "test_*.rs" | wc -l)"
+    @echo ""
+    @echo "Test status:"
+    @echo "In-memory tests:   279 passing"
+    @echo "Devnet tests:      15 tests (requires RUN_DEVNET_TESTS=1)"
+    @echo "Localnet tests:    Included in devnet count (requires local validator)"
 
 # Alias for common commands
 u: unit

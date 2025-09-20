@@ -1,0 +1,58 @@
+[geyser]
+endpoint = "http://localhost:10000"
+program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
+commitment = "confirmed"
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5
+
+[storage]
+# RocksDB for raw blockchain data
+rocksdb_path = "./data/rocksdb"
+enable_compression = true
+max_open_files = 1000
+write_buffer_size_mb = 256
+max_write_buffer_number = 4
+block_cache_size_mb = 512
+
+[database]
+# PostgreSQL for relational queries
+postgres_url = "postgresql://feels:feels@localhost:5432/feels_indexer"
+max_connections = 20
+min_connections = 5
+acquire_timeout_secs = 30
+idle_timeout_secs = 600
+max_lifetime_secs = 1800
+
+[redis]
+# Redis for caching and real-time data
+url = "redis://localhost:6379"
+max_connections = 10
+connection_timeout_secs = 5
+response_timeout_secs = 2
+
+[search]
+# Tantivy for full-text search
+index_path = "./data/tantivy"
+writer_memory_mb = 128
+commit_interval_secs = 30
+
+[api]
+bind_address = "127.0.0.1:8080"
+enable_cors = true
+request_timeout_secs = 30
+max_request_size_mb = 10
+
+[monitoring]
+metrics_port = 9090
+log_level = "info"
+structured_logging = true
+jaeger_endpoint = "http://localhost:14268/api/traces"
+enable_tracing = true
+
+[indexer]
+# Processing configuration
+batch_size = 1000
+flush_interval_secs = 10
+max_lag_slots = 100
+enable_backfill = true
+backfill_batch_size = 5000

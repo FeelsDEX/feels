@@ -20,7 +20,7 @@ use anchor_lang::prelude::*;
 use instructions::*;
 use state::PoolPhase;
 
-declare_id!("Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N");
+declare_id!("5EeFL2XscLKAg9HWq5Ssbo3h4nBWHb1qcRZK6V6yt18S");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*
@@ -72,14 +72,28 @@ pub mod feels {
     pub fn update_pool_phase(ctx: Context<UpdatePoolPhase>, new_phase: PoolPhase) -> Result<()> {
         instructions::update_pool_phase(ctx, new_phase)
     }
-    
+
+    /// Initialize a POMM (Protocol-Owned Market Making) position
+    pub fn initialize_pomm_position(
+        ctx: Context<InitializePommPosition>,
+        position_index: u8,
+    ) -> Result<()> {
+        instructions::initialize_pomm_position(ctx, position_index)
+    }
+
     /// Manage POMM (Protocol-Owned Market Making) positions
-    pub fn manage_pomm_position(ctx: Context<ManagePommPosition>, params: ManagePommParams) -> Result<()> {
+    pub fn manage_pomm_position(
+        ctx: Context<ManagePommPosition>,
+        params: ManagePommParams,
+    ) -> Result<()> {
         instructions::manage_pomm_position(ctx, params)
     }
-    
+
     /// Transition market between phases
-    pub fn transition_market_phase(ctx: Context<TransitionMarketPhase>, params: TransitionPhaseParams) -> Result<()> {
+    pub fn transition_market_phase(
+        ctx: Context<TransitionMarketPhase>,
+        params: TransitionPhaseParams,
+    ) -> Result<()> {
         instructions::transition_market_phase(ctx, params)
     }
 
@@ -118,6 +132,7 @@ pub mod feels {
         let params = Box::new(params);
         instructions::swap(ctx, *params)
     }
+
 
     /// Open a new liquidity position
     pub fn open_position(

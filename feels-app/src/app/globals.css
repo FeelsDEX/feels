@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* FEELS Brand Colors */
+    /* Primary: #5cca39 (Bright Green) - HSL: 108, 57%, 51% */
+    /* White: #ffffff - HSL: 0, 0%, 100% */
+    /* Black: #000000 - HSL: 0, 0%, 0% */
+    /* Light Grey: #808080 - HSL: 0, 0%, 50% */
+    /* Dark Grey: #404040 - HSL: 0, 0%, 25% */
+    
+    --background: 0 0% 100%; /* White background */
+    --foreground: 0 0% 0%; /* Black text */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 0 0% 0%; /* Black text on cards */
+    --popover: 0 0% 100%; /* White popover */
+    --popover-foreground: 0 0% 0%; /* Black text on popover */
+    --primary: 108 57% 51%; /* #5cca39 Green */
+    --primary-foreground: 0 0% 100%; /* White text on green */
+    --secondary: 0 0% 96%; /* Very light grey */
+    --secondary-foreground: 0 0% 0%; /* Black text */
+    --muted: 0 0% 90%; /* Light grey background */
+    --muted-foreground: 0 0% 25%; /* Dark grey text */
+    --accent: 108 57% 51%; /* Same as primary green */
+    --accent-foreground: 0 0% 100%; /* White text on green */
+    --destructive: 0 84% 60%; /* Red for errors */
+    --destructive-foreground: 0 0% 100%; /* White text on red */
+    --border: 0 0% 80%; /* Light grey borders */
+    --input: 0 0% 95%; /* Very light grey input background */
+    --ring: 108 57% 51%; /* Green focus ring */
+    --radius: 0.5rem;
+    
+    /* Custom FEELS variables */
+    --feels-green: 108 57% 51%; /* #5cca39 */
+    --feels-white: 0 0% 100%; /* #ffffff */
+    --feels-black: 0 0% 0%; /* #000000 */
+    --feels-grey-light: 0 0% 50%; /* #808080 */
+    --feels-grey-dark: 0 0% 25%; /* #404040 */
+  }
+
+  .dark {
+    /* Dark mode keeps the same color philosophy but inverted */
+    --background: 0 0% 0%; /* Black background */
+    --foreground: 0 0% 100%; /* White text */
+    --card: 0 0% 5%; /* Very dark grey cards */
+    --card-foreground: 0 0% 100%; /* White text on cards */
+    --popover: 0 0% 0%; /* Black popover */
+    --popover-foreground: 0 0% 100%; /* White text on popover */
+    --primary: 108 57% 51%; /* Same green */
+    --primary-foreground: 0 0% 0%; /* Black text on green */
+    --secondary: 0 0% 10%; /* Dark grey */
+    --secondary-foreground: 0 0% 100%; /* White text */
+    --muted: 0 0% 15%; /* Darker grey background */
+    --muted-foreground: 0 0% 50%; /* Light grey text */
+    --accent: 108 57% 51%; /* Same green */
+    --accent-foreground: 0 0% 0%; /* Black text on green */
+    --destructive: 0 84% 60%; /* Same red */
+    --destructive-foreground: 0 0% 100%; /* White text on red */
+    --border: 0 0% 20%; /* Dark grey borders */
+    --input: 0 0% 10%; /* Dark input background */
+    --ring: 108 57% 51%; /* Same green focus ring */
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: var(--font-terminal-grotesque), ui-monospace, monospace;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+  }
+  
+  body {
+    @apply bg-background text-foreground text-lg;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+  
+  * {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+}
+
+@layer components {
+  /* Pixel/Aliased component styles */
+  .pixel-container {
+    position: relative;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    image-rendering: -webkit-optimize-contrast;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+  
+  .pixel-rounded {
+    position: relative;
+    background-clip: padding-box;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    clip-path: polygon(
+      0 6px, 2px 4px, 4px 2px, 6px 0,
+      calc(100% - 6px) 0, calc(100% - 4px) 2px, calc(100% - 2px) 4px, 100% 6px,
+      100% calc(100% - 6px), calc(100% - 2px) calc(100% - 4px), calc(100% - 4px) calc(100% - 2px), calc(100% - 6px) 100%,
+      6px 100%, 4px calc(100% - 2px), 2px calc(100% - 4px), 0 calc(100% - 6px)
+    );
+  }
+  
+  .pixel-border {
+    border: 2px solid;
+    border-image: 
+      repeating-linear-gradient(0deg, 
+        currentColor 0px, currentColor 2px, 
+        transparent 2px, transparent 4px
+      ) 2;
+    border-radius: 0;
+  }
+  
+  .btn {
+    @apply px-4 py-2 font-medium transition-none focus:outline-none pixel-container;
+    border: none;
+    box-shadow: 
+      1px 0 0 0 currentColor,
+      2px 0 0 0 currentColor,
+      0 1px 0 0 currentColor,
+      0 2px 0 0 currentColor,
+      1px 1px 0 0 currentColor,
+      2px 1px 0 0 currentColor,
+      1px 2px 0 0 currentColor,
+      2px 2px 0 0 currentColor,
+      3px 0 0 0 rgba(0,0,0,0.2),
+      0 3px 0 0 rgba(0,0,0,0.2),
+      3px 3px 0 0 rgba(0,0,0,0.2);
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary text-primary-foreground hover:bg-primary/90;
+    color: hsl(var(--primary-foreground));
+    box-shadow: 
+      2px 0 0 0 hsl(var(--primary)),
+      -2px 0 0 0 hsl(var(--primary)),
+      0 2px 0 0 hsl(var(--primary)),
+      0 -2px 0 0 hsl(var(--primary)),
+      2px 2px 0 0 hsl(var(--primary)),
+      -2px 2px 0 0 hsl(var(--primary)),
+      2px -2px 0 0 hsl(var(--primary)),
+      -2px -2px 0 0 hsl(var(--primary));
+  }
+  
+  .btn-secondary {
+    @apply btn bg-secondary text-secondary-foreground hover:bg-secondary/80;
+    box-shadow: 
+      2px 0 0 0 hsl(var(--border)),
+      -2px 0 0 0 hsl(var(--border)),
+      0 2px 0 0 hsl(var(--border)),
+      0 -2px 0 0 hsl(var(--border)),
+      2px 2px 0 0 hsl(var(--border)),
+      -2px 2px 0 0 hsl(var(--border)),
+      2px -2px 0 0 hsl(var(--border)),
+      -2px -2px 0 0 hsl(var(--border));
+  }
+  
+  .btn-outline {
+    @apply btn border-2 border-border text-foreground hover:bg-muted;
+    background: transparent;
+    box-shadow: none;
+  }
+  
+  .card {
+    @apply bg-card text-card-foreground p-6 pixel-container border border-border;
+    border-radius: 0.5rem;
+    box-shadow: none;
+  }
+  
+  .input {
+    @apply w-full px-3 py-2 bg-input focus:outline-none focus:border-primary pixel-container;
+    border: 2px solid hsl(0 0% 65%);
+    border-radius: 0;
+    box-shadow: 
+      inset 2px 2px 0 0 hsl(var(--muted)),
+      inset -2px -2px 0 0 hsl(var(--background));
+  }
+  
+  .input:focus {
+    box-shadow: 
+      inset 2px 2px 0 0 hsl(var(--primary)/20%),
+      inset -2px -2px 0 0 hsl(var(--primary)/20%),
+      0 0 0 2px hsl(var(--primary));
+  }
+  
+  .code {
+    @apply font-mono text-sm bg-muted text-muted-foreground px-2 py-1 pixel-container;
+    border-radius: 0;
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* FEELS-specific utility classes */
+  .text-feels-green {
+    color: hsl(var(--feels-green));
+  }
+  
+  .bg-feels-green {
+    background-color: hsl(var(--feels-green));
+  }
+  
+  .text-feels-grey-light {
+    color: hsl(var(--feels-grey-light));
+  }
+  
+  .text-feels-grey-dark {
+    color: hsl(var(--feels-grey-dark));
+  }
+  
+  .bg-feels-grey-light {
+    background-color: hsl(var(--feels-grey-light));
+  }
+  
+  .bg-feels-grey-dark {
+    background-color: hsl(var(--feels-grey-dark));
+  }
+
+  /* Darker borders for input and select elements */
+  input, 
+  select,
+  textarea,
+  [role="combobox"] {
+    border-color: hsl(0 0% 65%) !important;
+  }
+
+  
+  /* Swap page input box height */
+  main > div > div > div > div > div:nth-child(2) > div:nth-child(5) > div:nth-child(3) > div > input {
+    height: 36px !important;
+  }
+  
+  /* Header button height - make 46px */
+  header > div > div > div:nth-child(2) > div:nth-child(3) > button {
+    height: 46px !important;
+    padding: 4px 14px !important;
+  }
+  
+}

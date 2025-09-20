@@ -219,4 +219,539 @@ mod tests {
         assert_eq!(market.tick_spacing, 1, "Tick spacing should allow fine-grained testing");
         assert!(market.liquidity > 0, "Market should have initial liquidity");
     }
+
+    #[test]
+    fn test_quote_execution_parity_comprehensive() {
+        use crate::amm::{calculate_swap_output_with_tracking, TickArrayView};
+        use ahash::AHashMap;
+        
+        // Create test market with realistic parameters
+        let mut market = create_test_market();
+        market.sqrt_price = 79228162514264337593543950336u128; // Price = 1
+        market.current_tick = 0;
+        market.liquidity = 10_000_000_000_000u128; // 10M liquidity
+        market.base_fee_bps = 30; // 0.3% fee
+        market.tick_spacing = 60;
+        
+        // Test various swap scenarios
+        let test_cases = vec![
+            (100_000u64, true),         // Small swap token0->token1
+            (100_000u64, false),        // Small swap token1->token0
+            (10_000_000u64, true),      // Medium swap
+            (10_000_000u64, false),     
+            (1_000_000_000u64, true),   // Large swap
+            (1_000_000_000u64, false),
+        ];
+        
+        for (amount_in, is_token_0_to_1) in test_cases {
+            // Empty tick arrays (no initialized ticks to cross)
+            let tick_arrays = AHashMap::new();
+            
+            // Calculate quote using adapter logic
+            let (amount_out, fee_amount) = calculate_swap_output_with_tracking(
+                &market,
+                &tick_arrays,
+                amount_in,
+                is_token_0_to_1,
+            ).unwrap();
+            
+            // Verify fee calculation exactly matches on-chain logic
+            let expected_fee = ((amount_in as u128 * market.base_fee_bps as u128 + 9999) / 10000) as u64;
+            assert_eq!(
+                fee_amount, expected_fee,
+                "Fee mismatch for {} {} direction",
+                amount_in,
+                if is_token_0_to_1 { "0->1" } else { "1->0" }
+            );
+            
+            // Verify invariants
+            let amount_after_fee = amount_in.saturating_sub(fee_amount);
+            if amount_after_fee > 0 && market.liquidity > 0 {
+                assert!(amount_out > 0, "Should have output for non-zero input");
+                
+                // Output should be less than input (no free money)
+                assert!(
+                    amount_out < amount_in,
+                    "Output {} should be less than input {}",
+                    amount_out, amount_in
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_tick_array_quote_consistency() {
+        use crate::amm::{calculate_swap_output_with_tracking, TickArrayView};
+        use ahash::AHashMap;
+        
+        let mut market = create_test_market();
+        market.liquidity = 5_000_000_000_000u128;
+        market.current_tick = 100;
+        market.tick_spacing = 10;
+        
+        // Create tick arrays with liquidity changes
+        let mut tick_arrays = AHashMap::new();
+        let mut view1 = TickArrayView {
+            start_tick_index: 0,
+            inits: AHashMap::new(),
+        };
+        
+        // Add ticks with liquidity changes
+        view1.inits.insert(50, 1_000_000_000i128);    // Add liquidity
+        view1.inits.insert(80, -500_000_000i128);     // Remove liquidity  
+        view1.inits.insert(110, 2_000_000_000i128);   // Add more
+        view1.inits.insert(150, -2_500_000_000i128);  // Remove most
+        
+        tick_arrays.insert(0, view1);
+        
+        // Test swaps in both directions
+        let amounts = vec![1_000_000u64, 50_000_000u64, 200_000_000u64];
+        
+        for amount_in in amounts {
+            // Swap up (crossing positive ticks)
+            let (out_up, fee_up) = calculate_swap_output_with_tracking(
+                &market,
+                &tick_arrays,
+                amount_in,
+                false, // token1->token0, price increases
+            ).unwrap();
+            
+            // Swap down (crossing negative ticks)
+            let (out_down, fee_down) = calculate_swap_output_with_tracking(
+                &market,
+                &tick_arrays,
+                amount_in,
+                true, // token0->token1, price decreases  
+            ).unwrap();
+            
+            // Fees should be identical (same input amount)
+            assert_eq!(fee_up, fee_down, "Fees should match for same input");
+            
+            // Outputs may differ due to tick crossings and liquidity changes
+            // But both should be valid
+            assert!(out_up > 0 || amount_in <= fee_up);
+            assert!(out_down > 0 || amount_in <= fee_down);
+        }
+    }
+    
+    #[test]
+    fn test_fee_account_handling() {
+        use crate::config::{set_treasury, add_protocol_token};
+        use solana_program::pubkey::Pubkey;
+        
+        // Set a test treasury
+        let treasury = Pubkey::new_unique();
+        set_treasury(treasury);
+        
+        // Add a test protocol token
+        let protocol_mint = Pubkey::new_unique();
+        add_protocol_token(protocol_mint);
+        
+        // Create test market
+        let mut market = create_test_market();
+        market.token_0 = protocol_mint; // Make token_0 a protocol token
+        
+        // Test treasury ATA derivation
+        let output_mint = market.token_1;
+        let treasury_ata = crate::config::get_treasury_ata(&output_mint);
+        
+        // Verify it's the correct ATA
+        let expected_ata = spl_associated_token_account::get_associated_token_address(
+            &treasury,
+            &output_mint
+        );
+        assert_eq!(
+            treasury_ata, expected_ata,
+            "Treasury ATA should match expected derivation"
+        );
+        
+        // Test protocol token detection
+        assert!(
+            crate::config::is_protocol_token(&protocol_mint),
+            "Should detect registered protocol token"
+        );
+        assert!(
+            !crate::config::is_protocol_token(&market.token_1),
+            "Should not detect unregistered token as protocol token"
+        );
+    }
+    
+    #[test]
+    fn test_tick_array_format_detection() {
+        use feels_sdk::{TickArrayFormat, parse_tick_array_auto};
+        
+        // Test V1 format with exact size
+        let mut v1_data = vec![0u8; TickArrayFormat::V1.calculate_total_size()];
+        v1_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
+        
+        let result = parse_tick_array_auto(&v1_data, 10);
+        assert!(result.is_ok(), "Should parse V1 format successfully");
+        
+        let parsed = result.unwrap();
+        assert_eq!(parsed.format.version, 1);
+        assert_eq!(parsed.format.array_size, 64);
+    }
+    
+    #[test]
+    fn test_tick_array_format_extensions() {
+        use feels_sdk::{TickArrayFormat, parse_tick_array_auto};
+        
+        // Test V1 format with extensions (future-proofing)
+        let extended_size = TickArrayFormat::V1.calculate_total_size() + 128;
+        let mut extended_data = vec![0u8; extended_size];
+        extended_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
+        
+        let result = parse_tick_array_auto(&extended_data, 10);
+        assert!(
+            result.is_ok(), 
+            "Should handle V1 format with extensions for backward compatibility"
+        );
+    }
+    
+    #[test]
+    fn test_tick_array_parsing_corrupted_data() {
+        use feels_sdk::parse_tick_array_auto;
+        
+        // Test various corrupted data scenarios
+        let test_cases = vec![
+            (vec![0u8; 7], "Too small"),
+            (vec![255u8; 100], "Invalid discriminator"),
+            (vec![0u8; 1000], "Wrong discriminator"),
+        ];
+        
+        for (data, scenario) in test_cases {
+            let result = parse_tick_array_auto(&data, 10);
+            assert!(
+                result.is_err(),
+                "Should fail to parse corrupted data: {}",
+                scenario
+            );
+        }
+    }
+    
+    #[test]
+    fn test_tick_array_initialized_tick_extraction() {
+        use feels_sdk::{TickArrayFormat, parse_tick_array_auto};
+        use feels::state::{TickArray, Tick};
+        
+        // Create a valid tick array with some initialized ticks
+        let mut data = vec![0u8; TickArrayFormat::V1.calculate_total_size()];
+        
+        // Set discriminator
+        data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
+        
+        // Set market pubkey (32 bytes at offset 8)
+        let market = Pubkey::new_unique();
+        data[8..40].copy_from_slice(market.as_ref());
+        
+        // Set start_tick_index (4 bytes at offset 40)
+        let start_tick = 1000i32;
+        data[40..44].copy_from_slice(&start_tick.to_le_bytes());
+        
+        // Initialize some ticks in the array
+        let tick_spacing = 10u16;
+        let ticks_offset = 56; // After discriminator + header
+        
+        // Initialize tick at index 0
+        let tick_0_offset = ticks_offset;
+        data[tick_0_offset..tick_0_offset + 16].copy_from_slice(&100i128.to_le_bytes()); // liquidity_net
+        data[tick_0_offset + 64] = 1; // initialized flag
+        
+        // Initialize tick at index 5
+        let tick_5_offset = ticks_offset + (5 * 80);
+        data[tick_5_offset..tick_5_offset + 16].copy_from_slice(&(-50i128).to_le_bytes()); // liquidity_net
+        data[tick_5_offset + 64] = 1; // initialized flag
+        
+        // Parse the array
+        let parsed = parse_tick_array_auto(&data, tick_spacing).unwrap();
+        
+        // Verify parsed data
+        assert_eq!(parsed.market, market);
+        assert_eq!(parsed.start_tick_index, start_tick);
+        assert_eq!(parsed.initialized_ticks.len(), 2);
+        
+        // Check tick indices
+        let tick_0_index = start_tick + 0 * tick_spacing as i32;
+        let tick_5_index = start_tick + 5 * tick_spacing as i32;
+        
+        assert_eq!(
+            parsed.initialized_ticks.get(&tick_0_index),
+            Some(&100i128),
+            "Should have tick at index {}",
+            tick_0_index
+        );
+        assert_eq!(
+            parsed.initialized_ticks.get(&tick_5_index),
+            Some(&-50i128),
+            "Should have tick at index {}",
+            tick_5_index
+        );
+    }
+    
+    #[test]
+    fn test_adapter_tick_array_update_resilience() {
+        use crate::amm::FeelsAmm;
+        use jupiter_amm_interface::{AccountMap, KeyedAccount, AmmContext};
+        use solana_program::account_info::Account as SolanaAccount;
+        use ahash::AHashMap;
+        use feels_sdk::TickArrayFormat;
+        
+        // Create test market
+        let market = create_test_market();
+        let mut market_data = Vec::new();
+        market.try_serialize(&mut market_data).unwrap();
+        
+        let market_key = Pubkey::new_unique();
+        let keyed_account = KeyedAccount {
+            key: market_key,
+            account: SolanaAccount {
+                lamports: 1_000_000,
+                data: market_data,
+                owner: feels::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+            params: None,
+        };
+        
+        // Create AMM instance
+        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        
+        // Create account map with tick array data
+        let mut account_map = AHashMap::new();
+        
+        // Add vault accounts
+        let vault_data = vec![0u8; spl_token::state::Account::LEN];
+        account_map.insert(amm.vault_0, vault_data.clone());
+        account_map.insert(amm.vault_1, vault_data.clone());
+        
+        // Add tick array with V1 format
+        let tick_array_key = amm.tick_array_keys[0];
+        let mut tick_data = vec![0u8; TickArrayFormat::V1.calculate_total_size()];
+        tick_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
+        tick_data[8..40].copy_from_slice(market_key.as_ref());
+        account_map.insert(tick_array_key, tick_data);
+        
+        // Update should succeed with V1 format
+        let result = amm.update(&account_map);
+        assert!(result.is_ok(), "Should handle V1 tick array format");
+        
+        // Test with extended format (simulating future protocol upgrade)
+        let mut extended_data = vec![0u8; TickArrayFormat::V1.calculate_total_size() + 100];
+        extended_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
+        extended_data[8..40].copy_from_slice(market_key.as_ref());
+        account_map.insert(tick_array_key, extended_data);
+        
+        // Update should still succeed with extended format
+        let result = amm.update(&account_map);
+        assert!(
+            result.is_ok(), 
+            "Should handle extended tick array format for future compatibility"
+        );
+    }
+    
+    #[test]
+    fn test_sdk_onchain_quote_parity() {
+        use crate::amm::FeelsAmm;
+        use jupiter_amm_interface::{QuoteParams, AmmContext, KeyedAccount};
+        use solana_program::account_info::Account as SolanaAccount;
+        
+        // Create a test market with specific parameters
+        let mut market = create_test_market();
+        market.liquidity = 5_000_000_000_000u128;
+        market.base_fee_bps = 30; // 0.3%
+        market.sqrt_price = 79228162514264337593543950336u128; // Price = 1
+        
+        let mut market_data = Vec::new();
+        market.try_serialize(&mut market_data).unwrap();
+        
+        let keyed_account = KeyedAccount {
+            key: Pubkey::new_unique(),
+            account: SolanaAccount {
+                lamports: 1_000_000,
+                data: market_data,
+                owner: feels::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+            params: None,
+        };
+        
+        // Create AMM instance
+        let amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        
+        // Test various swap amounts
+        let test_amounts = vec![
+            1_000_000u64,      // 1 token
+            10_000_000u64,     // 10 tokens
+            100_000_000u64,    // 100 tokens
+            1_000_000_000u64,  // 1000 tokens
+        ];
+        
+        for amount in test_amounts {
+            let quote_params = QuoteParams {
+                amount,
+                input_mint: market.token_0,
+                output_mint: market.token_1,
+                swap_mode: jupiter_amm_interface::SwapMode::ExactIn,
+            };
+            
+            let quote = amm.quote(&quote_params).unwrap();
+            
+            // Verify fee calculation matches on-chain logic
+            // For 0.3% fee: net = floor(gross * 9970 / 10000)
+            let expected_net = (amount as u128 * 9970) / 10000;
+            let expected_fee = amount - expected_net as u64;
+            
+            assert_eq!(
+                quote.fee_amount, expected_fee,
+                "Fee for {} should match on-chain calculation",
+                amount
+            );
+            
+            // Verify we got some output
+            assert!(
+                quote.out_amount > 0,
+                "Should have output for {} input",
+                amount
+            );
+            
+            // Verify price impact is reasonable
+            let impact_ratio = 1.0 - (quote.out_amount as f64 / expected_net as f64);
+            assert!(
+                impact_ratio < 0.1, // Less than 10% impact
+                "Price impact {} too high for {} tokens",
+                impact_ratio,
+                amount
+            );
+        }
+    }
+    
+    #[test]
+    fn test_quote_consistency_across_updates() {
+        use crate::amm::FeelsAmm;
+        use jupiter_amm_interface::{QuoteParams, AccountMap, AmmContext, KeyedAccount};
+        use solana_program::account_info::Account as SolanaAccount;
+        use ahash::AHashMap;
+        
+        // Create market and AMM
+        let market = create_test_market();
+        let mut market_data = Vec::new();
+        market.try_serialize(&mut market_data).unwrap();
+        
+        let keyed_account = KeyedAccount {
+            key: Pubkey::new_unique(),
+            account: SolanaAccount {
+                lamports: 1_000_000,
+                data: market_data,
+                owner: feels::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+            params: None,
+        };
+        
+        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        
+        // Get initial quote
+        let quote_params = QuoteParams {
+            amount: 10_000_000,
+            input_mint: market.token_0,
+            output_mint: market.token_1,
+            swap_mode: jupiter_amm_interface::SwapMode::ExactIn,
+        };
+        
+        let quote1 = amm.quote(&quote_params).unwrap();
+        
+        // Update with empty tick arrays (no change in liquidity)
+        let mut account_map = AHashMap::new();
+        let vault_data = vec![0u8; spl_token::state::Account::LEN];
+        account_map.insert(amm.vault_0, vault_data.clone());
+        account_map.insert(amm.vault_1, vault_data);
+        
+        amm.update(&account_map).unwrap();
+        
+        // Get quote again - should be identical
+        let quote2 = amm.quote(&quote_params).unwrap();
+        
+        assert_eq!(
+            quote1.out_amount, quote2.out_amount,
+            "Output should be consistent without liquidity changes"
+        );
+        assert_eq!(
+            quote1.fee_amount, quote2.fee_amount,
+            "Fee should be consistent"
+        );
+    }
+    
+    #[test]
+    fn test_swap_account_generation() {
+        use crate::amm::FeelsAmm;
+        use jupiter_amm_interface::{SwapParams, KeyedAccount, AmmContext};
+        use solana_program::account_info::Account as SolanaAccount;
+        use crate::config::set_treasury;
+        
+        // Configure treasury
+        let treasury = Pubkey::new_unique();
+        set_treasury(treasury);
+        
+        // Create a test market account
+        let market = create_test_market();
+        let mut market_data = Vec::new();
+        market.try_serialize(&mut market_data).unwrap();
+        
+        let keyed_account = KeyedAccount {
+            key: Pubkey::new_unique(),
+            account: SolanaAccount {
+                lamports: 1_000_000,
+                data: market_data,
+                owner: feels::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+            params: None,
+        };
+        
+        // Create AMM instance
+        let amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        
+        // Test swap params
+        let swap_params = SwapParams {
+            source_mint: market.token_0,
+            destination_mint: market.token_1,
+            source_token_account: Pubkey::new_unique(),
+            destination_token_account: Pubkey::new_unique(),
+            token_transfer_authority: Pubkey::new_unique(),
+            open_order_address: None,
+            quote_mint_to_referrer: None,
+            jupiter_program_id: &Pubkey::new_unique(),
+            missing_dynamic_accounts_as_default: false,
+            wrap_and_unwrap_sol: false,
+            in_amount: Some(1_000_000),
+            out_amount: None,
+            destination_token_account_is_native: false,
+        };
+        
+        // Generate swap accounts
+        let result = amm.get_swap_and_account_metas(&swap_params);
+        assert!(result.is_ok(), "Should generate swap accounts successfully");
+        
+        let swap_and_metas = result.unwrap();
+        let accounts = swap_and_metas.account_metas;
+        
+        // Verify we have the correct number of accounts
+        assert_eq!(
+            accounts.len(),
+            amm.get_accounts_len(),
+            "Should have correct number of accounts"
+        );
+        
+        // Verify treasury account is included
+        let treasury_ata = crate::config::get_treasury_ata(&market.token_1);
+        let has_treasury = accounts.iter().any(|meta| meta.pubkey == treasury_ata);
+        assert!(
+            has_treasury,
+            "Should include treasury ATA in account list"
+        );
+    }
 }

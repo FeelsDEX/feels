@@ -66,11 +66,11 @@ pub struct Market {
     /// Token origins (for market creation restrictions)
     pub token_0_origin: TokenOrigin,
     pub token_1_origin: TokenOrigin,
-    
+
     /// Vault accounts
     pub vault_0: Pubkey,
     pub vault_1: Pubkey,
-    
+
     /// Hub protocol reference (optional)
     pub hub_protocol: Option<Pubkey>,
 
@@ -94,7 +94,7 @@ pub struct Market {
     /// Global fee growth (Q64) per liquidity unit
     pub fee_growth_global_0_x64: u128,
     pub fee_growth_global_1_x64: u128,
-    
+
     /// Global fee growth without x64 suffix (for compatibility)
     pub fee_growth_global_0: u128,
     pub fee_growth_global_1: u128,
@@ -141,12 +141,12 @@ pub struct Market {
     /// JIT v0.5 parameters (per-market)
     pub jit_enabled: bool,
     /// JIT v0.5 configuration
-    pub jit_base_cap_bps: u16,              // Base cap (300 = 3%)
-    pub jit_per_slot_cap_bps: u16,          // Per-slot cap (500 = 5%)
-    pub jit_concentration_width: u32,        // Width of concentration zone in ticks
-    pub jit_max_multiplier: u8,              // Maximum concentration multiplier
-    pub jit_drain_protection_bps: u16,       // When to throttle (7000 = 70%)
-    pub jit_circuit_breaker_bps: u16,        // When to halt (3000 = 30%)
+    pub jit_base_cap_bps: u16, // Base cap (300 = 3%)
+    pub jit_per_slot_cap_bps: u16,     // Per-slot cap (500 = 5%)
+    pub jit_concentration_width: u32,  // Width of concentration zone in ticks
+    pub jit_max_multiplier: u8,        // Maximum concentration multiplier
+    pub jit_drain_protection_bps: u16, // When to throttle (7000 = 70%)
+    pub jit_circuit_breaker_bps: u16,  // When to halt (3000 = 30%)
 
     /// Floor management (MVP)
     pub floor_tick: i32,
@@ -157,16 +157,16 @@ pub struct Market {
     /// Graduation flags (idempotent)
     pub steady_state_seeded: bool,
     pub cleanup_complete: bool,
-    
+
     /// Market phase tracking
     pub phase: u8, // MarketPhase enum stored as u8
     pub phase_start_slot: u64,
     pub phase_start_timestamp: i64,
-    
+
     /// Phase transition history (last transition)
     pub last_phase_transition_slot: u64,
     pub last_phase_trigger: u8, // PhaseTrigger enum as u8
-    
+
     /// Cumulative metrics for phase transitions
     pub total_volume_token_0: u64,
     pub total_volume_token_1: u64,
@@ -176,7 +176,7 @@ pub struct Market {
     pub rolling_sell_volume: u128,
     pub rolling_total_volume: u128,
     pub rolling_window_start_slot: u64,
-    
+
     /// Price movement tracking for circuit breaker
     pub tick_snapshot_1hr: i32,
     pub last_snapshot_timestamp: i64,

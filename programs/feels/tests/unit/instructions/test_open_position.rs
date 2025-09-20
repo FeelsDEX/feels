@@ -2,179 +2,147 @@
 
 use anchor_lang::prelude::*;
 use feels::{
-    error::FeelsError,
-    instructions::{OpenPosition, OpenPositionParams},
-    state::{Market, Position},
     constants::*,
-    utils::tick_math::*,
+    error::FeelsError,
+    state::{Market, Position},
 };
 use solana_program::pubkey::Pubkey;
 
 #[test]
 fn test_open_position_validation() {
     let market = create_test_market();
-    
+
     // Test invalid tick range (lower >= upper)
-    let params = OpenPositionParams {
-        tick_lower: 100,
-        tick_upper: 100,
-        liquidity: 1_000_000,
-    };
-    
+    let tick_lower = 100;
+    let tick_upper = 100;
+    let liquidity = 1_000_000;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::InvalidTickRange
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::InvalidTickRange.into()
     );
-    
-    // Test tick range too wide
-    let params = OpenPositionParams {
-        tick_lower: MIN_TICK,
-        tick_upper: MAX_TICK,
-        liquidity: 1_000_000,
-    };
-    
+
+    // Test tick range too wide - use spaced ticks
+    let tick_spacing = market.tick_spacing as i32;
+    let tick_lower = (MIN_TICK / tick_spacing) * tick_spacing;
+    let tick_upper = (MAX_TICK / tick_spacing) * tick_spacing;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::TickRangeTooWide
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::InvalidTickRange.into()
     );
-    
+
     // Test zero liquidity
-    let params = OpenPositionParams {
-        tick_lower: -100,
-        tick_upper: 100,
-        liquidity: 0,
-    };
-    
+    let tick_lower = -100;
+    let tick_upper = 100;
+    let liquidity = 0;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::ZeroLiquidity
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::ZeroLiquidity.into()
     );
-    
+
     // Test liquidity below minimum
-    let params = OpenPositionParams {
-        tick_lower: -100,
-        tick_upper: 100,
-        liquidity: MIN_LIQUIDITY - 1,
-    };
-    
+    let liquidity = MIN_LIQUIDITY - 1;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::LiquidityBelowMinimum
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::LiquidityBelowMinimum.into()
     );
 }
 
 #[test]
 fn test_tick_spacing_validation() {
     let market = create_test_market();
-    
+
     // Test ticks not aligned to spacing
-    let params = OpenPositionParams {
-        tick_lower: -105, // Not divisible by 10
-        tick_upper: 100,
-        liquidity: 1_000_000,
-    };
-    
+    let tick_lower = -105; // Not divisible by 10
+    let tick_upper = 100;
+    let liquidity = 1_000_000;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::TickNotSpaced
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::TickNotSpaced.into()
     );
-    
+
     // Test upper tick not aligned
-    let params = OpenPositionParams {
-        tick_lower: -100,
-        tick_upper: 105, // Not divisible by 10
-        liquidity: 1_000_000,
-    };
-    
+    let tick_lower = -100;
+    let tick_upper = 105; // Not divisible by 10
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::TickNotSpaced
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::TickNotSpaced.into()
     );
-    
+
     // Test valid aligned ticks
-    let params = OpenPositionParams {
-        tick_lower: -100,
-        tick_upper: 100,
-        liquidity: 1_000_000,
-    };
-    
-    assert!(validate_position_params(&params, &market).is_ok());
+    let tick_lower = -100;
+    let tick_upper = 100;
+
+    assert!(validate_position_params(tick_lower, tick_upper, liquidity, &market).is_ok());
 }
 
 #[test]
 fn test_position_bounds_validation() {
     let market = create_test_market();
-    
+    let liquidity = 1_000_000;
+
     // Test tick below minimum
-    let params = OpenPositionParams {
-        tick_lower: MIN_TICK - 10,
-        tick_upper: 0,
-        liquidity: 1_000_000,
-    };
-    
+    let tick_lower = MIN_TICK - 10;
+    let tick_upper = 0;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::TickOutOfBounds
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::InvalidTick.into()
     );
-    
+
     // Test tick above maximum
-    let params = OpenPositionParams {
-        tick_lower: 0,
-        tick_upper: MAX_TICK + 10,
-        liquidity: 1_000_000,
-    };
-    
+    let tick_lower = 0;
+    let tick_upper = MAX_TICK + 10;
+
     assert_eq!(
-        validate_position_params(&params, &market).unwrap_err(),
-        FeelsError::TickOutOfBounds
+        validate_position_params(tick_lower, tick_upper, liquidity, &market).unwrap_err(),
+        FeelsError::InvalidTick.into()
     );
 }
 
 #[test]
 fn test_position_liquidity_calculations() {
     let market = create_test_market();
-    
+
     // Test liquidity from amounts for in-range position
     let tick_lower = -100;
     let tick_upper = 100;
     let amount_0 = 1_000_000;
     let amount_1 = 1_000_000;
-    
+
     let liquidity = calculate_liquidity_from_amounts(
         market.sqrt_price,
         tick_lower,
         tick_upper,
         amount_0,
         amount_1,
-    ).unwrap();
-    
+    )
+    .unwrap();
+
     assert!(liquidity > 0);
     assert!(liquidity >= MIN_LIQUIDITY);
-    
+
     // Test liquidity for below-range position (only token_0)
     let tick_lower = 100;
     let tick_upper = 200;
-    let liquidity = calculate_liquidity_from_amounts(
-        market.sqrt_price,
-        tick_lower,
-        tick_upper,
-        amount_0,
-        0,
-    ).unwrap();
-    
+    let liquidity =
+        calculate_liquidity_from_amounts(market.sqrt_price, tick_lower, tick_upper, amount_0, 0)
+            .unwrap();
+
     assert!(liquidity > 0);
-    
+
     // Test liquidity for above-range position (only token_1)
     let tick_lower = -200;
     let tick_upper = -100;
-    let liquidity = calculate_liquidity_from_amounts(
-        market.sqrt_price,
-        tick_lower,
-        tick_upper,
-        0,
-        amount_1,
-    ).unwrap();
-    
+    let liquidity =
+        calculate_liquidity_from_amounts(market.sqrt_price, tick_lower, tick_upper, 0, amount_1)
+            .unwrap();
+
     assert!(liquidity > 0);
 }
 
@@ -183,22 +151,27 @@ fn test_position_state_initialization() {
     let market_key = Pubkey::new_unique();
     let owner = Pubkey::new_unique();
     let current_slot = 1000;
-    
+
     let position = Position {
+        nft_mint: Pubkey::new_unique(),
         market: market_key,
         owner,
         tick_lower: -100,
         tick_upper: 100,
         liquidity: 1_000_000,
+        fee_growth_inside_0_last_x64: 0,
+        fee_growth_inside_1_last_x64: 0,
+        tokens_owed_0: 0,
+        tokens_owed_1: 0,
+        position_bump: 255,
+        is_pomm: false,
+        last_updated_slot: current_slot,
         fee_growth_inside_0_last: 0,
         fee_growth_inside_1_last: 0,
         fees_owed_0: 0,
         fees_owed_1: 0,
-        is_pomm: false,
-        last_updated_slot: current_slot,
-        _reserved: [0; 64],
     };
-    
+
     // Verify initialization
     assert_eq!(position.market, market_key);
     assert_eq!(position.owner, owner);
@@ -213,41 +186,46 @@ fn test_position_state_initialization() {
 #[test]
 fn test_position_in_range_checks() {
     let market = create_test_market();
-    
+
     // Test in-range position
     let position = Position {
+        nft_mint: Pubkey::new_unique(),
         market: Pubkey::new_unique(),
         owner: Pubkey::new_unique(),
         tick_lower: -100,
         tick_upper: 100,
         liquidity: 1_000_000,
+        fee_growth_inside_0_last_x64: 0,
+        fee_growth_inside_1_last_x64: 0,
+        tokens_owed_0: 0,
+        tokens_owed_1: 0,
+        position_bump: 255,
+        is_pomm: false,
+        last_updated_slot: 0,
         fee_growth_inside_0_last: 0,
         fee_growth_inside_1_last: 0,
         fees_owed_0: 0,
         fees_owed_1: 0,
-        is_pomm: false,
-        last_updated_slot: 0,
-        _reserved: [0; 64],
     };
-    
+
     assert!(is_position_in_range(&position, market.current_tick));
-    
+
     // Test below-range position
     let position_below = Position {
         tick_lower: 100,
         tick_upper: 200,
         ..position
     };
-    
+
     assert!(!is_position_in_range(&position_below, market.current_tick));
-    
+
     // Test above-range position
     let position_above = Position {
         tick_lower: -200,
         tick_upper: -100,
         ..position
     };
-    
+
     assert!(!is_position_in_range(&position_above, market.current_tick));
 }
 
@@ -258,13 +236,13 @@ fn test_position_width_calculations() {
     let tick_upper = 10;
     let width = calculate_position_width(tick_lower, tick_upper);
     assert_eq!(width, 20);
-    
+
     // Test wide position
     let tick_lower = -1000;
     let tick_upper = 1000;
     let width = calculate_position_width(tick_lower, tick_upper);
     assert_eq!(width, 2000);
-    
+
     // Test maximum width
     let tick_lower = MIN_TICK;
     let tick_upper = MAX_TICK;
@@ -276,44 +254,24 @@ fn test_position_width_calculations() {
 fn test_position_pda_derivation() {
     let program_id = feels::ID;
     let market = Pubkey::new_unique();
-    let owner = Pubkey::new_unique();
-    let position_index = 0u64;
-    
+    let position_mint = Pubkey::new_unique();
+
     // Test position PDA
-    let (position_pda, position_bump) = Pubkey::find_program_address(
-        &[
-            b"position",
-            market.as_ref(),
-            owner.as_ref(),
-            &position_index.to_le_bytes(),
-        ],
-        &program_id
-    );
-    
+    let (position_pda, position_bump) =
+        Pubkey::find_program_address(&[b"position", position_mint.as_ref()], &program_id);
+
     // Test position metadata PDA
-    let (metadata_pda, metadata_bump) = Pubkey::find_program_address(
-        &[
-            b"position_metadata",
-            position_pda.as_ref(),
-        ],
-        &program_id
-    );
-    
+    let (metadata_pda, metadata_bump) =
+        Pubkey::find_program_address(&[b"position_metadata", position_pda.as_ref()], &program_id);
+
     // Verify PDAs are different
     assert_ne!(position_pda, metadata_pda);
-    
-    // Test different position index gives different PDA
-    let position_index_2 = 1u64;
-    let (position_pda_2, _) = Pubkey::find_program_address(
-        &[
-            b"position",
-            market.as_ref(),
-            owner.as_ref(),
-            &position_index_2.to_le_bytes(),
-        ],
-        &program_id
-    );
-    
+
+    // Test different position mint gives different PDA
+    let position_mint_2 = Pubkey::new_unique();
+    let (position_pda_2, _) =
+        Pubkey::find_program_address(&[b"position", position_mint_2.as_ref()], &program_id);
+
     assert_ne!(position_pda, position_pda_2);
 }
 
@@ -323,14 +281,14 @@ fn test_tick_array_updates() {
     let tick_lower = -1000;
     let tick_upper = 1000;
     let tick_spacing = 10;
-    
+
     let lower_array_start = get_tick_array_start(tick_lower, tick_spacing);
     let upper_array_start = get_tick_array_start(tick_upper, tick_spacing);
-    
+
     // Verify arrays are aligned
     assert_eq!(lower_array_start % (TICK_ARRAY_SIZE * tick_spacing), 0);
     assert_eq!(upper_array_start % (TICK_ARRAY_SIZE * tick_spacing), 0);
-    
+
     // Verify correct arrays would be loaded
     assert!(tick_lower >= lower_array_start);
     assert!(tick_lower < lower_array_start + TICK_ARRAY_SIZE * tick_spacing);
@@ -399,42 +357,53 @@ fn create_test_market() -> Market {
         last_phase_trigger: 0,
         total_volume_token_0: 0,
         total_volume_token_1: 0,
+        rolling_buy_volume: 0,
+        rolling_sell_volume: 0,
+        rolling_total_volume: 0,
+        rolling_window_start_slot: 0,
+        tick_snapshot_1hr: 0,
+        last_snapshot_timestamp: 0,
         _reserved: [0; 1],
     }
 }
 
-fn validate_position_params(params: &OpenPositionParams, market: &Market) -> Result<()> {
+fn validate_position_params(
+    tick_lower: i32,
+    tick_upper: i32,
+    liquidity: u128,
+    market: &Market,
+) -> Result<()> {
     // Validate tick range
-    if params.tick_lower >= params.tick_upper {
+    if tick_lower >= tick_upper {
         return Err(FeelsError::InvalidTickRange.into());
     }
-    
+
     // Check tick bounds
-    if params.tick_lower < MIN_TICK || params.tick_upper > MAX_TICK {
-        return Err(FeelsError::TickOutOfBounds.into());
+    if tick_lower < MIN_TICK || tick_upper > MAX_TICK {
+        return Err(FeelsError::InvalidTick.into());
     }
-    
+
     // Check tick spacing
-    if params.tick_lower % market.tick_spacing as i32 != 0 || 
-       params.tick_upper % market.tick_spacing as i32 != 0 {
+    if tick_lower % market.tick_spacing as i32 != 0 || tick_upper % market.tick_spacing as i32 != 0
+    {
         return Err(FeelsError::TickNotSpaced.into());
     }
-    
+
     // Check range width
-    let width = (params.tick_upper - params.tick_lower) as u32;
+    let width = (tick_upper - tick_lower) as u32;
     if width > MAX_POSITION_WIDTH {
-        return Err(FeelsError::TickRangeTooWide.into());
+        return Err(FeelsError::InvalidTickRange.into());
     }
-    
+
     // Validate liquidity
-    if params.liquidity == 0 {
+    if liquidity == 0 {
         return Err(FeelsError::ZeroLiquidity.into());
     }
-    
-    if params.liquidity < MIN_LIQUIDITY {
+
+    if liquidity < MIN_LIQUIDITY {
         return Err(FeelsError::LiquidityBelowMinimum.into());
     }
-    
+
     Ok(())
 }
 
@@ -462,7 +431,8 @@ fn calculate_position_width(tick_lower: i32, tick_upper: i32) -> u32 {
 
 fn get_tick_array_start(tick: i32, tick_spacing: i32) -> i32 {
     let ticks_per_array = TICK_ARRAY_SIZE * tick_spacing;
-    (tick / ticks_per_array) * ticks_per_array
+    let array_index = tick.div_euclid(ticks_per_array);
+    array_index * ticks_per_array
 }
 
 const MAX_POSITION_WIDTH: u32 = 886272; // Maximum ticks in a position

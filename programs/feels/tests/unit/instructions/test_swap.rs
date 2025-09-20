@@ -2,13 +2,16 @@
 
 use anchor_lang::prelude::*;
 use feels::{
-    error::FeelsError,
-    instructions::{Swap, SwapParams},
-    state::{Market, Buffer, OracleState},
     constants::*,
-    logic::jit::*,
+    error::FeelsError,
+    instructions::SwapParams,
+    state::{Buffer, Market},
 };
 use solana_program::pubkey::Pubkey;
+
+// Test constants
+const MIN_SQRT_PRICE: u128 = 4295128739;
+const MAX_SQRT_PRICE: u128 = u128::MAX;
 
 #[test]
 fn test_swap_validation() {
@@ -16,57 +19,46 @@ fn test_swap_validation() {
     let params = SwapParams {
         amount_in: 0,
         minimum_amount_out: 100,
-        is_token_0_to_1: true,
-        sqrt_price_limit: None,
+        max_ticks_crossed: 0,
+        max_total_fee_bps: 0,
+        exact_output_mode: false,
     };
-    
+
     assert_eq!(
         validate_swap_params(&params).unwrap_err(),
-        FeelsError::ZeroAmount
+        FeelsError::ZeroAmount.into()
     );
-    
-    // Test invalid sqrt price limit (too low for 0->1 swap)
+
+    // Test invalid max fee (too high)
     let params = SwapParams {
         amount_in: 1000,
         minimum_amount_out: 0,
-        is_token_0_to_1: true,
-        sqrt_price_limit: Some(MIN_SQRT_PRICE - 1),
+        max_ticks_crossed: 0,
+        max_total_fee_bps: 10001, // > 100%
+        exact_output_mode: false,
     };
-    
+
     assert_eq!(
         validate_swap_params(&params).unwrap_err(),
-        FeelsError::InvalidSqrtPriceLimit
-    );
-    
-    // Test invalid sqrt price limit (too high for 1->0 swap)
-    let params = SwapParams {
-        amount_in: 1000,
-        minimum_amount_out: 0,
-        is_token_0_to_1: false,
-        sqrt_price_limit: Some(MAX_SQRT_PRICE + 1),
-    };
-    
-    assert_eq!(
-        validate_swap_params(&params).unwrap_err(),
-        FeelsError::InvalidSqrtPriceLimit
+        FeelsError::FeeCapExceeded.into()
     );
 }
 
 #[test]
 fn test_swap_fee_calculations() {
     let market = create_test_market();
-    
+
     // Test base fee calculation
     let amount_in = 1_000_000;
     let base_fee = calculate_base_fee(&market, amount_in);
     assert_eq!(base_fee, 3_000); // 0.3% of 1M
-    
+
     // Test with different fee rates
-    let mut market_high_fee = market;
+    let mut market_high_fee = create_test_market();
     market_high_fee.base_fee_bps = 100; // 1%
     let high_fee = calculate_base_fee(&market_high_fee, amount_in);
     assert_eq!(high_fee, 10_000); // 1% of 1M
-    
+
     // Test fee overflow protection
     let huge_amount = u64::MAX;
     let huge_fee = calculate_base_fee(&market, huge_amount);
@@ -78,111 +70,103 @@ fn test_swap_slippage_protection() {
     let params = SwapParams {
         amount_in: 1000,
         minimum_amount_out: 900,
-        is_token_0_to_1: true,
-        sqrt_price_limit: None,
+        max_ticks_crossed: 0,
+        max_total_fee_bps: 0,
+        exact_output_mode: false,
     };
-    
+
     // Test successful swap (meets minimum)
     let amount_out = 950;
     assert!(check_slippage_tolerance(&params, amount_out).is_ok());
-    
+
     // Test failed swap (below minimum)
     let amount_out = 850;
     assert_eq!(
         check_slippage_tolerance(&params, amount_out).unwrap_err(),
-        FeelsError::SlippageExceeded
+        FeelsError::SlippageExceeded.into()
     );
-    
+
     // Test exact minimum
     let amount_out = 900;
     assert!(check_slippage_tolerance(&params, amount_out).is_ok());
 }
 
 #[test]
-fn test_swap_price_limit_validation() {
-    let market = create_test_market();
-    
-    // Test 0->1 swap with valid price limit
-    let sqrt_price_limit = market.sqrt_price - 1000;
-    assert!(validate_price_limit(&market, true, Some(sqrt_price_limit)).is_ok());
-    
-    // Test 1->0 swap with valid price limit
-    let sqrt_price_limit = market.sqrt_price + 1000;
-    assert!(validate_price_limit(&market, false, Some(sqrt_price_limit)).is_ok());
-    
-    // Test 0->1 swap with invalid price limit (above current)
-    let sqrt_price_limit = market.sqrt_price + 1000;
-    assert!(validate_price_limit(&market, true, Some(sqrt_price_limit)).is_err());
-    
-    // Test 1->0 swap with invalid price limit (below current)
-    let sqrt_price_limit = market.sqrt_price - 1000;
-    assert!(validate_price_limit(&market, false, Some(sqrt_price_limit)).is_err());
+fn test_swap_tick_crossing_limit() {
+    let params = SwapParams {
+        amount_in: 1000,
+        minimum_amount_out: 0,
+        max_ticks_crossed: 10,
+        max_total_fee_bps: 0,
+        exact_output_mode: false,
+    };
+
+    // Test within limit
+    let ticks_crossed = 5;
+    assert!(check_tick_crossing_limit(&params, ticks_crossed).is_ok());
+
+    // Test at limit
+    let ticks_crossed = 10;
+    assert!(check_tick_crossing_limit(&params, ticks_crossed).is_ok());
+
+    // Test exceeding limit
+    let ticks_crossed = 11;
+    assert_eq!(
+        check_tick_crossing_limit(&params, ticks_crossed).unwrap_err(),
+        FeelsError::TooManyTicksCrossed.into()
+    );
+
+    // Test unlimited (max_ticks_crossed = 0)
+    let params_unlimited = SwapParams {
+        max_ticks_crossed: 0,
+        ..params
+    };
+    assert!(check_tick_crossing_limit(&params_unlimited, 100).is_ok());
 }
 
 #[test]
-fn test_jit_v0_5_allowance() {
-    let mut market = create_test_market();
-    let mut buffer = create_test_buffer();
-    
-    // Enable JIT v0.5
-    market.jit_enabled = true;
-    buffer.tau_spot = 100_000_000; // 100M tau
-    buffer.initial_tau_spot = 100_000_000;
-    
-    // Test base cap (3%)
-    let allowance = calculate_jit_base_allowance(&market, &buffer);
-    assert_eq!(allowance, 3_000_000); // 3% of 100M
-    
-    // Test with concentration multiplier
-    let current_tick = 0;
-    let target_tick = 10; // Close to current
-    let multiplier = calculate_concentration_multiplier(&market, current_tick, target_tick);
-    assert!(multiplier > 1.0);
-    assert!(multiplier <= 10.0);
-    
-    // Test slot-based cap
-    let slot_cap = calculate_slot_cap(&market, &buffer);
-    assert_eq!(slot_cap, 5_000_000); // 5% of 100M
-}
+fn test_swap_fee_cap() {
+    let params = SwapParams {
+        amount_in: 1000,
+        minimum_amount_out: 0,
+        max_ticks_crossed: 0,
+        max_total_fee_bps: 100, // 1% cap
+        exact_output_mode: false,
+    };
 
-#[test]
-fn test_jit_safety_mitigations() {
-    let mut market = create_test_market();
-    let mut buffer = create_test_buffer();
-    
-    // Test graduated drain protection
-    buffer.tau_spot = 30_000_000; // 30M (30% of initial)
-    buffer.initial_tau_spot = 100_000_000;
-    let throttle_factor = calculate_drain_throttle(&buffer);
-    assert!(throttle_factor < 1.0); // Should be throttled
-    
-    // Test circuit breaker
-    buffer.tau_spot = 25_000_000; // 25M (25% of initial)
-    let circuit_breaker = check_circuit_breaker(&market, &buffer);
-    assert!(circuit_breaker); // Should trigger circuit breaker
-    
-    // Test slot-based shift
-    let current_slot = 1000;
-    let last_heavy_slot = 950;
-    buffer.jit_last_heavy_usage_slot = last_heavy_slot;
-    let shift_ticks = calculate_slot_shift(&buffer, current_slot);
-    assert!(shift_ticks > 0); // Should shift concentration
+    // Test within cap
+    let total_fee = 10; // 1%
+    assert!(check_fee_cap(&params, total_fee).is_ok());
+
+    // Test exceeding cap
+    let total_fee = 20; // 2%
+    assert_eq!(
+        check_fee_cap(&params, total_fee).unwrap_err(),
+        FeelsError::FeeCapExceeded.into()
+    );
+
+    // Test no cap (max_total_fee_bps = 0)
+    let params_no_cap = SwapParams {
+        max_total_fee_bps: 0,
+        ..params
+    };
+    assert!(check_fee_cap(&params_no_cap, 1000).is_ok());
 }
 
 #[test]
 fn test_swap_reentrancy_protection() {
     let mut market = create_test_market();
-    
+
     // Test reentrancy guard
     assert!(!market.reentrancy_guard);
-    
+
     // Simulate entering swap
     market.reentrancy_guard = true;
-    
+
     // Test that reentrant call would fail
     let result = check_reentrancy(&market);
-    assert_eq!(result.unwrap_err(), FeelsError::ReentrantCall);
-    
+    assert_eq!(result.unwrap_err(), FeelsError::ReentrancyDetected.into());
+
     // Test normal state
     market.reentrancy_guard = false;
     assert!(check_reentrancy(&market).is_ok());
@@ -191,31 +175,36 @@ fn test_swap_reentrancy_protection() {
 #[test]
 fn test_swap_market_paused() {
     let mut market = create_test_market();
-    
+
     // Test normal market
     assert!(check_market_active(&market).is_ok());
-    
+
     // Test paused market
     market.is_paused = true;
     assert_eq!(
         check_market_active(&market).unwrap_err(),
-        FeelsError::MarketPaused
+        FeelsError::MarketPaused.into()
     );
 }
 
 #[test]
-fn test_swap_directional_tracking() {
+fn test_jit_allowance_calculation() {
+    let mut market = create_test_market();
     let mut buffer = create_test_buffer();
-    
-    // Test buy tracking
-    let jit_amount = 1_000_000u128;
-    update_directional_tracking(&mut buffer, jit_amount, true);
-    
-    // For now just verify the function runs
-    // In full implementation, would check directional volume fields
-    
-    // Test sell tracking
-    update_directional_tracking(&mut buffer, jit_amount, false);
+
+    // Enable JIT
+    market.jit_enabled = true;
+    buffer.tau_spot = 100_000_000; // 100M tau
+    buffer.initial_tau_spot = 100_000_000;
+
+    // Test base cap (3%)
+    let allowance = calculate_jit_base_allowance(&market, &buffer);
+    assert_eq!(allowance, 3_000_000); // 3% of 100M
+
+    // Test with consumption
+    buffer.jit_rolling_consumption = 1_000_000;
+    let remaining = calculate_jit_remaining(&market, &buffer);
+    assert_eq!(remaining, 2_000_000); // 3M - 1M consumed
 }
 
 // Helper functions
@@ -279,6 +268,12 @@ fn create_test_market() -> Market {
         last_phase_trigger: 0,
         total_volume_token_0: 0,
         total_volume_token_1: 0,
+        rolling_buy_volume: 0,
+        rolling_sell_volume: 0,
+        rolling_total_volume: 0,
+        rolling_window_start_slot: 0,
+        tick_snapshot_1hr: 0,
+        last_snapshot_timestamp: 0,
         _reserved: [0; 1],
     }
 }
@@ -287,27 +282,28 @@ fn create_test_buffer() -> Buffer {
     Buffer {
         market: Pubkey::new_unique(),
         authority: Pubkey::new_unique(),
-        tau_spot: 100_000_000,
-        tau_leverage: 0,
+        feelssol_mint: Pubkey::new_from_array([0; 32]),
         fees_token_0: 0,
         fees_token_1: 0,
+        tau_spot: 100_000_000,
+        tau_time: 0,
+        tau_leverage: 0,
+        floor_tick_spacing: 100,
         floor_placement_threshold: 1_000_000,
-        total_distributed: 0,
         last_floor_placement: 0,
-        last_update_slot: 0,
-        last_update_timestamp: 0,
-        buffer_vault_0: Pubkey::new_unique(),
-        buffer_vault_1: Pubkey::new_unique(),
-        jit_last_consumed_slot: 0,
-        jit_total_consumed_24h: 0,
-        jit_24h_window_start: 0,
-        pomm_position_count: 0,
+        last_rebase: 0,
+        total_distributed: 0,
+        buffer_authority_bump: 255,
+        jit_last_slot: 0,
+        jit_slot_used_q: 0,
         jit_rolling_consumption: 0,
         jit_rolling_window_start: 0,
         jit_last_heavy_usage_slot: 0,
         jit_total_consumed_epoch: 0,
         initial_tau_spot: 100_000_000,
-        _reserved: [0; 220],
+        protocol_owned_override: 0,
+        pomm_position_count: 0,
+        _padding: [0; 7],
     }
 }
 
@@ -315,19 +311,16 @@ fn validate_swap_params(params: &SwapParams) -> Result<()> {
     if params.amount_in == 0 {
         return Err(FeelsError::ZeroAmount.into());
     }
-    
-    if let Some(limit) = params.sqrt_price_limit {
-        if limit < MIN_SQRT_PRICE || limit > MAX_SQRT_PRICE {
-            return Err(FeelsError::InvalidSqrtPriceLimit.into());
-        }
+
+    if params.max_total_fee_bps > 10000 {
+        return Err(FeelsError::FeeCapExceeded.into());
     }
-    
+
     Ok(())
 }
 
 fn calculate_base_fee(market: &Market, amount_in: u64) -> u64 {
-    (amount_in as u128 * market.base_fee_bps as u128 / 10_000)
-        .min(u64::MAX as u128) as u64
+    (amount_in as u128 * market.base_fee_bps as u128 / 10_000).min(u64::MAX as u128) as u64
 }
 
 fn check_slippage_tolerance(params: &SwapParams, amount_out: u64) -> Result<()> {
@@ -337,61 +330,26 @@ fn check_slippage_tolerance(params: &SwapParams, amount_out: u64) -> Result<()> 
     Ok(())
 }
 
-fn validate_price_limit(market: &Market, is_token_0_to_1: bool, sqrt_price_limit: Option<u128>) -> Result<()> {
-    if let Some(limit) = sqrt_price_limit {
-        if is_token_0_to_1 && limit > market.sqrt_price {
-            return Err(FeelsError::InvalidSqrtPriceLimit.into());
-        }
-        if !is_token_0_to_1 && limit < market.sqrt_price {
-            return Err(FeelsError::InvalidSqrtPriceLimit.into());
+fn check_tick_crossing_limit(params: &SwapParams, ticks_crossed: u8) -> Result<()> {
+    if params.max_ticks_crossed > 0 && ticks_crossed > params.max_ticks_crossed {
+        return Err(FeelsError::TooManyTicksCrossed.into());
+    }
+    Ok(())
+}
+
+fn check_fee_cap(params: &SwapParams, total_fee: u64) -> Result<()> {
+    if params.max_total_fee_bps > 0 {
+        let fee_bps = (total_fee as u128 * 10_000 / params.amount_in as u128) as u16;
+        if fee_bps > params.max_total_fee_bps {
+            return Err(FeelsError::FeeCapExceeded.into());
         }
     }
     Ok(())
 }
 
-fn calculate_jit_base_allowance(market: &Market, buffer: &Buffer) -> u128 {
-    buffer.tau_spot * market.jit_base_cap_bps as u128 / 10_000
-}
-
-fn calculate_concentration_multiplier(market: &Market, current_tick: i32, target_tick: i32) -> f64 {
-    let distance = (current_tick - target_tick).abs() as u32;
-    if distance <= market.jit_concentration_width {
-        market.jit_max_multiplier as f64
-    } else {
-        1.0
-    }
-}
-
-fn calculate_slot_cap(market: &Market, buffer: &Buffer) -> u128 {
-    buffer.tau_spot * market.jit_per_slot_cap_bps as u128 / 10_000
-}
-
-fn calculate_drain_throttle(buffer: &Buffer) -> f64 {
-    let ratio = buffer.tau_spot as f64 / buffer.initial_tau_spot.max(1) as f64;
-    if ratio < 0.7 {
-        ratio // Linear throttle below 70%
-    } else {
-        1.0
-    }
-}
-
-fn check_circuit_breaker(market: &Market, buffer: &Buffer) -> bool {
-    let ratio = buffer.tau_spot * 10_000 / buffer.initial_tau_spot.max(1);
-    ratio < market.jit_circuit_breaker_bps as u128
-}
-
-fn calculate_slot_shift(buffer: &Buffer, current_slot: u64) -> u32 {
-    let slots_since_heavy = current_slot.saturating_sub(buffer.jit_last_heavy_usage_slot);
-    if slots_since_heavy < 100 {
-        10 // Shift by 10 ticks
-    } else {
-        0
-    }
-}
-
 fn check_reentrancy(market: &Market) -> Result<()> {
     if market.reentrancy_guard {
-        return Err(FeelsError::ReentrantCall.into());
+        return Err(FeelsError::ReentrancyDetected.into());
     }
     Ok(())
 }
@@ -403,7 +361,11 @@ fn check_market_active(market: &Market) -> Result<()> {
     Ok(())
 }
 
-fn update_directional_tracking(buffer: &mut Buffer, jit_amount: u128, is_buy: bool) {
-    // Simplified for unit test
-    // In full implementation would update directional volume fields
+fn calculate_jit_base_allowance(market: &Market, buffer: &Buffer) -> u128 {
+    buffer.tau_spot * market.jit_base_cap_bps as u128 / 10_000
+}
+
+fn calculate_jit_remaining(market: &Market, buffer: &Buffer) -> u128 {
+    let base_allowance = calculate_jit_base_allowance(market, buffer);
+    base_allowance.saturating_sub(buffer.jit_rolling_consumption)
 }

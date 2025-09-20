@@ -72,9 +72,9 @@ pub fn derive_epoch_params(market: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8)
 }
 
 /// Derive metadata PDA for SPL tokens
-pub fn derive_metadata(mint: &Pubkey) -> (Pubkey, u8) {
+pub fn derive_metadata(mint: &Pubkey, metadata_program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[b"metadata", mpl_token_metadata::ID.as_ref(), mint.as_ref()],
-        &mpl_token_metadata::ID,
+        &[b"metadata", metadata_program_id.as_ref(), mint.as_ref()],
+        metadata_program_id,
     )
 }

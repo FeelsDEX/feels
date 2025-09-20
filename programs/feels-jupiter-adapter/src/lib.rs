@@ -1,33 +1,20 @@
-#![allow(deprecated)]
-
 /// Feels Jupiter Adapter
 /// 
-/// This crate provides the Jupiter AMM interface implementation for Feels Protocol
-
-use anchor_lang::prelude::*;
-
-declare_id!("EbBFsqA3E4KNReSq9TZs5CGv36BiGDk24BePsUdhbvBu");
+/// This crate provides the Jupiter AMM interface implementation for Feels Protocol.
+/// It enables Feels markets to be discovered and used by Jupiter's routing engine.
 
 pub mod amm;
+pub mod config;
+
+// Main exports for Jupiter integration
 pub use amm::FeelsAmm;
+pub use config::ADAPTER_CONFIG;
+
+// Re-export the main Feels program for type access
+pub use feels;
+
+// Re-export SDK for shared utilities
+pub use feels_sdk;
 
 #[cfg(test)]
 mod tests;
-
-/// Re-export the main Feels program for CPI
-pub use feels;
-
-/// Jupiter adapter program (kept for backwards compatibility)
-#[program]
-pub mod feels_jupiter_adapter {
-    use super::*;
-    
-    /// Placeholder instruction for backwards compatibility
-    pub fn noop(_ctx: Context<Noop>) -> Result<()> {
-        msg!("This program now provides the Jupiter AMM interface implementation");
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Noop {}

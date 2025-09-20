@@ -59,11 +59,8 @@ pub fn transfer_from_buffer_vault<'info>(
         authority: buffer_authority.to_account_info(),
     };
     let seeds = [authority_seeds];
-    let cpi_ctx = CpiContext::new_with_signer(
-        token_program.to_account_info(),
-        cpi_accounts,
-        &seeds,
-    );
+    let cpi_ctx =
+        CpiContext::new_with_signer(token_program.to_account_info(), cpi_accounts, &seeds);
     token::transfer(cpi_ctx, amount)
 }
 

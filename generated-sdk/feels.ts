@@ -1,0 +1,10245 @@
+export type Feels = {
+  "address": "",
+  "metadata": {
+    "name": "feels",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize_protocol",
+      "docs": [
+        "Initialize protocol configuration (one-time setup)"
+      ],
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority (deployer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle account (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (singleton)"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_protocol::InitializeProtocolParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_floor",
+      "docs": [
+        "Permissionless floor update crank (computes floor from reserves & supply)"
+      ],
+      "discriminator": [
+        38,
+        80,
+        204,
+        37,
+        6,
+        62,
+        192,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer must be associated with this market"
+          ]
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0 - must be the correct PDA for this market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1 - must be the correct PDA for this market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "project_mint",
+          "docs": [
+            "Project mint must be the non-FeelsSOL token in this market"
+          ]
+        },
+        {
+          "name": "escrow_token_account",
+          "docs": [
+            "Optional: Pre-launch escrow token account (if tokens still in escrow)"
+          ],
+          "optional": true
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Optional: Other protocol-owned token accounts to exclude",
+            "These would be accounts holding tokens that should not be considered circulating",
+            "Note: This is handled as remaining_accounts in the instruction handler"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_protocol",
+      "docs": [
+        "Update protocol configuration"
+      ],
+      "discriminator": [
+        206,
+        25,
+        218,
+        114,
+        109,
+        41,
+        74,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Current protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_protocol::UpdateProtocolParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_protocol_owned_override",
+      "docs": [
+        "Set protocol owned override for floor calculation (governance only)"
+      ],
+      "discriminator": [
+        250,
+        164,
+        109,
+        69,
+        170,
+        65,
+        157,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config must exist"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer to update",
+            "Note: We don't check buffer.authority here because it's set to the market creator,",
+            "not the protocol authority. The protocol authority can still manage overrides",
+            "as a governance function."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority - only they can set overrides"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "override_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_pool_registry",
+      "docs": [
+        "Initialize the pool registry (one-time setup)"
+      ],
+      "discriminator": [
+        109,
+        119,
+        17,
+        241,
+        165,
+        19,
+        176,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config must exist"
+          ]
+        },
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority must match protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_pool",
+      "docs": [
+        "Register a pool in the registry"
+      ],
+      "discriminator": [
+        85,
+        229,
+        114,
+        47,
+        75,
+        145,
+        166,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market to register"
+          ]
+        },
+        {
+          "name": "project_mint",
+          "docs": [
+            "Project token mint (non-FeelsSOL token)"
+          ]
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "Creator registering the pool"
+          ],
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for realloc"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_pool_phase",
+      "docs": [
+        "Update pool phase in registry"
+      ],
+      "discriminator": [
+        67,
+        208,
+        79,
+        72,
+        239,
+        112,
+        73,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market whose phase to update"
+          ]
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority (must be registry authority or market authority)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_phase",
+          "type": {
+            "defined": {
+              "name": "feels::state::pool_registry::PoolPhase"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_pomm_position",
+      "docs": [
+        "Initialize a POMM (Protocol-Owned Market Making) position"
+      ],
+      "discriminator": [
+        188,
+        224,
+        119,
+        1,
+        109,
+        96,
+        244,
+        199
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that can initialize POMM positions"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market for this POMM position"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer that will own this POMM position"
+          ]
+        },
+        {
+          "name": "pomm_position",
+          "docs": [
+            "POMM position account to initialize",
+            "Uses a PDA derived from market and position index"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config to validate authority"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "position_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "manage_pomm_position",
+      "docs": [
+        "Manage POMM (Protocol-Owned Market Making) positions"
+      ],
+      "discriminator": [
+        173,
+        67,
+        116,
+        206,
+        107,
+        121,
+        81,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "pomm_position",
+          "docs": [
+            "POMM position account - must be initialized separately",
+            "Uses a PDA derived from market and position index"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "writable": true
+        },
+        {
+          "name": "buffer_vault_0",
+          "writable": true
+        },
+        {
+          "name": "buffer_vault_1",
+          "writable": true
+        },
+        {
+          "name": "buffer_authority"
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        },
+        {
+          "name": "rent"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::manage_pomm_position::ManagePommParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "transition_market_phase",
+      "docs": [
+        "Transition market between phases"
+      ],
+      "discriminator": [
+        192,
+        45,
+        250,
+        40,
+        31,
+        139,
+        115,
+        62
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "oracle"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::transition_market_phase::TransitionPhaseParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_market",
+      "docs": [
+        "Initialize a new market with commitment for initial liquidity",
+        "Market creation and liquidity commitment are atomic, preventing",
+        "front-running. Actual liquidity deployment happens separately via",
+        "deploy_initial_liquidity instruction."
+      ],
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "Creator initializing the market"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_0",
+          "docs": [
+            "Token 0 mint (lower pubkey)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_1",
+          "docs": [
+            "Token 1 mint (higher pubkey)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0 for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1 for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint (hub token)"
+          ]
+        },
+        {
+          "name": "protocol_token_0",
+          "docs": [
+            "Protocol token registry for token_0 (if not FeelsSOL)"
+          ]
+        },
+        {
+          "name": "protocol_token_1",
+          "docs": [
+            "Protocol token registry for token_1 (if not FeelsSOL)"
+          ]
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow for the protocol token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "creator_feelssol",
+          "docs": [
+            "Creator's FeelsSOL account for initial buy"
+          ]
+        },
+        {
+          "name": "creator_token_out",
+          "docs": [
+            "Creator's token account for receiving initial buy tokens"
+          ]
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA (holds mint/freeze authorities)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_market::InitializeMarketParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "enter_feelssol",
+      "docs": [
+        "Enter FeelsSOL - deposit JitoSOL to mint FeelsSOL"
+      ],
+      "discriminator": [
+        199,
+        205,
+        49,
+        173,
+        81,
+        50,
+        186,
+        126
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "User entering FeelsSOL",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_jitosol",
+          "docs": [
+            "User's JitoSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_feelssol",
+          "docs": [
+            "User's FeelsSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "FeelsHub PDA for reentrancy guard"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault (pool-owned by the FeelsSOL hub pool)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint_authority",
+          "docs": [
+            "Mint authority PDA"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "exit_feelssol",
+      "docs": [
+        "Exit FeelsSOL - burn FeelsSOL to redeem JitoSOL"
+      ],
+      "discriminator": [
+        105,
+        118,
+        168,
+        148,
+        61,
+        152,
+        3,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "User exiting FeelsSOL",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_jitosol",
+          "docs": [
+            "User's JitoSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_feelssol",
+          "docs": [
+            "User's FeelsSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "FeelsHub PDA for FeelsSOL mint",
+            "SECURITY: Provides re-entrancy guard protection"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (protocol-level)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config (for rate limits)"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle (rates)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault (pool-owned by the FeelsSOL hub pool)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_hub",
+      "docs": [
+        "Initialize FeelsHub for enter/exit operations"
+      ],
+      "discriminator": [
+        202,
+        27,
+        126,
+        27,
+        54,
+        182,
+        68,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Authority paying for the account"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint the hub manages"
+          ]
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "The FeelsHub PDA"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault for the hub"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA"
+          ]
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "swap",
+      "docs": [
+        "Swap tokens through the AMM"
+      ],
+      "discriminator": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "The user initiating the swap transaction",
+            "Must be a system account (not a PDA) to prevent identity confusion attacks"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "The market account containing trading pair state",
+            "Must be initialized, not paused, and not currently in a reentrant call"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Protocol-owned vault holding token_0 reserves",
+            "PDA derived from market tokens with deterministic ordering"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Protocol-owned vault holding token_1 reserves",
+            "PDA derived from market tokens with deterministic ordering"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA that controls vault operations",
+            "Used as signer for transferring tokens from vaults to users"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer account for fee collection and protocol-owned market making",
+            "Accumulates impact fees for later deployment as liquidity"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account for tracking time-weighted average prices (TWAP)",
+            "Updated on every swap to maintain accurate price history"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_token_in",
+          "docs": [
+            "User's token account for the input token being swapped",
+            "Ownership and mint validation performed in handler"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_token_out",
+          "docs": [
+            "User's token account for the output token being received",
+            "Ownership and mint validation performed in handler"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "SPL Token program for executing transfers"
+          ]
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Clock sysvar for timestamp and epoch tracking"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol configuration account for fee rates"
+          ]
+        },
+        {
+          "name": "protocol_treasury",
+          "docs": [
+            "Protocol treasury token account (mandatory for protocol fees)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry (optional - only for protocol-minted tokens)"
+          ],
+          "optional": true
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator token account (optional - only if creator fees > 0 and protocol token present)"
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::swap::SwapParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "swap_exact_out",
+      "docs": [
+        "Swap tokens with exact output amount"
+      ],
+      "discriminator": [
+        250,
+        73,
+        101,
+        33,
+        38,
+        207,
+        75,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "writable": true
+        },
+        {
+          "name": "user_account_0",
+          "writable": true
+        },
+        {
+          "name": "user_account_1",
+          "writable": true
+        },
+        {
+          "name": "market_authority"
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::swap_exact_out::SwapExactOutParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open_position",
+      "docs": [
+        "Open a new liquidity position"
+      ],
+      "discriminator": [
+        135,
+        128,
+        47,
+        77,
+        15,
+        152,
+        240,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "docs": [
+            "Liquidity provider",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint - a simple SPL token representing ownership"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account - where the position token is minted"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA) - stores all position state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_0",
+          "docs": [
+            "Provider's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_1",
+          "docs": [
+            "Provider's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "tick_lower",
+          "type": "i32"
+        },
+        {
+          "name": "tick_upper",
+          "type": "i32"
+        },
+        {
+          "name": "liquidity_amount",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "close_position",
+      "docs": [
+        "Close a liquidity position"
+      ],
+      "discriminator": [
+        123,
+        134,
+        81,
+        0,
+        49,
+        68,
+        98,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account (must hold exactly 1 token)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)",
+            "SECURITY: Account closure handled in instruction logic to prevent fee theft"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "docs": [
+            "Owner's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority PDA"
+          ]
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::close_position::ClosePositionParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "collect_fees",
+      "docs": [
+        "Collect fees from a position - smart single entry point",
+        "Automatically handles normal positions, wide positions, and accumulated fees"
+      ],
+      "discriminator": [
+        164,
+        152,
+        207,
+        99,
+        30,
+        186,
+        19,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ]
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account (must hold the position token)"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner token accounts"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority"
+          ]
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_position_fee_lower",
+      "docs": [
+        "Update position fee accrual for lower tick",
+        "Part 1/3 of fee collection for wide positions"
+      ],
+      "discriminator": [
+        58,
+        181,
+        152,
+        160,
+        205,
+        130,
+        59,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_position_fee_upper",
+      "docs": [
+        "Update position fee accrual for upper tick",
+        "Part 2/3 of fee collection for wide positions"
+      ],
+      "discriminator": [
+        162,
+        48,
+        161,
+        22,
+        95,
+        7,
+        191,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mint_token",
+      "docs": [
+        "Mint a new token with distribution"
+      ],
+      "discriminator": [
+        172,
+        137,
+        183,
+        14,
+        207,
+        110,
+        234,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "Token creator",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_mint",
+          "docs": [
+            "New token mint to create"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow account for this token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault (holds all minted tokens)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault (holds mint fee)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ]
+        },
+        {
+          "name": "creator_feelssol",
+          "docs": [
+            "Creator's FeelsSOL account for paying mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ]
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex token metadata program"
+          ]
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::mint_token::MintTokenParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deploy_initial_liquidity",
+      "docs": [
+        "Deploy initial liquidity to a market",
+        "Verifies the deployment matches the commitment made during market",
+        "initialization, preventing unauthorized liquidity deployment"
+      ],
+      "discriminator": [
+        226,
+        227,
+        73,
+        75,
+        85,
+        216,
+        151,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "deployer",
+          "docs": [
+            "Deployer (must be market authority)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_0_mint",
+          "docs": [
+            "Token mints to read decimals (production-grade)"
+          ]
+        },
+        {
+          "name": "token_1_mint"
+        },
+        {
+          "name": "deployer_feelssol",
+          "docs": [
+            "Deployer's FeelsSOL account (for initial buy)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "deployer_token_out",
+          "docs": [
+            "Deployer's token account for receiving initial buy tokens"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Market buffer account (for fee collection, not token escrow)",
+            "Buffer is included to update deployment tracking"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account for price updates"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow for the protocol token",
+            "Escrow is derived from the non-FeelsSOL token mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ]
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Treasury to receive mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "tranche_plan",
+          "docs": [
+            "Tranche plan PDA (initialized here)"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_tranche_ticks",
+      "docs": [
+        "Permissionless crank to initialize tranche TickArrays and boundary ticks"
+      ],
+      "discriminator": [
+        118,
+        74,
+        31,
+        238,
+        66,
+        167,
+        66,
+        93
+      ],
+      "accounts": [
+        {
+          "name": "crank",
+          "docs": [
+            "Anyone can crank"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market whose tranche ticks to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "tranche_plan",
+          "docs": [
+            "Tranche plan produced at deploy time"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for creating missing TickArrays"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cleanup_bonding_curve",
+      "docs": [
+        "Cleanup bonding curve plan and mark cleanup complete"
+      ],
+      "discriminator": [
+        205,
+        225,
+        206,
+        146,
+        97,
+        186,
+        14,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "tranche_plan",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_position_with_metadata",
+      "docs": [
+        "Open a position with NFT metadata"
+      ],
+      "discriminator": [
+        242,
+        29,
+        134,
+        48,
+        58,
+        110,
+        14,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "docs": [
+            "Liquidity provider",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint - will become an NFT with metadata"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account (PDA of Metaplex Token Metadata program)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_0",
+          "docs": [
+            "Provider's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_1",
+          "docs": [
+            "Provider's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex Token Metadata program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "tick_lower",
+          "type": "i32"
+        },
+        {
+          "name": "tick_upper",
+          "type": "i32"
+        },
+        {
+          "name": "liquidity_amount",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "close_position_with_metadata",
+      "docs": [
+        "Close a position with NFT metadata"
+      ],
+      "discriminator": [
+        17,
+        174,
+        244,
+        40,
+        141,
+        4,
+        42,
+        125
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)",
+            "SECURITY: Removed `close = owner` to prevent fee theft vulnerability.",
+            "Position must be closed in a separate instruction after verification."
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account (will be closed)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "docs": [
+            "Owner's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority PDA"
+          ]
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex Token Metadata program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_0_min",
+          "type": "u64"
+        },
+        {
+          "name": "amount_1_min",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "destroy_expired_token",
+      "docs": [
+        "Destroy an expired token that hasn't had liquidity deployed"
+      ],
+      "discriminator": [
+        72,
+        107,
+        101,
+        121,
+        217,
+        54,
+        144,
+        155
+      ],
+      "accounts": [
+        {
+          "name": "destroyer",
+          "docs": [
+            "Anyone can call this instruction to destroy expired tokens"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_mint",
+          "docs": [
+            "Token mint to destroy"
+          ]
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow account for this token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault (contains mint fee)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config"
+          ]
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Treasury to receive 50% of mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "destroyer_feelssol",
+          "docs": [
+            "Destroyer's FeelsSOL account to receive 50% of mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Optional: Market account if it was created"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "graduate_pool",
+      "docs": [
+        "Graduate pool to steady state (idempotent)"
+      ],
+      "discriminator": [
+        210,
+        29,
+        144,
+        133,
+        25,
+        219,
+        183,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Market authority performing graduation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market to graduate"
+          ],
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_dex_twap",
+      "docs": [
+        "Update DEX TWAP for protocol oracle (keeper-updated)"
+      ],
+      "discriminator": [
+        144,
+        64,
+        180,
+        12,
+        223,
+        33,
+        140,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "updater",
+          "docs": [
+            "Updater authorized in ProtocolConfig"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config (for params and updater key)"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Clock sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_native_rate",
+      "docs": [
+        "Update native reserve rate for protocol oracle (authority)"
+      ],
+      "discriminator": [
+        100,
+        175,
+        161,
+        10,
+        254,
+        80,
+        99,
+        77
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller"
+          ],
+          "writable": true
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "feels::state::buffer::Buffer",
+      "discriminator": [
+        115,
+        5,
+        212,
+        192,
+        85,
+        30,
+        46,
+        41
+      ]
+    },
+    {
+      "name": "feels::state::escrow::PreLaunchEscrow",
+      "discriminator": [
+        128,
+        182,
+        252,
+        215,
+        180,
+        44,
+        106,
+        53
+      ]
+    },
+    {
+      "name": "feels::state::feels_hub::FeelsHub",
+      "discriminator": [
+        151,
+        222,
+        200,
+        223,
+        213,
+        72,
+        219,
+        90
+      ]
+    },
+    {
+      "name": "feels::state::market::Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "feels::state::oracle::OracleState",
+      "discriminator": [
+        97,
+        156,
+        157,
+        189,
+        194,
+        73,
+        8,
+        15
+      ]
+    },
+    {
+      "name": "feels::state::pool_registry::PoolRegistry",
+      "discriminator": [
+        113,
+        149,
+        124,
+        60,
+        130,
+        240,
+        64,
+        157
+      ]
+    },
+    {
+      "name": "feels::state::position::Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "feels::state::protocol_config::ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
+      ]
+    },
+    {
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
+      "discriminator": [
+        252,
+        90,
+        103,
+        97,
+        37,
+        251,
+        8,
+        237
+      ]
+    },
+    {
+      "name": "feels::state::safety_controller::SafetyController",
+      "discriminator": [
+        53,
+        32,
+        49,
+        82,
+        152,
+        157,
+        140,
+        241
+      ]
+    },
+    {
+      "name": "feels::state::tick::TickArray",
+      "discriminator": [
+        69,
+        97,
+        189,
+        190,
+        110,
+        7,
+        66,
+        187
+      ]
+    },
+    {
+      "name": "feels::state::token_metadata::ProtocolToken",
+      "discriminator": [
+        14,
+        19,
+        206,
+        1,
+        203,
+        204,
+        55,
+        222
+      ]
+    },
+    {
+      "name": "feels::state::tranche_plan::TranchePlan",
+      "discriminator": [
+        104,
+        24,
+        192,
+        150,
+        169,
+        184,
+        251,
+        102
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "feels::instructions::close_position::ClosePositionParams",
+      "docs": [
+        "Close position parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_0_min",
+            "docs": [
+              "Minimum amount of token 0 to receive"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "amount_1_min",
+            "docs": [
+              "Minimum amount of token 1 to receive"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "close_account",
+            "docs": [
+              "If true, close the position account after withdrawing liquidity",
+              "If false, keep the account open (useful if you want to collect fees later)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams",
+      "docs": [
+        "Deploy initial liquidity parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_step_size",
+            "docs": [
+              "Number of ticks between each stair step"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "initial_buy_feelssol_amount",
+            "docs": [
+              "Optional initial buy amount in FeelsSOL (0 = no initial buy)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_market::InitializeMarketParams",
+      "docs": [
+        "Initialize market parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_fee_bps",
+            "docs": [
+              "Base fee in basis points (e.g., 30 = 0.3%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "tick_spacing",
+            "docs": [
+              "Tick spacing for the market"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "initial_sqrt_price",
+            "docs": [
+              "Initial price (as sqrt_price Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "initial_buy_feelssol_amount",
+            "docs": [
+              "Optional initial buy amount in FeelsSOL (0 = no initial buy)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_protocol::InitializeProtocolParams",
+      "docs": [
+        "Initialize protocol parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint_fee",
+            "docs": [
+              "Initial mint fee in FeelsSOL lamports"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Treasury account to receive fees"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "Default protocol fee rate (basis points, e.g. 1000 = 10%)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "Default creator fee rate for protocol tokens (basis points, e.g. 500 = 5%)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "Maximum allowed protocol fee rate (basis points)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "DEX TWAP updater authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "De-peg threshold (bps)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "depeg_required_obs",
+            "docs": [
+              "Consecutive breaches to pause"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "clear_required_obs",
+            "docs": [
+              "Consecutive clears to resume"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "DEX TWAP window seconds"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "docs": [
+              "DEX TWAP stale age seconds"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "Initial DEX whitelist (optional; empty ok)"
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_protocol::UpdateProtocolParams",
+      "docs": [
+        "Update protocol configuration parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint_fee",
+            "docs": [
+              "New mint fee (None to keep current)"
+            ],
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "New treasury (None to keep current)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "New authority (None to keep current)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "New default protocol fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "New default creator fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "New max protocol fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "Optional: DEX TWAP updater"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "Optional: safety thresholds"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "depeg_required_obs",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "clear_required_obs",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "Optional: TWAP timing params"
+            ],
+            "type": {
+              "option": "u32"
+            }
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "type": {
+              "option": "u32"
+            }
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "Replace DEX whitelist (set)"
+            ],
+            "type": {
+              "option": {
+                "vec": "pubkey"
+              }
+            }
+          },
+          {
+            "name": "mint_per_slot_cap_feelssol",
+            "docs": [
+              "Optional: per-slot caps"
+            ],
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "redeem_per_slot_cap_feelssol",
+            "type": {
+              "option": "u64"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_step_size",
+            "type": "i32"
+          },
+          {
+            "name": "num_steps",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::manage_pomm_position::ManagePommParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "position_index",
+            "docs": [
+              "Position index (0-7 for up to 8 POMM positions)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "action",
+            "docs": [
+              "Action to take"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::instructions::manage_pomm_position::PommAction"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::manage_pomm_position::PommAction",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "AddLiquidity"
+          },
+          {
+            "name": "RemoveLiquidity",
+            "fields": [
+              {
+                "name": "liquidity_amount",
+                "type": "u128"
+              }
+            ]
+          },
+          {
+            "name": "Rebalance",
+            "fields": [
+              {
+                "name": "new_tick_lower",
+                "type": "i32"
+              },
+              {
+                "name": "new_tick_upper",
+                "type": "i32"
+              }
+            ]
+          },
+          {
+            "name": "CollectFees"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::mint_token::MintTokenParams",
+      "docs": [
+        "Parameters for minting a new token"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ticker",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::swap::SwapParams",
+      "docs": [
+        "Parameters for swap execution",
+        "",
+        "These parameters control swap behavior including slippage protection,",
+        "tick crossing limits, and fee caps for user protection."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_in",
+            "docs": [
+              "Amount of input token to swap (gross amount before fees)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "minimum_amount_out",
+            "docs": [
+              "Minimum amount of output token to receive (after all fees)",
+              "Used for slippage protection"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_ticks_crossed",
+            "docs": [
+              "Maximum number of ticks to cross during swap (0 = unlimited)",
+              "Prevents compute unit exhaustion and potential griefing"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_total_fee_bps",
+            "docs": [
+              "Maximum total fee in basis points (0 = no cap)",
+              "Provides user protection against excessive fees"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::swap_exact_out::SwapExactOutParams",
+      "docs": [
+        "Parameters for exact output swap execution"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_out",
+            "docs": [
+              "Exact amount of output token to receive (after all fees)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "maximum_amount_in",
+            "docs": [
+              "Maximum amount of input token willing to pay (before fees)",
+              "Used for slippage protection"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_ticks_crossed",
+            "docs": [
+              "Maximum number of ticks to cross during swap (0 = unlimited)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_total_fee_bps",
+            "docs": [
+              "Maximum total fee in basis points (0 = no cap)"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::transition_market_phase::TransitionPhaseParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_phase",
+            "docs": [
+              "Target phase to transition to"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::phase::MarketPhase"
+              }
+            }
+          },
+          {
+            "name": "force",
+            "docs": [
+              "Force transition even if criteria not met (governance only)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dex_twap_rate_q64",
+            "type": "u128"
+          },
+          {
+            "name": "window_secs",
+            "type": "u32"
+          },
+          {
+            "name": "obs",
+            "type": "u16"
+          },
+          {
+            "name": "venue_id",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "native_rate_q64",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::buffer::Buffer",
+      "docs": [
+        "Pool buffer (τ) account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Associated market"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can manage buffer"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (for reference)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fees_token_0",
+            "docs": [
+              "Token balances (u128 to prevent overflow in high-volume scenarios)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fees_token_1",
+            "type": "u128"
+          },
+          {
+            "name": "tau_spot",
+            "docs": [
+              "τ partition counters (virtual partitions, u128 for overflow safety)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "tau_time",
+            "type": "u128"
+          },
+          {
+            "name": "tau_leverage",
+            "type": "u128"
+          },
+          {
+            "name": "floor_tick_spacing",
+            "docs": [
+              "Floor LP configuration",
+              "DEPRECATED: This field is no longer used. POMM width is now derived from market tick spacing.",
+              "Kept for backwards compatibility only."
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "floor_placement_threshold",
+            "type": "u64"
+          },
+          {
+            "name": "last_floor_placement",
+            "type": "i64"
+          },
+          {
+            "name": "last_rebase",
+            "docs": [
+              "Epoch tracking for buffer"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "total_distributed",
+            "type": "u128"
+          },
+          {
+            "name": "buffer_authority_bump",
+            "docs": [
+              "Canonical bump for buffer authority PDA",
+              "Storing the bump prevents ambiguity and improves performance"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "jit_last_slot",
+            "docs": [
+              "JIT per-slot tracking (quote units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "jit_slot_used_q",
+            "type": "u128"
+          },
+          {
+            "name": "jit_rolling_consumption",
+            "docs": [
+              "JIT v0.5 rolling consumption tracking"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "jit_rolling_window_start",
+            "type": "u64"
+          },
+          {
+            "name": "jit_last_heavy_usage_slot",
+            "type": "u64"
+          },
+          {
+            "name": "jit_total_consumed_epoch",
+            "type": "u128"
+          },
+          {
+            "name": "initial_tau_spot",
+            "docs": [
+              "Initial buffer size for circuit breaker calculations"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "protocol_owned_override",
+            "docs": [
+              "Protocol-owned token amount override for floor calculation",
+              "If non-zero, this value is used instead of dynamically calculating",
+              "Allows governance to set a fixed protocol-owned amount"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pomm_position_count",
+            "docs": [
+              "Number of active POMM positions"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_padding",
+            "docs": [
+              "Padding for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::escrow::PreLaunchEscrow",
+      "docs": [
+        "Pre-launch escrow account for newly minted tokens",
+        "This temporary account holds tokens and mint fees until market goes live"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token_mint",
+            "docs": [
+              "Token mint this escrow is for"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator who minted the token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (for reference)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp (used for expiration)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "market",
+            "docs": [
+              "Associated market (set when market is initialized)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_authority_bump",
+            "docs": [
+              "Canonical bump for escrow authority PDA"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future expansion"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::feels_hub::FeelsHub",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint this hub controls"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "reentrancy_guard",
+            "docs": [
+              "Reentrancy guard for mint/redeem flows"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::FeatureFlags",
+      "docs": [
+        "Feature flags for future phases (all OFF in MVP)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dynamic_fees",
+            "type": "bool"
+          },
+          {
+            "name": "precision_mode",
+            "type": "bool"
+          },
+          {
+            "name": "autopilot_lambda",
+            "type": "bool"
+          },
+          {
+            "name": "autopilot_weights",
+            "type": "bool"
+          },
+          {
+            "name": "targets_adaptive",
+            "type": "bool"
+          },
+          {
+            "name": "time_domain",
+            "type": "bool"
+          },
+          {
+            "name": "leverage_domain",
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "bool",
+                9
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::Market",
+      "docs": [
+        "Main market account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Version for upgradability"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_initialized",
+            "docs": [
+              "Market status"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "is_paused",
+            "type": "bool"
+          },
+          {
+            "name": "token_0",
+            "docs": [
+              "Token configuration"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_1",
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "token_0_type",
+            "docs": [
+              "Token types (for future Token-2022 support)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "token_1_type",
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "token_0_origin",
+            "docs": [
+              "Token origins (for market creation restrictions)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenOrigin"
+              }
+            }
+          },
+          {
+            "name": "token_1_origin",
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenOrigin"
+              }
+            }
+          },
+          {
+            "name": "vault_0",
+            "docs": [
+              "Vault accounts"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_1",
+            "type": "pubkey"
+          },
+          {
+            "name": "hub_protocol",
+            "docs": [
+              "Hub protocol reference (optional)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "sqrt_price",
+            "docs": [
+              "Spot AMM state (simplified constant product for MVP)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          },
+          {
+            "name": "current_tick",
+            "docs": [
+              "CLMM tick state"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "tick_spacing",
+            "type": "u16"
+          },
+          {
+            "name": "global_lower_tick",
+            "docs": [
+              "Floor liquidity bounds (TEMPORARY - will be removed when POMM uses pure positions)",
+              "These currently serve as bounds for pool-owned liquidity but will be",
+              "replaced with actual position NFTs in a future upgrade.",
+              "Global swap bounds - hard limits for all swaps in this market"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "global_upper_tick",
+            "type": "i32"
+          },
+          {
+            "name": "floor_liquidity",
+            "docs": [
+              "Liquidity at the global bounds (legacy POMM field, kept for compatibility)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_0_x64",
+            "docs": [
+              "Global fee growth (Q64) per liquidity unit"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_1_x64",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_0",
+            "docs": [
+              "Global fee growth without x64 suffix (for compatibility)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_1",
+            "type": "u128"
+          },
+          {
+            "name": "base_fee_bps",
+            "docs": [
+              "Fee configuration"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "buffer",
+            "docs": [
+              "Buffer (τ) reference"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "last_epoch_update",
+            "docs": [
+              "Epoch tracking"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "epoch_number",
+            "type": "u64"
+          },
+          {
+            "name": "oracle",
+            "docs": [
+              "Oracle account reference",
+              "Oracle data is stored in a separate account to reduce stack usage"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_bump",
+            "docs": [
+              "Oracle account bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "policy",
+            "docs": [
+              "Policy configuration"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::market::PolicyV1"
+              }
+            }
+          },
+          {
+            "name": "market_authority_bump",
+            "docs": [
+              "Canonical bump for market authority PDA",
+              "Storing prevents recomputation and ensures consistency"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_0_bump",
+            "docs": [
+              "Canonical bumps for vault PDAs"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_1_bump",
+            "type": "u8"
+          },
+          {
+            "name": "reentrancy_guard",
+            "docs": [
+              "Re-entrancy guard",
+              "Set to true at the start of sensitive operations and false at the end",
+              "Prevents re-entrant calls during critical state transitions"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "initial_liquidity_deployed",
+            "docs": [
+              "Initial liquidity deployment status"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "jit_enabled",
+            "docs": [
+              "JIT v0.5 parameters (per-market)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "jit_base_cap_bps",
+            "docs": [
+              "JIT v0.5 configuration"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "jit_per_slot_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "jit_concentration_width",
+            "type": "u32"
+          },
+          {
+            "name": "jit_max_multiplier",
+            "type": "u8"
+          },
+          {
+            "name": "jit_drain_protection_bps",
+            "type": "u16"
+          },
+          {
+            "name": "jit_circuit_breaker_bps",
+            "type": "u16"
+          },
+          {
+            "name": "floor_tick",
+            "docs": [
+              "Floor management (MVP)"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "floor_buffer_ticks",
+            "type": "i32"
+          },
+          {
+            "name": "last_floor_ratchet_ts",
+            "type": "i64"
+          },
+          {
+            "name": "floor_cooldown_secs",
+            "type": "i64"
+          },
+          {
+            "name": "steady_state_seeded",
+            "docs": [
+              "Graduation flags (idempotent)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "cleanup_complete",
+            "type": "bool"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "Market phase tracking"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "phase_start_slot",
+            "type": "u64"
+          },
+          {
+            "name": "phase_start_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "last_phase_transition_slot",
+            "docs": [
+              "Phase transition history (last transition)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_phase_trigger",
+            "type": "u8"
+          },
+          {
+            "name": "total_volume_token_0",
+            "docs": [
+              "Cumulative metrics for phase transitions"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_volume_token_1",
+            "type": "u64"
+          },
+          {
+            "name": "rolling_buy_volume",
+            "docs": [
+              "JIT v0.5 directional tracking (rolling window)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "rolling_sell_volume",
+            "type": "u128"
+          },
+          {
+            "name": "rolling_total_volume",
+            "type": "u128"
+          },
+          {
+            "name": "rolling_window_start_slot",
+            "type": "u64"
+          },
+          {
+            "name": "tick_snapshot_1hr",
+            "docs": [
+              "Price movement tracking for circuit breaker"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "last_snapshot_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future expansion"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                1
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::PolicyV1",
+      "docs": [
+        "Policy configuration"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "feature_flags",
+            "type": {
+              "defined": {
+                "name": "feels::state::market::FeatureFlags"
+              }
+            }
+          },
+          {
+            "name": "base_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_surcharge_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_instantaneous_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::oracle::Observation",
+      "docs": [
+        "Single price observation"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "block_timestamp",
+            "docs": [
+              "Block timestamp of this observation"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "tick_cumulative",
+            "docs": [
+              "Cumulative tick value (tick * time)"
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "initialized",
+            "docs": [
+              "Whether this observation has been initialized"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_padding",
+            "docs": [
+              "Padding for alignment"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::oracle::OracleState",
+      "docs": [
+        "Oracle state account that stores price observations"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool_id",
+            "docs": [
+              "Pool ID this oracle belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "observation_index",
+            "docs": [
+              "Index of the most recent observation"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "observation_cardinality",
+            "docs": [
+              "Current number of observations (grows from 1 to MAX)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "observation_cardinality_next",
+            "docs": [
+              "Next observation cardinality (for future expansion)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "oracle_bump",
+            "docs": [
+              "Bump seed for the oracle PDA"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "observations",
+            "docs": [
+              "Array of observations"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "feels::state::oracle::Observation"
+                  }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::phase::MarketPhase",
+      "docs": [
+        "Market lifecycle phase"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Created"
+          },
+          {
+            "name": "BondingCurve"
+          },
+          {
+            "name": "Transitioning"
+          },
+          {
+            "name": "SteadyState"
+          },
+          {
+            "name": "Graduated"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Deprecated"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolEntry",
+      "docs": [
+        "Registry entry for a single pool"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Market pubkey"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_mint",
+            "docs": [
+              "Project token mint"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (always token_0 in markets)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "Current phase"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::pool_registry::PoolPhase"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "docs": [
+              "Last update timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator/launcher"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "symbol",
+            "docs": [
+              "Token symbol (up to 10 chars)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "symbol_len",
+            "docs": [
+              "Symbol length"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolPhase",
+      "docs": [
+        "Pool phase for lifecycle tracking"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "BondingCurve"
+          },
+          {
+            "name": "SteadyState"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Deprecated"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolRegistry",
+      "docs": [
+        "Central pool registry"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Protocol authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_count",
+            "docs": [
+              "Number of pools registered"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pools",
+            "docs": [
+              "Pools array (paginated access)"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "feels::state::pool_registry::PoolEntry"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical bump"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::position::Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nft_mint",
+            "docs": [
+              "Position NFT mint (Metaplex Core asset ID)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "docs": [
+              "Market this position belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "Owner of the position"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tick_lower",
+            "docs": [
+              "Tick range"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "tick_upper",
+            "type": "i32"
+          },
+          {
+            "name": "liquidity",
+            "docs": [
+              "Liquidity amount"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_0_last_x64",
+            "docs": [
+              "Fee growth inside the position at last update (Q64 fixed point)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_1_last_x64",
+            "type": "u128"
+          },
+          {
+            "name": "tokens_owed_0",
+            "docs": [
+              "Tokens owed to position (collected fees + removed liquidity)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tokens_owed_1",
+            "type": "u64"
+          },
+          {
+            "name": "position_bump",
+            "docs": [
+              "Canonical bump for position PDA",
+              "Storing prevents recomputation when minting/burning"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_pomm",
+            "docs": [
+              "Whether this is a POMM position"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "last_updated_slot",
+            "docs": [
+              "Last slot this position was updated"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_growth_inside_0_last",
+            "docs": [
+              "Fee growth inside at last action (for proper accounting)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_1_last",
+            "type": "u128"
+          },
+          {
+            "name": "fees_owed_0",
+            "docs": [
+              "Accumulated fees owed"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fees_owed_1",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::protocol_config::ProtocolConfig",
+      "docs": [
+        "Protocol configuration account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can update protocol parameters"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_fee",
+            "docs": [
+              "Fee for minting a new token (in FeelsSOL lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Treasury account to receive protocol fees"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "Default protocol fee rate (basis points, e.g. 1000 = 10%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "Default creator fee rate for protocol tokens (basis points, e.g. 500 = 5%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "Maximum allowed protocol fee rate (basis points)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "token_expiration_seconds",
+            "docs": [
+              "Time window (in seconds) for deploying liquidity after token mint",
+              "If liquidity isn't deployed within this window, token can be destroyed"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "De-peg circuit breaker threshold (bps of divergence)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "depeg_required_obs",
+            "docs": [
+              "Required consecutive breach observations to pause"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "clear_required_obs",
+            "docs": [
+              "Required consecutive clear observations to resume"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "DEX TWAP window and staleness thresholds (seconds)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "Authorized updater for DEX TWAP feed (MVP single updater)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "DEX whitelist (venues/pools) - fixed size for MVP"
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                8
+              ]
+            }
+          },
+          {
+            "name": "dex_whitelist_len",
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future protocol parameters"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "mint_per_slot_cap_feelssol",
+            "docs": [
+              "Optional per-slot caps for mint/redeem (FeelsSOL units). 0 = unlimited."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "redeem_per_slot_cap_feelssol",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "native_rate_q64",
+            "docs": [
+              "Native reserve rate (Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "dex_twap_rate_q64",
+            "docs": [
+              "Filtered DEX TWAP rate (Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "dex_last_update_slot",
+            "docs": [
+              "Last update slot for DEX TWAP"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "native_last_update_slot",
+            "docs": [
+              "Last update slot for native rate"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "dex_last_update_ts",
+            "docs": [
+              "Last update timestamp for DEX TWAP"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "native_last_update_ts",
+            "docs": [
+              "Last update timestamp for native rate"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "dex_window_secs",
+            "docs": [
+              "Observation window (seconds) for DEX TWAP"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Current flags (bitmask)"
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::safety_controller::DegradeFlags",
+      "docs": [
+        "Degraded mode flags for various safety conditions"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "gtwap_stale",
+            "docs": [
+              "GTWAP stale: disable advanced features"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "oracle_stale",
+            "docs": [
+              "Protocol oracle stale: pause exits"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "high_volatility",
+            "docs": [
+              "High volatility detected: raise minimum fees"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "low_liquidity",
+            "docs": [
+              "Low liquidity: restrict large trades"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved flags for future use"
+            ],
+            "type": {
+              "array": [
+                "bool",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::safety_controller::SafetyController",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemptions_paused",
+            "docs": [
+              "Whether redemptions are paused due to de-peg"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "consecutive_breaches",
+            "docs": [
+              "Consecutive divergence observations over threshold"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "consecutive_clears",
+            "docs": [
+              "Consecutive safe observations since last breach"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "last_change_slot",
+            "docs": [
+              "Last state change slot"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "mint_last_slot",
+            "docs": [
+              "Per-slot mint tracking (FeelsSOL units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "mint_slot_amount",
+            "type": "u64"
+          },
+          {
+            "name": "redeem_last_slot",
+            "docs": [
+              "Per-slot redeem tracking (FeelsSOL units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "redeem_slot_amount",
+            "type": "u64"
+          },
+          {
+            "name": "last_divergence_check_slot",
+            "docs": [
+              "Last slot when divergence was checked (prevents double-counting)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "degrade_flags",
+            "docs": [
+              "Degraded mode flags"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::safety_controller::DegradeFlags"
+              }
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tick::Tick",
+      "docs": [
+        "Individual tick within an array",
+        "Must be exactly aligned with no padding for zero_copy"
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "liquidity_net",
+            "type": "i128"
+          },
+          {
+            "name": "liquidity_gross",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_outside_0_x64",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_outside_1_x64",
+            "type": "u128"
+          },
+          {
+            "name": "initialized",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                15
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tick::TickArray",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_tick_index",
+            "type": "i32"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": [
+                "u8",
+                12
+              ]
+            }
+          },
+          {
+            "name": "ticks",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "feels::state::tick::Tick"
+                  }
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "initialized_tick_count",
+            "type": "u16"
+          },
+          {
+            "name": "_pad1",
+            "type": {
+              "array": [
+                "u8",
+                14
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::ProtocolToken",
+      "docs": [
+        "Registry entry for protocol-minted tokens"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "Token mint address"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator who minted the token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_type",
+            "docs": [
+              "Token type (SPL or Token-2022)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "can_create_markets",
+            "docs": [
+              "Whether this token can create markets (for future use)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::TokenOrigin",
+      "docs": [
+        "Origin of a token"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "ProtocolMinted"
+          },
+          {
+            "name": "External"
+          },
+          {
+            "name": "FeelsSOL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::TokenType",
+      "docs": [
+        "Token type enum for tracking SPL vs Token-2022"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Spl"
+          },
+          {
+            "name": "Token2022"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tranche_plan::TrancheEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_lower",
+            "type": "i32"
+          },
+          {
+            "name": "tick_upper",
+            "type": "i32"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tranche_plan::TranchePlan",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "applied",
+            "type": "bool"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "feels::state::tranche_plan::TrancheEntry"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+};
+
+export const IDL: Feels = {
+  "address": "",
+  "metadata": {
+    "name": "feels",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize_protocol",
+      "docs": [
+        "Initialize protocol configuration (one-time setup)"
+      ],
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority (deployer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle account (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (singleton)"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_protocol::InitializeProtocolParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_floor",
+      "docs": [
+        "Permissionless floor update crank (computes floor from reserves & supply)"
+      ],
+      "discriminator": [
+        38,
+        80,
+        204,
+        37,
+        6,
+        62,
+        192,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer must be associated with this market"
+          ]
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0 - must be the correct PDA for this market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1 - must be the correct PDA for this market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "project_mint",
+          "docs": [
+            "Project mint must be the non-FeelsSOL token in this market"
+          ]
+        },
+        {
+          "name": "escrow_token_account",
+          "docs": [
+            "Optional: Pre-launch escrow token account (if tokens still in escrow)"
+          ],
+          "optional": true
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Optional: Other protocol-owned token accounts to exclude",
+            "These would be accounts holding tokens that should not be considered circulating",
+            "Note: This is handled as remaining_accounts in the instruction handler"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_protocol",
+      "docs": [
+        "Update protocol configuration"
+      ],
+      "discriminator": [
+        206,
+        25,
+        218,
+        114,
+        109,
+        41,
+        74,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Current protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_protocol::UpdateProtocolParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_protocol_owned_override",
+      "docs": [
+        "Set protocol owned override for floor calculation (governance only)"
+      ],
+      "discriminator": [
+        250,
+        164,
+        109,
+        69,
+        170,
+        65,
+        157,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config must exist"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer to update",
+            "Note: We don't check buffer.authority here because it's set to the market creator,",
+            "not the protocol authority. The protocol authority can still manage overrides",
+            "as a governance function."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority - only they can set overrides"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "override_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_pool_registry",
+      "docs": [
+        "Initialize the pool registry (one-time setup)"
+      ],
+      "discriminator": [
+        109,
+        119,
+        17,
+        241,
+        165,
+        19,
+        176,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config must exist"
+          ]
+        },
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority must match protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_pool",
+      "docs": [
+        "Register a pool in the registry"
+      ],
+      "discriminator": [
+        85,
+        229,
+        114,
+        47,
+        75,
+        145,
+        166,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market to register"
+          ]
+        },
+        {
+          "name": "project_mint",
+          "docs": [
+            "Project token mint (non-FeelsSOL token)"
+          ]
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "Creator registering the pool"
+          ],
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Payer for realloc"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_pool_phase",
+      "docs": [
+        "Update pool phase in registry"
+      ],
+      "discriminator": [
+        67,
+        208,
+        79,
+        72,
+        239,
+        112,
+        73,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "pool_registry",
+          "docs": [
+            "Pool registry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market whose phase to update"
+          ]
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority (must be registry authority or market authority)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_phase",
+          "type": {
+            "defined": {
+              "name": "feels::state::pool_registry::PoolPhase"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_pomm_position",
+      "docs": [
+        "Initialize a POMM (Protocol-Owned Market Making) position"
+      ],
+      "discriminator": [
+        188,
+        224,
+        119,
+        1,
+        109,
+        96,
+        244,
+        199
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that can initialize POMM positions"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market for this POMM position"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer that will own this POMM position"
+          ]
+        },
+        {
+          "name": "pomm_position",
+          "docs": [
+            "POMM position account to initialize",
+            "Uses a PDA derived from market and position index"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config to validate authority"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "position_index",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "manage_pomm_position",
+      "docs": [
+        "Manage POMM (Protocol-Owned Market Making) positions"
+      ],
+      "discriminator": [
+        173,
+        67,
+        116,
+        206,
+        107,
+        121,
+        81,
+        19
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "pomm_position",
+          "docs": [
+            "POMM position account - must be initialized separately",
+            "Uses a PDA derived from market and position index"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "writable": true
+        },
+        {
+          "name": "buffer_vault_0",
+          "writable": true
+        },
+        {
+          "name": "buffer_vault_1",
+          "writable": true
+        },
+        {
+          "name": "buffer_authority"
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        },
+        {
+          "name": "rent"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::manage_pomm_position::ManagePommParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "transition_market_phase",
+      "docs": [
+        "Transition market between phases"
+      ],
+      "discriminator": [
+        192,
+        45,
+        250,
+        40,
+        31,
+        139,
+        115,
+        62
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "oracle"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::transition_market_phase::TransitionPhaseParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_market",
+      "docs": [
+        "Initialize a new market with commitment for initial liquidity",
+        "Market creation and liquidity commitment are atomic, preventing",
+        "front-running. Actual liquidity deployment happens separately via",
+        "deploy_initial_liquidity instruction."
+      ],
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "Creator initializing the market"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_0",
+          "docs": [
+            "Token 0 mint (lower pubkey)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_1",
+          "docs": [
+            "Token 1 mint (higher pubkey)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0 for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1 for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint (hub token)"
+          ]
+        },
+        {
+          "name": "protocol_token_0",
+          "docs": [
+            "Protocol token registry for token_0 (if not FeelsSOL)"
+          ]
+        },
+        {
+          "name": "protocol_token_1",
+          "docs": [
+            "Protocol token registry for token_1 (if not FeelsSOL)"
+          ]
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow for the protocol token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "creator_feelssol",
+          "docs": [
+            "Creator's FeelsSOL account for initial buy"
+          ]
+        },
+        {
+          "name": "creator_token_out",
+          "docs": [
+            "Creator's token account for receiving initial buy tokens"
+          ]
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA (holds mint/freeze authorities)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_market::InitializeMarketParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "enter_feelssol",
+      "docs": [
+        "Enter FeelsSOL - deposit JitoSOL to mint FeelsSOL"
+      ],
+      "discriminator": [
+        199,
+        205,
+        49,
+        173,
+        81,
+        50,
+        186,
+        126
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "User entering FeelsSOL",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_jitosol",
+          "docs": [
+            "User's JitoSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_feelssol",
+          "docs": [
+            "User's FeelsSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "FeelsHub PDA for reentrancy guard"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault (pool-owned by the FeelsSOL hub pool)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint_authority",
+          "docs": [
+            "Mint authority PDA"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "exit_feelssol",
+      "docs": [
+        "Exit FeelsSOL - burn FeelsSOL to redeem JitoSOL"
+      ],
+      "discriminator": [
+        105,
+        118,
+        168,
+        148,
+        61,
+        152,
+        3,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "User exiting FeelsSOL",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_jitosol",
+          "docs": [
+            "User's JitoSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_feelssol",
+          "docs": [
+            "User's FeelsSOL account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "FeelsHub PDA for FeelsSOL mint",
+            "SECURITY: Provides re-entrancy guard protection"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (protocol-level)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config (for rate limits)"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle (rates)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault (pool-owned by the FeelsSOL hub pool)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_hub",
+      "docs": [
+        "Initialize FeelsHub for enter/exit operations"
+      ],
+      "discriminator": [
+        202,
+        27,
+        126,
+        27,
+        54,
+        182,
+        68,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Authority paying for the account"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint the hub manages"
+          ]
+        },
+        {
+          "name": "jitosol_mint",
+          "docs": [
+            "JitoSOL mint"
+          ]
+        },
+        {
+          "name": "hub",
+          "docs": [
+            "The FeelsHub PDA"
+          ],
+          "writable": true
+        },
+        {
+          "name": "jitosol_vault",
+          "docs": [
+            "JitoSOL vault for the hub"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA"
+          ]
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "swap",
+      "docs": [
+        "Swap tokens through the AMM"
+      ],
+      "discriminator": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "docs": [
+            "The user initiating the swap transaction",
+            "Must be a system account (not a PDA) to prevent identity confusion attacks"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "The market account containing trading pair state",
+            "Must be initialized, not paused, and not currently in a reentrant call"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Protocol-owned vault holding token_0 reserves",
+            "PDA derived from market tokens with deterministic ordering"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Protocol-owned vault holding token_1 reserves",
+            "PDA derived from market tokens with deterministic ordering"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA that controls vault operations",
+            "Used as signer for transferring tokens from vaults to users"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Buffer account for fee collection and protocol-owned market making",
+            "Accumulates impact fees for later deployment as liquidity"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account for tracking time-weighted average prices (TWAP)",
+            "Updated on every swap to maintain accurate price history"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_token_in",
+          "docs": [
+            "User's token account for the input token being swapped",
+            "Ownership and mint validation performed in handler"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_token_out",
+          "docs": [
+            "User's token account for the output token being received",
+            "Ownership and mint validation performed in handler"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "SPL Token program for executing transfers"
+          ]
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Clock sysvar for timestamp and epoch tracking"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol configuration account for fee rates"
+          ]
+        },
+        {
+          "name": "protocol_treasury",
+          "docs": [
+            "Protocol treasury token account (mandatory for protocol fees)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry (optional - only for protocol-minted tokens)"
+          ],
+          "optional": true
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator token account (optional - only if creator fees > 0 and protocol token present)"
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::swap::SwapParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "swap_exact_out",
+      "docs": [
+        "Swap tokens with exact output amount"
+      ],
+      "discriminator": [
+        250,
+        73,
+        101,
+        33,
+        38,
+        207,
+        75,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "writable": true
+        },
+        {
+          "name": "user_account_0",
+          "writable": true
+        },
+        {
+          "name": "user_account_1",
+          "writable": true
+        },
+        {
+          "name": "market_authority"
+        },
+        {
+          "name": "protocol_config"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::swap_exact_out::SwapExactOutParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open_position",
+      "docs": [
+        "Open a new liquidity position"
+      ],
+      "discriminator": [
+        135,
+        128,
+        47,
+        77,
+        15,
+        152,
+        240,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "docs": [
+            "Liquidity provider",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint - a simple SPL token representing ownership"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account - where the position token is minted"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA) - stores all position state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_0",
+          "docs": [
+            "Provider's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_1",
+          "docs": [
+            "Provider's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "tick_lower",
+          "type": "i32"
+        },
+        {
+          "name": "tick_upper",
+          "type": "i32"
+        },
+        {
+          "name": "liquidity_amount",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "close_position",
+      "docs": [
+        "Close a liquidity position"
+      ],
+      "discriminator": [
+        123,
+        134,
+        81,
+        0,
+        49,
+        68,
+        98,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account (must hold exactly 1 token)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)",
+            "SECURITY: Account closure handled in instruction logic to prevent fee theft"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "docs": [
+            "Owner's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority PDA"
+          ]
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::close_position::ClosePositionParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "collect_fees",
+      "docs": [
+        "Collect fees from a position - smart single entry point",
+        "Automatically handles normal positions, wide positions, and accumulated fees"
+      ],
+      "discriminator": [
+        164,
+        152,
+        207,
+        99,
+        30,
+        186,
+        19,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ]
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account (must hold the position token)"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner token accounts"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority"
+          ]
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_position_fee_lower",
+      "docs": [
+        "Update position fee accrual for lower tick",
+        "Part 1/3 of fee collection for wide positions"
+      ],
+      "discriminator": [
+        58,
+        181,
+        152,
+        160,
+        205,
+        130,
+        59,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_position_fee_upper",
+      "docs": [
+        "Update position fee accrual for upper tick",
+        "Part 2/3 of fee collection for wide positions"
+      ],
+      "discriminator": [
+        162,
+        48,
+        161,
+        22,
+        95,
+        7,
+        191,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mint_token",
+      "docs": [
+        "Mint a new token with distribution"
+      ],
+      "discriminator": [
+        172,
+        137,
+        183,
+        14,
+        207,
+        110,
+        234,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "Token creator",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_mint",
+          "docs": [
+            "New token mint to create"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow account for this token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault (holds all minted tokens)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault (holds mint fee)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "feelssol_mint",
+          "docs": [
+            "FeelsSOL mint"
+          ]
+        },
+        {
+          "name": "creator_feelssol",
+          "docs": [
+            "Creator's FeelsSOL account for paying mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ]
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex token metadata program"
+          ]
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::mint_token::MintTokenParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deploy_initial_liquidity",
+      "docs": [
+        "Deploy initial liquidity to a market",
+        "Verifies the deployment matches the commitment made during market",
+        "initialization, preventing unauthorized liquidity deployment"
+      ],
+      "discriminator": [
+        226,
+        227,
+        73,
+        75,
+        85,
+        216,
+        151,
+        217
+      ],
+      "accounts": [
+        {
+          "name": "deployer",
+          "docs": [
+            "Deployer (must be market authority)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_0_mint",
+          "docs": [
+            "Token mints to read decimals (production-grade)"
+          ]
+        },
+        {
+          "name": "token_1_mint"
+        },
+        {
+          "name": "deployer_feelssol",
+          "docs": [
+            "Deployer's FeelsSOL account (for initial buy)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "deployer_token_out",
+          "docs": [
+            "Deployer's token account for receiving initial buy tokens"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Vault 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Vault 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Market authority PDA"
+          ]
+        },
+        {
+          "name": "buffer",
+          "docs": [
+            "Market buffer account (for fee collection, not token escrow)",
+            "Buffer is included to update deployment tracking"
+          ],
+          "writable": true
+        },
+        {
+          "name": "oracle",
+          "docs": [
+            "Oracle account for price updates"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow for the protocol token",
+            "Escrow is derived from the non-FeelsSOL token mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account"
+          ]
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Treasury to receive mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "tranche_plan",
+          "docs": [
+            "Tranche plan PDA (initialized here)"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_tranche_ticks",
+      "docs": [
+        "Permissionless crank to initialize tranche TickArrays and boundary ticks"
+      ],
+      "discriminator": [
+        118,
+        74,
+        31,
+        238,
+        66,
+        167,
+        66,
+        93
+      ],
+      "accounts": [
+        {
+          "name": "crank",
+          "docs": [
+            "Anyone can crank"
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market whose tranche ticks to initialize"
+          ],
+          "writable": true
+        },
+        {
+          "name": "tranche_plan",
+          "docs": [
+            "Tranche plan produced at deploy time"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program for creating missing TickArrays"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cleanup_bonding_curve",
+      "docs": [
+        "Cleanup bonding curve plan and mark cleanup complete"
+      ],
+      "discriminator": [
+        205,
+        225,
+        206,
+        146,
+        97,
+        186,
+        14,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "tranche_plan",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_position_with_metadata",
+      "docs": [
+        "Open a position with NFT metadata"
+      ],
+      "discriminator": [
+        242,
+        29,
+        134,
+        48,
+        58,
+        110,
+        14,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "docs": [
+            "Liquidity provider",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint - will become an NFT with metadata"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account (PDA of Metaplex Token Metadata program)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_0",
+          "docs": [
+            "Provider's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "provider_token_1",
+          "docs": [
+            "Provider's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex Token Metadata program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        },
+        {
+          "name": "rent",
+          "docs": [
+            "Rent sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "tick_lower",
+          "type": "i32"
+        },
+        {
+          "name": "tick_upper",
+          "type": "i32"
+        },
+        {
+          "name": "liquidity_amount",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "close_position_with_metadata",
+      "docs": [
+        "Close a position with NFT metadata"
+      ],
+      "discriminator": [
+        17,
+        174,
+        244,
+        40,
+        141,
+        4,
+        42,
+        125
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner",
+            "SECURITY: Must be a system account to prevent PDA identity confusion"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market state"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_mint",
+          "docs": [
+            "Position mint"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "docs": [
+            "Position token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Position account (PDA)",
+            "SECURITY: Removed `close = owner` to prevent fee theft vulnerability.",
+            "Position must be closed in a separate instruction after verification."
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "docs": [
+            "Metadata account (will be closed)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_0",
+          "docs": [
+            "Owner's token account for token 0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "owner_token_1",
+          "docs": [
+            "Owner's token account for token 1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_0",
+          "docs": [
+            "Market vault for token 0 - derived from market and token_0"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_1",
+          "docs": [
+            "Market vault for token 1 - derived from market and token_1"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market_authority",
+          "docs": [
+            "Unified market authority PDA"
+          ]
+        },
+        {
+          "name": "lower_tick_array",
+          "docs": [
+            "Tick array containing the lower tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "upper_tick_array",
+          "docs": [
+            "Tick array containing the upper tick"
+          ],
+          "writable": true
+        },
+        {
+          "name": "metadata_program",
+          "docs": [
+            "Metaplex Token Metadata program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_0_min",
+          "type": "u64"
+        },
+        {
+          "name": "amount_1_min",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "destroy_expired_token",
+      "docs": [
+        "Destroy an expired token that hasn't had liquidity deployed"
+      ],
+      "discriminator": [
+        72,
+        107,
+        101,
+        121,
+        217,
+        54,
+        144,
+        155
+      ],
+      "accounts": [
+        {
+          "name": "destroyer",
+          "docs": [
+            "Anyone can call this instruction to destroy expired tokens"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_mint",
+          "docs": [
+            "Token mint to destroy"
+          ]
+        },
+        {
+          "name": "protocol_token",
+          "docs": [
+            "Protocol token registry entry"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "docs": [
+            "Pre-launch escrow account for this token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_token_vault",
+          "docs": [
+            "Escrow's token vault"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_feelssol_vault",
+          "docs": [
+            "Escrow's FeelsSOL vault (contains mint fee)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "Escrow authority PDA"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config"
+          ]
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Treasury to receive 50% of mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "destroyer_feelssol",
+          "docs": [
+            "Destroyer's FeelsSOL account to receive 50% of mint fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Optional: Market account if it was created"
+          ],
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program"
+          ]
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "graduate_pool",
+      "docs": [
+        "Graduate pool to steady state (idempotent)"
+      ],
+      "discriminator": [
+        210,
+        29,
+        144,
+        133,
+        25,
+        219,
+        183,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Market authority performing graduation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market to graduate"
+          ],
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_dex_twap",
+      "docs": [
+        "Update DEX TWAP for protocol oracle (keeper-updated)"
+      ],
+      "discriminator": [
+        144,
+        64,
+        180,
+        12,
+        223,
+        33,
+        140,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "updater",
+          "docs": [
+            "Updater authorized in ProtocolConfig"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config (for params and updater key)"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller (singleton)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "clock",
+          "docs": [
+            "Clock sysvar"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_native_rate",
+      "docs": [
+        "Update native reserve rate for protocol oracle (authority)"
+      ],
+      "discriminator": [
+        100,
+        175,
+        161,
+        10,
+        254,
+        80,
+        99,
+        77
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config"
+          ]
+        },
+        {
+          "name": "protocol_oracle",
+          "docs": [
+            "Protocol oracle"
+          ],
+          "writable": true
+        },
+        {
+          "name": "safety",
+          "docs": [
+            "Safety controller"
+          ],
+          "writable": true
+        },
+        {
+          "name": "clock"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "feels::state::buffer::Buffer",
+      "discriminator": [
+        115,
+        5,
+        212,
+        192,
+        85,
+        30,
+        46,
+        41
+      ]
+    },
+    {
+      "name": "feels::state::escrow::PreLaunchEscrow",
+      "discriminator": [
+        128,
+        182,
+        252,
+        215,
+        180,
+        44,
+        106,
+        53
+      ]
+    },
+    {
+      "name": "feels::state::feels_hub::FeelsHub",
+      "discriminator": [
+        151,
+        222,
+        200,
+        223,
+        213,
+        72,
+        219,
+        90
+      ]
+    },
+    {
+      "name": "feels::state::market::Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "feels::state::oracle::OracleState",
+      "discriminator": [
+        97,
+        156,
+        157,
+        189,
+        194,
+        73,
+        8,
+        15
+      ]
+    },
+    {
+      "name": "feels::state::pool_registry::PoolRegistry",
+      "discriminator": [
+        113,
+        149,
+        124,
+        60,
+        130,
+        240,
+        64,
+        157
+      ]
+    },
+    {
+      "name": "feels::state::position::Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "feels::state::protocol_config::ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
+      ]
+    },
+    {
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
+      "discriminator": [
+        252,
+        90,
+        103,
+        97,
+        37,
+        251,
+        8,
+        237
+      ]
+    },
+    {
+      "name": "feels::state::safety_controller::SafetyController",
+      "discriminator": [
+        53,
+        32,
+        49,
+        82,
+        152,
+        157,
+        140,
+        241
+      ]
+    },
+    {
+      "name": "feels::state::tick::TickArray",
+      "discriminator": [
+        69,
+        97,
+        189,
+        190,
+        110,
+        7,
+        66,
+        187
+      ]
+    },
+    {
+      "name": "feels::state::token_metadata::ProtocolToken",
+      "discriminator": [
+        14,
+        19,
+        206,
+        1,
+        203,
+        204,
+        55,
+        222
+      ]
+    },
+    {
+      "name": "feels::state::tranche_plan::TranchePlan",
+      "discriminator": [
+        104,
+        24,
+        192,
+        150,
+        169,
+        184,
+        251,
+        102
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "feels::instructions::close_position::ClosePositionParams",
+      "docs": [
+        "Close position parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_0_min",
+            "docs": [
+              "Minimum amount of token 0 to receive"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "amount_1_min",
+            "docs": [
+              "Minimum amount of token 1 to receive"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "close_account",
+            "docs": [
+              "If true, close the position account after withdrawing liquidity",
+              "If false, keep the account open (useful if you want to collect fees later)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams",
+      "docs": [
+        "Deploy initial liquidity parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_step_size",
+            "docs": [
+              "Number of ticks between each stair step"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "initial_buy_feelssol_amount",
+            "docs": [
+              "Optional initial buy amount in FeelsSOL (0 = no initial buy)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_market::InitializeMarketParams",
+      "docs": [
+        "Initialize market parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "base_fee_bps",
+            "docs": [
+              "Base fee in basis points (e.g., 30 = 0.3%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "tick_spacing",
+            "docs": [
+              "Tick spacing for the market"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "initial_sqrt_price",
+            "docs": [
+              "Initial price (as sqrt_price Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "initial_buy_feelssol_amount",
+            "docs": [
+              "Optional initial buy amount in FeelsSOL (0 = no initial buy)"
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_protocol::InitializeProtocolParams",
+      "docs": [
+        "Initialize protocol parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint_fee",
+            "docs": [
+              "Initial mint fee in FeelsSOL lamports"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Treasury account to receive fees"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "Default protocol fee rate (basis points, e.g. 1000 = 10%)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "Default creator fee rate for protocol tokens (basis points, e.g. 500 = 5%)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "Maximum allowed protocol fee rate (basis points)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "DEX TWAP updater authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "De-peg threshold (bps)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "depeg_required_obs",
+            "docs": [
+              "Consecutive breaches to pause"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "clear_required_obs",
+            "docs": [
+              "Consecutive clears to resume"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "DEX TWAP window seconds"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "docs": [
+              "DEX TWAP stale age seconds"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "Initial DEX whitelist (optional; empty ok)"
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_protocol::UpdateProtocolParams",
+      "docs": [
+        "Update protocol configuration parameters"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint_fee",
+            "docs": [
+              "New mint fee (None to keep current)"
+            ],
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "New treasury (None to keep current)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "New authority (None to keep current)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "New default protocol fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "New default creator fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "New max protocol fee rate (None to keep current)"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "Optional: DEX TWAP updater"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "Optional: safety thresholds"
+            ],
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "depeg_required_obs",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "clear_required_obs",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "Optional: TWAP timing params"
+            ],
+            "type": {
+              "option": "u32"
+            }
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "type": {
+              "option": "u32"
+            }
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "Replace DEX whitelist (set)"
+            ],
+            "type": {
+              "option": {
+                "vec": "pubkey"
+              }
+            }
+          },
+          {
+            "name": "mint_per_slot_cap_feelssol",
+            "docs": [
+              "Optional: per-slot caps"
+            ],
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "redeem_per_slot_cap_feelssol",
+            "type": {
+              "option": "u64"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_step_size",
+            "type": "i32"
+          },
+          {
+            "name": "num_steps",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::manage_pomm_position::ManagePommParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "position_index",
+            "docs": [
+              "Position index (0-7 for up to 8 POMM positions)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "action",
+            "docs": [
+              "Action to take"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::instructions::manage_pomm_position::PommAction"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::manage_pomm_position::PommAction",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "AddLiquidity"
+          },
+          {
+            "name": "RemoveLiquidity",
+            "fields": [
+              {
+                "name": "liquidity_amount",
+                "type": "u128"
+              }
+            ]
+          },
+          {
+            "name": "Rebalance",
+            "fields": [
+              {
+                "name": "new_tick_lower",
+                "type": "i32"
+              },
+              {
+                "name": "new_tick_upper",
+                "type": "i32"
+              }
+            ]
+          },
+          {
+            "name": "CollectFees"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::mint_token::MintTokenParams",
+      "docs": [
+        "Parameters for minting a new token"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "ticker",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::swap::SwapParams",
+      "docs": [
+        "Parameters for swap execution",
+        "",
+        "These parameters control swap behavior including slippage protection,",
+        "tick crossing limits, and fee caps for user protection."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_in",
+            "docs": [
+              "Amount of input token to swap (gross amount before fees)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "minimum_amount_out",
+            "docs": [
+              "Minimum amount of output token to receive (after all fees)",
+              "Used for slippage protection"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_ticks_crossed",
+            "docs": [
+              "Maximum number of ticks to cross during swap (0 = unlimited)",
+              "Prevents compute unit exhaustion and potential griefing"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_total_fee_bps",
+            "docs": [
+              "Maximum total fee in basis points (0 = no cap)",
+              "Provides user protection against excessive fees"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::swap_exact_out::SwapExactOutParams",
+      "docs": [
+        "Parameters for exact output swap execution"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "amount_out",
+            "docs": [
+              "Exact amount of output token to receive (after all fees)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "maximum_amount_in",
+            "docs": [
+              "Maximum amount of input token willing to pay (before fees)",
+              "Used for slippage protection"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_ticks_crossed",
+            "docs": [
+              "Maximum number of ticks to cross during swap (0 = unlimited)"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "max_total_fee_bps",
+            "docs": [
+              "Maximum total fee in basis points (0 = no cap)"
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::transition_market_phase::TransitionPhaseParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "target_phase",
+            "docs": [
+              "Target phase to transition to"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::phase::MarketPhase"
+              }
+            }
+          },
+          {
+            "name": "force",
+            "docs": [
+              "Force transition even if criteria not met (governance only)"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dex_twap_rate_q64",
+            "type": "u128"
+          },
+          {
+            "name": "window_secs",
+            "type": "u32"
+          },
+          {
+            "name": "obs",
+            "type": "u16"
+          },
+          {
+            "name": "venue_id",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "native_rate_q64",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::buffer::Buffer",
+      "docs": [
+        "Pool buffer (τ) account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Associated market"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can manage buffer"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (for reference)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fees_token_0",
+            "docs": [
+              "Token balances (u128 to prevent overflow in high-volume scenarios)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fees_token_1",
+            "type": "u128"
+          },
+          {
+            "name": "tau_spot",
+            "docs": [
+              "τ partition counters (virtual partitions, u128 for overflow safety)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "tau_time",
+            "type": "u128"
+          },
+          {
+            "name": "tau_leverage",
+            "type": "u128"
+          },
+          {
+            "name": "floor_tick_spacing",
+            "docs": [
+              "Floor LP configuration",
+              "DEPRECATED: This field is no longer used. POMM width is now derived from market tick spacing.",
+              "Kept for backwards compatibility only."
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "floor_placement_threshold",
+            "type": "u64"
+          },
+          {
+            "name": "last_floor_placement",
+            "type": "i64"
+          },
+          {
+            "name": "last_rebase",
+            "docs": [
+              "Epoch tracking for buffer"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "total_distributed",
+            "type": "u128"
+          },
+          {
+            "name": "buffer_authority_bump",
+            "docs": [
+              "Canonical bump for buffer authority PDA",
+              "Storing the bump prevents ambiguity and improves performance"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "jit_last_slot",
+            "docs": [
+              "JIT per-slot tracking (quote units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "jit_slot_used_q",
+            "type": "u128"
+          },
+          {
+            "name": "jit_rolling_consumption",
+            "docs": [
+              "JIT v0.5 rolling consumption tracking"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "jit_rolling_window_start",
+            "type": "u64"
+          },
+          {
+            "name": "jit_last_heavy_usage_slot",
+            "type": "u64"
+          },
+          {
+            "name": "jit_total_consumed_epoch",
+            "type": "u128"
+          },
+          {
+            "name": "initial_tau_spot",
+            "docs": [
+              "Initial buffer size for circuit breaker calculations"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "protocol_owned_override",
+            "docs": [
+              "Protocol-owned token amount override for floor calculation",
+              "If non-zero, this value is used instead of dynamically calculating",
+              "Allows governance to set a fixed protocol-owned amount"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pomm_position_count",
+            "docs": [
+              "Number of active POMM positions"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_padding",
+            "docs": [
+              "Padding for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::escrow::PreLaunchEscrow",
+      "docs": [
+        "Pre-launch escrow account for newly minted tokens",
+        "This temporary account holds tokens and mint fees until market goes live"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token_mint",
+            "docs": [
+              "Token mint this escrow is for"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator who minted the token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (for reference)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp (used for expiration)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "market",
+            "docs": [
+              "Associated market (set when market is initialized)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_authority_bump",
+            "docs": [
+              "Canonical bump for escrow authority PDA"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future expansion"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::feels_hub::FeelsHub",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint this hub controls"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "reentrancy_guard",
+            "docs": [
+              "Reentrancy guard for mint/redeem flows"
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::FeatureFlags",
+      "docs": [
+        "Feature flags for future phases (all OFF in MVP)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "dynamic_fees",
+            "type": "bool"
+          },
+          {
+            "name": "precision_mode",
+            "type": "bool"
+          },
+          {
+            "name": "autopilot_lambda",
+            "type": "bool"
+          },
+          {
+            "name": "autopilot_weights",
+            "type": "bool"
+          },
+          {
+            "name": "targets_adaptive",
+            "type": "bool"
+          },
+          {
+            "name": "time_domain",
+            "type": "bool"
+          },
+          {
+            "name": "leverage_domain",
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "bool",
+                9
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::Market",
+      "docs": [
+        "Main market account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "docs": [
+              "Version for upgradability"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_initialized",
+            "docs": [
+              "Market status"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "is_paused",
+            "type": "bool"
+          },
+          {
+            "name": "token_0",
+            "docs": [
+              "Token configuration"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_1",
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "token_0_type",
+            "docs": [
+              "Token types (for future Token-2022 support)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "token_1_type",
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "token_0_origin",
+            "docs": [
+              "Token origins (for market creation restrictions)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenOrigin"
+              }
+            }
+          },
+          {
+            "name": "token_1_origin",
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenOrigin"
+              }
+            }
+          },
+          {
+            "name": "vault_0",
+            "docs": [
+              "Vault accounts"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_1",
+            "type": "pubkey"
+          },
+          {
+            "name": "hub_protocol",
+            "docs": [
+              "Hub protocol reference (optional)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "sqrt_price",
+            "docs": [
+              "Spot AMM state (simplified constant product for MVP)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          },
+          {
+            "name": "current_tick",
+            "docs": [
+              "CLMM tick state"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "tick_spacing",
+            "type": "u16"
+          },
+          {
+            "name": "global_lower_tick",
+            "docs": [
+              "Floor liquidity bounds (TEMPORARY - will be removed when POMM uses pure positions)",
+              "These currently serve as bounds for pool-owned liquidity but will be",
+              "replaced with actual position NFTs in a future upgrade.",
+              "Global swap bounds - hard limits for all swaps in this market"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "global_upper_tick",
+            "type": "i32"
+          },
+          {
+            "name": "floor_liquidity",
+            "docs": [
+              "Liquidity at the global bounds (legacy POMM field, kept for compatibility)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_0_x64",
+            "docs": [
+              "Global fee growth (Q64) per liquidity unit"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_1_x64",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_0",
+            "docs": [
+              "Global fee growth without x64 suffix (for compatibility)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_global_1",
+            "type": "u128"
+          },
+          {
+            "name": "base_fee_bps",
+            "docs": [
+              "Fee configuration"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "buffer",
+            "docs": [
+              "Buffer (τ) reference"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "last_epoch_update",
+            "docs": [
+              "Epoch tracking"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "epoch_number",
+            "type": "u64"
+          },
+          {
+            "name": "oracle",
+            "docs": [
+              "Oracle account reference",
+              "Oracle data is stored in a separate account to reduce stack usage"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_bump",
+            "docs": [
+              "Oracle account bump seed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "policy",
+            "docs": [
+              "Policy configuration"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::market::PolicyV1"
+              }
+            }
+          },
+          {
+            "name": "market_authority_bump",
+            "docs": [
+              "Canonical bump for market authority PDA",
+              "Storing prevents recomputation and ensures consistency"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_0_bump",
+            "docs": [
+              "Canonical bumps for vault PDAs"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "vault_1_bump",
+            "type": "u8"
+          },
+          {
+            "name": "reentrancy_guard",
+            "docs": [
+              "Re-entrancy guard",
+              "Set to true at the start of sensitive operations and false at the end",
+              "Prevents re-entrant calls during critical state transitions"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "initial_liquidity_deployed",
+            "docs": [
+              "Initial liquidity deployment status"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "jit_enabled",
+            "docs": [
+              "JIT v0.5 parameters (per-market)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "jit_base_cap_bps",
+            "docs": [
+              "JIT v0.5 configuration"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "jit_per_slot_cap_bps",
+            "type": "u16"
+          },
+          {
+            "name": "jit_concentration_width",
+            "type": "u32"
+          },
+          {
+            "name": "jit_max_multiplier",
+            "type": "u8"
+          },
+          {
+            "name": "jit_drain_protection_bps",
+            "type": "u16"
+          },
+          {
+            "name": "jit_circuit_breaker_bps",
+            "type": "u16"
+          },
+          {
+            "name": "floor_tick",
+            "docs": [
+              "Floor management (MVP)"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "floor_buffer_ticks",
+            "type": "i32"
+          },
+          {
+            "name": "last_floor_ratchet_ts",
+            "type": "i64"
+          },
+          {
+            "name": "floor_cooldown_secs",
+            "type": "i64"
+          },
+          {
+            "name": "steady_state_seeded",
+            "docs": [
+              "Graduation flags (idempotent)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "cleanup_complete",
+            "type": "bool"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "Market phase tracking"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "phase_start_slot",
+            "type": "u64"
+          },
+          {
+            "name": "phase_start_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "last_phase_transition_slot",
+            "docs": [
+              "Phase transition history (last transition)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_phase_trigger",
+            "type": "u8"
+          },
+          {
+            "name": "total_volume_token_0",
+            "docs": [
+              "Cumulative metrics for phase transitions"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_volume_token_1",
+            "type": "u64"
+          },
+          {
+            "name": "rolling_buy_volume",
+            "docs": [
+              "JIT v0.5 directional tracking (rolling window)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "rolling_sell_volume",
+            "type": "u128"
+          },
+          {
+            "name": "rolling_total_volume",
+            "type": "u128"
+          },
+          {
+            "name": "rolling_window_start_slot",
+            "type": "u64"
+          },
+          {
+            "name": "tick_snapshot_1hr",
+            "docs": [
+              "Price movement tracking for circuit breaker"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "last_snapshot_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved space for future expansion"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                1
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::market::PolicyV1",
+      "docs": [
+        "Policy configuration"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "feature_flags",
+            "type": {
+              "defined": {
+                "name": "feels::state::market::FeatureFlags"
+              }
+            }
+          },
+          {
+            "name": "base_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_surcharge_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_instantaneous_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::oracle::Observation",
+      "docs": [
+        "Single price observation"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "block_timestamp",
+            "docs": [
+              "Block timestamp of this observation"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "tick_cumulative",
+            "docs": [
+              "Cumulative tick value (tick * time)"
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "initialized",
+            "docs": [
+              "Whether this observation has been initialized"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_padding",
+            "docs": [
+              "Padding for alignment"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::oracle::OracleState",
+      "docs": [
+        "Oracle state account that stores price observations"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool_id",
+            "docs": [
+              "Pool ID this oracle belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "observation_index",
+            "docs": [
+              "Index of the most recent observation"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "observation_cardinality",
+            "docs": [
+              "Current number of observations (grows from 1 to MAX)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "observation_cardinality_next",
+            "docs": [
+              "Next observation cardinality (for future expansion)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "oracle_bump",
+            "docs": [
+              "Bump seed for the oracle PDA"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "observations",
+            "docs": [
+              "Array of observations"
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "feels::state::oracle::Observation"
+                  }
+                },
+                12
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::phase::MarketPhase",
+      "docs": [
+        "Market lifecycle phase"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Created"
+          },
+          {
+            "name": "BondingCurve"
+          },
+          {
+            "name": "Transitioning"
+          },
+          {
+            "name": "SteadyState"
+          },
+          {
+            "name": "Graduated"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Deprecated"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolEntry",
+      "docs": [
+        "Registry entry for a single pool"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "Market pubkey"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_mint",
+            "docs": [
+              "Project token mint"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "feelssol_mint",
+            "docs": [
+              "FeelsSOL mint (always token_0 in markets)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "phase",
+            "docs": [
+              "Current phase"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::pool_registry::PoolPhase"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "docs": [
+              "Last update timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator/launcher"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "symbol",
+            "docs": [
+              "Token symbol (up to 10 chars)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "symbol_len",
+            "docs": [
+              "Symbol length"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolPhase",
+      "docs": [
+        "Pool phase for lifecycle tracking"
+      ],
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "BondingCurve"
+          },
+          {
+            "name": "SteadyState"
+          },
+          {
+            "name": "Paused"
+          },
+          {
+            "name": "Deprecated"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::pool_registry::PoolRegistry",
+      "docs": [
+        "Central pool registry"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Protocol authority"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_count",
+            "docs": [
+              "Number of pools registered"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pools",
+            "docs": [
+              "Pools array (paginated access)"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "feels::state::pool_registry::PoolEntry"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical bump"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                128
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::position::Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nft_mint",
+            "docs": [
+              "Position NFT mint (Metaplex Core asset ID)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "docs": [
+              "Market this position belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "docs": [
+              "Owner of the position"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "tick_lower",
+            "docs": [
+              "Tick range"
+            ],
+            "type": "i32"
+          },
+          {
+            "name": "tick_upper",
+            "type": "i32"
+          },
+          {
+            "name": "liquidity",
+            "docs": [
+              "Liquidity amount"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_0_last_x64",
+            "docs": [
+              "Fee growth inside the position at last update (Q64 fixed point)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_1_last_x64",
+            "type": "u128"
+          },
+          {
+            "name": "tokens_owed_0",
+            "docs": [
+              "Tokens owed to position (collected fees + removed liquidity)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tokens_owed_1",
+            "type": "u64"
+          },
+          {
+            "name": "position_bump",
+            "docs": [
+              "Canonical bump for position PDA",
+              "Storing prevents recomputation when minting/burning"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_pomm",
+            "docs": [
+              "Whether this is a POMM position"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "last_updated_slot",
+            "docs": [
+              "Last slot this position was updated"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_growth_inside_0_last",
+            "docs": [
+              "Fee growth inside at last action (for proper accounting)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_inside_1_last",
+            "type": "u128"
+          },
+          {
+            "name": "fees_owed_0",
+            "docs": [
+              "Accumulated fees owed"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fees_owed_1",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::protocol_config::ProtocolConfig",
+      "docs": [
+        "Protocol configuration account"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can update protocol parameters"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint_fee",
+            "docs": [
+              "Fee for minting a new token (in FeelsSOL lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Treasury account to receive protocol fees"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "default_protocol_fee_rate",
+            "docs": [
+              "Default protocol fee rate (basis points, e.g. 1000 = 10%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "default_creator_fee_rate",
+            "docs": [
+              "Default creator fee rate for protocol tokens (basis points, e.g. 500 = 5%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_protocol_fee_rate",
+            "docs": [
+              "Maximum allowed protocol fee rate (basis points)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "token_expiration_seconds",
+            "docs": [
+              "Time window (in seconds) for deploying liquidity after token mint",
+              "If liquidity isn't deployed within this window, token can be destroyed"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "depeg_threshold_bps",
+            "docs": [
+              "De-peg circuit breaker threshold (bps of divergence)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "depeg_required_obs",
+            "docs": [
+              "Required consecutive breach observations to pause"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "clear_required_obs",
+            "docs": [
+              "Required consecutive clear observations to resume"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "dex_twap_window_secs",
+            "docs": [
+              "DEX TWAP window and staleness thresholds (seconds)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_stale_age_secs",
+            "type": "u32"
+          },
+          {
+            "name": "dex_twap_updater",
+            "docs": [
+              "Authorized updater for DEX TWAP feed (MVP single updater)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dex_whitelist",
+            "docs": [
+              "DEX whitelist (venues/pools) - fixed size for MVP"
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                8
+              ]
+            }
+          },
+          {
+            "name": "dex_whitelist_len",
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future protocol parameters"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "mint_per_slot_cap_feelssol",
+            "docs": [
+              "Optional per-slot caps for mint/redeem (FeelsSOL units). 0 = unlimited."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "redeem_per_slot_cap_feelssol",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "native_rate_q64",
+            "docs": [
+              "Native reserve rate (Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "dex_twap_rate_q64",
+            "docs": [
+              "Filtered DEX TWAP rate (Q64)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "dex_last_update_slot",
+            "docs": [
+              "Last update slot for DEX TWAP"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "native_last_update_slot",
+            "docs": [
+              "Last update slot for native rate"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "dex_last_update_ts",
+            "docs": [
+              "Last update timestamp for DEX TWAP"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "native_last_update_ts",
+            "docs": [
+              "Last update timestamp for native rate"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "dex_window_secs",
+            "docs": [
+              "Observation window (seconds) for DEX TWAP"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "Current flags (bitmask)"
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::safety_controller::DegradeFlags",
+      "docs": [
+        "Degraded mode flags for various safety conditions"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "gtwap_stale",
+            "docs": [
+              "GTWAP stale: disable advanced features"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "oracle_stale",
+            "docs": [
+              "Protocol oracle stale: pause exits"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "high_volatility",
+            "docs": [
+              "High volatility detected: raise minimum fees"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "low_liquidity",
+            "docs": [
+              "Low liquidity: restrict large trades"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved flags for future use"
+            ],
+            "type": {
+              "array": [
+                "bool",
+                4
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::safety_controller::SafetyController",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemptions_paused",
+            "docs": [
+              "Whether redemptions are paused due to de-peg"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "consecutive_breaches",
+            "docs": [
+              "Consecutive divergence observations over threshold"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "consecutive_clears",
+            "docs": [
+              "Consecutive safe observations since last breach"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "last_change_slot",
+            "docs": [
+              "Last state change slot"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "mint_last_slot",
+            "docs": [
+              "Per-slot mint tracking (FeelsSOL units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "mint_slot_amount",
+            "type": "u64"
+          },
+          {
+            "name": "redeem_last_slot",
+            "docs": [
+              "Per-slot redeem tracking (FeelsSOL units)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "redeem_slot_amount",
+            "type": "u64"
+          },
+          {
+            "name": "last_divergence_check_slot",
+            "docs": [
+              "Last slot when divergence was checked (prevents double-counting)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "degrade_flags",
+            "docs": [
+              "Degraded mode flags"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::safety_controller::DegradeFlags"
+              }
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tick::Tick",
+      "docs": [
+        "Individual tick within an array",
+        "Must be exactly aligned with no padding for zero_copy"
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "liquidity_net",
+            "type": "i128"
+          },
+          {
+            "name": "liquidity_gross",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_outside_0_x64",
+            "type": "u128"
+          },
+          {
+            "name": "fee_growth_outside_1_x64",
+            "type": "u128"
+          },
+          {
+            "name": "initialized",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                15
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tick::TickArray",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_tick_index",
+            "type": "i32"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": [
+                "u8",
+                12
+              ]
+            }
+          },
+          {
+            "name": "ticks",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "feels::state::tick::Tick"
+                  }
+                },
+                64
+              ]
+            }
+          },
+          {
+            "name": "initialized_tick_count",
+            "type": "u16"
+          },
+          {
+            "name": "_pad1",
+            "type": {
+              "array": [
+                "u8",
+                14
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::ProtocolToken",
+      "docs": [
+        "Registry entry for protocol-minted tokens"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "Token mint address"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator who minted the token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "token_type",
+            "docs": [
+              "Token type (SPL or Token-2022)"
+            ],
+            "type": {
+              "defined": {
+                "name": "feels::state::token_metadata::TokenType"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "can_create_markets",
+            "docs": [
+              "Whether this token can create markets (for future use)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved for future use"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::TokenOrigin",
+      "docs": [
+        "Origin of a token"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "ProtocolMinted"
+          },
+          {
+            "name": "External"
+          },
+          {
+            "name": "FeelsSOL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::token_metadata::TokenType",
+      "docs": [
+        "Token type enum for tracking SPL vs Token-2022"
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Spl"
+          },
+          {
+            "name": "Token2022"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tranche_plan::TrancheEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tick_lower",
+            "type": "i32"
+          },
+          {
+            "name": "tick_upper",
+            "type": "i32"
+          },
+          {
+            "name": "liquidity",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feels::state::tranche_plan::TranchePlan",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "applied",
+            "type": "bool"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "feels::state::tranche_plan::TrancheEntry"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+};

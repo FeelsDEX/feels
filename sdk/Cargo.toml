@@ -43,6 +43,12 @@ integer-sqrt = { workspace = true }
 fixed = "1.24"
 num-traits = "0.2"
 
+# Math dependencies for accurate CLMM simulation
+orca_whirlpools_core = { version = "2.0.0", default-features = false }
+
+# Hash map for tick array parsing
+ahash = "0.8"
+
 # Import the Feels program types
 feels = { path = "../programs/feels", features = ["no-entrypoint"] }
 
@@ -52,7 +58,3 @@ anyhow = { workspace = true }
 [[example]]
 name = "basic_usage"
 path = "examples/basic_usage.rs"
-
-[[example]]
-name = "complete_flow"
-path = "examples/complete_flow.rs"

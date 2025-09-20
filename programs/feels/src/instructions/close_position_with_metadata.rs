@@ -21,11 +21,8 @@ use mpl_token_metadata::{instructions as mpl_instruction, ID as METADATA_PROGRAM
 #[derive(Accounts)]
 pub struct ClosePositionWithMetadata<'info> {
     /// Position owner
-    /// SECURITY: Must be a system account to prevent PDA identity confusion
-    #[account(
-        mut,
-        constraint = owner.owner == &System::id() @ FeelsError::InvalidAuthority
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub owner: Signer<'info>,
 
     /// Market state
@@ -43,14 +40,11 @@ pub struct ClosePositionWithMetadata<'info> {
     pub position_token_account: UncheckedAccount<'info>,
 
     /// Position account (PDA)
-    /// SECURITY: Removed `close = owner` to prevent fee theft vulnerability.
-    /// Position must be closed in a separate instruction after verification.
+    /// CHECK: Validated in handler to reduce stack usage
     #[account(
         mut,
         seeds = [POSITION_SEED, position.nft_mint.as_ref()],
-        bump,
-        constraint = position.market == market.key() @ FeelsError::InvalidMarket,
-        constraint = position.owner == owner.key() @ FeelsError::InvalidAuthority,
+        bump
     )]
     pub position: Account<'info, Position>,
 
@@ -105,17 +99,13 @@ pub struct ClosePositionWithMetadata<'info> {
     pub market_authority: AccountInfo<'info>,
 
     /// Tick array containing the lower tick
-    #[account(
-        mut,
-        constraint = lower_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub lower_tick_array: AccountLoader<'info, TickArray>,
 
-    /// Tick array containing the upper tick
-    #[account(
-        mut,
-        constraint = upper_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
-    )]
+    /// Tick array containing the upper tick  
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub upper_tick_array: AccountLoader<'info, TickArray>,
 
     /// Metaplex Token Metadata program
@@ -151,6 +141,32 @@ pub fn close_position_with_metadata(
     let market = &mut ctx.accounts.market;
     let position = &ctx.accounts.position;
     let clock = Clock::get()?;
+
+    // Validate constraints (moved from struct to save stack space)
+    require!(
+        ctx.accounts.owner.owner == &System::id(),
+        FeelsError::InvalidAuthority
+    );
+    require!(
+        position.market == market.key(),
+        FeelsError::InvalidMarket
+    );
+    require!(
+        position.owner == ctx.accounts.owner.key(),
+        FeelsError::InvalidAuthority
+    );
+    
+    // Validate tick arrays
+    let lower_array = ctx.accounts.lower_tick_array.load()?;
+    let upper_array = ctx.accounts.upper_tick_array.load()?;
+    require!(
+        lower_array.market == market.key(),
+        FeelsError::InvalidTickArray
+    );
+    require!(
+        upper_array.market == market.key(),
+        FeelsError::InvalidTickArray
+    );
 
     // Validate market is active
     validate_market_active(market)?;

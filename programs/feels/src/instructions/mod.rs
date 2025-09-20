@@ -13,6 +13,7 @@ pub use exit_feelssol::*;
 pub mod swap;
 pub use swap::*;
 
+
 pub mod open_position;
 pub use open_position::*;
 
@@ -78,6 +79,9 @@ pub use register_pool::*;
 
 pub mod update_pool_phase;
 pub use update_pool_phase::*;
+
+pub mod initialize_pomm_position;
+pub use initialize_pomm_position::*;
 
 pub mod manage_pomm_position;
 pub use manage_pomm_position::*;

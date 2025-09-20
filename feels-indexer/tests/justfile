@@ -1,0 +1,157 @@
+# Justfile for feels-indexer integration tests
+
+# Default recipe to list all available commands
+default:
+    @just --list
+
+# Run all tests
+test-all: test-unit test-integration
+
+# Run unit tests
+test-unit:
+    nix develop ../..#indexer-test -c cargo test --lib --bins
+
+# Run integration tests with Geyser-enabled devnet
+test-integration-geyser:
+    @echo "Starting integration test with Geyser-enabled devnet..."
+    nix develop ../..#indexer-test -c bash -c '\
+        echo "Starting PostgreSQL..." && \
+        pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start || (initdb -D /tmp/postgres_test && pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start) && \
+        sleep 2 && \
+        echo "Starting Redis..." && \
+        redis-server --port 6379 --daemonize yes && \
+        sleep 1 && \
+        echo "Creating test database..." && \
+        createdb feels_indexer_test || true && \
+        echo "Running migrations..." && \
+        cd .. && DATABASE_URL=postgresql://localhost/feels_indexer_test sqlx migrate run && \
+        cd tests && \
+        echo "Cleaning test data..." && \
+        rm -rf ./test-data && \
+        echo "Running integration test with Geyser..." && \
+        RUST_LOG=info,feels_indexer=debug cargo test integration_devnet -- --ignored --nocapture; \
+        TEST_RESULT=$$?; \
+        echo "Cleaning up services..." && \
+        redis-cli shutdown || true && \
+        pg_ctl -D /tmp/postgres_test stop || true && \
+        exit $$TEST_RESULT \
+    '
+
+# Run integration tests with local devnet
+test-integration:
+    @echo "Starting integration test with nix environment..."
+    @# Start services and run test in indexer-test environment
+    nix develop ../..#indexer-test -c bash -c '\
+        echo "Starting PostgreSQL..." && \
+        pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start || (initdb -D /tmp/postgres_test && pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start) && \
+        sleep 2 && \
+        echo "Starting Redis..." && \
+        redis-server --port 6379 --daemonize yes && \
+        sleep 1 && \
+        echo "Creating test database..." && \
+        createdb feels_indexer_test || true && \
+        echo "Running migrations..." && \
+        cd .. && DATABASE_URL=postgresql://localhost/feels_indexer_test sqlx migrate run && \
+        cd tests && \
+        echo "Cleaning test data..." && \
+        rm -rf ./test-data && \
+        echo "Running integration test..." && \
+        RUST_LOG=info,feels_indexer=debug cargo test integration_devnet -- --ignored --nocapture; \
+        TEST_RESULT=$$?; \
+        echo "Cleaning up services..." && \
+        redis-cli shutdown || true && \
+        pg_ctl -D /tmp/postgres_test stop || true && \
+        exit $$TEST_RESULT \
+    '
+
+# Setup test environment (databases, directories)
+setup-test-env:
+    @echo "Setting up test environment..."
+    nix develop ../..#indexer-test -c bash -c '\
+        pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start || (initdb -D /tmp/postgres_test && pg_ctl -D /tmp/postgres_test -l /tmp/postgres.log start) && \
+        sleep 2 && \
+        createdb feels_indexer_test || true && \
+        psql feels_indexer_test -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";" || true && \
+        mkdir -p test-data/{rocksdb,tantivy} \
+    '
+
+# Clean test environment
+clean-test-env:
+    @echo "Cleaning test environment..."
+    nix develop ../..#indexer-test -c bash -c '\
+        dropdb feels_indexer_test || true && \
+        rm -rf test-data && \
+        rm -rf test-ledger && \
+        redis-cli shutdown || true && \
+        pg_ctl -D /tmp/postgres_test stop || true \
+    '
+
+# Run specific test with logging
+test name:
+    nix develop ../..#indexer-test -c bash -c 'RUST_LOG=debug cargo test {{name}} -- --nocapture'
+
+# Run tests with coverage
+test-coverage:
+    nix develop ../..#indexer-test -c cargo tarpaulin --out Html --output-dir ./coverage
+
+# Run benchmarks
+bench:
+    nix develop ../..#indexer-test -c cargo bench
+
+# Check for common issues before running tests
+pre-test-check:
+    @echo "Checking test prerequisites in nix environment..."
+    @nix develop ../..#indexer-test -c bash -c '\
+        echo "Checking PostgreSQL..." && \
+        which pg_isready > /dev/null || (echo "PostgreSQL tools not found in nix env!" && exit 1) && \
+        echo "Checking Redis..." && \
+        which redis-cli > /dev/null || (echo "Redis tools not found in nix env!" && exit 1) && \
+        echo "Checking devnet.nix..." && \
+        test -f ../nix/devnet.nix || (echo "devnet.nix not found!" && exit 1) && \
+        echo "All prerequisites available!" \
+    '
+
+# Start local devnet in background
+start-devnet:
+    @echo "Starting local devnet..."
+    cd .. && nix run .#devnet &
+
+# Stop local devnet
+stop-devnet:
+    @echo "Stopping local devnet..."
+    pkill -f solana-test-validator || true
+
+# Run integration test in CI mode
+ci-test:
+    @just pre-test-check
+    @just test-integration
+
+# Watch for changes and re-run tests
+watch:
+    nix develop ../..#indexer-test -c cargo watch -x "test --lib" -i "test-data/*"
+
+# Generate test data for benchmarks
+generate-test-data:
+    @echo "Generating test data..."
+    nix develop ../..#indexer-test -c cargo run --bin generate-test-data --release
+
+# Profile memory usage during tests
+profile-memory:
+    nix develop ../..#indexer-test -c bash -c 'RUST_LOG=info valgrind --leak-check=full --show-leak-kinds=all cargo test integration_devnet -- --ignored'
+
+# Run stress test
+stress-test:
+    @echo "Running stress test..."
+    nix develop ../..#indexer-test -c cargo test stress_test_indexer -- --ignored --release
+
+# Lint test code
+lint:
+    nix develop ../..#indexer-test -c cargo clippy --tests -- -D warnings
+
+# Format test code
+fmt:
+    nix develop ../..#indexer-test -c cargo fmt --all
+
+# Run all checks (format, lint, test)
+check-all: fmt lint test-unit
+    @echo "All checks passed!"

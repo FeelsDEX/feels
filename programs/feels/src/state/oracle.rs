@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_oracle_size() {
         assert_eq!(std::mem::size_of::<Observation>(), 32);
-        // OracleState size calculation: discriminator + pool_id + observation_index + 
+        // OracleState size calculation: discriminator + pool_id + observation_index +
         // observation_cardinality + observation_cardinality_next + oracle_bump + observations + _reserved + padding
         assert_eq!(OracleState::LEN, 8 + 32 + 2 + 2 + 2 + 1 + (32 * 12) + 4 + 5);
         // Verify against actual struct size (excluding discriminator)

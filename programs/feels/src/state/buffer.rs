@@ -38,30 +38,30 @@ pub struct Buffer {
     pub total_distributed: u128, // Total ever distributed from buffer (u128 for cumulative safety)
 
     /// Canonical bump for buffer authority PDA
-    /// SECURITY: Storing the bump prevents ambiguity and improves performance
+    /// Storing the bump prevents ambiguity and improves performance
     pub buffer_authority_bump: u8,
 
     /// JIT per-slot tracking (quote units)
     pub jit_last_slot: u64,
     pub jit_slot_used_q: u128,
-    
+
     /// JIT v0.5 rolling consumption tracking
     pub jit_rolling_consumption: u128,
     pub jit_rolling_window_start: u64,
     pub jit_last_heavy_usage_slot: u64,
     pub jit_total_consumed_epoch: u128,
-    
+
     /// Initial buffer size for circuit breaker calculations
     pub initial_tau_spot: u128,
-    
+
     /// Protocol-owned token amount override for floor calculation
     /// If non-zero, this value is used instead of dynamically calculating
     /// Allows governance to set a fixed protocol-owned amount
     pub protocol_owned_override: u64,
-    
+
     /// Number of active POMM positions
     pub pomm_position_count: u8,
-    
+
     /// Padding for future use
     pub _padding: [u8; 7],
 }
@@ -102,7 +102,6 @@ impl Buffer {
     }
 
     /// Check if floor placement is due
-    /// SECURITY: Uses u128 for calculations to prevent overflow
     pub fn floor_placement_due(&self, token_0_value: u64, token_1_value: u64) -> bool {
         // Convert to u128 to prevent overflow in addition
         let total_value: u128 = (token_0_value as u128).saturating_add(token_1_value as u128);
@@ -110,7 +109,7 @@ impl Buffer {
     }
 
     /// Collect fee to appropriate partition (MVP only uses spot)
-    /// This function is transactional, only modifying state if all operations succeed
+    /// Transactional, only modifies state if all operations succeed
     pub fn collect_fee(
         &mut self,
         amount: u64,

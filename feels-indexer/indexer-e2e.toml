@@ -1,0 +1,14 @@
+[geyser]
+endpoint = "http://localhost:10000"
+program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
+commitment = "confirmed"
+
+[storage]
+rocksdb_path = "./data/rocksdb"
+
+[api]
+bind_address = "127.0.0.1:8080"
+enable_cors = true
+
+[monitoring]
+log_level = "info"

@@ -157,6 +157,62 @@ integer-sqrt = { version = "0.1" }
           devshellConfig = import ./nix/devshell.nix { inherit pkgs inputs' projectConfig; };
           devnetConfig = import ./nix/devnet.nix { inherit pkgs inputs' projectConfig; };
           idlBuilderConfig = import ./nix/idl-builder.nix { inherit pkgs inputs' projectConfig; };
+          indexerTestConfig = import ./nix/indexer-test.nix { inherit pkgs inputs' projectConfig; };
+          
+          # Next.js development shell configuration
+          nextjsDevShell = pkgs.mkShell {
+            buildInputs = with pkgs; [
+              # Node.js and package management
+              nodejs_20
+              pnpm
+              yarn
+              
+              # Development tools
+              nodePackages.typescript
+              nodePackages.typescript-language-server
+              nodePackages."@tailwindcss/language-server"
+              nodePackages.eslint
+              nodePackages.prettier
+              nodePackages.next
+              
+              # Additional utilities
+              jq
+              curl
+            ];
+            
+            shellHook = ''
+              echo "Feels Protocol Next.js Development Environment"
+              echo "Node.js version: $(node --version)"
+              echo "pnpm version: $(pnpm --version)"
+              echo ""
+              echo "Available commands:"
+              echo "  pnpm install     - Install dependencies"
+              echo "  pnpm dev         - Start development server"
+              echo "  pnpm build       - Build for production"
+              echo "  pnpm lint        - Run ESLint"
+              echo "  pnpm format      - Format code with Prettier"
+              echo ""
+              
+              # Set up environment variables
+              export NODE_ENV=development
+              export NEXT_TELEMETRY_DISABLED=1
+              
+              # Ensure pnpm store is in project directory
+              export PNPM_HOME="$PWD/.pnpm"
+              export PATH="$PNPM_HOME:$PATH"
+              
+              # Navigate to feels-app directory if it exists
+              if [ -d "feels-app" ]; then
+                echo "Feels app directory found. Run 'cd feels-app && pnpm install && pnpm dev' to start."
+              else
+                echo "Feels app directory not found. You can create it with:"
+                echo "  mkdir -p feels-app && cd feels-app"
+                echo "  pnpm create next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias '@/*'"
+              fi
+            '';
+            
+            # Environment variables are set in shellHook instead
+          };
         in {
           # Configure crate2nix
           crate2nix = {
@@ -167,10 +223,14 @@ integer-sqrt = { version = "0.1" }
               cargo = inputs'.zero-nix.packages.nightly-rust;
             };
           };
-          devshells.default = devshellConfig;
+          devshells = {
+            default = devshellConfig;
+            nextjs = nextjsDevShell;
+            indexer-test = indexerTestConfig;
+          };
 
           packages = { 
-            default = defaultPackage; 
+            default = defaultPackage;
           } // programPackages 
             // config.crate2nix.packages;
 

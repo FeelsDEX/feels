@@ -18,19 +18,13 @@ use mpl_token_metadata::{
 #[derive(Accounts)]
 pub struct OpenPositionWithMetadata<'info> {
     /// Liquidity provider
-    /// SECURITY: Must be a system account to prevent PDA identity confusion
-    #[account(
-        mut,
-        constraint = provider.owner == &System::id() @ FeelsError::InvalidAuthority
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub provider: Signer<'info>,
 
     /// Market state
-    #[account(
-        mut,
-        constraint = market.is_initialized @ FeelsError::MarketNotInitialized,
-        constraint = !market.is_paused @ FeelsError::MarketPaused,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub market: Account<'info, Market>,
 
     /// Position mint - will become an NFT with metadata
@@ -87,40 +81,27 @@ pub struct OpenPositionWithMetadata<'info> {
     pub provider_token_1: UncheckedAccount<'info>,
 
     /// Market vault for token 0 - derived from market and token_0
-    /// CHECK: Validated as PDA in handler
-    #[account(
-        mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_0.as_ref()],
-        bump,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub vault_0: UncheckedAccount<'info>,
 
     /// Market vault for token 1 - derived from market and token_1
-    /// CHECK: Validated as PDA in handler
-    #[account(
-        mut,
-        seeds = [VAULT_SEED, market.key().as_ref(), market.token_1.as_ref()],
-        bump,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub vault_1: UncheckedAccount<'info>,
 
     /// Tick array containing the lower tick
-    #[account(
-        mut,
-        constraint = lower_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub lower_tick_array: AccountLoader<'info, TickArray>,
 
     /// Tick array containing the upper tick
-    #[account(
-        mut,
-        constraint = upper_tick_array.load()?.market == market.key() @ FeelsError::InvalidTickArray,
-    )]
+    /// CHECK: Validated in handler to reduce stack usage
+    #[account(mut)]
     pub upper_tick_array: AccountLoader<'info, TickArray>,
 
     /// Metaplex Token Metadata program
-    /// CHECK: Address verified in constraint
-    #[account(address = METADATA_PROGRAM_ID)]
+    /// CHECK: Validated in handler to reduce stack usage
     pub metadata_program: AccountInfo<'info>,
 
     /// Token program
@@ -139,6 +120,44 @@ pub fn open_position_with_metadata(
     tick_upper: i32,
     liquidity_amount: u128,
 ) -> Result<()> {
+    // Validate constraints (moved from struct to save stack space)
+    require!(
+        ctx.accounts.provider.owner == &System::id(),
+        FeelsError::InvalidAuthority
+    );
+    require!(
+        ctx.accounts.market.is_initialized,
+        FeelsError::MarketNotInitialized
+    );
+    require!(
+        !ctx.accounts.market.is_paused,
+        FeelsError::MarketPaused
+    );
+    require!(
+        ctx.accounts.metadata_program.key() == METADATA_PROGRAM_ID,
+        FeelsError::InvalidAccount
+    );
+
+    // Validate vault PDAs
+    let (expected_vault_0, _) = Pubkey::find_program_address(
+        &[VAULT_SEED, ctx.accounts.market.key().as_ref(), ctx.accounts.market.token_0.as_ref()],
+        &crate::ID,
+    );
+    let (expected_vault_1, _) = Pubkey::find_program_address(
+        &[VAULT_SEED, ctx.accounts.market.key().as_ref(), ctx.accounts.market.token_1.as_ref()],
+        &crate::ID,
+    );
+    require!(
+        ctx.accounts.vault_0.key() == expected_vault_0,
+        FeelsError::InvalidVault
+    );
+    require!(
+        ctx.accounts.vault_1.key() == expected_vault_1,
+        FeelsError::InvalidVault
+    );
+
+    // Tick array validation is done later with more detailed checks
+
     // First, execute the core open position logic inline
     // This duplicates the logic but avoids complex cross-handler calls
     let market = &mut ctx.accounts.market;

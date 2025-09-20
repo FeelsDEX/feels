@@ -10,6 +10,8 @@ pub mod test_update_floor_validation;
 
 // New critical security tests
 pub mod test_floor_monotonicity;
-pub mod test_safety_controller;
 pub mod test_jit_v0_5_safety;
+pub mod test_mint_authority_revocation;
+pub mod test_safety_controller;
 pub mod test_solvency_invariants;
+pub mod test_stale_oracle_protection;

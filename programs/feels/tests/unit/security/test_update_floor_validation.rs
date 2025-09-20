@@ -1,10 +1,7 @@
 //! Test UpdateFloor PDA validation security fix
 
 use anchor_lang::prelude::*;
-use crate::common::{fixtures::*, context::*};
-use feels::state::{Market, Buffer, TokenType, TokenOrigin, PolicyV1, FeatureFlags};
-use feels::error::FeelsError;
-use spl_token::state::Account as TokenAccount;
+use feels::state::{Buffer, Market, PolicyV1, TokenOrigin, TokenType};
 
 #[cfg(test)]
 mod tests {
@@ -14,11 +11,11 @@ mod tests {
     fn test_update_floor_validates_vault_pdas() {
         let program_id = feels::id();
         let (market_key, _) = Pubkey::find_program_address(&[b"market", &[0u8; 32]], &program_id);
-        
+
         // Create fake accounts for testing
         let token_0 = Pubkey::new_unique();
         let token_1 = Pubkey::new_unique();
-        let mut market = Market {
+        let market = Market {
             version: 1,
             is_initialized: true,
             is_paused: false,
@@ -76,10 +73,16 @@ mod tests {
             last_phase_trigger: 0,
             total_volume_token_0: 0,
             total_volume_token_1: 0,
+            rolling_buy_volume: 0,
+            rolling_sell_volume: 0,
+            rolling_total_volume: 0,
+            rolling_window_start_slot: 0,
+            tick_snapshot_1hr: 0,
+            last_snapshot_timestamp: 0,
             _reserved: [0; 1],
         };
-        
-        let mut buffer = Buffer {
+
+        let buffer = Buffer {
             market: market_key,
             authority: Pubkey::new_unique(),
             feelssol_mint: token_0,
@@ -105,18 +108,18 @@ mod tests {
             pomm_position_count: 0,
             _padding: [0; 7],
         };
-        
+
         // Create malicious vault accounts with inflated balances
         // Note: We can't directly instantiate TokenAccount as it's from spl_token
         // In real tests, these would be created on-chain
         // For this unit test, we're just documenting the vulnerability
-        
+
         // The malicious vault accounts would have:
         // - mint: market.token_0 or market.token_1
         // - owner: NOT the market authority (vulnerability)
         // - amount: Inflated balance (e.g., 1_000_000_000)
         // - Other fields would be default/zero
-        
+
         // Test 1: Wrong vault PDA seeds should fail
         // The UpdateFloor instruction now validates:
         // 1. vault_0 and vault_1 are derived with correct seeds
@@ -124,18 +127,19 @@ mod tests {
         // 3. vault mints match market tokens
         // 4. buffer.market == market.key()
         // 5. project_mint is the non-FeelsSOL token
-        
+
         // This prevents an attacker from passing arbitrary token accounts
         // with inflated balances to manipulate the floor calculation
     }
-    
+
     #[test]
     fn test_update_floor_validates_buffer_association() {
         let program_id = feels::id();
         let (market_key, _) = Pubkey::find_program_address(&[b"market", &[0u8; 32]], &program_id);
-        let (other_market_key, _) = Pubkey::find_program_address(&[b"market", &[1u8; 32]], &program_id);
-        
-        let mut buffer = Buffer {
+        let (other_market_key, _) =
+            Pubkey::find_program_address(&[b"market", &[1u8; 32]], &program_id);
+
+        let buffer = Buffer {
             market: other_market_key, // Buffer for different market
             authority: Pubkey::new_unique(),
             feelssol_mint: Pubkey::new_unique(),
@@ -161,16 +165,16 @@ mod tests {
             pomm_position_count: 0,
             _padding: [0; 7],
         };
-        
+
         // The UpdateFloor instruction now validates buffer.market == market.key()
         // This prevents using a buffer from another market with different reserves
     }
 
-    #[test] 
+    #[test]
     fn test_update_floor_validates_project_mint() {
         let token_0 = Pubkey::new_unique();
         let token_1 = Pubkey::new_unique();
-        let mut market = Market {
+        let market = Market {
             version: 1,
             is_initialized: true,
             is_paused: false,
@@ -228,12 +232,18 @@ mod tests {
             last_phase_trigger: 0,
             total_volume_token_0: 0,
             total_volume_token_1: 0,
+            rolling_buy_volume: 0,
+            rolling_sell_volume: 0,
+            rolling_total_volume: 0,
+            rolling_window_start_slot: 0,
+            tick_snapshot_1hr: 0,
+            last_snapshot_timestamp: 0,
             _reserved: [0; 1],
         };
-        
+
         // Test with wrong project mint (neither token in the market)
         let wrong_mint = Pubkey::new_unique();
-        
+
         // The UpdateFloor instruction now validates that project_mint
         // is either token_0 or token_1 (whichever is NOT FeelsSOL)
         // This ensures the floor calculation uses the correct token supply

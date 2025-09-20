@@ -113,7 +113,7 @@ impl TestClient {
             TestClient::Devnet(client) => client.payer(),
         }
     }
-    
+
     /// Get SOL balance for an account
     pub async fn get_balance(&mut self, address: &Pubkey) -> TestResult<u64> {
         match self {
@@ -213,13 +213,15 @@ impl InMemoryClient {
         // Increase compute units for complex operations
         program_test.set_compute_max_units(2_000_000);
 
-        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+        let (banks_client, payer, recent_blockhash) = program_test.start().await;
 
         // Fund the payer account with SOL for transaction fees
         // The payer should already have SOL from ProgramTest, but let's check
         if let Ok(Some(payer_account)) = banks_client.get_account(payer.pubkey()).await {
-            println!("Payer balance after ProgramTest::start(): {} SOL", 
-                     payer_account.lamports as f64 / 1e9);
+            println!(
+                "Payer balance after ProgramTest::start(): {} SOL",
+                payer_account.lamports as f64 / 1e9
+            );
         } else {
             println!("Warning: Could not get payer account balance");
         }
@@ -317,10 +319,11 @@ impl InMemoryClient {
     }
 
     pub async fn airdrop(&mut self, to: &Pubkey, lamports: u64) -> TestResult<()> {
+        // In-memory client doesn't have rate limits, directly transfer
         let ix = solana_sdk::system_instruction::transfer(&self.payer.pubkey(), to, lamports);
 
         let payer_bytes = self.payer.to_bytes();
-        let payer = Keypair::from_bytes(&payer_bytes)?;
+        let payer = Keypair::try_from(&payer_bytes[..])?;
         self.process_instruction(ix, &[&payer]).await
     }
 
@@ -360,7 +363,7 @@ impl InMemoryClient {
     pub fn payer(&self) -> Pubkey {
         self.payer.pubkey()
     }
-    
+
     pub async fn get_balance(&mut self, address: &Pubkey) -> TestResult<u64> {
         match self.banks_client.get_account(*address).await? {
             Some(account) => Ok(account.lamports),
@@ -374,9 +377,14 @@ pub struct DevnetClient {
     pub rpc_client: solana_client::rpc_client::RpcClient,
     pub payer: Keypair,
     pub commitment: CommitmentConfig,
+    pub disable_airdrop_rate_limit: bool,
 }
 
 impl DevnetClient {
+    pub fn set_disable_airdrop_rate_limit(&mut self, disable: bool) {
+        self.disable_airdrop_rate_limit = disable;
+    }
+
     pub async fn new(url: &str, payer_path: Option<&str>) -> TestResult<Self> {
         use solana_sdk::signature::read_keypair_file;
         use tokio::task;
@@ -393,30 +401,31 @@ impl DevnetClient {
             None => {
                 // Generate new payer
                 let new_payer = Keypair::new();
-                
+
                 // Request airdrop using spawn_blocking for the blocking calls
                 let new_payer_pubkey = new_payer.pubkey();
                 let rpc_url = url.to_string();
-                
-                let result: std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> = 
+
+                let result: std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> =
                     task::spawn_blocking(move || {
                         let client = solana_client::rpc_client::RpcClient::new_with_commitment(
                             rpc_url,
                             CommitmentConfig::confirmed(),
                         );
-                        
+
                         // Request airdrop
-                        let sig = client.request_airdrop(&new_payer_pubkey, 10 * LAMPORTS_PER_SOL)?;
-                        
+                        let sig =
+                            client.request_airdrop(&new_payer_pubkey, 10 * LAMPORTS_PER_SOL)?;
+
                         // Wait for confirmation
                         client.confirm_transaction(&sig)?;
-                        
+
                         Ok(())
                     })
                     .await?;
-                
+
                 result.map_err(|e| e.to_string())?;
-                
+
                 new_payer
             }
         };
@@ -425,6 +434,7 @@ impl DevnetClient {
             rpc_client,
             payer,
             commitment: CommitmentConfig::confirmed(),
+            disable_airdrop_rate_limit: false,
         })
     }
 }
@@ -444,17 +454,15 @@ impl DevnetClient {
         signers: &[&Keypair],
     ) -> TestResult<()> {
         use tokio::task;
-        
+
         // Clone RPC client URL and commitment for the blocking task
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
-        
+
         // Get recent blockhash in a blocking task
         let recent_blockhash = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_latest_blockhash()
         })
         .await??;
@@ -481,14 +489,12 @@ impl DevnetClient {
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let sig = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.send_and_confirm_transaction(&tx)
         })
         .await??;
-        
+
         println!("Transaction confirmed: {}", sig);
 
         Ok::<(), Box<dyn std::error::Error>>(())
@@ -499,20 +505,18 @@ impl DevnetClient {
         address: &Pubkey,
     ) -> TestResult<Option<T>> {
         use tokio::task;
-        
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let address = *address;
-        
+
         let account_result = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_account_with_commitment(&address, commitment)
         })
         .await??;
-        
+
         match account_result.value {
             Some(account) => {
                 let data = account.data;
@@ -531,20 +535,18 @@ impl DevnetClient {
 
     pub async fn get_account_data(&mut self, address: &Pubkey) -> TestResult<Option<Vec<u8>>> {
         use tokio::task;
-        
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let address = *address;
-        
+
         let account_result = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_account_with_commitment(&address, commitment)
         })
         .await??;
-        
+
         match account_result.value {
             Some(account) => Ok(Some(account.data)),
             None => Ok(None),
@@ -563,51 +565,79 @@ impl DevnetClient {
 
     pub async fn airdrop(&mut self, to: &Pubkey, lamports: u64) -> TestResult<()> {
         use tokio::task;
-        
+        use std::time::Duration;
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let to = *to;
+
+        // Check if we should apply rate limiting
+        let disable_rate_limit = self.disable_airdrop_rate_limit || 
+                                std::env::var("DISABLE_AIRDROP_RATE_LIMIT").is_ok();
+        let is_localnet = rpc_url.contains("localhost") || rpc_url.contains("127.0.0.1");
         
-        // Request airdrop in a blocking task
-        let sig = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url.clone(),
-                commitment,
-            );
-            client.request_airdrop(&to, lamports)
-        })
-        .await??;
+        // Apply rate limiting for non-localnet unless explicitly disabled
+        if !is_localnet && !disable_rate_limit {
+            // Wait between airdrops to respect rate limits
+            tokio::time::sleep(Duration::from_millis(2500)).await;
+        }
+
+        // Request airdrop with retry logic
+        let mut retries = 3;
+        let mut last_error = None;
         
+        let sig = loop {
+            match task::spawn_blocking({
+                let rpc_url = rpc_url.clone();
+                move || {
+                    let client = solana_client::rpc_client::RpcClient::new_with_commitment(
+                        rpc_url,
+                        commitment,
+                    );
+                    client.request_airdrop(&to, lamports)
+                }
+            })
+            .await?
+            {
+                Ok(sig) => break sig,
+                Err(e) => {
+                    last_error = Some(e);
+                    retries -= 1;
+                    if retries == 0 {
+                        return Err(format!("Airdrop failed after 3 attempts: {:?}", last_error).into());
+                    }
+                    // Wait longer between retries
+                    tokio::time::sleep(Duration::from_millis(2000)).await;
+                }
+            }
+        };
+
         // Confirm transaction in a blocking task
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.confirm_transaction(&sig)
         })
         .await??;
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 
     pub async fn get_recent_blockhash(&mut self) -> TestResult<Hash> {
         use tokio::task;
-        
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
-        
+
         let blockhash = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_latest_blockhash()
         })
         .await??;
-        
+
         Ok(blockhash)
     }
 
@@ -624,42 +654,38 @@ impl DevnetClient {
 
     pub async fn get_slot(&mut self) -> TestResult<u64> {
         use tokio::task;
-        
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
-        
+
         let slot = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_slot()
         })
         .await??;
-        
+
         Ok(slot)
     }
 
     pub fn payer(&self) -> Pubkey {
         self.payer.pubkey()
     }
-    
+
     pub async fn get_balance(&mut self, address: &Pubkey) -> TestResult<u64> {
         use tokio::task;
-        
+
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let address = *address;
-        
+
         let balance = task::spawn_blocking(move || {
-            let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                rpc_url,
-                commitment,
-            );
+            let client =
+                solana_client::rpc_client::RpcClient::new_with_commitment(rpc_url, commitment);
             client.get_balance(&address)
         })
         .await??;
-        
+
         Ok(balance)
     }
 }

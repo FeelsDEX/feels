@@ -38,12 +38,17 @@ pub const EPOCH_PARAMS_SEED: &[u8] = b"epoch_params";
 pub const Q64: u128 = 1u128 << 64;
 pub const MIN_TICK: i32 = -443636;
 pub const MAX_TICK: i32 = 443636;
+pub const BASIS_POINTS_DIVISOR: u16 = 10000;
 
 // Liquidity constants
 /// Minimum liquidity threshold to prevent dust positions
 /// This prevents creation of positions that are economically insignificant
 /// but still consume on-chain resources. Set to 1000 units.
 pub const MIN_LIQUIDITY: u128 = 1000;
+
+/// Maximum liquidity allowed per position
+/// This prevents overflow in liquidity calculations.
+pub const MAX_LIQUIDITY: u128 = u128::MAX / 2;
 
 // Swap constants
 /// Maximum number of ticks that can be crossed in a single swap
@@ -76,3 +81,11 @@ pub const POMM_MIN_WIDTH: i32 = 10;
 
 /// POMM maximum tick width
 pub const POMM_MAX_WIDTH: i32 = 2000;
+
+// Metaplex Token Metadata Program ID
+// For localnet testing, this can be overridden at compile time
+#[cfg(feature = "localnet")]
+pub const METAPLEX_TOKEN_METADATA_ID: &str = env!("METAPLEX_ID", "5JaheUw6ZqL3DvdbcNVSw6cP2cRLgevxNTWPVL89Vvvd");
+
+#[cfg(not(feature = "localnet"))]
+pub const METAPLEX_TOKEN_METADATA_ID: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";

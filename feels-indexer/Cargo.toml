@@ -1,0 +1,113 @@
+[package]
+name = "feels-indexer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Feels Guy"]
+description = "RocksDB indexer for Feels consuming Geyser streams"
+
+[workspace]
+# Empty workspace to make this a standalone project
+
+# No patching - let Cargo resolve it
+
+[lib]
+name = "feels_indexer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "feels-indexer"
+path = "src/main.rs"
+
+[[bin]]
+name = "feels-indexer-minimal"
+path = "src/main_minimal.rs"
+
+[dependencies]
+# Force newer zstd versions to be used (must be listed first)
+zstd = "0.13"
+zstd-safe = "7.2"
+
+# Solana & Geyser - using direct dependencies to avoid version conflicts
+solana-client = "2.2.1"
+solana-sdk = "2.2.1"
+solana-account-decoder = "2.2.1"
+solana-program = "2.2.1"
+solana-transaction-status = "2.2.1"
+
+# gRPC and protobuf for custom Geyser client
+tonic = { version = "0.10", features = ["transport", "codegen", "prost"] }
+prost = "0.12"
+prost-types = "0.12"
+bs58 = "0.5"
+
+# Feels Protocol
+# feels-sdk = { path = "../sdk" }
+anchor-lang = "0.31.1"
+
+# Version overrides to resolve conflicts
+base64ct = "=1.6.0"
+# Use vendored openssl to avoid system dependency issues
+openssl = { version = "0.10", features = ["vendored"] }
+
+# Storage & Database Stack
+rocksdb = { version = "0.21", default-features = false, features = ["lz4"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid", "json", "bigdecimal", "rust_decimal", "migrate"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+tantivy = "0.22"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Async & Networking
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+tokio-stream = "0.1"
+deadpool-postgres = "0.12"  # Connection pooling
+deadpool-redis = "0.14"     # Redis connection pooling
+
+# Configuration
+config = "0.14"
+toml = "0.8"
+
+# Utilities & Observability
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+clap = { version = "4.0", features = ["derive"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Data Processing & Validation
+validator = { version = "0.16", features = ["derive"] }
+bigdecimal = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.32", features = ["serde-with-str", "db-postgres"] }
+
+# Metrics and monitoring
+prometheus = { version = "0.13" }
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# HTTP client for streaming
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[build-dependencies]
+tonic-build = "0.10"
+prost-build = "0.12"
+sqlx-cli = "0.7"
+
+[features]
+default = ["runtime-sqlx"]
+metrics = []
+runtime-sqlx = []
+compile-time-sqlx = []
+
+[dev-dependencies]
+tempfile = "3.0"
+tokio-test = "0.4"

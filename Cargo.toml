@@ -7,6 +7,11 @@ members = [
 # Exclude Jupiter adapter from workspace as it's a library not for BPF deployment
 exclude = [
     "programs/feels-jupiter-adapter",
+    "feels-streaming-adapter",
+    "feels-indexer",
+    "simple-streaming-adapter",
+    "minimal-streaming-adapter",
+    "e2e/minimal-streaming-adapter",
 ]
 
 [workspace.dependencies]

@@ -1,71 +1,81 @@
-//! Basic usage example for Feels Protocol SDK
+//! Basic usage example for the Feels Protocol SDK
 //!
-//! This example demonstrates the core SDK functionality
+//! This example demonstrates:
+//! - Creating a client
+//! - Finding markets
+//! - Executing swaps
+//! - Managing liquidity
 
-use feels_sdk::{
-    find_buffer_address, find_market_address, sort_tokens, HubRouter, PoolInfo, SdkConfig,
-};
-use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use feels_sdk::{FeelsClient, Route};
+use solana_sdk::signature::{Keypair, Signer};
 
-fn main() {
-    println!("=== Feels Protocol SDK Basic Usage ===\n");
-
-    // 1. Create configuration
-    let payer = Keypair::new();
-    let config = SdkConfig::localnet(payer);
-
-    println!("SDK Configuration:");
-    println!("  Network: Localnet");
-    println!("  RPC URL: {}", config.rpc_url);
-    println!("  Program ID: {}", config.program_id);
-
-    // 2. Initialize client (async in real usage)
-    // let client = FeelsClient::new(config)?;
-    println!("\nClient configuration ready");
-
-    // 3. PDA Derivation
-    println!("\nPDA Examples:");
-
-    let token_0 = Pubkey::new_unique();
-    let token_1 = Pubkey::new_unique();
-
-    // Sort tokens
-    let (token_0, token_1) = sort_tokens(token_0, token_1);
-
-    // Derive market PDA
-    let (market, _) = find_market_address(&token_0, &token_1);
-    println!("  Market PDA: {}", market);
-
-    // Derive buffer PDA
-    let (buffer, _) = find_buffer_address(&market);
-    println!("  Buffer PDA: {}", buffer);
-
-    // 4. Hub Router
-    println!("\nHub Router Example:");
-
-    let feelssol = Pubkey::new_unique();
-    let mut router = HubRouter::new(feelssol);
-
-    // Add a pool
-    let pool = PoolInfo {
-        address: Pubkey::new_unique(),
-        token_0,
-        token_1: feelssol,
-        fee_rate: 30, // 0.3%
-    };
-
-    match router.add_pool(pool) {
-        Ok(_) => println!("  Pool added successfully"),
-        Err(e) => println!("  Error: {}", e),
-    }
-
-    // Find route
-    match router.find_route(&token_0, &feelssol) {
-        Ok(route) => {
-            println!("  Route found: {} hop(s)", route.hop_count());
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create client
+    let client = FeelsClient::new("https://api.devnet.solana.com").await?;
+    
+    // Create a test keypair (in production, load from file)
+    let user = Keypair::new();
+    println!("User pubkey: {}", user.pubkey());
+    
+    // Example token pubkeys (replace with actual tokens)
+    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".parse()?;
+    let custom_token = "11111111111111111111111111111111".parse()?;
+    
+    // Get market info
+    match client.market.get_market_by_tokens(&usdc_mint, &custom_token).await {
+        Ok(market) => {
+            println!("Found market: {}", market.address);
+            println!("  Token 0: {}", market.token_0);
+            println!("  Token 1: {}", market.token_1);
+            println!("  Current price: {}", market.sqrt_price);
+            println!("  Liquidity: {}", market.liquidity);
         }
-        Err(e) => println!("  No route: {}", e),
+        Err(e) => {
+            println!("Market not found: {}", e);
+        }
     }
-
-    println!("\nExample completed!");
+    
+    // Find route between tokens
+    let route = client.swap.find_route(&usdc_mint, &custom_token).await?;
+    match route {
+        Route::Direct { from, to } => {
+            println!("Direct route: {} -> {}", from, to);
+        }
+        Route::TwoHop { from, intermediate, to } => {
+            println!("Two-hop route: {} -> {} -> {}", from, intermediate, to);
+        }
+    }
+    
+    // Estimate swap fees
+    let market_address = "YourMarketAddressHere".parse()?;
+    match client.swap.estimate_fees(&market_address, 1_000_000).await {
+        Ok(fees) => {
+            println!("Estimated fees:");
+            println!("  Base fee: {}", fees.base_fee);
+            println!("  Impact fee: {}", fees.impact_fee);
+            println!("  Total fee: {} ({} bps)", fees.total_fee, fees.fee_bps);
+        }
+        Err(e) => {
+            println!("Failed to estimate fees: {}", e);
+        }
+    }
+    
+    // Simulate a swap (without executing)
+    match client.swap.simulate_swap(market_address, 1_000_000, true).await {
+        Ok(simulation) => {
+            println!("Swap simulation:");
+            println!("  Amount in: {}", simulation.amount_in);
+            println!("  Amount out: {}", simulation.amount_out);
+            println!("  Fee paid: {}", simulation.fee_paid);
+            println!("  End price: {}", simulation.end_sqrt_price);
+        }
+        Err(e) => {
+            println!("Simulation failed: {}", e);
+        }
+    }
+    
+    println!("\nSDK Version: {}", feels_sdk::VERSION);
+    
+    Ok(())
 }

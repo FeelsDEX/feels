@@ -4,11 +4,11 @@
 //! The actual liquidity deployment happens in a separate instruction.
 
 use crate::{
-    constants::{BUFFER_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, PROTOCOL_TOKEN_SEED, VAULT_SEED},
+    constants::{BUFFER_SEED, ESCROW_AUTHORITY_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, PROTOCOL_TOKEN_SEED, VAULT_SEED},
     error::FeelsError,
     events::MarketInitialized,
     state::{
-        Buffer, Market, MarketPhase, OracleState, PhaseTrigger, PolicyV1, PreLaunchEscrow, 
+        Buffer, Market, MarketPhase, OracleState, PhaseTrigger, PolicyV1, PreLaunchEscrow,
         ProtocolToken, TokenOrigin, TokenType,
     },
     utils::{calculate_token_out_from_sqrt_price, tick_from_sqrt_price},
@@ -131,6 +131,11 @@ pub struct InitializeMarket<'info> {
     /// Creator's token account for receiving initial buy tokens
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
     pub creator_token_out: AccountInfo<'info>,
+    
+    /// Escrow authority PDA (holds mint/freeze authorities)
+    /// CHECK: PDA validated in handler
+    #[account(mut)]
+    pub escrow_authority: AccountInfo<'info>,
 
     /// System program
     pub system_program: Program<'info, System>,
@@ -150,15 +155,9 @@ pub fn initialize_market(
     // Early validation - fail fast before accessing mutable references
 
     // 1. Validate parameters first
-    require!(
-        params.base_fee_bps <= crate::constants::MAX_FEE_BPS,
-        FeelsError::InvalidPrice
-    );
-    require!(
-        params.tick_spacing > 0 && params.tick_spacing <= crate::constants::MAX_TICK_SPACING,
-        FeelsError::InvalidTickSpacing
-    );
-    require!(params.initial_sqrt_price > 0, FeelsError::InvalidPrice);
+    crate::utils::validate_base_fee_bps(params.base_fee_bps)?;
+    crate::utils::validate_tick_spacing_param(params.tick_spacing)?;
+    crate::utils::validate_initial_sqrt_price(params.initial_sqrt_price)?;
 
     // 2. Validate token order
     let token_0_bytes = ctx.accounts.token_0.key().to_bytes();
@@ -335,18 +334,36 @@ pub fn initialize_market(
 
     // Check and revoke authorities for token_0 if it's protocol-minted
     if token_0_origin == TokenOrigin::ProtocolMinted {
-        // Check if creator still has mint authority
+        // Validate escrow authority PDA
+        let expected_escrow_authority = Pubkey::find_program_address(
+            &[ESCROW_AUTHORITY_SEED, ctx.accounts.escrow.key().as_ref()],
+            ctx.program_id,
+        ).0;
+        require!(
+            ctx.accounts.escrow_authority.key() == expected_escrow_authority,
+            FeelsError::InvalidAuthority
+        );
+        
+        // Check if escrow authority has mint authority (transferred from creator in mint_token)
         if ctx.accounts.token_0.mint_authority.is_some()
-            && ctx.accounts.token_0.mint_authority.unwrap() == ctx.accounts.creator.key()
+            && ctx.accounts.token_0.mint_authority.unwrap() == ctx.accounts.escrow_authority.key()
         {
-            // Revoke mint authority
+            // Revoke mint authority using escrow authority seeds
+            let escrow_key = ctx.accounts.escrow.key();
+            let escrow_authority_seeds = &[
+                ESCROW_AUTHORITY_SEED,
+                escrow_key.as_ref(),
+                &[escrow.escrow_authority_bump],
+            ];
+            
             token::set_authority(
-                CpiContext::new(
+                CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     token::SetAuthority {
-                        current_authority: ctx.accounts.creator.to_account_info(),
+                        current_authority: ctx.accounts.escrow_authority.to_account_info(),
                         account_or_mint: ctx.accounts.token_0.to_account_info(),
                     },
+                    &[escrow_authority_seeds],
                 ),
                 AuthorityType::MintTokens,
                 None, // Permanently disable minting
@@ -354,18 +371,26 @@ pub fn initialize_market(
             msg!("Revoked mint authority for token_0");
         }
 
-        // Check if creator still has freeze authority
+        // Check if escrow authority has freeze authority
         if ctx.accounts.token_0.freeze_authority.is_some()
-            && ctx.accounts.token_0.freeze_authority.unwrap() == ctx.accounts.creator.key()
+            && ctx.accounts.token_0.freeze_authority.unwrap() == ctx.accounts.escrow_authority.key()
         {
-            // Revoke freeze authority
+            // Revoke freeze authority using escrow authority seeds
+            let escrow_key = ctx.accounts.escrow.key();
+            let escrow_authority_seeds = &[
+                ESCROW_AUTHORITY_SEED,
+                escrow_key.as_ref(),
+                &[escrow.escrow_authority_bump],
+            ];
+            
             token::set_authority(
-                CpiContext::new(
+                CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     token::SetAuthority {
-                        current_authority: ctx.accounts.creator.to_account_info(),
+                        current_authority: ctx.accounts.escrow_authority.to_account_info(),
                         account_or_mint: ctx.accounts.token_0.to_account_info(),
                     },
+                    &[escrow_authority_seeds],
                 ),
                 AuthorityType::FreezeAccount,
                 None, // Permanently disable freezing
@@ -376,18 +401,26 @@ pub fn initialize_market(
 
     // Check and revoke authorities for token_1 if it's protocol-minted
     if token_1_origin == TokenOrigin::ProtocolMinted {
-        // Check if creator still has mint authority
+        // Check if escrow authority has mint authority (transferred from creator in mint_token)
         if ctx.accounts.token_1.mint_authority.is_some()
-            && ctx.accounts.token_1.mint_authority.unwrap() == ctx.accounts.creator.key()
+            && ctx.accounts.token_1.mint_authority.unwrap() == ctx.accounts.escrow_authority.key()
         {
-            // Revoke mint authority
+            // Revoke mint authority using escrow authority seeds
+            let escrow_key = ctx.accounts.escrow.key();
+            let escrow_authority_seeds = &[
+                ESCROW_AUTHORITY_SEED,
+                escrow_key.as_ref(),
+                &[escrow.escrow_authority_bump],
+            ];
+            
             token::set_authority(
-                CpiContext::new(
+                CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     token::SetAuthority {
-                        current_authority: ctx.accounts.creator.to_account_info(),
+                        current_authority: ctx.accounts.escrow_authority.to_account_info(),
                         account_or_mint: ctx.accounts.token_1.to_account_info(),
                     },
+                    &[escrow_authority_seeds],
                 ),
                 AuthorityType::MintTokens,
                 None, // Permanently disable minting
@@ -395,18 +428,26 @@ pub fn initialize_market(
             msg!("Revoked mint authority for token_1");
         }
 
-        // Check if creator still has freeze authority
+        // Check if escrow authority has freeze authority
         if ctx.accounts.token_1.freeze_authority.is_some()
-            && ctx.accounts.token_1.freeze_authority.unwrap() == ctx.accounts.creator.key()
+            && ctx.accounts.token_1.freeze_authority.unwrap() == ctx.accounts.escrow_authority.key()
         {
-            // Revoke freeze authority
+            // Revoke freeze authority using escrow authority seeds
+            let escrow_key = ctx.accounts.escrow.key();
+            let escrow_authority_seeds = &[
+                ESCROW_AUTHORITY_SEED,
+                escrow_key.as_ref(),
+                &[escrow.escrow_authority_bump],
+            ];
+            
             token::set_authority(
-                CpiContext::new(
+                CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
                     token::SetAuthority {
-                        current_authority: ctx.accounts.creator.to_account_info(),
+                        current_authority: ctx.accounts.escrow_authority.to_account_info(),
                         account_or_mint: ctx.accounts.token_1.to_account_info(),
                     },
+                    &[escrow_authority_seeds],
                 ),
                 AuthorityType::FreezeAccount,
                 None, // Permanently disable freezing
@@ -461,7 +502,7 @@ pub fn initialize_market(
     market.floor_cooldown_secs = 300; // 5 minutes default
     market.steady_state_seeded = false;
     market.cleanup_complete = false;
-    
+
     // Initialize phase tracking
     market.phase = MarketPhase::Created as u8;
     market.phase_start_slot = clock.slot;
@@ -470,7 +511,7 @@ pub fn initialize_market(
     market.last_phase_trigger = PhaseTrigger::Creator as u8;
     market.total_volume_token_0 = 0;
     market.total_volume_token_1 = 0;
-    
+
     // Initialize v0.5 directional tracking
     market.rolling_buy_volume = 0;
     market.rolling_sell_volume = 0;
@@ -478,7 +519,7 @@ pub fn initialize_market(
     market.rolling_window_start_slot = clock.slot;
     market.tick_snapshot_1hr = market.current_tick;
     market.last_snapshot_timestamp = clock.unix_timestamp;
-    
+
     market._reserved = [0; 1];
 
     // Initialize buffer
@@ -498,7 +539,7 @@ pub fn initialize_market(
     buffer.buffer_authority_bump = 0; // Will be set if needed
     buffer.jit_last_slot = 0;
     buffer.jit_slot_used_q = 0;
-    
+
     // Initialize v0.5 JIT tracking
     buffer.jit_rolling_consumption = 0;
     buffer.jit_rolling_window_start = clock.slot;

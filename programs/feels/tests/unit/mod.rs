@@ -27,3 +27,6 @@ pub mod test_helpers;
 
 // Protocol initialization test
 pub mod test_protocol_init;
+
+// Utils tests
+pub mod utils;

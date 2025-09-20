@@ -3,7 +3,7 @@
 use crate::{
     error::FeelsError,
     events::OracleUpdatedProtocol,
-    state::{ProtocolConfig, ProtocolOracle, SafetyController, compute_divergence_bps},
+    state::{compute_divergence_bps, ProtocolConfig, ProtocolOracle, SafetyController},
 };
 use anchor_lang::prelude::*;
 
@@ -103,12 +103,7 @@ pub fn update_dex_twap(ctx: Context<UpdateDexTwap>, params: UpdateDexTwapParams)
     });
 
     // Use centralized divergence check
-    safety.check_and_update_divergence(
-        oracle,
-        cfg,
-        Clock::get()?.slot,
-        clock.unix_timestamp,
-    )?;
+    safety.check_and_update_divergence(oracle, cfg, Clock::get()?.slot, clock.unix_timestamp)?;
 
     Ok(())
 }
@@ -186,4 +181,3 @@ pub fn update_native_rate(
 
     Ok(())
 }
-

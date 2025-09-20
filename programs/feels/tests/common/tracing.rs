@@ -17,8 +17,8 @@ pub fn init_test_tracing() {
         // Use EnvFilter to control log levels
         let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
             // Default filter: show info and above for our code,
-            // but suppress tarpc and OpenTelemetry warnings
-            tracing_subscriber::EnvFilter::new("info,tarpc::client=off,tarpc=off")
+            // but suppress tarpc, OpenTelemetry, and other noisy dependency warnings
+            tracing_subscriber::EnvFilter::new("info,tarpc::client=off,tarpc=off,opentelemetry=off")
         });
 
         // Set up the subscriber

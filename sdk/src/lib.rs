@@ -1,102 +1,68 @@
-//! Feels Protocol SDK - MVP Version
+//! Feels Protocol SDK
 //!
-//! Minimal SDK for interacting with the Feels
+//! A modern, service-based SDK for interacting with the Feels Protocol
+//! concentrated liquidity AMM on Solana.
+//!
+//! # Architecture
+//!
+//! The SDK is organized into four main modules:
+//! - `core`: Core types, constants, and errors
+//! - `protocol`: Protocol math, PDA derivation, and fee calculations
+//! - `instructions`: Type-safe instruction builders
+//! - `client`: Service-based API for protocol interaction
+//!
+//! # Example
+//!
+//! ```no_run
+//! use feels_sdk::FeelsClient;
+//! use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create client
+//!     let client = FeelsClient::new("https://api.mainnet-beta.solana.com").await?;
+//!     
+//!     // Example token addresses
+//!     let token_0: Pubkey = "TokenA11111111111111111111111111111111111".parse()?;
+//!     let token_1: Pubkey = "TokenB22222222222222222222222222222222222".parse()?;
+//!     let signer = Keypair::new();
+//!     let user_token_in: Pubkey = "UserTokenIn333333333333333333333333333".parse()?;
+//!     let user_token_out: Pubkey = "UserTokenOut44444444444444444444444444".parse()?;
+//!     
+//!     // Get market info
+//!     let market = client.market.get_market_by_tokens(&token_0, &token_1).await?;
+//!     
+//!     // Execute swap
+//!     let result = client.swap.swap_exact_in(
+//!         &signer,
+//!         market.address,
+//!         user_token_in,
+//!         user_token_out,
+//!         1_000_000,
+//!         950_000,
+//!         Some(100), // 1% slippage
+//!     ).await?;
+//!     
+//!     Ok(())
+//! }
+//! ```
 
 pub mod client;
-pub mod config;
-pub mod error;
-pub mod exact_output_swap;
-pub mod fee_estimator;
+pub mod core;
 pub mod instructions;
-pub mod router;
-pub mod swap_builder;
-pub mod testing;
-pub mod types;
-pub mod utils;
+pub mod protocol;
 
+// Re-export main types and functions
 pub use client::FeelsClient;
-pub use config::SdkConfig;
-pub use error::{SdkError, SdkResult};
-pub use exact_output_swap::{
-    ExactOutputSwapParams, ExactOutputSwapSolver, SimulationResult,
-    build_exact_output_swap, estimate_input_for_output,
+pub use core::{
+    constants::program_id, FeeEstimate, MarketInfo, PositionInfo, Route, SdkError, SdkResult,
+    SwapDirection, SwapSimulation,
 };
-pub use fee_estimator::{FeeEstimate, FeeEstimateParams, FeeEstimator};
-pub use instructions::*;
-pub use router::{HubRouter, PoolInfo};
-pub use swap_builder::{SwapBuilder, SwapDirection, SwapParams};
-pub use testing::{
-    PositionTestCase, StressTestScenario, SwapTestCase, TestAccountBuilder, TestCoverage,
+pub use protocol::{
+    align_tick, calculate_fee_amount, calculate_price_impact_bps, calculate_swap_fees,
+    find_market_address, is_full_range_only, sqrt_price_to_price, sqrt_price_to_tick,
+    tick_to_sqrt_price,
 };
-pub use types::*;
-pub use utils::*;
 
-use anchor_lang::prelude::*;
-
-/// Program ID for Feels Protocol
-pub const PROGRAM_ID: &str = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N";
-
-/// Get the program ID as a Pubkey
-pub fn program_id() -> Pubkey {
-    PROGRAM_ID.parse().unwrap()
-}
-
-/// Seeds for common PDAs
-pub mod seeds {
-    pub const MARKET: &[u8] = b"market";
-    pub const BUFFER: &[u8] = b"buffer";
-    pub const EPOCH_PARAMS: &[u8] = b"epoch_params";
-    pub const VAULT: &[u8] = b"vault";
-    pub const VAULT_AUTHORITY: &[u8] = b"vault_authority";
-    pub const BUFFER_VAULT: &[u8] = b"buffer_vault";
-    pub const BUFFER_AUTHORITY: &[u8] = b"buffer_authority";
-    pub const JITOSOL_VAULT: &[u8] = b"jitosol_vault";
-    pub const MINT_AUTHORITY: &[u8] = b"mint_authority";
-}
-
-/// Find PDA for market
-pub fn find_market_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[seeds::MARKET, token_0.as_ref(), token_1.as_ref()],
-        &program_id(),
-    )
-}
-
-/// Find PDA for buffer
-pub fn find_buffer_address(market: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[seeds::BUFFER, market.as_ref()], &program_id())
-}
-
-/// Find PDA for epoch params
-pub fn find_epoch_params_address(market: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[seeds::EPOCH_PARAMS, market.as_ref()], &program_id())
-}
-
-/// Find PDA for vault (deprecated - use find_vault_0_address or find_vault_1_address)
-pub fn find_vault_address(market: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[seeds::VAULT, market.as_ref(), mint.as_ref()],
-        &program_id(),
-    )
-}
-
-/// Find vault 0 PDA (for token_0)
-pub fn find_vault_0_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[seeds::VAULT, token_0.as_ref(), token_1.as_ref(), b"0"],
-        &program_id(),
-    )
-}
-
-/// Find vault 1 PDA (for token_1)
-pub fn find_vault_1_address(token_0: &Pubkey, token_1: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[seeds::VAULT, token_0.as_ref(), token_1.as_ref(), b"1"],
-        &program_id(),
-    )
-}
-
-/// Find PDA for vault authority
-pub fn find_vault_authority_address(market: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[seeds::VAULT_AUTHORITY, market.as_ref()], &program_id())
-}
+/// SDK version
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

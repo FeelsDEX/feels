@@ -14,6 +14,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Mint, Token, TokenAccount},
 };
+use spl_token::instruction::AuthorityType;
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3, types::DataV2};
 
 /// Parameters for minting a new token
@@ -85,8 +86,8 @@ pub struct MintToken<'info> {
     /// CHECK: Created by Metaplex CPI
     #[account(
         mut,
-        seeds = [b"metadata", mpl_token_metadata::ID.as_ref(), token_mint.key().as_ref()],
-        seeds::program = mpl_token_metadata::ID,
+        seeds = [b"metadata", metadata_program.key().as_ref(), token_mint.key().as_ref()],
+        seeds::program = metadata_program,
         bump,
     )]
     pub metadata: AccountInfo<'info>,
@@ -111,7 +112,7 @@ pub struct MintToken<'info> {
 
     /// Metaplex token metadata program
     /// CHECK: The metadata program ID is validated by address constraint
-    #[account(address = mpl_token_metadata::ID)]
+    #[account(constraint = metadata_program.key().to_string() == crate::constants::METAPLEX_TOKEN_METADATA_ID @ FeelsError::InvalidProgram)]
     pub metadata_program: AccountInfo<'info>,
 
     /// Protocol token registry entry
@@ -247,9 +248,37 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
         escrow_amount,
     )?;
 
-    // NOTE: Mint and freeze authorities are NOT revoked here
-    // They will be revoked in initialize_market after creator verification
-    // This allows the token creator to be verified as the owner before authorities are removed
+    // SECURITY: Transfer mint and freeze authorities to the escrow authority PDA immediately
+    // This prevents the creator from minting additional tokens or freezing accounts
+    // The authorities will be fully revoked (set to None) when the market is initialized
+    
+    // Transfer mint authority to escrow authority PDA
+    token::set_authority(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            token::SetAuthority {
+                current_authority: ctx.accounts.creator.to_account_info(),
+                account_or_mint: ctx.accounts.token_mint.to_account_info(),
+            },
+        ),
+        AuthorityType::MintTokens,
+        Some(ctx.accounts.escrow_authority.key()), // Transfer to escrow authority
+    )?;
+    msg!("Transferred mint authority to escrow");
+    
+    // Transfer freeze authority to escrow authority PDA
+    token::set_authority(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            token::SetAuthority {
+                current_authority: ctx.accounts.creator.to_account_info(),
+                account_or_mint: ctx.accounts.token_mint.to_account_info(),
+            },
+        ),
+        AuthorityType::FreezeAccount,
+        Some(ctx.accounts.escrow_authority.key()), // Transfer to escrow authority
+    )?;
+    msg!("Transferred freeze authority to escrow");
 
     // Initialize protocol token registry entry
     let protocol_token = &mut ctx.accounts.protocol_token;

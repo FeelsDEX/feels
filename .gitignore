@@ -7,6 +7,7 @@ target/
 .cargo/
 **/*.rs.bk
 *.log
+crate-hashes.json
 
 # Node.js
 node_modules/
@@ -14,7 +15,19 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.ts
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnpm-store/
+.pnpm/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
 
 # ==================================
 # Solana
@@ -27,6 +40,7 @@ anchor/
 
 # Solana test environment
 test-ledger/
+test-ledger-*/
 e2e/.test-ledger
 
 # Test artifacts and build targets
@@ -47,16 +61,29 @@ result-*
 .nix/
 devenv/
 
+# Nix build outputs and caches
+.nix-profile/
+.nix-defexpr/
+.nix-channels
+nix-build-*
+.gcroots/
+
 # Flake locks (except root)
 */flake.lock
 !flake.lock
+
+# Cachix
+.cachix/
 
 # ==================================
 # Environment
 # ==================================
 
 # Env
+.env
 .env.local
+.env.production
+.env.development
 .envrc
 deployment.env
 valence.env
@@ -81,7 +108,6 @@ keypairs/
 *.njsproj
 *.sln
 *.sw?
-*.txt
 
 # ==================================
 # Temporary
@@ -90,7 +116,10 @@ keypairs/
 *.bak
 *.backup
 scratch/
-*.txt
+tmp/
+temp/
+.tmp/
+.temp/
 
 # ==================================
 # Project Specific
@@ -98,15 +127,34 @@ scratch/
 
 # Working directories
 work/
-app/
-scripts/
+data/
+logs/
 ext/
 
-# Generated SDK files
-generated-sdk/
+# Generated SDK files (keep structure but ignore contents)
+generated-sdk/rust/target/
+generated-sdk/rust/Cargo.lock
+generated-sdk/typescript/node_modules/
+generated-sdk/typescript/dist/
+generated-sdk/typescript/*.tsbuildinfo
+
+# Feels app build artifacts (specific ignores within feels-app/)
+feels-app/.next/
+feels-app/node_modules/
+feels-app/*.tsbuildinfo
+
+# Solana validator data
+*.ledger/
+validator-*.log
+tower-*.bin
+snapshot-*.tar.zst
+geyser-*.log
+basic-validator.log
+feels-deployed.so
 
 # AI documentation
 CLAUDE.md
 AGENTS.md
 
 
+.vercel

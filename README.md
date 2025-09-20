@@ -108,6 +108,44 @@ let sig = client.swap(
 )?;
 ```
 
+## Deployment
+
+### Environment Configuration
+
+The protocol uses a `.env` file to configure deployment parameters:
+
+1. Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+
+2. Set your program authority in `.env`:
+```bash
+PROGRAM_AUTHORITY=YourAuthorityPublicKeyHere
+```
+
+3. Verify your configuration:
+```bash
+just check-env
+```
+
+### Deploying
+
+Deploy to localnet:
+```bash
+just deploy
+```
+
+Deploy to devnet:
+```bash
+just deploy-devnet
+```
+
+The deployment scripts will automatically:
+- Load the `PROGRAM_AUTHORITY` from your `.env` file
+- Search for the corresponding keypair in standard locations
+- Deploy with the specified authority
+
 ## Program Addresses
 
 - Protocol: `Fee1sProtoco11111111111111111111111111111111`

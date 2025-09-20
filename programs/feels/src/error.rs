@@ -47,6 +47,12 @@ pub enum FeelsError {
     // Swap errors
     #[msg("Slippage exceeded")]
     SlippageExceeded,
+    
+    #[msg("Invalid parameter")]
+    InvalidParameter,
+    
+    #[msg("Exact output not achieved")]
+    ExactOutputNotAchieved,
 
     #[msg("Invalid swap direction")]
     InvalidSwapDirection,
@@ -75,6 +81,9 @@ pub enum FeelsError {
 
     #[msg("Invalid buffer")]
     InvalidBuffer,
+
+    #[msg("Invalid program")]
+    InvalidProgram,
 
     // Position errors
     #[msg("Invalid position")]
@@ -116,6 +125,9 @@ pub enum FeelsError {
     #[msg("Invalid oracle account")]
     InvalidOracle,
 
+    #[msg("Oracle data is stale. Please update oracle before proceeding")]
+    OracleStale,
+
     #[msg("Too many swap steps exceeded. Try reducing swap amount or providing more tick arrays")]
     TooManySteps,
 
@@ -136,6 +148,9 @@ pub enum FeelsError {
 
     #[msg("Position must be empty (liquidity = 0) before it can be closed")]
     PositionNotEmpty,
+
+    #[msg("Position is empty (liquidity = 0) and cannot be used for this operation")]
+    PositionEmpty,
 
     #[msg("Position has unclaimed fees that must be collected before closing")]
     UnclaimedFees,
@@ -207,36 +222,79 @@ pub enum FeelsError {
     // Project mint errors
     #[msg("Invalid project mint")]
     InvalidProjectMint,
-    
+
     // POMM errors
     #[msg("POMM cooldown is active, please wait before next operation")]
     PommCooldownActive,
-    
+
     #[msg("Insufficient buffer fees for POMM operation")]
     InsufficientBufferFees,
-    
+
     #[msg("Invalid position index")]
     InvalidPositionIndex,
-    
+
     #[msg("Feature not implemented")]
     NotImplemented,
-    
+
     // Phase errors
     #[msg("Invalid market phase")]
     InvalidPhase,
-    
+
     #[msg("Invalid phase transition")]
     InvalidPhaseTransition,
-    
+
     #[msg("Graduation criteria not met")]
     GraduationCriteriaNotMet,
-    
+
     #[msg("Invalid protocol configuration")]
     InvalidProtocol,
-    
+
     #[msg("Invalid buffer vault")]
     InvalidBufferVault,
-    
+
+    #[msg("Scaling factor out of range")]
+    InvalidScalingFactor,
+
     #[msg("Unauthorized access")]
     Unauthorized,
+
+    // New validation errors
+    #[msg("Invalid account owner")]
+    InvalidAccountOwner,
+
+    #[msg("Missing required signature")]
+    MissingSignature,
+
+    #[msg("Invalid PDA")]
+    InvalidPDA,
+
+    #[msg("Cooldown period active")]
+    CooldownActive,
+
+    #[msg("Action performed too early")]
+    TooEarly,
+
+    #[msg("Invalid position owner")]
+    InvalidPositionOwner,
+
+    #[msg("Amount overflow")]
+    AmountOverflow,
+
+    #[msg("Liquidity overflow")]
+    LiquidityOverflow,
+
+    #[msg("Invalid threshold")]
+    InvalidThreshold,
+
+    #[msg("Account closed")]
+    AccountClosed,
+
+    #[msg("Account not rent exempt")]
+    NotRentExempt,
+
+    #[msg("Price movement too large")]
+    PriceMovementTooLarge,
+
+    #[msg("Invalid update")]
+    InvalidUpdate,
 }

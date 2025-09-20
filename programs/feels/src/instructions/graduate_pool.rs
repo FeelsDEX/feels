@@ -3,7 +3,7 @@
 //! Transitions a market from bonding curve to graduated phase
 
 use crate::{
-    error::FeelsError, 
+    error::FeelsError,
     events::MarketPhaseTransitioned,
     state::{Market, MarketPhase, PhaseTrigger},
 };
@@ -27,7 +27,7 @@ pub struct GraduatePool<'info> {
 pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
     let market = &mut ctx.accounts.market;
     let clock = Clock::get()?;
-    
+
     // Get current phase
     let current_phase = match market.phase {
         0 => MarketPhase::Created,
@@ -39,23 +39,23 @@ pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
         6 => MarketPhase::Deprecated,
         _ => return Err(FeelsError::InvalidPhase.into()),
     };
-    
+
     // Can only graduate from steady state
     if current_phase != MarketPhase::SteadyState {
         return Err(FeelsError::InvalidPhaseTransition.into());
     }
-    
+
     // Update to graduated phase
     market.phase = MarketPhase::Graduated as u8;
     market.phase_start_slot = clock.slot;
     market.phase_start_timestamp = clock.unix_timestamp;
     market.last_phase_transition_slot = clock.slot;
     market.last_phase_trigger = PhaseTrigger::Creator as u8;
-    
+
     // Set graduation flags
     market.steady_state_seeded = true;
     market.cleanup_complete = true;
-    
+
     // Emit event
     emit!(MarketPhaseTransitioned {
         market: market.key(),
@@ -67,6 +67,6 @@ pub fn graduate_pool(ctx: Context<GraduatePool>) -> Result<()> {
         timestamp: clock.unix_timestamp,
         slot: clock.slot,
     });
-    
+
     Ok(())
 }

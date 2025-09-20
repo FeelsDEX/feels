@@ -1,8 +1,7 @@
 //! Test JIT v0 base fee accounting fix
 
 use anchor_lang::prelude::*;
-use crate::common::{fixtures::*, context::*, helpers::*};
-use feels::state::{Market, Buffer, FeeDomain};
+use feels::state::Buffer;
 
 #[cfg(test)]
 mod tests {
@@ -13,22 +12,22 @@ mod tests {
         // The issue: When JIT liquidity is active, the swap uses boosted liquidity
         // in swap_ctx but calculates fee growth using original liquidity from swap_state.
         // This causes LPs to receive fees for liquidity they didn't provide.
-        
-        // The fix: When JIT is active (jit_consumed_quote > 0), skip base fee 
+
+        // The fix: When JIT is active (jit_consumed_quote > 0), skip base fee
         // growth updates and track the skipped fees. This ensures:
         // 1. LPs don't receive unearned fees
         // 2. Base fees are captured via impact fees to the protocol
         // 3. An event is emitted to track skipped fees for transparency
-        
+
         let original_liquidity = 1_000_000u128;
         let jit_boost = 50_000u128; // 5% boost
         let base_fee_bps = 30u16; // 0.3%
         let swap_amount = 10_000u64;
-        
+
         // Without fix: Fee growth would be calculated as:
         // fee_growth = (swap_amount * base_fee_bps / 10_000) << 64 / original_liquidity
         // But swap used (original_liquidity + jit_boost), so LPs get too much
-        
+
         // With fix: When JIT active, fee growth update is skipped entirely
         // The base fees are instead routed to protocol via impact fees
     }
@@ -42,7 +41,7 @@ mod tests {
         // - base_fees_skipped: Total base fees that were skipped
         // - jit_consumed_quote: Amount of JIT quote used
         // - timestamp: When this occurred
-        
+
         // This provides transparency and allows monitoring of JIT impact
     }
 
@@ -50,7 +49,7 @@ mod tests {
     fn test_jit_quote_diversion_to_floor() {
         // The JIT consumed quote is diverted to buffer fee accounting
         // instead of being burned. This ensures capital efficiency:
-        
+
         let mut buffer = Buffer {
             market: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
@@ -77,20 +76,22 @@ mod tests {
             pomm_position_count: 0,
             _padding: [0; 7],
         };
-        
+
         let jit_consumed_quote = 50_000u64;
         let is_token_0_to_1 = true;
-        
+
         // For 0->1 swaps: JIT provides token 1 liquidity
         // So jit_consumed_quote is added to fees_token_1
         if is_token_0_to_1 {
-            buffer.fees_token_1 = buffer.fees_token_1
+            buffer.fees_token_1 = buffer
+                .fees_token_1
                 .saturating_add(jit_consumed_quote as u128);
         } else {
-            buffer.fees_token_0 = buffer.fees_token_0
+            buffer.fees_token_0 = buffer
+                .fees_token_0
                 .saturating_add(jit_consumed_quote as u128);
         }
-        
+
         // The POMM system can then convert these fees to floor liquidity
         // providing long-term market stability instead of burning value
         assert_eq!(buffer.fees_token_1, 250_000);

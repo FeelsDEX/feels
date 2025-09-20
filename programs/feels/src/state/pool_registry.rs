@@ -85,7 +85,7 @@ pub struct PoolRegistry {
 
 impl PoolRegistry {
     pub const SEED: &'static [u8] = b"pool_registry";
-    
+
     /// Initial allocation size (can grow dynamically)
     pub const INITIAL_SIZE: usize = 8 + // discriminator
         32 + // authority
@@ -93,7 +93,7 @@ impl PoolRegistry {
         4 + // vec length
         1 + // bump
         128; // _reserved
-    
+
     /// Space for one pool entry in realloc
     pub const POOL_ENTRY_SIZE: usize = PoolEntry::LEN + 4; // +4 for vec overhead
 
@@ -114,19 +114,25 @@ impl PoolRegistry {
             self.find_pool(&entry.token_mint).is_none(),
             crate::error::FeelsError::PoolAlreadyExists
         );
-        
+
         self.pools.push(entry);
         self.pool_count = self.pool_count.saturating_add(1);
         Ok(())
     }
 
     /// Update pool phase
-    pub fn update_pool_phase(&mut self, market: &Pubkey, new_phase: PoolPhase, timestamp: i64) -> Result<()> {
-        let pool = self.pools
+    pub fn update_pool_phase(
+        &mut self,
+        market: &Pubkey,
+        new_phase: PoolPhase,
+        timestamp: i64,
+    ) -> Result<()> {
+        let pool = self
+            .pools
             .iter_mut()
             .find(|p| p.market == *market)
             .ok_or(crate::error::FeelsError::PoolNotFound)?;
-        
+
         pool.phase = new_phase;
         pool.updated_at = timestamp;
         Ok(())

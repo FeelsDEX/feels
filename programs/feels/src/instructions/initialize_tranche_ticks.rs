@@ -60,7 +60,7 @@ pub fn initialize_tranche_ticks<'info>(
 
     // Helper: ensure a TickArray exists for the given start index and return a loader
     let ensure_array = |start_index: i32| -> Result<AccountLoader<'info, TickArray>> {
-        let (expected_key, _bump) =
+        let (expected_key, bump) =
             crate::utils::derive_tick_array(&market_key, start_index, &crate::id());
         let info = arrays
             .iter()
@@ -76,13 +76,25 @@ pub fn initialize_tranche_ticks<'info>(
                 TickArray::LEN as u64,
                 &crate::id(),
             );
-            anchor_lang::solana_program::program::invoke(
+            
+            // Create signer seeds for the PDA
+            let start_tick_bytes = start_index.to_le_bytes();
+            let seeds = &[
+                crate::constants::TICK_ARRAY_SEED,
+                market_key.as_ref(),
+                &start_tick_bytes,
+                &[bump],
+            ];
+            let signer_seeds = &[&seeds[..]];
+            
+            anchor_lang::solana_program::program::invoke_signed(
                 &ix,
                 &[
                     ctx.accounts.crank.to_account_info(),
                     info.clone(),
                     ctx.accounts.system_program.to_account_info(),
                 ],
+                signer_seeds,
             )?;
             let loader = AccountLoader::<TickArray>::try_from(info)?;
             let mut array = loader.load_init()?;

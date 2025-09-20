@@ -170,6 +170,10 @@ pub fn open_position(
 
     // Validate tick range and alignment
     crate::utils::validate_tick_range(tick_lower, tick_upper, market.tick_spacing)?;
+    
+    // Use the new parameter validation for tick range
+    crate::utils::validate_tick_range_params(tick_lower, tick_upper, market.tick_spacing)?;
+    
     require!(liquidity_amount > 0, FeelsError::ZeroLiquidity);
 
     // Check against minimum liquidity to prevent dust positions
@@ -177,6 +181,9 @@ pub fn open_position(
         liquidity_amount >= MIN_LIQUIDITY,
         FeelsError::LiquidityBelowMinimum
     );
+    
+    // Use the new parameter validation for liquidity amount
+    crate::utils::validate_liquidity_amount(liquidity_amount)?;
 
     // Validate that tick arrays match the expected ticks
     validate_tick_arrays(
