@@ -35,7 +35,7 @@ export default function LaunchPage() {
 
   // Lazy load connection
   useEffect(() => {
-    import('@/lib/connection').then(({ getConnection }) => {
+    import('@/services/connection').then(({ getConnection }) => {
       setConnection(getConnection());
     });
   }, []);

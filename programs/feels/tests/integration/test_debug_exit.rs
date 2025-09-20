@@ -22,7 +22,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
     // First get the mint authority PDA
     let (_mint_authority, _) = Pubkey::find_program_address(
         &[b"mint_authority", ctx.feelssol_mint.as_ref()],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
 
     // We can't mint directly because we don't have the mint authority private key
@@ -46,19 +46,19 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
     // Debug: Print all relevant PDAs
     let (hub, _) = Pubkey::find_program_address(
         &[b"feels_hub", ctx.feelssol_mint.as_ref()],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     let (safety, _) =
-        Pubkey::find_program_address(&[b"safety_controller"], &feels_sdk::program_id());
+        Pubkey::find_program_address(&[b"safety_controller"], &feels::id());
     let (protocol_config, _) =
-        Pubkey::find_program_address(&[b"protocol_config"], &feels_sdk::program_id());
+        Pubkey::find_program_address(&[b"protocol_config"], &feels::id());
     let (jitosol_vault, _) = Pubkey::find_program_address(
         &[b"jitosol_vault", ctx.feelssol_mint.as_ref()],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     let (vault_authority, _) = Pubkey::find_program_address(
         &[b"vault_authority", ctx.feelssol_mint.as_ref()],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
 
     println!("\nPDAs:");
@@ -80,7 +80,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
     // Debug: Check oracle state and clock
     let (protocol_oracle, _) = Pubkey::find_program_address(
         &[b"protocol_oracle"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     match ctx.get_account_raw(&protocol_oracle).await {
         Ok(account) => {

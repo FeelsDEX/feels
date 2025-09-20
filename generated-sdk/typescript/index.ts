@@ -482,10 +482,16 @@ export const IDL =
         },
         {
           "name": "market",
+          "docs": [
+            "Market account"
+          ],
           "writable": true
         },
         {
           "name": "buffer",
+          "docs": [
+            "Buffer account"
+          ],
           "writable": true
         },
         {
@@ -1046,16 +1052,14 @@ export const IDL =
         {
           "name": "vault_0",
           "docs": [
-            "Protocol-owned vault holding token_0 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_0 reserves"
           ],
           "writable": true
         },
         {
           "name": "vault_1",
           "docs": [
-            "Protocol-owned vault holding token_1 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_1 reserves"
           ],
           "writable": true
         },
@@ -1069,16 +1073,14 @@ export const IDL =
         {
           "name": "buffer",
           "docs": [
-            "Buffer account for fee collection and protocol-owned market making",
-            "Accumulates impact fees for later deployment as liquidity"
+            "Buffer account for fee collection and protocol-owned market making"
           ],
           "writable": true
         },
         {
           "name": "oracle",
           "docs": [
-            "Oracle account for tracking time-weighted average prices (TWAP)",
-            "Updated on every swap to maintain accurate price history"
+            "Oracle account for tracking time-weighted average prices (TWAP)"
           ],
           "writable": true
         },

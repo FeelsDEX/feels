@@ -8,8 +8,8 @@ import {
   searchFacets,
   FacetBucket,
   DateFacetBucket
-} from '@/lib/token-search';
-import { WOJAK_TOKENS } from '@/lib/testData';
+} from '@/utils/token-search';
+import { FEELS_TOKENS } from '@/data/tokens';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
 import { useDataSource } from '@/contexts/DataSourceContext';
 import { useMarkets } from './useIndexer';
@@ -42,7 +42,7 @@ export function useTokenSearch(initialQuery: string = '') {
     queryFn: async () => {
       if (dataSource === 'test') {
         // Use test data
-        return WOJAK_TOKENS.map(convertToSearchResult);
+        return FEELS_TOKENS.map(convertToSearchResult);
       } else if (dataSource === 'indexer' && indexerMarkets) {
         // Transform indexer markets to search results
         // This is simplified - in a real app you'd fetch token metadata

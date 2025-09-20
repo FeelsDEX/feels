@@ -151,6 +151,7 @@ snapshot-*.tar.zst
 geyser-*.log
 basic-validator.log
 feels-deployed.so
+e2e/.deployed-program-id
 
 # AI documentation
 CLAUDE.md

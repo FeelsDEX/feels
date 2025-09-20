@@ -4,14 +4,14 @@ import { useState, useEffect } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { getConnection } from '@/lib/connection';
+import { getConnection } from '@/services/connection';
 
 // Import SDK wrapper
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/lib/sdk';
-import { createFeelsProgram } from '@/lib/program-workaround';
-import { MarketExplorer } from '@/components/MarketExplorer';
-import { FeelsMetrics } from '@/components/FeelsMetrics';
-import { RecentSwaps } from '@/components/RecentSwaps';
+import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
+import { createFeelsProgram } from '@/sdk/program-workaround';
+import { MarketExplorer } from '@/components/market/MarketExplorer';
+import { FeelsMetrics } from '@/components/market/FeelsMetrics';
+import { RecentSwaps } from '@/components/market/RecentSwaps';
 
 // Import shadcn/ui components
 import { Button } from '@/components/ui/button';

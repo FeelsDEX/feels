@@ -117,12 +117,13 @@ fn process_pomm_action(
         return Err(FeelsError::PommCooldownActive.into());
     }
 
-    // Load the oracle account from UncheckedAccount
-    let oracle_info = ctx.accounts.oracle.to_account_info();
-    let oracle = Account::<OracleState>::try_from(&oracle_info)?;
-    
-    // Get TWAP price for manipulation resistance
-    let twap_tick = oracle.get_twap_tick(now, POMM_TWAP_SECONDS)?;
+    // Load the oracle account from UncheckedAccount and get TWAP tick
+    let twap_tick = {
+        let oracle_data = ctx.accounts.oracle.try_borrow_data()?;
+        let oracle: OracleState = OracleState::try_deserialize(&mut &oracle_data[8..])?;
+        // Get TWAP price for manipulation resistance
+        oracle.get_twap_tick(now, POMM_TWAP_SECONDS)?
+    };
 
     match params.action {
         PommAction::AddLiquidity => {

@@ -90,7 +90,7 @@ Edit `indexer.toml` to customize:
 
 ```toml
 [geyser]
-endpoint = "http://localhost:10000"  # Yellowstone gRPC endpoint
+endpoint = "http://localhost:10000"  # Yellowstone gRPC endpoint (local only - change for devnet/mainnet)
 program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
 
 [storage]
@@ -132,7 +132,7 @@ log_level = "info"
 
 ### Health & Monitoring
 - `GET /health` - Health check
-- `GET /metrics` - Prometheus metrics (port 9090)
+- `GET /metrics` - Prometheus metrics (port 9090) - **Note: Currently returns placeholder "TODO" message**
 
 ## Development
 

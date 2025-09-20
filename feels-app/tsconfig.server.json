@@ -14,6 +14,6 @@
     "noEmit": false,
     "outDir": "./dist"
   },
-  "include": ["src/devbridge/server/**/*.ts", "scripts/devbridge-cli.ts"],
+  "include": ["tools/devbridge/server/**/*.ts", "scripts/devbridge-cli.ts"],
   "exclude": ["node_modules"]
 }

@@ -19,17 +19,27 @@ The main component implementing the Jupiter AMM interface with concentrated liqu
 
 ```rust
 pub struct FeelsAmm {
-    key: Pubkey,                              // Market account public key
-    market: Market,                           // Deserialized market state
-    authority: Pubkey,                        // Market authority PDA
-    program_id: Pubkey,                       // Feels program ID
-    reserve_mints: [Pubkey; 2],              // Token mints [token_0, token_1]
-    reserves: [u64; 2],                      // Current vault balances
-    vault_0: Pubkey,                         // Token vault addresses
+    /// Market account public key
+    key: Pubkey,
+    /// Deserialized market state from on-chain account
+    market: Market,
+    /// Market authority PDA that controls vault operations
+    authority: Pubkey,
+    /// Feels program ID
+    program_id: Pubkey,
+    /// Token mints for the trading pair [token_0, token_1]
+    reserve_mints: [Pubkey; 2],
+    /// Current token reserves in vaults [vault_0_amount, vault_1_amount]
+    reserves: [u64; 2],
+    /// Token vault addresses
+    vault_0: Pubkey,
     vault_1: Pubkey,
-    tick_spacing: u16,                       // Price granularity
-    tick_arrays: AHashMap<i32, TickArrayView>, // Cached liquidity data
-    tick_array_keys: Vec<Pubkey>,            // Monitored tick arrays
+    /// Tick spacing for this market (determines price granularity)
+    tick_spacing: u16,
+    /// Cached tick array views for liquidity calculations
+    tick_arrays: AHashMap<i32, TickArrayView>, // start_index -> view
+    /// Public keys of tick arrays to monitor for updates
+    tick_array_keys: Vec<Pubkey>,
 }
 ```
 

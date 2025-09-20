@@ -1,21 +1,17 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
-import { NavBar } from '@/components/NavBar';
-import { SolanaWalletProvider } from '@/components/SolanaWalletProvider';
-import { ReactQueryProvider } from '@/components/ReactQueryProvider';
+import { NavBar } from '@/components/common/NavBar';
+import { SolanaWalletProvider } from '@/components/wallet/SolanaWalletProvider';
+import { ReactQueryProvider } from '@/components/common/ReactQueryProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
 import { SearchProvider } from '@/contexts/SearchContext';
-import dynamic from 'next/dynamic';
 
-// Conditionally load DevBridge only in development
-const DevBridgeProvider = dynamic(
-  () => process.env.NEXT_PUBLIC_DEVBRIDGE_ENABLED === 'true' 
-    ? import('../devbridge/client/DevBridgeProvider').then(mod => mod.DevBridgeProvider)
-    : Promise.resolve(() => null),
-  { ssr: false }
-);
+// Simple wrapper component for DevBridge
+const DevBridgeWrapper = ({ children }: { children: React.ReactNode }) => {
+  return <>{children}</>;
+};
 
 const terminalGrotesque = localFont({
   src: '../assets/fonts/terminal-grotesque.woff2',
@@ -54,7 +50,7 @@ export default function RootLayout({
           <DataSourceProvider>
             <SearchProvider>
               <SolanaWalletProvider>
-                <DevBridgeProvider>
+                <DevBridgeWrapper>
                   <div className="min-h-screen bg-background flex flex-col">
                     <div className="relative z-[1000]">
                       <NavBar />
@@ -84,7 +80,7 @@ export default function RootLayout({
                     </footer>
                   </div>
                   <Toaster />
-                </DevBridgeProvider>
+                </DevBridgeWrapper>
               </SolanaWalletProvider>
             </SearchProvider>
           </DataSourceProvider>

@@ -63,7 +63,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "InitializeProtocolParams"
+              "name": "feels::instructions::initialize_protocol::InitializeProtocolParams"
             }
           }
         }
@@ -170,7 +170,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "UpdateProtocolParams"
+              "name": "feels::instructions::initialize_protocol::UpdateProtocolParams"
             }
           }
         }
@@ -384,7 +384,7 @@
           "name": "new_phase",
           "type": {
             "defined": {
-              "name": "PoolPhase"
+              "name": "feels::state::pool_registry::PoolPhase"
             }
           }
         }
@@ -477,10 +477,16 @@
         },
         {
           "name": "market",
+          "docs": [
+            "Market account"
+          ],
           "writable": true
         },
         {
           "name": "buffer",
+          "docs": [
+            "Buffer account"
+          ],
           "writable": true
         },
         {
@@ -532,7 +538,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "ManagePommParams"
+              "name": "feels::instructions::manage_pomm_position::ManagePommParams"
             }
           }
         }
@@ -579,7 +585,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "TransitionPhaseParams"
+              "name": "feels::instructions::transition_market_phase::TransitionPhaseParams"
             }
           }
         }
@@ -735,7 +741,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "InitializeMarketParams"
+              "name": "feels::instructions::initialize_market::InitializeMarketParams"
             }
           }
         }
@@ -1041,16 +1047,14 @@
         {
           "name": "vault_0",
           "docs": [
-            "Protocol-owned vault holding token_0 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_0 reserves"
           ],
           "writable": true
         },
         {
           "name": "vault_1",
           "docs": [
-            "Protocol-owned vault holding token_1 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_1 reserves"
           ],
           "writable": true
         },
@@ -1064,16 +1068,14 @@
         {
           "name": "buffer",
           "docs": [
-            "Buffer account for fee collection and protocol-owned market making",
-            "Accumulates impact fees for later deployment as liquidity"
+            "Buffer account for fee collection and protocol-owned market making"
           ],
           "writable": true
         },
         {
           "name": "oracle",
           "docs": [
-            "Oracle account for tracking time-weighted average prices (TWAP)",
-            "Updated on every swap to maintain accurate price history"
+            "Oracle account for tracking time-weighted average prices (TWAP)"
           ],
           "writable": true
         },
@@ -1139,7 +1141,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "SwapParams"
+              "name": "feels::instructions::swap::SwapParams"
             }
           }
         }
@@ -1384,7 +1386,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "ClosePositionParams"
+              "name": "feels::instructions::close_position::ClosePositionParams"
             }
           }
         }
@@ -1700,7 +1702,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "MintTokenParams"
+              "name": "feels::instructions::mint_token::MintTokenParams"
             }
           }
         }
@@ -1861,7 +1863,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "DeployInitialLiquidityParams"
+              "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams"
             }
           }
         }
@@ -1916,7 +1918,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "InitializeTrancheTicksParams"
+              "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams"
             }
           }
         }
@@ -2431,7 +2433,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "UpdateDexTwapParams"
+              "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams"
             }
           }
         }
@@ -2490,7 +2492,7 @@
           "name": "params",
           "type": {
             "defined": {
-              "name": "UpdateNativeRateParams"
+              "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams"
             }
           }
         }
@@ -2499,7 +2501,7 @@
   ],
   "accounts": [
     {
-      "name": "Buffer",
+      "name": "feels::state::buffer::Buffer",
       "discriminator": [
         115,
         5,
@@ -2509,163 +2511,10 @@
         30,
         46,
         41
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "docs": [
-              "Associated market"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "authority",
-            "docs": [
-              "Authority that can manage buffer"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "feelssol_mint",
-            "docs": [
-              "FeelsSOL mint (for reference)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "fees_token_0",
-            "docs": [
-              "Token balances (u128 to prevent overflow in high-volume scenarios)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fees_token_1",
-            "type": "u128"
-          },
-          {
-            "name": "tau_spot",
-            "docs": [
-              "τ partition counters (virtual partitions, u128 for overflow safety)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "tau_time",
-            "type": "u128"
-          },
-          {
-            "name": "tau_leverage",
-            "type": "u128"
-          },
-          {
-            "name": "floor_tick_spacing",
-            "docs": [
-              "Floor LP configuration",
-              "DEPRECATED: This field is no longer used. POMM width is now derived from market tick spacing.",
-              "Kept for backwards compatibility only."
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "floor_placement_threshold",
-            "type": "u64"
-          },
-          {
-            "name": "last_floor_placement",
-            "type": "i64"
-          },
-          {
-            "name": "last_rebase",
-            "docs": [
-              "Epoch tracking for buffer"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "total_distributed",
-            "type": "u128"
-          },
-          {
-            "name": "buffer_authority_bump",
-            "docs": [
-              "Canonical bump for buffer authority PDA",
-              "Storing the bump prevents ambiguity and improves performance"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "jit_last_slot",
-            "docs": [
-              "JIT per-slot tracking (quote units)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "jit_slot_used_q",
-            "type": "u128"
-          },
-          {
-            "name": "jit_rolling_consumption",
-            "docs": [
-              "JIT v0.5 rolling consumption tracking"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "jit_rolling_window_start",
-            "type": "u64"
-          },
-          {
-            "name": "jit_last_heavy_usage_slot",
-            "type": "u64"
-          },
-          {
-            "name": "jit_total_consumed_epoch",
-            "type": "u128"
-          },
-          {
-            "name": "initial_tau_spot",
-            "docs": [
-              "Initial buffer size for circuit breaker calculations"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "protocol_owned_override",
-            "docs": [
-              "Protocol-owned token amount override for floor calculation",
-              "If non-zero, this value is used instead of dynamically calculating",
-              "Allows governance to set a fixed protocol-owned amount"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "pomm_position_count",
-            "docs": [
-              "Number of active POMM positions"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "_padding",
-            "docs": [
-              "Padding for future use"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                7
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "PreLaunchEscrow",
+      "name": "feels::state::escrow::PreLaunchEscrow",
       "discriminator": [
         128,
         182,
@@ -2675,69 +2524,10 @@
         44,
         106,
         53
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "token_mint",
-            "docs": [
-              "Token mint this escrow is for"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "creator",
-            "docs": [
-              "Creator who minted the token"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "feelssol_mint",
-            "docs": [
-              "FeelsSOL mint (for reference)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "created_at",
-            "docs": [
-              "Creation timestamp (used for expiration)"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "market",
-            "docs": [
-              "Associated market (set when market is initialized)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "escrow_authority_bump",
-            "docs": [
-              "Canonical bump for escrow authority PDA"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved space for future expansion"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                128
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "FeelsHub",
+      "name": "feels::state::feels_hub::FeelsHub",
       "discriminator": [
         151,
         222,
@@ -2747,29 +2537,10 @@
         72,
         219,
         90
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "feelssol_mint",
-            "docs": [
-              "FeelsSOL mint this hub controls"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reentrancy_guard",
-            "docs": [
-              "Reentrancy guard for mint/redeem flows"
-            ],
-            "type": "bool"
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "Market",
+      "name": "feels::state::market::Market",
       "discriminator": [
         219,
         190,
@@ -2779,407 +2550,10 @@
         227,
         198,
         154
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "version",
-            "docs": [
-              "Version for upgradability"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "is_initialized",
-            "docs": [
-              "Market status"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "is_paused",
-            "type": "bool"
-          },
-          {
-            "name": "token_0",
-            "docs": [
-              "Token configuration"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "token_1",
-            "type": "pubkey"
-          },
-          {
-            "name": "feelssol_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "token_0_type",
-            "docs": [
-              "Token types (for future Token-2022 support)"
-            ],
-            "type": {
-              "defined": {
-                "name": "TokenType"
-              }
-            }
-          },
-          {
-            "name": "token_1_type",
-            "type": {
-              "defined": {
-                "name": "TokenType"
-              }
-            }
-          },
-          {
-            "name": "token_0_origin",
-            "docs": [
-              "Token origins (for market creation restrictions)"
-            ],
-            "type": {
-              "defined": {
-                "name": "TokenOrigin"
-              }
-            }
-          },
-          {
-            "name": "token_1_origin",
-            "type": {
-              "defined": {
-                "name": "TokenOrigin"
-              }
-            }
-          },
-          {
-            "name": "vault_0",
-            "docs": [
-              "Vault accounts"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "vault_1",
-            "type": "pubkey"
-          },
-          {
-            "name": "hub_protocol",
-            "docs": [
-              "Hub protocol reference (optional)"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "sqrt_price",
-            "docs": [
-              "Spot AMM state (simplified constant product for MVP)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "liquidity",
-            "type": "u128"
-          },
-          {
-            "name": "current_tick",
-            "docs": [
-              "CLMM tick state"
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "tick_spacing",
-            "type": "u16"
-          },
-          {
-            "name": "global_lower_tick",
-            "docs": [
-              "Floor liquidity bounds (TEMPORARY - will be removed when POMM uses pure positions)",
-              "These currently serve as bounds for pool-owned liquidity but will be",
-              "replaced with actual position NFTs in a future upgrade.",
-              "Global swap bounds - hard limits for all swaps in this market"
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "global_upper_tick",
-            "type": "i32"
-          },
-          {
-            "name": "floor_liquidity",
-            "docs": [
-              "Liquidity at the global bounds (legacy POMM field, kept for compatibility)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_global_0_x64",
-            "docs": [
-              "Global fee growth (Q64) per liquidity unit"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_global_1_x64",
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_global_0",
-            "docs": [
-              "Global fee growth without x64 suffix (for compatibility)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_global_1",
-            "type": "u128"
-          },
-          {
-            "name": "base_fee_bps",
-            "docs": [
-              "Fee configuration"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "buffer",
-            "docs": [
-              "Buffer (τ) reference"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "authority",
-            "docs": [
-              "Authority"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "last_epoch_update",
-            "docs": [
-              "Epoch tracking"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "epoch_number",
-            "type": "u64"
-          },
-          {
-            "name": "oracle",
-            "docs": [
-              "Oracle account reference",
-              "Oracle data is stored in a separate account to reduce stack usage"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "oracle_bump",
-            "docs": [
-              "Oracle account bump seed"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "policy",
-            "docs": [
-              "Policy configuration"
-            ],
-            "type": {
-              "defined": {
-                "name": "PolicyV1"
-              }
-            }
-          },
-          {
-            "name": "market_authority_bump",
-            "docs": [
-              "Canonical bump for market authority PDA",
-              "Storing prevents recomputation and ensures consistency"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "vault_0_bump",
-            "docs": [
-              "Canonical bumps for vault PDAs"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "vault_1_bump",
-            "type": "u8"
-          },
-          {
-            "name": "reentrancy_guard",
-            "docs": [
-              "Re-entrancy guard",
-              "Set to true at the start of sensitive operations and false at the end",
-              "Prevents re-entrant calls during critical state transitions"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "initial_liquidity_deployed",
-            "docs": [
-              "Initial liquidity deployment status"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "jit_enabled",
-            "docs": [
-              "JIT v0.5 parameters (per-market)"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "jit_base_cap_bps",
-            "docs": [
-              "JIT v0.5 configuration"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "jit_per_slot_cap_bps",
-            "type": "u16"
-          },
-          {
-            "name": "jit_concentration_width",
-            "type": "u32"
-          },
-          {
-            "name": "jit_max_multiplier",
-            "type": "u8"
-          },
-          {
-            "name": "jit_drain_protection_bps",
-            "type": "u16"
-          },
-          {
-            "name": "jit_circuit_breaker_bps",
-            "type": "u16"
-          },
-          {
-            "name": "floor_tick",
-            "docs": [
-              "Floor management (MVP)"
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "floor_buffer_ticks",
-            "type": "i32"
-          },
-          {
-            "name": "last_floor_ratchet_ts",
-            "type": "i64"
-          },
-          {
-            "name": "floor_cooldown_secs",
-            "type": "i64"
-          },
-          {
-            "name": "steady_state_seeded",
-            "docs": [
-              "Graduation flags (idempotent)"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "cleanup_complete",
-            "type": "bool"
-          },
-          {
-            "name": "phase",
-            "docs": [
-              "Market phase tracking"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "phase_start_slot",
-            "type": "u64"
-          },
-          {
-            "name": "phase_start_timestamp",
-            "type": "i64"
-          },
-          {
-            "name": "last_phase_transition_slot",
-            "docs": [
-              "Phase transition history (last transition)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "last_phase_trigger",
-            "type": "u8"
-          },
-          {
-            "name": "total_volume_token_0",
-            "docs": [
-              "Cumulative metrics for phase transitions"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_volume_token_1",
-            "type": "u64"
-          },
-          {
-            "name": "rolling_buy_volume",
-            "docs": [
-              "JIT v0.5 directional tracking (rolling window)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "rolling_sell_volume",
-            "type": "u128"
-          },
-          {
-            "name": "rolling_total_volume",
-            "type": "u128"
-          },
-          {
-            "name": "rolling_window_start_slot",
-            "type": "u64"
-          },
-          {
-            "name": "tick_snapshot_1hr",
-            "docs": [
-              "Price movement tracking for circuit breaker"
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "last_snapshot_timestamp",
-            "type": "i64"
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved space for future expansion"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                1
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "OracleState",
+      "name": "feels::state::oracle::OracleState",
       "discriminator": [
         97,
         156,
@@ -3189,78 +2563,10 @@
         73,
         8,
         15
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool_id",
-            "docs": [
-              "Pool ID this oracle belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "observation_index",
-            "docs": [
-              "Index of the most recent observation"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "observation_cardinality",
-            "docs": [
-              "Current number of observations (grows from 1 to MAX)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "observation_cardinality_next",
-            "docs": [
-              "Next observation cardinality (for future expansion)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "oracle_bump",
-            "docs": [
-              "Bump seed for the oracle PDA"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "observations",
-            "docs": [
-              "Array of observations"
-            ],
-            "type": {
-              "array": [
-                {
-                  "defined": {
-                    "name": "Observation"
-                  }
-                },
-                12
-              ]
-            }
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved for future use"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                4
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "PoolRegistry",
+      "name": "feels::state::pool_registry::PoolRegistry",
       "discriminator": [
         113,
         149,
@@ -3270,61 +2576,10 @@
         240,
         64,
         157
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "authority",
-            "docs": [
-              "Protocol authority"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "pool_count",
-            "docs": [
-              "Number of pools registered"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "pools",
-            "docs": [
-              "Pools array (paginated access)"
-            ],
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "PoolEntry"
-                }
-              }
-            }
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "Canonical bump"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved for future use"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                128
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "Position",
+      "name": "feels::state::position::Position",
       "discriminator": [
         170,
         188,
@@ -3334,120 +2589,10 @@
         64,
         247,
         208
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "nft_mint",
-            "docs": [
-              "Position NFT mint (Metaplex Core asset ID)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "market",
-            "docs": [
-              "Market this position belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "owner",
-            "docs": [
-              "Owner of the position"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "tick_lower",
-            "docs": [
-              "Tick range"
-            ],
-            "type": "i32"
-          },
-          {
-            "name": "tick_upper",
-            "type": "i32"
-          },
-          {
-            "name": "liquidity",
-            "docs": [
-              "Liquidity amount"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_inside_0_last_x64",
-            "docs": [
-              "Fee growth inside the position at last update (Q64 fixed point)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_inside_1_last_x64",
-            "type": "u128"
-          },
-          {
-            "name": "tokens_owed_0",
-            "docs": [
-              "Tokens owed to position (collected fees + removed liquidity)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "tokens_owed_1",
-            "type": "u64"
-          },
-          {
-            "name": "position_bump",
-            "docs": [
-              "Canonical bump for position PDA",
-              "Storing prevents recomputation when minting/burning"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "is_pomm",
-            "docs": [
-              "Whether this is a POMM position"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "last_updated_slot",
-            "docs": [
-              "Last slot this position was updated"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "fee_growth_inside_0_last",
-            "docs": [
-              "Fee growth inside at last action (for proper accounting)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "fee_growth_inside_1_last",
-            "type": "u128"
-          },
-          {
-            "name": "fees_owed_0",
-            "docs": [
-              "Accumulated fees owed"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "fees_owed_1",
-            "type": "u64"
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "ProtocolConfig",
+      "name": "feels::state::protocol_config::ProtocolConfig",
       "discriminator": [
         207,
         91,
@@ -3457,143 +2602,10 @@
         179,
         215,
         209
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "authority",
-            "docs": [
-              "Authority that can update protocol parameters"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "mint_fee",
-            "docs": [
-              "Fee for minting a new token (in FeelsSOL lamports)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "treasury",
-            "docs": [
-              "Treasury account to receive protocol fees"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "default_protocol_fee_rate",
-            "docs": [
-              "Default protocol fee rate (basis points, e.g. 1000 = 10%)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "default_creator_fee_rate",
-            "docs": [
-              "Default creator fee rate for protocol tokens (basis points, e.g. 500 = 5%)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "max_protocol_fee_rate",
-            "docs": [
-              "Maximum allowed protocol fee rate (basis points)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "token_expiration_seconds",
-            "docs": [
-              "Time window (in seconds) for deploying liquidity after token mint",
-              "If liquidity isn't deployed within this window, token can be destroyed"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "depeg_threshold_bps",
-            "docs": [
-              "De-peg circuit breaker threshold (bps of divergence)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "depeg_required_obs",
-            "docs": [
-              "Required consecutive breach observations to pause"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "clear_required_obs",
-            "docs": [
-              "Required consecutive clear observations to resume"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "dex_twap_window_secs",
-            "docs": [
-              "DEX TWAP window and staleness thresholds (seconds)"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "dex_twap_stale_age_secs",
-            "type": "u32"
-          },
-          {
-            "name": "dex_twap_updater",
-            "docs": [
-              "Authorized updater for DEX TWAP feed (MVP single updater)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "dex_whitelist",
-            "docs": [
-              "DEX whitelist (venues/pools) - fixed size for MVP"
-            ],
-            "type": {
-              "array": [
-                "pubkey",
-                8
-              ]
-            }
-          },
-          {
-            "name": "dex_whitelist_len",
-            "type": "u8"
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved for future protocol parameters"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                7
-              ]
-            }
-          },
-          {
-            "name": "mint_per_slot_cap_feelssol",
-            "docs": [
-              "Optional per-slot caps for mint/redeem (FeelsSOL units). 0 = unlimited."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "redeem_per_slot_cap_feelssol",
-            "type": "u64"
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "ProtocolOracle",
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
       "discriminator": [
         252,
         90,
@@ -3603,71 +2615,10 @@
         251,
         8,
         237
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "native_rate_q64",
-            "docs": [
-              "Native reserve rate (Q64)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "dex_twap_rate_q64",
-            "docs": [
-              "Filtered DEX TWAP rate (Q64)"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "dex_last_update_slot",
-            "docs": [
-              "Last update slot for DEX TWAP"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "native_last_update_slot",
-            "docs": [
-              "Last update slot for native rate"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "dex_last_update_ts",
-            "docs": [
-              "Last update timestamp for DEX TWAP"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "native_last_update_ts",
-            "docs": [
-              "Last update timestamp for native rate"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "dex_window_secs",
-            "docs": [
-              "Observation window (seconds) for DEX TWAP"
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "flags",
-            "docs": [
-              "Current flags (bitmask)"
-            ],
-            "type": "u32"
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "SafetyController",
+      "name": "feels::state::safety_controller::SafetyController",
       "discriminator": [
         53,
         32,
@@ -3677,95 +2628,10 @@
         157,
         140,
         241
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "redemptions_paused",
-            "docs": [
-              "Whether redemptions are paused due to de-peg"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "consecutive_breaches",
-            "docs": [
-              "Consecutive divergence observations over threshold"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "consecutive_clears",
-            "docs": [
-              "Consecutive safe observations since last breach"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "last_change_slot",
-            "docs": [
-              "Last state change slot"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "mint_last_slot",
-            "docs": [
-              "Per-slot mint tracking (FeelsSOL units)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "mint_slot_amount",
-            "type": "u64"
-          },
-          {
-            "name": "redeem_last_slot",
-            "docs": [
-              "Per-slot redeem tracking (FeelsSOL units)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "redeem_slot_amount",
-            "type": "u64"
-          },
-          {
-            "name": "last_divergence_check_slot",
-            "docs": [
-              "Last slot when divergence was checked (prevents double-counting)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "degrade_flags",
-            "docs": [
-              "Degraded mode flags"
-            ],
-            "type": {
-              "defined": {
-                "name": "DegradeFlags"
-              }
-            }
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved for future use"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "TickArray",
+      "name": "feels::state::tick::TickArray",
       "discriminator": [
         69,
         97,
@@ -3775,67 +2641,10 @@
         7,
         66,
         187
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "start_tick_index",
-            "type": "i32"
-          },
-          {
-            "name": "_pad0",
-            "type": {
-              "array": [
-                "u8",
-                12
-              ]
-            }
-          },
-          {
-            "name": "ticks",
-            "type": {
-              "array": [
-                {
-                  "defined": {
-                    "name": "Tick"
-                  }
-                },
-                64
-              ]
-            }
-          },
-          {
-            "name": "initialized_tick_count",
-            "type": "u16"
-          },
-          {
-            "name": "_pad1",
-            "type": {
-              "array": [
-                "u8",
-                14
-              ]
-            }
-          },
-          {
-            "name": "_reserved",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "ProtocolToken",
+      "name": "feels::state::token_metadata::ProtocolToken",
       "discriminator": [
         14,
         19,
@@ -3845,66 +2654,10 @@
         204,
         55,
         222
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "mint",
-            "docs": [
-              "Token mint address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "creator",
-            "docs": [
-              "Creator who minted the token"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "token_type",
-            "docs": [
-              "Token type (SPL or Token-2022)"
-            ],
-            "type": {
-              "defined": {
-                "name": "TokenType"
-              }
-            }
-          },
-          {
-            "name": "created_at",
-            "docs": [
-              "Creation timestamp"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "can_create_markets",
-            "docs": [
-              "Whether this token can create markets (for future use)"
-            ],
-            "type": "bool"
-          },
-          {
-            "name": "_reserved",
-            "docs": [
-              "Reserved for future use"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          }
-        ]
-      }
+      ]
     },
     {
-      "name": "TranchePlan",
+      "name": "feels::state::tranche_plan::TranchePlan",
       "discriminator": [
         104,
         24,
@@ -3914,39 +2667,12 @@
         184,
         251,
         102
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "market",
-            "type": "pubkey"
-          },
-          {
-            "name": "applied",
-            "type": "bool"
-          },
-          {
-            "name": "count",
-            "type": "u8"
-          },
-          {
-            "name": "entries",
-            "type": {
-              "vec": {
-                "defined": {
-                  "name": "TrancheEntry"
-                }
-              }
-            }
-          }
-        ]
-      }
+      ]
     }
   ],
   "types": [
     {
-      "name": "ClosePositionParams",
+      "name": "feels::instructions::close_position::ClosePositionParams",
       "docs": [
         "Close position parameters"
       ],
@@ -3979,7 +2705,7 @@
       }
     },
     {
-      "name": "DeployInitialLiquidityParams",
+      "name": "feels::instructions::deploy_initial_liquidity::DeployInitialLiquidityParams",
       "docs": [
         "Deploy initial liquidity parameters"
       ],
@@ -4004,7 +2730,7 @@
       }
     },
     {
-      "name": "InitializeMarketParams",
+      "name": "feels::instructions::initialize_market::InitializeMarketParams",
       "docs": [
         "Initialize market parameters"
       ],
@@ -4043,7 +2769,7 @@
       }
     },
     {
-      "name": "InitializeProtocolParams",
+      "name": "feels::instructions::initialize_protocol::InitializeProtocolParams",
       "docs": [
         "Initialize protocol parameters"
       ],
@@ -4146,7 +2872,7 @@
       }
     },
     {
-      "name": "UpdateProtocolParams",
+      "name": "feels::instructions::initialize_protocol::UpdateProtocolParams",
       "docs": [
         "Update protocol configuration parameters"
       ],
@@ -4282,7 +3008,7 @@
       }
     },
     {
-      "name": "InitializeTrancheTicksParams",
+      "name": "feels::instructions::initialize_tranche_ticks::InitializeTrancheTicksParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4298,7 +3024,7 @@
       }
     },
     {
-      "name": "ManagePommParams",
+      "name": "feels::instructions::manage_pomm_position::ManagePommParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4324,7 +3050,7 @@
       }
     },
     {
-      "name": "PommAction",
+      "name": "feels::instructions::manage_pomm_position::PommAction",
       "type": {
         "kind": "enum",
         "variants": [
@@ -4360,7 +3086,7 @@
       }
     },
     {
-      "name": "MintTokenParams",
+      "name": "feels::instructions::mint_token::MintTokenParams",
       "docs": [
         "Parameters for minting a new token"
       ],
@@ -4383,7 +3109,7 @@
       }
     },
     {
-      "name": "SwapParams",
+      "name": "feels::instructions::swap::SwapParams",
       "docs": [
         "Parameters for swap execution",
         "",
@@ -4428,7 +3154,7 @@
       }
     },
     {
-      "name": "TransitionPhaseParams",
+      "name": "feels::instructions::transition_market_phase::TransitionPhaseParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4454,7 +3180,7 @@
       }
     },
     {
-      "name": "UpdateDexTwapParams",
+      "name": "feels::instructions::update_protocol_oracle::UpdateDexTwapParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4478,7 +3204,7 @@
       }
     },
     {
-      "name": "UpdateNativeRateParams",
+      "name": "feels::instructions::update_protocol_oracle::UpdateNativeRateParams",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4490,7 +3216,7 @@
       }
     },
     {
-      "name": "Buffer",
+      "name": "feels::state::buffer::Buffer",
       "docs": [
         "Pool buffer (τ) account"
       ],
@@ -4649,7 +3375,7 @@
       }
     },
     {
-      "name": "PreLaunchEscrow",
+      "name": "feels::state::escrow::PreLaunchEscrow",
       "docs": [
         "Pre-launch escrow account for newly minted tokens",
         "This temporary account holds tokens and mint fees until market goes live"
@@ -4715,7 +3441,7 @@
       }
     },
     {
-      "name": "FeelsHub",
+      "name": "feels::state::feels_hub::FeelsHub",
       "type": {
         "kind": "struct",
         "fields": [
@@ -4737,7 +3463,7 @@
       }
     },
     {
-      "name": "FeatureFlags",
+      "name": "feels::state::market::FeatureFlags",
       "docs": [
         "Feature flags for future phases (all OFF in MVP)"
       ],
@@ -4785,7 +3511,7 @@
       }
     },
     {
-      "name": "Market",
+      "name": "feels::state::market::Market",
       "docs": [
         "Main market account"
       ],
@@ -4832,7 +3558,7 @@
             ],
             "type": {
               "defined": {
-                "name": "TokenType"
+                "name": "feels::state::token_metadata::TokenType"
               }
             }
           },
@@ -4840,7 +3566,7 @@
             "name": "token_1_type",
             "type": {
               "defined": {
-                "name": "TokenType"
+                "name": "feels::state::token_metadata::TokenType"
               }
             }
           },
@@ -4851,7 +3577,7 @@
             ],
             "type": {
               "defined": {
-                "name": "TokenOrigin"
+                "name": "feels::state::token_metadata::TokenOrigin"
               }
             }
           },
@@ -4859,7 +3585,7 @@
             "name": "token_1_origin",
             "type": {
               "defined": {
-                "name": "TokenOrigin"
+                "name": "feels::state::token_metadata::TokenOrigin"
               }
             }
           },
@@ -5002,7 +3728,7 @@
             ],
             "type": {
               "defined": {
-                "name": "PolicyV1"
+                "name": "feels::state::market::PolicyV1"
               }
             }
           },
@@ -5188,7 +3914,7 @@
       }
     },
     {
-      "name": "PolicyV1",
+      "name": "feels::state::market::PolicyV1",
       "docs": [
         "Policy configuration"
       ],
@@ -5232,7 +3958,7 @@
       }
     },
     {
-      "name": "Observation",
+      "name": "feels::state::oracle::Observation",
       "docs": [
         "Single price observation"
       ],
@@ -5276,7 +4002,7 @@
       }
     },
     {
-      "name": "OracleState",
+      "name": "feels::state::oracle::OracleState",
       "docs": [
         "Oracle state account that stores price observations"
       ],
@@ -5327,7 +4053,7 @@
               "array": [
                 {
                   "defined": {
-                    "name": "Observation"
+                    "name": "feels::state::oracle::Observation"
                   }
                 },
                 12
@@ -5350,7 +4076,7 @@
       }
     },
     {
-      "name": "MarketPhase",
+      "name": "feels::state::phase::MarketPhase",
       "docs": [
         "Market lifecycle phase"
       ],
@@ -5385,7 +4111,7 @@
       }
     },
     {
-      "name": "PoolEntry",
+      "name": "feels::state::pool_registry::PoolEntry",
       "docs": [
         "Registry entry for a single pool"
       ],
@@ -5480,7 +4206,7 @@
       }
     },
     {
-      "name": "PoolPhase",
+      "name": "feels::state::pool_registry::PoolPhase",
       "docs": [
         "Pool phase for lifecycle tracking"
       ],
@@ -5506,7 +4232,7 @@
       }
     },
     {
-      "name": "PoolRegistry",
+      "name": "feels::state::pool_registry::PoolRegistry",
       "docs": [
         "Central pool registry"
       ],
@@ -5535,7 +4261,7 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "PoolEntry"
+                  "name": "feels::state::pool_registry::PoolEntry"
                 }
               }
             }
@@ -5563,7 +4289,7 @@
       }
     },
     {
-      "name": "Position",
+      "name": "feels::state::position::Position",
       "type": {
         "kind": "struct",
         "fields": [
@@ -5676,7 +4402,7 @@
       }
     },
     {
-      "name": "ProtocolConfig",
+      "name": "feels::state::protocol_config::ProtocolConfig",
       "docs": [
         "Protocol configuration account"
       ],
@@ -5815,7 +4541,7 @@
       }
     },
     {
-      "name": "ProtocolOracle",
+      "name": "feels::state::protocol_oracle::ProtocolOracle",
       "type": {
         "kind": "struct",
         "fields": [
@@ -5879,7 +4605,7 @@
       }
     },
     {
-      "name": "DegradeFlags",
+      "name": "feels::state::safety_controller::DegradeFlags",
       "docs": [
         "Degraded mode flags for various safety conditions"
       ],
@@ -5930,7 +4656,7 @@
       }
     },
     {
-      "name": "SafetyController",
+      "name": "feels::state::safety_controller::SafetyController",
       "type": {
         "kind": "struct",
         "fields": [
@@ -5998,7 +4724,7 @@
             ],
             "type": {
               "defined": {
-                "name": "DegradeFlags"
+                "name": "feels::state::safety_controller::DegradeFlags"
               }
             }
           },
@@ -6018,7 +4744,7 @@
       }
     },
     {
-      "name": "Tick",
+      "name": "feels::state::tick::Tick",
       "docs": [
         "Individual tick within an array",
         "Must be exactly aligned with no padding for zero_copy"
@@ -6063,7 +4789,7 @@
       }
     },
     {
-      "name": "TickArray",
+      "name": "feels::state::tick::TickArray",
       "serialization": "bytemuck",
       "repr": {
         "kind": "c"
@@ -6094,7 +4820,7 @@
               "array": [
                 {
                   "defined": {
-                    "name": "Tick"
+                    "name": "feels::state::tick::Tick"
                   }
                 },
                 64
@@ -6127,7 +4853,7 @@
       }
     },
     {
-      "name": "ProtocolToken",
+      "name": "feels::state::token_metadata::ProtocolToken",
       "docs": [
         "Registry entry for protocol-minted tokens"
       ],
@@ -6155,7 +4881,7 @@
             ],
             "type": {
               "defined": {
-                "name": "TokenType"
+                "name": "feels::state::token_metadata::TokenType"
               }
             }
           },
@@ -6189,7 +4915,7 @@
       }
     },
     {
-      "name": "TokenOrigin",
+      "name": "feels::state::token_metadata::TokenOrigin",
       "docs": [
         "Origin of a token"
       ],
@@ -6209,7 +4935,7 @@
       }
     },
     {
-      "name": "TokenType",
+      "name": "feels::state::token_metadata::TokenType",
       "docs": [
         "Token type enum for tracking SPL vs Token-2022"
       ],
@@ -6226,7 +4952,7 @@
       }
     },
     {
-      "name": "TrancheEntry",
+      "name": "feels::state::tranche_plan::TrancheEntry",
       "type": {
         "kind": "struct",
         "fields": [
@@ -6246,7 +4972,7 @@
       }
     },
     {
-      "name": "TranchePlan",
+      "name": "feels::state::tranche_plan::TranchePlan",
       "type": {
         "kind": "struct",
         "fields": [
@@ -6267,7 +4993,7 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "TrancheEntry"
+                  "name": "feels::state::tranche_plan::TrancheEntry"
                 }
               }
             }

@@ -37,7 +37,7 @@ test_all_environments!(
         // Debug: Check FeelsSOL mint authority
         let (mint_authority, _) = Pubkey::find_program_address(
             &[b"mint_authority", ctx.feelssol_mint.as_ref()],
-            &feels_sdk::program_id(),
+            &feels::id(),
         );
         println!("  Mint authority PDA: {}", mint_authority);
 
@@ -101,7 +101,7 @@ test_all_environments!(
 
         // Debug: Check if safety controller exists
         let (safety_controller, _) =
-            Pubkey::find_program_address(&[b"safety_controller"], &feels_sdk::program_id());
+            Pubkey::find_program_address(&[b"safety_controller"], &feels::id());
         match ctx.get_account_raw(&safety_controller).await {
             Ok(_) => println!("  Safety controller exists"),
             Err(e) => {
@@ -115,7 +115,7 @@ test_all_environments!(
         // Check JitoSOL vault balance
         let (jitosol_vault, _) = Pubkey::find_program_address(
             &[b"jitosol_vault", ctx.feelssol_mint.as_ref()],
-            &feels_sdk::program_id(),
+            &feels::id(),
         );
         let vault_balance = ctx.get_token_balance(&jitosol_vault).await?;
         println!("  JitoSOL vault balance: {}", vault_balance);

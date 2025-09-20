@@ -17,7 +17,7 @@ pub struct JitBudget {
 
 impl JitBudget {
     /// Initialize JIT budget for current slot
-    pub fn begin(buffer: &mut Account<Buffer>, market: &Market, current_slot: u64) -> Self {
+    pub fn begin(buffer: &mut Buffer, market: &Market, current_slot: u64) -> Self {
         // Reset per-slot tracking on new slot
         if buffer.jit_last_slot != current_slot {
             buffer.jit_last_slot = current_slot;
@@ -46,7 +46,7 @@ impl JitBudget {
 /// Calculate safe JIT allowance with all v0.5 mitigations
 pub fn calculate_safe_jit_allowance(
     budget: &mut JitBudget,
-    buffer: &mut Account<Buffer>,
+    buffer: &mut Buffer,
     market: &Market,
     current_slot: u64,
     current_tick: i32,
@@ -123,7 +123,7 @@ fn calculate_concentration_multiplier(
 /// Apply graduated drain protection
 fn apply_drain_protection(
     budget: &mut JitBudget,
-    buffer: &mut Account<Buffer>,
+    buffer: &mut Buffer,
     requested_amount: u128,
     current_slot: u64,
     market: &Market,

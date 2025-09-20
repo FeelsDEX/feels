@@ -115,22 +115,14 @@ pub struct Swap<'info> {
     pub market: Account<'info, Market>,
 
     /// Protocol-owned vault holding token_0 reserves
-    /// PDA derived from market tokens with deterministic ordering
-    #[account(
-        mut,
-        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
-        bump = market.vault_0_bump,
-    )]
-    pub vault_0: Account<'info, TokenAccount>,
+    /// CHECK: Validated in handler
+    #[account(mut)]
+    pub vault_0: UncheckedAccount<'info>,
 
     /// Protocol-owned vault holding token_1 reserves
-    /// PDA derived from market tokens with deterministic ordering
-    #[account(
-        mut,
-        seeds = [VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
-        bump = market.vault_1_bump,
-    )]
-    pub vault_1: Account<'info, TokenAccount>,
+    /// CHECK: Validated in handler
+    #[account(mut)]
+    pub vault_1: UncheckedAccount<'info>,
 
     /// Market authority PDA that controls vault operations
     /// Used as signer for transferring tokens from vaults to users
@@ -142,21 +134,14 @@ pub struct Swap<'info> {
     pub market_authority: AccountInfo<'info>,
 
     /// Buffer account for fee collection and protocol-owned market making
-    /// Accumulates impact fees for later deployment as liquidity
-    #[account(
-        mut,
-        constraint = buffer.market == market.key() @ FeelsError::InvalidBuffer,
-    )]
-    pub buffer: Account<'info, Buffer>,
+    /// CHECK: Validated in handler
+    #[account(mut)]
+    pub buffer: UncheckedAccount<'info>,
 
     /// Oracle account for tracking time-weighted average prices (TWAP)
-    /// Updated on every swap to maintain accurate price history
-    #[account(
-        mut,
-        seeds = [b"oracle", market.key().as_ref()],
-        bump = market.oracle_bump,
-    )]
-    pub oracle: Account<'info, OracleState>,
+    /// CHECK: Validated in handler
+    #[account(mut)]
+    pub oracle: UncheckedAccount<'info>,
 
     /// User's token account for the input token being swapped
     /// Ownership and mint validation performed in handler
@@ -177,11 +162,8 @@ pub struct Swap<'info> {
     pub clock: Sysvar<'info, Clock>,
 
     /// Protocol configuration account for fee rates
-    #[account(
-        seeds = [ProtocolConfig::SEED],
-        bump,
-    )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    /// CHECK: Validated in handler
+    pub protocol_config: UncheckedAccount<'info>,
 
     /// Protocol treasury token account (mandatory for protocol fees)
     /// CHECK: Validated against protocol_config.treasury in handler
@@ -201,6 +183,63 @@ pub struct Swap<'info> {
 // =============================================================================
 // VALIDATION FUNCTIONS
 // =============================================================================
+
+/// Validate all unchecked accounts
+#[inline(never)]
+fn validate_swap_accounts(ctx: &Context<Swap>) -> Result<()> {
+    let market = &ctx.accounts.market;
+    
+    // Validate vaults
+    let (vault_0_pda, vault_0_bump) = Pubkey::find_program_address(
+        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
+        ctx.program_id,
+    );
+    require!(
+        vault_0_pda == ctx.accounts.vault_0.key() && vault_0_bump == market.vault_0_bump,
+        FeelsError::InvalidVault
+    );
+    
+    let (vault_1_pda, vault_1_bump) = Pubkey::find_program_address(
+        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
+        ctx.program_id,
+    );
+    require!(
+        vault_1_pda == ctx.accounts.vault_1.key() && vault_1_bump == market.vault_1_bump,
+        FeelsError::InvalidVault
+    );
+    
+    // Validate buffer
+    let (buffer_pda, _) = Pubkey::find_program_address(
+        &[b"buffer", market.key().as_ref()],
+        ctx.program_id,
+    );
+    require!(
+        buffer_pda == ctx.accounts.buffer.key(),
+        FeelsError::InvalidBuffer
+    );
+    
+    // Validate oracle
+    let (oracle_pda, oracle_bump) = Pubkey::find_program_address(
+        &[b"oracle", market.key().as_ref()],
+        ctx.program_id,
+    );
+    require!(
+        oracle_pda == ctx.accounts.oracle.key() && oracle_bump == market.oracle_bump,
+        FeelsError::InvalidOracle
+    );
+    
+    // Validate protocol config
+    let (protocol_config_pda, _) = Pubkey::find_program_address(
+        &[ProtocolConfig::SEED],
+        ctx.program_id,
+    );
+    require!(
+        protocol_config_pda == ctx.accounts.protocol_config.key(),
+        FeelsError::InvalidProtocol
+    );
+    
+    Ok(())
+}
 
 /// Validate swap inputs and user accounts
 ///
@@ -229,22 +268,8 @@ fn validate_swap_inputs(
     }
 
     // Ensure protocol vaults match the market configuration
-    require!(
-        ctx.accounts.vault_0.mint == market.token_0,
-        FeelsError::InvalidVault
-    );
-    require!(
-        ctx.accounts.vault_1.mint == market.token_1,
-        FeelsError::InvalidVault
-    );
-    require!(
-        ctx.accounts.vault_0.owner == ctx.accounts.market_authority.key(),
-        FeelsError::InvalidVault
-    );
-    require!(
-        ctx.accounts.vault_1.owner == ctx.accounts.market_authority.key(),
-        FeelsError::InvalidVault
-    );
+    // Since vaults are UncheckedAccount, we'll validate them differently
+    // The PDAs were already validated above, which ensures they're the correct vaults
 
     // Deserialize and validate user token accounts
     let user_token_in = TokenAccount::try_deserialize(
@@ -312,7 +337,7 @@ fn validate_swap_inputs(
 /// liquidity boost for this swap only
 fn initialize_jit_liquidity(
     market: &Market,
-    buffer: &mut Account<Buffer>,
+    buffer: &mut Buffer,
     current_tick: i32,
     target_tick: i32,
     direction: SwapDirection,
@@ -386,7 +411,7 @@ fn execute_swap_steps<'info>(
     market_key: &Pubkey,
     params: &SwapParams,
     market: &Market,
-    buffer: &mut Account<Buffer>,
+    buffer: &mut Buffer,
     mut swap_state: SwapState,
     direction: SwapDirection,
     is_token_0_to_1: bool,
@@ -643,8 +668,8 @@ fn execute_swap_steps<'info>(
 /// - Creator: Creator fee percentage (optional, only for protocol-minted tokens)
 fn split_and_apply_fees(
     _market: &Market,
-    buffer: &mut Account<Buffer>,
-    protocol_config: &Account<ProtocolConfig>,
+    buffer: &mut Buffer,
+    protocol_config: &ProtocolConfig,
     protocol_token: Option<&Account<ProtocolToken>>,
     fee_amount: u64,
     token_index: usize,
@@ -733,6 +758,19 @@ pub fn swap<'info>(
     ctx: Context<'_, '_, 'info, 'info, Swap<'info>>,
     params: SwapParams,
 ) -> Result<()> {
+    // Validate all unchecked accounts
+    validate_swap_accounts(&ctx)?;
+    
+    // Load the unchecked accounts manually to avoid lifetime issues
+    let buffer_data = ctx.accounts.buffer.try_borrow_data()?;
+    let mut buffer: Buffer = Buffer::try_deserialize(&mut &buffer_data[8..])?;
+    
+    let oracle_data = ctx.accounts.oracle.try_borrow_data()?;
+    let mut oracle: OracleState = OracleState::try_deserialize(&mut &oracle_data[8..])?;
+    
+    let protocol_config_data = ctx.accounts.protocol_config.try_borrow_data()?;
+    let protocol_config: ProtocolConfig = ProtocolConfig::try_deserialize(&mut &protocol_config_data[8..])?;
+    
     // Set reentrancy guard to prevent recursive calls
     ctx.accounts.market.reentrancy_guard = true;
 
@@ -798,7 +836,7 @@ pub fn swap<'info>(
         &market_key,
         &params,
         &ctx.accounts.market,
-        &mut ctx.accounts.buffer,
+        &mut buffer,
         *swap_state, // Unbox here since function expects SwapState
         direction,
         is_token_0_to_1,
@@ -814,7 +852,7 @@ pub fn swap<'info>(
 
     require!(amount_in_used > 0, FeelsError::InsufficientLiquidity);
 
-    let swap_result = SwapResult {
+    let swap_result = Box::new(SwapResult {
         amount_in_used,
         amount_out: final_state.amount_out,
         total_fee_paid: final_state.total_fee_paid,
@@ -826,7 +864,7 @@ pub fn swap<'info>(
         fee_growth_global_delta_1: final_state.fee_growth_global_delta_1,
         jit_consumed_quote: final_state.jit_consumed_quote,
         base_fees_skipped: final_state.base_fees_skipped,
-    };
+    });
 
     // --- TRANSFERS AND STATE UPDATES
 
@@ -910,8 +948,8 @@ pub fn swap<'info>(
 
         let (to_buffer, to_treasury, to_creator) = split_and_apply_fees(
             &ctx.accounts.market,
-            &mut ctx.accounts.buffer,
-            &ctx.accounts.protocol_config,
+            &mut buffer,
+            &protocol_config,
             protocol_token,
             impact_fee_amount,
             token_index,
@@ -929,7 +967,7 @@ pub fn swap<'info>(
                     .borrow()[..],
             )?;
             require!(
-                treasury_token_account.owner == ctx.accounts.protocol_config.treasury,
+                treasury_token_account.owner == protocol_config.treasury,
                 FeelsError::InvalidAuthority
             );
             require!(
@@ -1030,9 +1068,7 @@ pub fn swap<'info>(
     }
 
     // Always update the oracle
-    ctx.accounts
-        .oracle
-        .update(swap_result.final_tick, ctx.accounts.clock.unix_timestamp)?;
+    oracle.update(swap_result.final_tick, ctx.accounts.clock.unix_timestamp)?;
 
     // --- POST-SWAP OPERATIONS
 
@@ -1075,16 +1111,12 @@ pub fn swap<'info>(
         // For 1->0 swaps, JIT provides token 0 liquidity (quote is in token 0)
         if is_token_0_to_1 {
             // JIT provided token 1 liquidity, add to token 1 fees
-            ctx.accounts.buffer.fees_token_1 = ctx
-                .accounts
-                .buffer
+            buffer.fees_token_1 = buffer
                 .fees_token_1
                 .saturating_add(swap_result.jit_consumed_quote);
         } else {
             // JIT provided token 0 liquidity, add to token 0 fees
-            ctx.accounts.buffer.fees_token_0 = ctx
-                .accounts
-                .buffer
+            buffer.fees_token_0 = buffer
                 .fees_token_0
                 .saturating_add(swap_result.jit_consumed_quote);
         }
@@ -1111,12 +1143,20 @@ pub fn swap<'info>(
     // Execute protocol-owned market maker maintenance if enabled
     maybe_pomm_add_liquidity(
         &mut ctx.accounts.market,
-        &mut ctx.accounts.buffer,
-        &ctx.accounts.oracle,
+        &mut buffer,
+        &oracle,
         ctx.accounts.clock.unix_timestamp,
     )?;
 
     // Clear reentrancy guard and complete swap
     ctx.accounts.market.reentrancy_guard = false;
+    
+    // Serialize the modified state back to the accounts
+    let mut buffer_data = ctx.accounts.buffer.try_borrow_mut_data()?;
+    buffer.serialize(&mut &mut buffer_data[8..])?;
+    
+    let mut oracle_data = ctx.accounts.oracle.try_borrow_mut_data()?;
+    oracle.serialize(&mut &mut oracle_data[8..])?;
+    
     Ok(())
 }

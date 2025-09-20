@@ -1,0 +1,71 @@
+# Frontend Application Commands
+# Manages Next.js development, build, and deployment tasks
+
+# Install Next.js app dependencies
+install:
+	@echo "Installing Next.js app dependencies..."
+	npm install
+
+# Start Next.js development server
+dev:
+	@echo "Starting Next.js development server..."
+	@echo "App will be available at http://localhost:3000"
+	npm run dev
+
+# Start Next.js app with indexer integration
+dev-indexer:
+	@echo "Starting Next.js app with indexer integration..."
+	@echo "App will connect to indexer at http://localhost:8080"
+	npm run dev:indexer
+
+# Build Next.js app for production
+build:
+	@echo "Building Next.js app for production..."
+	npm run build
+
+# Start production Next.js server
+start: build
+	@echo "Starting production Next.js server..."
+	@echo "App will be available at http://localhost:3000"
+	npm run start
+
+# Lint the Next.js application
+lint:
+	@echo "Linting Next.js application..."
+	npm run lint
+
+# Type check the Next.js application
+type-check:
+	@echo "Type checking Next.js application..."
+	npm run type-check
+
+# Format the Next.js application code
+format:
+	@echo "Formatting Next.js application code..."
+	npm run format
+
+# Run Next.js app tests (placeholder - add when tests are implemented)
+test:
+	@echo "Running Next.js app tests..."
+	@echo "Note: Tests not yet implemented. Add test scripts to package.json"
+	npm run type-check
+
+# Clean Next.js build artifacts
+clean:
+	@echo "Cleaning Next.js build artifacts..."
+	rm -rf .next node_modules/.cache
+
+# Full app setup: install dependencies
+setup: install
+	@echo "Next.js app setup complete!"
+	@echo "Run 'just dev' to start the development server"
+
+# Build app with fresh dependencies
+fresh: clean install build
+	@echo "Fresh Next.js app build complete!"
+
+# Development workflow with indexer
+dev-with-indexer: install
+	@echo "Starting full development environment with indexer..."
+	@echo "Make sure the indexer is running on http://localhost:8080"
+	npm run dev:indexer

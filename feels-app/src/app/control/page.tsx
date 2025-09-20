@@ -4,15 +4,15 @@ import { useState, useEffect } from 'react';
 import { Connection, LAMPORTS_PER_SOL, SystemProgram, Transaction, PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { getConnection } from '@/lib/connection';
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/lib/sdk';
-import { createFeelsProgram } from '@/lib/program-workaround';
+import { getConnection } from '@/services/connection';
+import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
+import { createFeelsProgram } from '@/sdk/program-workaround';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Droplets } from 'lucide-react';
-import { ProtocolParametersAdmin } from '@/components/ProtocolParametersAdmin';
-import { NetworkConnection } from '@/components/NetworkConnection';
+import { ProtocolParametersAdmin } from '@/components/market/ProtocolParametersAdmin';
+import { NetworkConnection } from '@/components/common/NetworkConnection';
 
 export default function ControlPage() {
   const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();

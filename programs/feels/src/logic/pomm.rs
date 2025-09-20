@@ -19,8 +19,8 @@ use anchor_lang::prelude::*;
 /// attacks. An attacker cannot manipulate TWAP within a single transaction or block.
 pub fn maybe_pomm_add_liquidity(
     market: &mut Account<Market>,
-    buffer: &mut Account<Buffer>,
-    oracle: &Account<OracleState>,
+    buffer: &mut Buffer,
+    oracle: &OracleState,
     now: i64,
 ) -> Result<()> {
     // Simple guard: avoid doing this too often

@@ -483,10 +483,16 @@ export type Feels = {
         },
         {
           "name": "market",
+          "docs": [
+            "Market account"
+          ],
           "writable": true
         },
         {
           "name": "buffer",
+          "docs": [
+            "Buffer account"
+          ],
           "writable": true
         },
         {
@@ -1047,16 +1053,14 @@ export type Feels = {
         {
           "name": "vault0",
           "docs": [
-            "Protocol-owned vault holding token_0 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_0 reserves"
           ],
           "writable": true
         },
         {
           "name": "vault1",
           "docs": [
-            "Protocol-owned vault holding token_1 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_1 reserves"
           ],
           "writable": true
         },
@@ -1070,16 +1074,14 @@ export type Feels = {
         {
           "name": "buffer",
           "docs": [
-            "Buffer account for fee collection and protocol-owned market making",
-            "Accumulates impact fees for later deployment as liquidity"
+            "Buffer account for fee collection and protocol-owned market making"
           ],
           "writable": true
         },
         {
           "name": "oracle",
           "docs": [
-            "Oracle account for tracking time-weighted average prices (TWAP)",
-            "Updated on every swap to maintain accurate price history"
+            "Oracle account for tracking time-weighted average prices (TWAP)"
           ],
           "writable": true
         },

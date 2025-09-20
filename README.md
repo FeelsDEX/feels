@@ -61,13 +61,15 @@ USDC → FeelsSOL → SOL
 ## Building
 
 ```bash
-# Using Nix
+# Using Nix (recommended)
 nix develop
 just build
 
-# Using Anchor
+# Using Anchor directly (requires proper environment)
 anchor build
 ```
+
+**Note**: The `just build` command uses a Nix shell and runs `nix develop --command anchor build --no-idl --program-name feels`. Direct `anchor build` may not work without the proper environment setup.
 
 ## Testing
 
@@ -148,13 +150,26 @@ The deployment scripts will automatically:
 
 ## Program Addresses
 
-- Protocol: `Fee1sProtoco11111111111111111111111111111111`
+- Protocol: `5EeFL2XscLKAg9HWq5Ssbo3h4nBWHb1qcRZK6V6yt18S`
 - FeelsSOL Mint: Determined at initialization
 
 ## Documentation
 
-- [System Overview](docs/000_system_overview.md)
-- [Dynamic Fees](docs/001_instantaneous_fees.md)
-- [Continuous Rebasing](docs/002_continuous_rebasing.md)
-- [Verification and Policy](docs/003_verification_and_policy.md)
-- [MVP Checklist](docs/100_mvp_checklist_work_plan.md)
+- [System Introduction](docs/900_system_intro.md)
+- [Unified Markets](docs/901_unified_markets.md)
+- [FeelsSOL Solvency](docs/200_feelssol_solvency.md)
+- [Dynamic Fees](docs/201_dynamic_fees.md)
+- [JIT Liquidity](docs/202_jit_liquidity.md)
+- [Pool CLMM](docs/203_pool_clmm.md)
+- [Pool Oracle](docs/204_pool_oracle.md)
+- [Floor Liquidity](docs/205_floor_liquidity.md)
+- [Pool Allocation](docs/206_pool_allocation.md)
+- [Bonding Curve Feels](docs/207_bonding_curve_feels.md)
+- [After Swap Pipeline](docs/208_after_swap_pipeline.md)
+- [Params and Governance](docs/209_params_and_governance.md)
+- [Safety Controller](docs/210_safety_controller.md)
+- [Events and Units](docs/211_events_and_units.md)
+- [Pool Registry](docs/212_pool_registry.md)
+- [Launch Sequence](docs/300_launch_sequence.md)
+- [Vaults and Lending Future](docs/400_vaults_and_lending_future.md)
+- [Phase 2 Roadmap](docs/500_phase2_roadmap.md)

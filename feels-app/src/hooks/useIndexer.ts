@@ -8,7 +8,7 @@ import {
   MarketStats,
   IndexedFloor,
   OHLCVCandle 
-} from '@/lib/indexer-client';
+} from '@/services/indexer-client';
 import { useDataSource } from '@/contexts/DataSourceContext';
 
 export interface UseIndexerOptions {

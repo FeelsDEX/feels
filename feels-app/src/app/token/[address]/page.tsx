@@ -6,16 +6,16 @@ import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useParams, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { getConnection } from '@/lib/connection';
+import { getConnection } from '@/services/connection';
 
 // Import SDK wrapper
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/lib/sdk';
-import { createFeelsProgram } from '@/lib/program-workaround';
-import { TokenInfo } from '@/lib/jupiter-client';
-import { ALL_TOKENS, WOJAK_TOKENS } from '@/lib/testData';
+import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
+import { createFeelsProgram } from '@/sdk/program-workaround';
+import { TokenInfo } from '@/services/jupiter-client';
+import { FEELS_TOKENS, getTokenByAddress } from '@/data/tokens';
 import { ExternalLink } from 'lucide-react';
-import { TokenHolders } from '@/components/TokenHolders';
-import { TokenMetrics } from '@/components/TokenMetrics';
+import { TokenHolders } from '@/components/market/TokenHolders';
+import { TokenMetrics } from '@/components/market/TokenMetrics';
 
 // Dynamic imports to prevent SSR issues
 const SwapInterface = dynamic(() => import('@/components/SwapInterface').then(mod => ({ default: mod.SwapInterface })), {
@@ -107,8 +107,8 @@ function TokenSwapPageContent() {
   }, [publicKey, signTransaction, signAllTransactions, connection]);
 
   // Validate that the token is a Feels token
-  const tokenData = WOJAK_TOKENS.find(t => t.address === tokenAddress);
-  const token = ALL_TOKENS.find(t => t.address === tokenAddress);
+  const tokenData = getTokenByAddress(tokenAddress);
+  const token = getTokenByAddress(tokenAddress);
   const isValidFeelsToken = token && token.isFeelsToken;
 
   if (!isValidFeelsToken) {
@@ -230,7 +230,7 @@ function TokenSwapPageContent() {
                 onSwapComplete={(signature, outputAmount, outputToken) => {
                   console.log('Swap completed:', signature, outputAmount, outputToken);
                   // Update selected token for chart
-                  const selectedToken = ALL_TOKENS.find(t => t.symbol === outputToken);
+                  const selectedToken = FEELS_TOKENS.find(t => t.symbol === outputToken);
                   if (selectedToken) {
                     setSelectedOutputToken({
                       address: selectedToken.address,

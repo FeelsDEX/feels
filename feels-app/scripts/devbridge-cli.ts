@@ -3,4 +3,4 @@
  * DevBridge CLI entry point
  * This is a thin wrapper that imports the actual CLI from the devbridge directory
  */
-import '../src/devbridge/server/cli';
+import '../tools/devbridge/server/cli';

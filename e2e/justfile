@@ -11,7 +11,7 @@ NC := '\033[0m'
 # Default command - show help
 default:
     @echo "E2E Development Commands"
-    @echo "======================="
+    @echo "========================"
     @echo ""
     @echo "Core Commands:"
     @echo "  just run             - Start complete E2E environment"
@@ -36,7 +36,9 @@ default:
 metaplex-id := `jq -r '.programId // empty' ../feels-app/scripts/metaplex-localnet.json 2>/dev/null || echo ""`
 
 # Program ID management
-program-id := env_var_or_default("FEELS_PROGRAM_ID", "BLjLS7TzUBncLxXMjFYxezioeg4RVdc5vRpVRYDq8GyQ")
+# Try to read from deployed keypair, environment variable, or use default
+deployed-program-id := `if [ -f "../target/deploy/feels-keypair.json" ]; then solana-keygen pubkey ../target/deploy/feels-keypair.json 2>/dev/null || echo ""; else echo ""; fi`
+program-id := if deployed-program-id != "" { deployed-program-id } else { env_var_or_default("FEELS_PROGRAM_ID", "BLjLS7TzUBncLxXMjFYxezioeg4RVdc5vRpVRYDq8GyQ") }
 
 # Build with localnet feature if Metaplex is available
 build-localnet:
@@ -68,12 +70,13 @@ build-localnet:
     #!/usr/bin/env bash
     set -e
     cd ..
+    source e2e/../scripts/exit-codes.sh
     
     BUILD_SUCCESS=false
     
     # Try localnet build if Metaplex is available
     if [[ -n "{{metaplex-id}}" ]] && [[ -f "e2e/build-localnet.sh" ]]; then
-        echo "{{YELLOW}}Building with localnet feature...{{NC}}"
+        show_progress "Building with localnet feature"
         if ./e2e/build-localnet.sh > logs/build.log 2>&1; then
             BUILD_SUCCESS=true
         fi
@@ -82,7 +85,7 @@ build-localnet:
     # Try standard builds
     if [[ "$BUILD_SUCCESS" != "true" ]]; then
         if command -v just &> /dev/null; then
-            echo "Building with just (Nix build)..."
+            show_building
             if just build > logs/build.log 2>&1; then
                 BUILD_SUCCESS=true
             fi
@@ -90,33 +93,47 @@ build-localnet:
     fi
     
     if [[ "$BUILD_SUCCESS" != "true" ]] && command -v anchor &> /dev/null; then
-        echo "Building with anchor..."
+        show_progress "Building with anchor (fallback)"
         if RUSTFLAGS="-C opt-level=2 -C inline-threshold=0" anchor build --no-idl > logs/build.log 2>&1; then
             BUILD_SUCCESS=true
         fi
     fi
     
     if [[ "$BUILD_SUCCESS" != "true" ]]; then
-        echo "{{RED}}Error: Build failed. Check logs/build.log{{NC}}"
-        exit 1
+        exit_with_code $EXIT_BUILD_FAILURE "Build failed. Check logs/build.log"
     fi
 
 # Start Solana validator
 validator:
     #!/usr/bin/env bash
     cd ..
+    source scripts/exit-codes.sh
     mkdir -p logs
     
-    echo "{{YELLOW}}Starting Solana validator...{{NC}}"
-    solana-test-validator --reset --quiet > logs/validator.log 2>&1 &
-    echo "Validator PID: $!"
+    # Check if validator is already running
+    if check_service "http://localhost:8899" "Solana validator"; then
+        show_warning "Validator already running on port 8899"
+        exit $EXIT_SUCCESS
+    fi
     
-    # Wait for validator
-    echo "Waiting for validator to start..."
-    while ! curl -s http://localhost:8899 >/dev/null 2>&1; do
+    show_progress "Starting Solana validator"
+    solana-test-validator --reset --quiet > logs/validator.log 2>&1 &
+    VALIDATOR_PID=$!
+    echo "Validator PID: $VALIDATOR_PID"
+    
+    # Wait for validator with timeout
+    show_progress "Waiting for validator to start"
+    timeout=30
+    while ! curl -s http://localhost:8899 >/dev/null 2>&1 && [ $timeout -gt 0 ]; do
         sleep 1
+        ((timeout--))
     done
-    echo "{{GREEN}}✓ Validator ready{{NC}}"
+    
+    if [ $timeout -eq 0 ]; then
+        exit_with_code $EXIT_SERVICE_START_FAILURE "Validator failed to start within 30 seconds"
+    else
+        show_success "Validator ready"
+    fi
 
 # Deploy program to localnet
 deploy: _build
@@ -154,9 +171,14 @@ deploy: _build
         exit 1
     fi
     
-    echo "{{YELLOW}}Deploying program...{{NC}}"
-    solana program deploy "$PROGRAM_SO" --program-id "$KEYPAIR_PATH"
-    echo "{{GREEN}}✓ Program deployed: $PROGRAM_ID{{NC}}"
+    show_deploying
+    if solana program deploy "$PROGRAM_SO" --program-id "$KEYPAIR_PATH"; then
+        show_success "Program deployed: $PROGRAM_ID"
+        # Export for other commands
+        echo "$PROGRAM_ID" > e2e/.deployed-program-id
+    else
+        exit_with_code $EXIT_DEPLOY_FAILURE "Failed to deploy program"
+    fi
 
 # Generate IDL
 idl-generate:
@@ -359,6 +381,12 @@ run: stop
     # 2. Deploy program
     just -f e2e/justfile deploy
     
+    # Read the deployed program ID
+    if [[ -f "e2e/.deployed-program-id" ]]; then
+        export FEELS_PROGRAM_ID=$(cat e2e/.deployed-program-id)
+        echo "Using deployed program ID: $FEELS_PROGRAM_ID"
+    fi
+    
     # 3. Generate IDL
     just -f e2e/justfile idl-generate
     
@@ -374,17 +402,34 @@ run: stop
     
     # 6. Initialize protocol
     echo "{{YELLOW}}Initializing protocol...{{NC}}"
-    just -f e2e/justfile init-protocol > logs/protocol-init.log 2>&1
-    echo "{{GREEN}}✓ Protocol initialized{{NC}}"
+    if [[ -n "${FEELS_PROGRAM_ID:-}" ]]; then
+        FEELS_PROGRAM_ID=$FEELS_PROGRAM_ID just -f e2e/justfile init-protocol > logs/protocol-init.log 2>&1
+        echo "{{GREEN}}✓ Protocol initialized{{NC}}"
+    else
+        echo "{{RED}}Error: Program ID not found{{NC}}"
+        exit 1
+    fi
     
     # 7. Start streaming adapter
-    just -f e2e/justfile streaming
+    if [[ -n "${FEELS_PROGRAM_ID:-}" ]]; then
+        FEELS_PROGRAM_ID=$FEELS_PROGRAM_ID just -f e2e/justfile streaming
+    else
+        just -f e2e/justfile streaming
+    fi
     
     # 8. Start indexer
-    just -f e2e/justfile indexer
+    if [[ -n "${FEELS_PROGRAM_ID:-}" ]]; then
+        FEELS_PROGRAM_ID=$FEELS_PROGRAM_ID just -f e2e/justfile indexer
+    else
+        just -f e2e/justfile indexer
+    fi
     
     # 9. Start app
-    just -f e2e/justfile app
+    if [[ -n "${FEELS_PROGRAM_ID:-}" ]]; then
+        FEELS_PROGRAM_ID=$FEELS_PROGRAM_ID just -f e2e/justfile app
+    else
+        just -f e2e/justfile app
+    fi
     
     # Print summary
     echo ""

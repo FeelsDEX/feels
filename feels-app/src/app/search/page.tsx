@@ -3,9 +3,9 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTokenSearch } from '@/hooks/useTokenSearch';
-import { TokenSearchResults } from '@/components/TokenSearchResults';
-import { TokenSearchFilters } from '@/components/TokenSearchFilters';
-import { SearchPageHeader } from '@/components/SearchPageHeader';
+import { TokenSearchResults } from '@/components/search/TokenSearchResults';
+import { TokenSearchFilters } from '@/components/search/TokenSearchFilters';
+import { SearchPageHeader } from '@/components/search/SearchPageHeader';
 import { Button } from '@/components/ui/button';
 import { Filter, Search } from 'lucide-react';
 

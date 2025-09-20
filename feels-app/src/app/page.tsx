@@ -3,11 +3,11 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { HOMEPAGE_TOKENS } from '@/lib/homepageTokens';
+import { FEELS_TOKENS, getHomepageTokens } from '@/data/tokens';
 import { useDataSource } from '@/contexts/DataSourceContext';
 import { useMarkets } from '@/hooks/useIndexer';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
-import { IndexedMarket } from '@/lib/indexer-client';
+import { IndexedMarket } from '@/services/indexer-client';
 import { useState, useEffect } from 'react';
 
 export default function HomePage() {
@@ -16,12 +16,13 @@ export default function HomePage() {
     refreshInterval: 30000, // Refresh every 30 seconds
     enabled: dataSource === 'indexer'
   });
-  const [displayTokens, setDisplayTokens] = useState<typeof HOMEPAGE_TOKENS[0][]>(HOMEPAGE_TOKENS as any);
+  const homepageTokens = getHomepageTokens();
+  const [displayTokens, setDisplayTokens] = useState<typeof homepageTokens[0][]>(homepageTokens as any);
 
-  // Transform markets data to match HOMEPAGE_TOKENS format
+  // Transform markets data to match homepage tokens format
   useEffect(() => {
     if (dataSource === 'test') {
-      setDisplayTokens([...HOMEPAGE_TOKENS]);
+      setDisplayTokens([...homepageTokens]);
       return;
     }
     
@@ -56,7 +57,7 @@ export default function HomePage() {
   }, [dataSource, markets]);
 
   // Show loading state when fetching indexer data
-  if (dataSource === 'indexer' && loading && displayTokens === HOMEPAGE_TOKENS) {
+  if (dataSource === 'indexer' && loading && displayTokens.length === homepageTokens.length) {
     return (
       <div id="home-page" className="container mx-auto px-4 pt-4 pb-8">
         <div className="flex items-center justify-center p-8">
@@ -77,7 +78,7 @@ export default function HomePage() {
           <p className="text-muted-foreground">Failed to load market data. Showing test data instead.</p>
         </div>
         <div id="token-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {HOMEPAGE_TOKENS.map((token, index) => (
+          {homepageTokens.map((token, index) => (
           <Link 
             key={token.id} 
             href={`/token/${token.address}`} 

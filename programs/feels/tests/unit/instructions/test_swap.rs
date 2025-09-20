@@ -21,7 +21,6 @@ fn test_swap_validation() {
         minimum_amount_out: 100,
         max_ticks_crossed: 0,
         max_total_fee_bps: 0,
-        exact_output_mode: false,
     };
 
     assert_eq!(
@@ -35,7 +34,6 @@ fn test_swap_validation() {
         minimum_amount_out: 0,
         max_ticks_crossed: 0,
         max_total_fee_bps: 10001, // > 100%
-        exact_output_mode: false,
     };
 
     assert_eq!(
@@ -72,7 +70,6 @@ fn test_swap_slippage_protection() {
         minimum_amount_out: 900,
         max_ticks_crossed: 0,
         max_total_fee_bps: 0,
-        exact_output_mode: false,
     };
 
     // Test successful swap (meets minimum)
@@ -98,7 +95,6 @@ fn test_swap_tick_crossing_limit() {
         minimum_amount_out: 0,
         max_ticks_crossed: 10,
         max_total_fee_bps: 0,
-        exact_output_mode: false,
     };
 
     // Test within limit
@@ -131,7 +127,6 @@ fn test_swap_fee_cap() {
         minimum_amount_out: 0,
         max_ticks_crossed: 0,
         max_total_fee_bps: 100, // 1% cap
-        exact_output_mode: false,
     };
 
     // Test within cap

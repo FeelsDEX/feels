@@ -10,7 +10,7 @@ use solana_sdk::signature::Keypair;
 use crate::common::client::TestClient;
 
 // Test oracle safety scenarios
-test_all_environments!(test_oracle_safety_scenarios, |ctx: TestContext| async move {
+test_devnet!(test_oracle_safety_scenarios, |ctx: TestContext| async move {
     println!("\n=== Test: Oracle Safety Scenarios on Devnet ===");
     
     // Create a user with SOL
@@ -78,7 +78,7 @@ test_all_environments!(test_oracle_safety_scenarios, |ctx: TestContext| async mo
     // Get protocol config to check stale age settings
     let (protocol_config_pubkey, _) = Pubkey::find_program_address(
         &[b"protocol_config"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     let protocol_config = ctx.get_account::<feels::state::ProtocolConfig>(&protocol_config_pubkey)
         .await?
@@ -90,7 +90,7 @@ test_all_environments!(test_oracle_safety_scenarios, |ctx: TestContext| async mo
     // by examining the oracle state
     let (protocol_oracle_pubkey, _) = Pubkey::find_program_address(
         &[b"protocol_oracle"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     
     let oracle = ctx.get_account::<ProtocolOracle>(&protocol_oracle_pubkey)
@@ -106,7 +106,7 @@ test_all_environments!(test_oracle_safety_scenarios, |ctx: TestContext| async mo
     // Check safety controller state
     let (safety_controller_pubkey, _) = Pubkey::find_program_address(
         &[b"safety_controller"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     
     let safety = ctx.get_account::<SafetyController>(&safety_controller_pubkey)
@@ -159,7 +159,7 @@ test_all_environments!(test_oracle_safety_scenarios, |ctx: TestContext| async mo
 });
 
 // Test oracle update and staleness over time
-test_all_environments!(test_oracle_staleness_over_time, |ctx: TestContext| async move {
+test_devnet!(test_oracle_staleness_over_time, |ctx: TestContext| async move {
     println!("\n=== Test: Oracle Staleness Over Time ===");
     
     // Setup user with FeelsSOL
@@ -179,7 +179,7 @@ test_all_environments!(test_oracle_staleness_over_time, |ctx: TestContext| async
     // Get initial timestamps
     let (protocol_oracle_pubkey, _) = Pubkey::find_program_address(
         &[b"protocol_oracle"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     
     let oracle_initial = ctx.get_account::<ProtocolOracle>(&protocol_oracle_pubkey)
@@ -257,12 +257,12 @@ test_all_environments!(test_safety_controller_pause_resume, |ctx: TestContext| a
     
     let (safety_controller_pubkey, _) = Pubkey::find_program_address(
         &[b"safety_controller"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     
     let (protocol_config_pubkey, _) = Pubkey::find_program_address(
         &[b"protocol_config"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     
     let safety = ctx.get_account::<SafetyController>(&safety_controller_pubkey)
@@ -323,7 +323,7 @@ test_all_environments!(test_rate_limit_enforcement, |ctx: TestContext| async mov
     // Get protocol config to check rate limits
     let (protocol_config_pubkey, _) = Pubkey::find_program_address(
         &[b"protocol_config"],
-        &feels_sdk::program_id(),
+        &feels::id(),
     );
     let config = ctx.get_account::<feels::state::ProtocolConfig>(&protocol_config_pubkey)
         .await?

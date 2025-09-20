@@ -588,7 +588,6 @@ impl SwapHelper {
             minimum_amount_out: 0,
             max_ticks_crossed: 10,
             max_total_fee_bps: 0,
-            exact_output_mode: false,
         };
 
         let data = {
@@ -717,7 +716,6 @@ impl SwapHelper {
             minimum_amount_out: amount_out,
             max_ticks_crossed: 0,
             max_total_fee_bps: 1000, // 10% max fee
-            exact_output_mode: true,
         };
 
         // Build accounts for instruction

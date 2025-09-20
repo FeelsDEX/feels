@@ -126,9 +126,9 @@ await program.methods.deposit(amount).accounts({
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui
-- **State Management**: React Hooks + Context
+- **State Management**: React Hooks, Context, and Tanstack React Query for server state caching
 - **Wallet Integration**: Solana Wallet Adapter
-- **HTTP Client**: Axios + React Query
+- **HTTP Client**: Custom hooks with useState/useEffect for indexer data, React Query setup available
 
 ### Blockchain Integration
 - **Network**: Solana (Devnet/Mainnet)
@@ -138,7 +138,7 @@ await program.methods.deposit(amount).accounts({
 
 ### External APIs
 - **Jupiter Swap API**: Cross-DEX aggregation
-- **Feels Indexer API**: Real-time protocol data
+- **Feels Indexer API**: Real-time protocol data (using custom hooks with useState/useEffect)
 - **Solana RPC**: Blockchain state queries
 
 ## Getting Started
@@ -205,22 +205,42 @@ feels-app/
 │   ├── app/                    # Next.js App Router
 │   │   ├── globals.css         # Global styles + shadcn/ui
 │   │   ├── layout.tsx          # Root layout with providers
-│   │   └── page.tsx            # Main application page
+│   │   ├── page.tsx            # Main application page
+│   │   ├── token/[address]/    # Token detail pages
+│   │   ├── search/             # Search functionality
+│   │   └── control/            # Admin/control panel
 │   ├── components/             # React components
 │   │   ├── ui/                 # shadcn/ui components
-│   │   ├── UnifiedSwapInterface.tsx  # Main swap interface
-│   │   ├── WalletProvider.tsx  # Wallet connection
-│   │   ├── ProtocolStats.tsx   # Protocol statistics
-│   │   ├── MarketInfo.tsx      # Market data display
-│   │   └── RecentSwaps.tsx     # Transaction history
-│   ├── lib/                    # Utility libraries
-│   │   ├── sdk.ts              # Feels Protocol SDK wrapper
-│   │   ├── jupiter-client.ts   # Jupiter API client
+│   │   ├── common/             # Common components (NavBar, ConnectionStatus)
+│   │   ├── market/             # Market-related components
+│   │   ├── trading/            # Trading interface components
+│   │   ├── search/             # Search components
+│   │   └── wallet/             # Wallet integration components
+│   ├── contexts/               # React contexts
+│   │   ├── DataSourceContext.tsx # Data source management
+│   │   └── SearchContext.tsx   # Search state management
+│   ├── assets/                 # Static assets
+│   │   ├── fonts/              # Custom fonts
+│   │   └── images/             # Images and icons
+│   ├── services/               # API clients
 │   │   ├── indexer-client.ts   # Indexer API client
+│   │   ├── jupiter-client.ts   # Jupiter API client
+│   │   └── connection.ts       # Solana connection
+│   ├── sdk/                    # Protocol SDK wrappers
+│   │   ├── sdk.ts              # Feels Protocol SDK wrapper
+│   │   └── program-workaround.ts # Program compatibility
+│   ├── hooks/                  # React hooks
+│   │   ├── useIndexer.ts       # Indexer data hooks
+│   │   ├── useTokenSearch.ts   # Token search functionality
+│   │   └── use-toast.ts        # Toast notifications
+│   ├── utils/                  # Utility functions
 │   │   ├── swap-router.ts      # Multi-hop routing engine
+│   │   ├── token-search.ts     # Token search utilities
 │   │   └── utils.ts            # shadcn/ui utilities
-│   └── hooks/                  # React hooks
-│       └── useIndexer.ts       # Indexer data hooks
+│   ├── constants/              # Application constants
+│   ├── config/                 # Configuration files
+│   ├── types/                  # TypeScript type definitions
+│   └── idl/                    # Anchor IDL files
 ├── components.json             # shadcn/ui configuration
 ├── tailwind.config.js          # Tailwind + shadcn/ui config
 ├── tsconfig.json              # TypeScript configuration
@@ -317,7 +337,7 @@ const useMarketData = (marketAddress: string) => {
 
 ```bash
 # Development
-pnpm dev              # Start development server
+pnpm dev              # Start development server (runs both Next.js and DevBridge via npm-run-all)
 pnpm build            # Build for production
 pnpm start            # Start production server
 
