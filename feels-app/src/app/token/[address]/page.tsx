@@ -1,49 +1,46 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { Connection } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getConnection } from '@/services/connection';
 
-// Import SDK wrapper
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
 import { createFeelsProgram } from '@/sdk/program-workaround';
 import { TokenInfo } from '@/services/jupiter-client';
 import { FEELS_TOKENS, getTokenByAddress } from '@/data/tokens';
-import { ExternalLink } from 'lucide-react';
 import { TokenHolders } from '@/components/market/TokenHolders';
 import { TokenMetrics } from '@/components/market/TokenMetrics';
+import { useDataSource } from '@/contexts/DataSourceContext';
 
 // Dynamic imports to prevent SSR issues
-const SwapInterface = dynamic(() => import('@/components/SwapInterface').then(mod => ({ default: mod.SwapInterface })), {
+const SwapInterface = dynamic(() => import('@/components/trading/SwapInterface').then(mod => ({ default: mod.SwapInterface })), {
   ssr: false,
   loading: () => <div className="animate-pulse h-[500px] bg-muted rounded-lg" />
 });
 
-const PriceChart = dynamic(() => import('@/components/PriceChart').then(mod => ({ default: mod.PriceChart })), {
+const PriceChart = dynamic(() => import('@/components/trading/PriceChart').then(mod => ({ default: mod.PriceChart })), {
   ssr: false,
   loading: () => <div className="animate-pulse h-[400px] bg-muted rounded-lg" />
 });
 
-const LiquidityVisualization = dynamic(() => import('@/components/LiquidityVisualization').then(mod => ({ default: mod.LiquidityVisualization })), {
+const LiquidityVisualization = dynamic(() => import('@/components/trading/LiquidityVisualization').then(mod => ({ default: mod.LiquidityVisualization })), {
   ssr: false,
   loading: () => <div className="animate-pulse h-[400px] bg-muted rounded-lg" />
 });
 
-const RecentTradesList = dynamic(() => import('@/components/RecentTradesList').then(mod => ({ default: mod.RecentTradesList })), {
+const RecentTradesList = dynamic(() => import('@/components/trading/RecentTradesList').then(mod => ({ default: mod.RecentTradesList })), {
   ssr: false,
   loading: () => <div className="animate-pulse h-[300px] bg-muted rounded-lg" />
 });
 
 function TokenSwapPageContent() {
-  const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
+  const { publicKey, signTransaction, signAllTransactions } = useWallet();
   const params = useParams();
-  const searchParams = useSearchParams();
-  const tokenAddress = params.address as string;
-  const fromParam = searchParams.get('from');
+  // const searchParams = useSearchParams(); // Commented out as unused
+  const tokenAddress = params['address'] as string;
+  // const fromParam = searchParams.get('from'); // Commented out as unused
   
   // Use singleton connection
   const connection = getConnection();
@@ -106,12 +103,16 @@ function TokenSwapPageContent() {
     initializeProgram();
   }, [publicKey, signTransaction, signAllTransactions, connection]);
 
+  // Get data source to check if we're in test mode
+  const { dataSource } = useDataSource();
+  
   // Validate that the token is a Feels token
   const tokenData = getTokenByAddress(tokenAddress);
   const token = getTokenByAddress(tokenAddress);
-  const isValidFeelsToken = token && token.isFeelsToken;
+  // In test mode, allow all tokens. In indexer mode, only allow Feels tokens
+  const isValidToken = token && (dataSource === 'test' || token.isFeelsToken);
 
-  if (!isValidFeelsToken) {
+  if (!isValidToken) {
     return (
       <div id="token-not-found-container" className="container mx-auto px-4 py-8">
         <div className="flex justify-center">
@@ -237,7 +238,7 @@ function TokenSwapPageContent() {
                       symbol: selectedToken.symbol,
                       name: selectedToken.name,
                       decimals: selectedToken.decimals,
-                      logoURI: selectedToken.logoURI,
+                      logoURI: selectedToken.imageUrl,
                       isFeelsToken: true
                     });
                   }

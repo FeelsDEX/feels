@@ -20,7 +20,7 @@ export function useIntersectionObserver({
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry && entry.isIntersecting) {
           setIsIntersecting(true);
           // Once visible, stop observing to prevent re-renders
           observer.unobserve(target);

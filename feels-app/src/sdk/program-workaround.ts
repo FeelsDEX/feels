@@ -1,6 +1,6 @@
-import { PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
-import { FEELS_IDL, FEELS_PROGRAM_ID } from './sdk';
+import { PublicKey } from '@solana/web3.js';
+import { FEELS_IDL } from './sdk';
 
 // Create Feels program instance with workaround for Anchor 0.31.1 account parsing issues
 export function createFeelsProgram(provider: AnchorProvider): Program {

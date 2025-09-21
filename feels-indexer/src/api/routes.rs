@@ -2,7 +2,7 @@
 
 use super::{ApiState, handlers::*};
 use axum::{
-    routing::get,
+    routing::{get, post},
     Router,
 };
 
@@ -24,6 +24,10 @@ pub fn create_swap_routes() -> Router<ApiState> {
         .route("/swaps", get(list_swaps))
         .route("/swaps/:signature", get(get_swap))
         .route("/users/:address/swaps", get(get_user_swaps))
+        .route("/swap/quote", get(crate::api::swap_simulation::get_swap_quote))
+        .route("/swap/simulate", post(crate::api::swap_simulation::simulate_swap))
+        .route("/swap/build", post(crate::api::transaction_builder::build_swap_transaction))
+        .route("/tx/simulate", post(crate::api::transaction_builder::simulate_transaction))
 }
 
 /// Create position-related routes
@@ -40,4 +44,11 @@ pub fn create_protocol_routes() -> Router<ApiState> {
         .route("/protocol/stats", get(get_protocol_stats))
         .route("/protocol/markets", get(get_protocol_markets))
         .route("/protocol/volume", get(get_protocol_volume))
+}
+
+/// Create token-related routes
+pub fn create_token_routes() -> Router<ApiState> {
+    Router::new()
+        .route("/tokens/:mint/balance/:wallet", get(crate::api::token_balance::get_token_balance))
+        .route("/wallets/:wallet/balances", get(crate::api::token_balance::get_wallet_balances))
 }

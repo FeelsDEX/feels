@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 import { Program, Idl } from '@coral-xyz/anchor';
 import { useMarkets } from '@/hooks/useIndexer';
 
@@ -10,7 +9,7 @@ interface MarketInfoProps {
   connection: Connection;
 }
 
-export function MarketInfo({ program, connection }: MarketInfoProps) {
+export function MarketInfo({}: MarketInfoProps) {
   // Use indexer data for markets
   const marketsData = useMarkets({
     refreshInterval: 15000, // Refresh every 15 seconds

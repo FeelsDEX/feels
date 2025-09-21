@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Connection } from '@solana/web3.js';
 import { Program, Idl } from '@coral-xyz/anchor';
 import { useProtocolStats } from '@/hooks/useIndexer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Activity, Users, DollarSign, Percent, Clock, Zap, AlertCircle, CheckCircle, Shield } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, Percent, Clock, Zap, AlertCircle, CheckCircle, Shield } from 'lucide-react';
 
 interface FeelsMetricsProps {
   program: Program<Idl> | null;
@@ -21,7 +20,7 @@ interface Metric {
   format?: 'number' | 'currency' | 'percent' | 'time' | 'dual' | 'text';
 }
 
-export function FeelsMetrics({ program, connection }: FeelsMetricsProps) {
+export function FeelsMetrics({}: FeelsMetricsProps) {
   const indexerStats = useProtocolStats({
     refreshInterval: 10000, // Refresh every 10 seconds
   });

@@ -8,3 +8,5 @@ pub mod test_position_metadata;
 pub mod test_protocol_pdas;
 pub mod test_simple_flow;
 pub mod test_token_lifecycle;
+pub mod test_indexer_pipeline_e2e;
+pub mod test_frontend_devbridge_e2e;

@@ -162,7 +162,9 @@ impl InMemoryClient {
         if !std::path::Path::new(metaplex_path).exists() {
             // Try to download it
             println!("Metaplex binary not found, attempting to download...");
-            let output = std::process::Command::new("../../scripts/download-metaplex.sh")
+            let output = std::process::Command::new("bash")
+                .arg("-c")
+                .arg("cd ../../.. && ./scripts/download-metaplex.sh")
                 .output()
                 .expect("Failed to run download-metaplex.sh");
 

@@ -22,7 +22,14 @@ pub struct MarketResponse {
 /// Response for market statistics
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MarketStatsResponse {
-    pub stats: MarketStats,
+    pub market_address: String,
+    pub volume_24h: f64,
+    pub fees_24h: f64,
+    pub swaps_24h: u64,
+    pub unique_traders_24h: u64,
+    pub price_change_24h: f64,
+    pub liquidity_change_24h: f64,
+    pub timestamp: i64,
 }
 
 /// Response for swaps list
@@ -58,16 +65,22 @@ pub struct PositionResponse {
 /// Response for floor information
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FloorResponse {
-    pub floor: IndexedFloor,
+    pub market_address: String,
+    pub current_floor_tick: i32,
+    pub current_floor_price: f64,
+    pub jitosol_reserves: String,
+    pub circulating_supply: String,
+    pub last_update_slot: u64,
+    pub timestamp: i64,
 }
 
 /// Response for OHLCV data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OHLCVResponse {
+    pub market_address: String,
     pub candles: Vec<OHLCVCandle>,
     pub interval: String,
-    pub start_time: i64,
-    pub end_time: i64,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,17 +107,18 @@ pub struct ProtocolStatsResponse {
 /// Response for volume data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VolumeResponse {
-    pub volume_data: Vec<VolumePoint>,
+    pub daily_volumes: Vec<DailyVolume>,
     pub total_volume: f64,
-    pub start_time: i64,
-    pub end_time: i64,
+    pub total_fees: f64,
+    pub timestamp: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VolumePoint {
-    pub timestamp: i64,
+pub struct DailyVolume {
+    pub date: String,
     pub volume: f64,
-    pub fee_volume: f64,
+    pub fees: f64,
+    pub swap_count: u64,
 }
 
 /// Error response

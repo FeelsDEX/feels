@@ -65,6 +65,7 @@ export function TokenSelectDropdown({
         behavior: 'instant'
       });
     }
+    return undefined;
   }, [selectedIndex]);
   
   if (!searchQuery.trim()) return null;

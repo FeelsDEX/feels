@@ -20,7 +20,7 @@ use anchor_lang::prelude::*;
 use instructions::*;
 use state::PoolPhase;
 
-declare_id!("5EeFL2XscLKAg9HWq5Ssbo3h4nBWHb1qcRZK6V6yt18S");
+declare_id!("EyuKq8zyGxgvjNazRuvZ9uvVoKTDS3isk3GF9rcX3gmp");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*

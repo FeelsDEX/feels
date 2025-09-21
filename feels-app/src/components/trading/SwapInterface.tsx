@@ -1,14 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Connection } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Settings, ChevronDown, Search, X } from 'lucide-react';
+import { Settings, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
-
-// UI components
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { FEELS_TOKENS } from '@/data/tokens';
 import { TokenSearchModal } from '@/components/search/TokenSearchModal';
 import { TokenSearchResult } from '@/utils/token-search';
@@ -33,8 +29,6 @@ interface TokenInfo {
 type TabType = 'swap' | 'limit';
 
 export function SwapInterface({
-  connection,
-  program,
   onSwapComplete,
   initialFromToken,
   initialToToken,
@@ -55,8 +49,17 @@ export function SwapInterface({
     const defaultFromToken = FEELS_TOKENS.find(t => t.symbol === (initialFromToken || 'SOL'));
     const defaultToToken = FEELS_TOKENS.find(t => t.symbol === (initialToToken || 'USDC'));
     
-    setFromToken(defaultFromToken || FEELS_TOKENS[0]);
-    setToToken(defaultToToken || FEELS_TOKENS[1]);
+    // Map FEELS_TOKENS to TokenInfo format with logoURI
+    const mapToTokenInfo = (token: typeof FEELS_TOKENS[0]): TokenInfo => ({
+      address: token.address,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      logoURI: token.imageUrl, // Map imageUrl to logoURI
+    });
+    
+    setFromToken(mapToTokenInfo(defaultFromToken || FEELS_TOKENS[0]));
+    setToToken(mapToTokenInfo(defaultToToken || FEELS_TOKENS[1]));
   }, [initialFromToken, initialToToken]);
 
   // Initialize limit price when switching to limit tab
@@ -65,6 +68,7 @@ export function SwapInterface({
       // Set a mock market price
       setLimitPrice('50.00'); // Mock SOL/USDC price
     }
+    return undefined;
   }, [activeTab, limitPrice]);
 
 

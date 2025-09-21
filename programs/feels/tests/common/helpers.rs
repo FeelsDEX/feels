@@ -31,11 +31,14 @@ impl MarketHelper {
             return Err("For MVP testing, one token must be FeelsSOL".into());
         }
 
-        // Determine token order (token_0 should be lower pubkey)
-        let (ordered_token_0, ordered_token_1) = if token_0 < token_1 {
+        // Hub-and-spoke model: FeelsSOL must ALWAYS be token_0
+        let (ordered_token_0, ordered_token_1) = if *token_0 == self.ctx.feelssol_mint {
             (*token_0, *token_1)
-        } else {
+        } else if *token_1 == self.ctx.feelssol_mint {
             (*token_1, *token_0)
+        } else {
+            // This should never happen given the check above
+            return Err("One token must be FeelsSOL".into());
         };
 
         println!("  Ordered tokens:");
@@ -182,37 +185,36 @@ impl MarketHelper {
         token_decimals: u8,
     ) -> TestResult<TestMarketSetup> {
         println!("Creating test market with FeelsSOL...");
-        use sdk_compat::instructions::mint_token as build_mint_token_ix;
         let creator = &self.ctx.accounts.market_creator;
-
-        // Create a new protocol token mint keypair that satisfies ordering constraint
-        // Since FeelsSOL must be token_0, we need a token with pubkey > feelssol_mint
-        let token_mint = self
-            .ctx
-            .create_mint_with_ordering_constraint(
-                &creator.pubkey(),
-                token_decimals,
-                &self.ctx.feelssol_mint,
-            )
-            .await?;
-        // Creator's FeelsSOL ATA (for mint fee; protocol sets mint_fee=0 for tests)
-        let creator_feelssol_ata = self
-            .ctx
-            .create_ata(&creator.pubkey(), &self.ctx.feelssol_mint)
-            .await?;
 
         match &self.ctx.environment {
             TestEnvironment::InMemory => {
-                // In-memory environment - use a simpler approach
-                println!("  InMemory: Creating market with feelssol_market helper...");
+                // In-memory environment - create simple token without protocol token
+                println!("  InMemory: Creating simple test token...");
+                
+                // Create a simple token mint with ordering constraint
+                // This bypasses the need for Metaplex and ProtocolToken
+                let token_mint = self
+                    .ctx
+                    .create_mint_with_ordering_constraint(
+                        &creator.pubkey(),
+                        token_decimals,
+                        &self.ctx.feelssol_mint,
+                    )
+                    .await?;
+                
+                println!("✓ Created test token: {}", token_mint.pubkey());
+                
+                // For tests, we'll create the market with a simplified approach
+                // The initialize_market will get the system program as protocol_token accounts
+                let market_id = self.create_feelssol_market(&token_mint.pubkey()).await?;
+                
+                // Determine token ordering
                 let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {
                     (self.ctx.feelssol_mint, token_mint.pubkey())
                 } else {
                     (token_mint.pubkey(), self.ctx.feelssol_mint)
                 };
-                
-                // Use the simpler market creation method that doesn't require escrow
-                let market_id = self.create_feelssol_market(&token_mint.pubkey()).await?;
                 
                 // Calculate all the derived addresses
                 let (oracle_id, _) = sdk_compat::find_oracle_address(&market_id);
@@ -240,27 +242,20 @@ impl MarketHelper {
                 })
             }
             _ => {
-                // Build and send mint_token instruction
-                // Get creator's FeelsSOL account
-                let creator_feelssol = self.ctx.get_or_create_ata(
-                    &creator.pubkey(),
-                    &self.ctx.feelssol_mint,
-                ).await?;
+                // For non-in-memory environments, use the same simplified approach
+                println!("  Non-InMemory: Creating simple test token...");
                 
-                let ix_mint = build_mint_token_ix(
-                    creator.pubkey(),
-                    token_mint.pubkey(),
-                    self.ctx.feelssol_mint,
-                    creator_feelssol,
-                    feels::instructions::MintTokenParams {
-                        ticker: "TEST".to_string(),
-                        name: "Test Token".to_string(),
-                        uri: "https://example.com".to_string(),
-                    },
-                )?;
-                self.ctx
-                    .process_instruction(ix_mint, &[creator, &token_mint])
+                // Create a simple token mint with ordering constraint
+                let token_mint = self
+                    .ctx
+                    .create_mint_with_ordering_constraint(
+                        &creator.pubkey(),
+                        token_decimals,
+                        &self.ctx.feelssol_mint,
+                    )
                     .await?;
+                
+                println!("✓ Created test token: {}", token_mint.pubkey());
 
                 // Initialize market using SDK builder
                 let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {

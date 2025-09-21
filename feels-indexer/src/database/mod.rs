@@ -56,6 +56,15 @@ impl DatabaseManager {
             tantivy: Arc::new(tantivy),
         })
     }
+    
+    // Forward market methods to PostgreSQL
+    pub async fn get_market(&self, address: &solana_sdk::pubkey::Pubkey) -> Result<Option<crate::models::Market>> {
+        self.postgres.get_market_by_address(&address.to_string()).await
+    }
+    
+    pub async fn find_market_by_tokens(&self, token_0: &solana_sdk::pubkey::Pubkey, token_1: &solana_sdk::pubkey::Pubkey) -> Result<Option<crate::models::Market>> {
+        self.postgres.find_market_by_tokens(&token_0.to_string(), &token_1.to_string()).await
+    }
 
     pub async fn health_check(&self) -> Result<DatabaseHealth> {
         let postgres_healthy = self.postgres.health_check().await.is_ok();

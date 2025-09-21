@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
-import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ExternalLink } from 'lucide-react';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
@@ -34,7 +33,7 @@ interface CreatedToken {
 
 export default function AccountPage() {
   const params = useParams();
-  const address = params.address as string;
+  const address = params['address'] as string;
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
@@ -49,7 +48,7 @@ export default function AccountPage() {
     const fetchAccountData = async () => {
       try {
         // Validate address
-        const pubkey = new PublicKey(address);
+        new PublicKey(address); // Throws if invalid
         
         // TODO: Replace with actual API calls to your indexer
         // For now, using mock data

@@ -30,12 +30,12 @@
       help = "Anchor and SBF development tools";
     }
     {package = inputs'.zero-nix.packages.setup-solana;}
-    # Metaplex download script
+    # Metaplex download command
     {
       name = "download-metaplex";
       help = "Download Metaplex Token Metadata program for tests";
       command = ''
-        ${pkgs.bash}/bin/bash ./scripts/download-metaplex.sh
+        ${pkgs.just}/bin/just -f justfiles/solana-tools.just download-metaplex
       '';
     }
   ];

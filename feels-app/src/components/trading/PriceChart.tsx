@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ExternalLink, TrendingUp, BarChart3 } from 'lucide-react';
-import Link from 'next/link';
+import { ExternalLink, BarChart3 } from 'lucide-react';
 import { init, dispose, registerIndicator } from 'klinecharts';
-import type { Chart, KLineData, IndicatorFigure } from 'klinecharts';
+import type { Chart, KLineData } from 'klinecharts';
 
 interface ExtendedKLineData extends KLineData {
   floor: number;
@@ -28,7 +26,7 @@ interface PriceChartProps {
 type TimeRange = 'all' | '1M' | '1W' | '1D' | '1H';
 
 export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDataUpdate }: PriceChartProps) {
-  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const [timeRange] = useState<TimeRange>('all');
   const [loading, setLoading] = useState(false);
   const [allPriceData, setAllPriceData] = useState<ExtendedKLineData[]>([]);
   const [filteredPriceData, setFilteredPriceData] = useState<ExtendedKLineData[]>([]);
@@ -81,7 +79,7 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
         baseFloor = baseFloor * (1 + floorIncrease);
         
         // Generate OHLC data
-        const open = i === 0 ? basePrice : candles[i - 1].close;
+        const open = i === 0 ? basePrice : (candles[i - 1]?.close ?? basePrice);
         
         // Intrabar movements
         const intraDayVolatility = volatility * 0.5;
@@ -104,15 +102,15 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
       const close = validPrices[validPrices.length - 1];
       
       // Update base price for next candle
-      basePrice = close;
+      basePrice = close ?? basePrice;
       
       // Calculate GTWAP (simplified - using close prices)
-      gtwapSum += close * (i + 1);
+      gtwapSum += (close ?? 0) * (i + 1);
       gtwapWeight += (i + 1);
       const gtwap = gtwapSum / gtwapWeight;
       
       // Generate volume (higher when price moves more)
-      const priceChange = Math.abs((close - open) / open);
+      const priceChange = Math.abs(((close ?? open) - open) / open);
       const baseVolume = 100000;
       const volume = baseVolume * (1 + priceChange * 10) * (0.5 + seededRandom(baseSeed + i * 1000 + 4));
       
@@ -121,7 +119,7 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
         open,
         high,
         low,
-        close,
+        close: close ?? 0,
         volume: Math.round(volume),
         floor: baseFloor,
         gtwap
@@ -367,12 +365,12 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
     setFilteredPriceData(filtered);
     if (filtered.length > 0) {
       const lastCandle = filtered[filtered.length - 1];
-      setCurrentPrice(lastCandle.close);
-      setCurrentFloor(lastCandle.floor);
-      setCurrentGtwap(lastCandle.gtwap);
+      setCurrentPrice(lastCandle?.close ?? 0);
+      setCurrentFloor(lastCandle?.floor ?? 0);
+      setCurrentGtwap(lastCandle?.gtwap ?? 0);
       
       // Notify parent component
-      if (onPriceDataUpdate) {
+      if (onPriceDataUpdate && lastCandle) {
         onPriceDataUpdate({
           currentPrice: lastCandle.close,
           currentFloor: lastCandle.floor,
@@ -393,9 +391,9 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
     
     if (data.length > 0) {
       const lastCandle = data[data.length - 1];
-      setCurrentPrice(lastCandle.close);
-      setCurrentFloor(lastCandle.floor);
-      setCurrentGtwap(lastCandle.gtwap);
+      setCurrentPrice(lastCandle?.close ?? 0);
+      setCurrentFloor(lastCandle?.floor ?? 0);
+      setCurrentGtwap(lastCandle?.gtwap ?? 0);
     }
   }, [timeRange, allPriceData, isFeelsToken]);
 
@@ -550,8 +548,8 @@ export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDat
   // Calculate price change percentage
   const calculatePriceChange = () => {
     if (filteredPriceData.length < 2) return 0;
-    const firstPrice = filteredPriceData[0].close;
-    const lastPrice = filteredPriceData[filteredPriceData.length - 1].close;
+    const firstPrice = filteredPriceData[0]?.close ?? 0;
+    const lastPrice = filteredPriceData[filteredPriceData.length - 1]?.close ?? 0;
     return ((lastPrice - firstPrice) / firstPrice) * 100;
   };
 

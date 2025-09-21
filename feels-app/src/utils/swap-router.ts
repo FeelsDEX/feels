@@ -9,9 +9,9 @@
  * Supports both single transactions and multi-step flows.
  */
 
-import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { Connection, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { Program, Idl } from '@coral-xyz/anchor';
-import { JupiterClient, TOKENS } from './jupiter-client';
+import { JupiterClient, TOKENS } from '../services/jupiter-client';
 
 export interface SwapStep {
   id: string;
@@ -315,7 +315,7 @@ export class SwapRouter {
   /**
    * Execute a Feels Protocol step
    */
-  private async executeFeelsStep(step: SwapStep, wallet: any): Promise<string> {
+  private async executeFeelsStep(step: SwapStep, _wallet: any): Promise<string> {
     if (!this.program) {
       throw new Error('Feels Protocol program not available');
     }

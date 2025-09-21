@@ -190,21 +190,21 @@ fn validate_swap_accounts(ctx: &Context<Swap>) -> Result<()> {
     let market = &ctx.accounts.market;
     
     // Validate vaults
-    let (vault_0_pda, vault_0_bump) = Pubkey::find_program_address(
-        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0"],
+    let vault_0_pda = Pubkey::create_program_address(
+        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0", &[market.vault_0_bump]],
         ctx.program_id,
-    );
+    ).map_err(|_| FeelsError::InvalidPDA)?;
     require!(
-        vault_0_pda == ctx.accounts.vault_0.key() && vault_0_bump == market.vault_0_bump,
+        vault_0_pda == ctx.accounts.vault_0.key(),
         FeelsError::InvalidVault
     );
     
-    let (vault_1_pda, vault_1_bump) = Pubkey::find_program_address(
-        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1"],
+    let vault_1_pda = Pubkey::create_program_address(
+        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1", &[market.vault_1_bump]],
         ctx.program_id,
-    );
+    ).map_err(|_| FeelsError::InvalidPDA)?;
     require!(
-        vault_1_pda == ctx.accounts.vault_1.key() && vault_1_bump == market.vault_1_bump,
+        vault_1_pda == ctx.accounts.vault_1.key(),
         FeelsError::InvalidVault
     );
     
@@ -219,12 +219,12 @@ fn validate_swap_accounts(ctx: &Context<Swap>) -> Result<()> {
     );
     
     // Validate oracle
-    let (oracle_pda, oracle_bump) = Pubkey::find_program_address(
-        &[b"oracle", market.key().as_ref()],
+    let oracle_pda = Pubkey::create_program_address(
+        &[b"oracle", market.key().as_ref(), &[market.oracle_bump]],
         ctx.program_id,
-    );
+    ).map_err(|_| FeelsError::InvalidPDA)?;
     require!(
-        oracle_pda == ctx.accounts.oracle.key() && oracle_bump == market.oracle_bump,
+        oracle_pda == ctx.accounts.oracle.key(),
         FeelsError::InvalidOracle
     );
     

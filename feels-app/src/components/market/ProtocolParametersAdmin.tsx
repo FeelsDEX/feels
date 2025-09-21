@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Connection, PublicKey, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { Program, Idl, BN } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,8 +34,8 @@ interface Parameter {
 
 // PDAs for protocol accounts
 const PROTOCOL_CONFIG_SEED = Buffer.from('protocol_config');
-const PROTOCOL_ORACLE_SEED = Buffer.from('protocol_oracle');
-const SAFETY_CONTROLLER_SEED = Buffer.from('safety_controller');
+// const PROTOCOL_ORACLE_SEED = Buffer.from('protocol_oracle'); // Commented out as unused
+// const SAFETY_CONTROLLER_SEED = Buffer.from('safety_controller'); // Commented out as unused
 
 export function ProtocolParametersAdmin({ program, connection }: ProtocolParametersAdminProps) {
   const { publicKey } = useWallet();
@@ -217,13 +217,14 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
         return;
       }
 
+      // Derive protocol config PDA
+      const [protocolConfigPDA] = PublicKey.findProgramAddressSync(
+        [PROTOCOL_CONFIG_SEED],
+        program.programId
+      );
+
       try {
         setLoadError(null);
-        // Derive protocol config PDA
-        const [protocolConfigPDA] = PublicKey.findProgramAddressSync(
-          [PROTOCOL_CONFIG_SEED],
-          program.programId
-        );
 
         // Check if program has the expected structure
         // Try different possible account names due to IDL generation variations
@@ -334,28 +335,27 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
 
       // Build update parameters with optional fields
       const updateParams = {
-        mintFee: pendingChanges.mint_fee ? new BN(pendingChanges.mint_fee * 1e9) : null,
-        treasury: pendingChanges.treasury ? new PublicKey(pendingChanges.treasury) : null,
-        authority: pendingChanges.authority ? new PublicKey(pendingChanges.authority) : null,
-        defaultProtocolFeeRate: pendingChanges.default_protocol_fee_rate || null,
-        defaultCreatorFeeRate: pendingChanges.default_creator_fee_rate || null,
-        maxProtocolFeeRate: pendingChanges.max_protocol_fee_rate || null,
-        tokenExpirationSeconds: pendingChanges.token_expiration_seconds || null,
-        dexTwapUpdater: pendingChanges.dex_twap_updater ? new PublicKey(pendingChanges.dex_twap_updater) : null,
-        depegThresholdBps: pendingChanges.depeg_threshold_bps || null,
-        depegRequiredObs: pendingChanges.depeg_required_obs || null,
-        clearRequiredObs: pendingChanges.clear_required_obs || null,
-        dexTwapWindowSecs: pendingChanges.dex_twap_window_secs || null,
-        dexTwapStaleAgeSecs: pendingChanges.dex_twap_stale_age_secs || null,
-        dexWhitelist: pendingChanges.dex_whitelist || null,
-        mintPerSlotCapFeelssol: pendingChanges.mint_per_slot_cap_feelssol ? new BN(pendingChanges.mint_per_slot_cap_feelssol * 1e9) : null,
-        redeemPerSlotCapFeelssol: pendingChanges.redeem_per_slot_cap_feelssol ? new BN(pendingChanges.redeem_per_slot_cap_feelssol * 1e9) : null,
+        mintFee: pendingChanges['mint_fee'] ? new BN(pendingChanges['mint_fee'] * 1e9) : null,
+        treasury: pendingChanges['treasury'] ? new PublicKey(pendingChanges['treasury']) : null,
+        authority: pendingChanges['authority'] ? new PublicKey(pendingChanges['authority']) : null,
+        defaultProtocolFeeRate: pendingChanges['default_protocol_fee_rate'] || null,
+        defaultCreatorFeeRate: pendingChanges['default_creator_fee_rate'] || null,
+        maxProtocolFeeRate: pendingChanges['max_protocol_fee_rate'] || null,
+        tokenExpirationSeconds: pendingChanges['token_expiration_seconds'] || null,
+        dexTwapUpdater: pendingChanges['dex_twap_updater'] ? new PublicKey(pendingChanges['dex_twap_updater']) : null,
+        depegThresholdBps: pendingChanges['depeg_threshold_bps'] || null,
+        depegRequiredObs: pendingChanges['depeg_required_obs'] || null,
+        clearRequiredObs: pendingChanges['clear_required_obs'] || null,
+        dexTwapWindowSecs: pendingChanges['dex_twap_window_secs'] || null,
+        dexTwapStaleAgeSecs: pendingChanges['dex_twap_stale_age_secs'] || null,
+        dexWhitelist: pendingChanges['dex_whitelist'] || null,
+        mintPerSlotCapFeelssol: pendingChanges['mint_per_slot_cap_feelssol'] ? new BN(pendingChanges['mint_per_slot_cap_feelssol'] * 1e9) : null,
+        redeemPerSlotCapFeelssol: pendingChanges['redeem_per_slot_cap_feelssol'] ? new BN(pendingChanges['redeem_per_slot_cap_feelssol'] * 1e9) : null,
       };
 
       // Submit update transaction
       // @ts-ignore - Dynamic Anchor types
-      const tx = await program.methods
-        .updateProtocol(updateParams)
+      const tx = await program.methods['updateProtocol'](updateParams)
         .accounts({
           authority: publicKey,
           protocolConfig: protocolConfigPDA,

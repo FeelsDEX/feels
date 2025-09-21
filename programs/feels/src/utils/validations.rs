@@ -180,6 +180,30 @@ pub fn validate_pda_with_bump(
     Ok(())
 }
 
+/// Validate PDA with known bump - optimized version
+/// Use this when you already have the bump stored in state
+pub fn validate_pda_with_known_bump(
+    account_key: &Pubkey,
+    seeds: &[&[u8]],
+    bump: u8,
+    program_id: &Pubkey,
+) -> Result<()> {
+    let mut seeds_with_bump = seeds.to_vec();
+    let bump_array = [bump];
+    seeds_with_bump.push(&bump_array);
+    
+    let expected_key = Pubkey::create_program_address(
+        &seeds_with_bump,
+        program_id
+    ).map_err(|_| FeelsError::InvalidPDA)?;
+    
+    require!(
+        account_key == &expected_key,
+        FeelsError::InvalidPDA
+    );
+    Ok(())
+}
+
 /// Validate time-based constraints
 pub fn validate_time_constraint(
     current_timestamp: i64,

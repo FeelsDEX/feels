@@ -15,7 +15,7 @@ export function NavBar() {
   const [mounted, setMounted] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [swapTokenAddress, setSwapTokenAddress] = useState<string>('');
-  const { publicKey, disconnect, connected } = useWallet();
+  const { publicKey, connected } = useWallet();
   const router = useRouter();
   const pathname = usePathname();
   const { isTokenSearchModalOpen } = useSearchContext();
@@ -98,15 +98,17 @@ export function NavBar() {
           {/* Left side - Logo and Nav */}
           <div id="nav-left-section" className="flex items-center flex-1">
             <div id="logo-wrapper" className="px-6 py-3">
-              <h1 id="feels-logo" className="text-5xl font-medium -mt-0.5" style={{
-                color: 'transparent',
-                WebkitTextStroke: '1.5px hsl(var(--primary))',
-                ...({
-                  textStroke: '1.5px hsl(var(--primary))'
-                } as React.CSSProperties)
-              }}>
-                feels
-              </h1>
+              <Link href="/" className="block">
+                <h1 id="feels-logo" className="text-5xl font-medium -mt-0.5 cursor-pointer" style={{
+                  color: 'transparent',
+                  WebkitTextStroke: '1.5px hsl(var(--primary))',
+                  ...({
+                    textStroke: '1.5px hsl(var(--primary))'
+                  } as React.CSSProperties)
+                }}>
+                  feels
+                </h1>
+              </Link>
             </div>
             
             {/* Left Nav */}

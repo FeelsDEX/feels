@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { FEELS_TOKENS, getHomepageTokens } from '@/data/tokens';
+import { getHomepageTokens } from '@/data/tokens';
 import { useDataSource } from '@/contexts/DataSourceContext';
 import { useMarkets } from '@/hooks/useIndexer';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
@@ -45,11 +45,15 @@ export default function HomePage() {
         name: `Market ${index + 1}`,
         address: market.token_1, // Use token_1 as the address (non-FeelsSOL token)
         imageUrl: feelsGuyImage.src, // Using feels guy as placeholder
+        decimals: 9, // Standard SPL token decimals
         price: price,
         priceChange24h: 0, // Would calculate from historical data
         marketCap: '$0', // Would calculate from circulating supply
         volume24h: '$0', // Would get from market stats
-        launched: 'Live'
+        launched: 'Live',
+        description: `Market ${index + 1} token`, // Added description
+        isFeelsToken: false, // Added isFeelsToken
+        creator: 'Unknown' // Added creator (market.creator not available)
       };
     });
 

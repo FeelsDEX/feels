@@ -67,9 +67,8 @@ integer-sqrt = { version = "0.1" }
   
   devEnv = {
     welcomeMessage = ''
-Feels Protocol Development Environment
-======================================
-    '';
+      echo "Feels Protocol Development Environment"
+      echo "======================================"'';
     
     # Additional custom commands for the project
     customCommands = [];

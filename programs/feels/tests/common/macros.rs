@@ -18,7 +18,6 @@ macro_rules! test_all_environments {
             }
 
             #[tokio::test]
-            #[ignore = "Run with RUN_DEVNET_TESTS=1"]
             async fn devnet() {
                 use $crate::common::{should_run_devnet_tests, TestContext, TestEnvironment};
                 if !should_run_devnet_tests() {
@@ -33,7 +32,6 @@ macro_rules! test_all_environments {
             }
 
             #[tokio::test]
-            #[ignore = "Run with RUN_LOCALNET_TESTS=1"]
             async fn localnet() {
                 use crate::common::{should_run_localnet_tests, TestContext, TestEnvironment};
                 if !should_run_localnet_tests() {
@@ -71,7 +69,6 @@ macro_rules! test_in_memory {
 macro_rules! test_devnet {
     ($name:ident, $test_fn:expr) => {
         #[tokio::test]
-        #[ignore = "Run with RUN_DEVNET_TESTS=1"]
         async fn $name() {
             use $crate::common::{should_run_devnet_tests, TestContext, TestEnvironment};
             if !should_run_devnet_tests() {

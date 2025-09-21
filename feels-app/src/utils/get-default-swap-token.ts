@@ -27,5 +27,5 @@ export function getDefaultSwapToken(): string {
   
   // Pick a random Feels token
   const randomIndex = Math.floor(Math.random() * eligibleTokens.length);
-  return eligibleTokens[randomIndex].address;
+  return eligibleTokens[randomIndex]?.address || '';
 }

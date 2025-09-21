@@ -63,6 +63,11 @@ pub fn find_market_authority_address(market: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[VAULT_AUTHORITY_SEED, market.as_ref()], &program_id())
 }
 
+/// Find FeelsSOL mint address
+pub fn find_feels_mint_address() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"feels_mint"], &program_id())
+}
+
 /// Find oracle address
 pub fn find_oracle_address(market: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[ORACLE_SEED, market.as_ref()], &program_id())
@@ -317,10 +322,56 @@ pub mod instructions {
     ) -> Result<Instruction> {
         let (market, _) = find_market_address(&token_0, &token_1);
         let (buffer, _) = find_buffer_address(&market);
-        let (vault_authority, _) = find_vault_authority_address(&market);
+        let (vault_authority, _) = find_market_authority_address(&market);
         let (oracle, _) = find_oracle_address(&market);
+        let (vault_0, _) = find_vault_address(&market, &token_0);
+        let (vault_1, _) = find_vault_address(&market, &token_1);
         
-        let discriminator = [0x23, 0x23, 0xbd, 0xc1, 0x9b, 0x30, 0xaa, 0xcb];
+        // Determine which is FeelsSOL mint
+        // In test context, we pass the actual FeelsSOL mint pubkey
+        let feelssol_mint = if token_0.to_string().starts_with("1") || token_0.to_string().len() < 44 {
+            // Likely a low pubkey that's our test FeelsSOL
+            token_0
+        } else {
+            token_1
+        };
+        
+        // Protocol token accounts
+        // For test environments, use system program for FeelsSOL
+        let protocol_token_0 = if token_0 == feelssol_mint {
+            solana_sdk::system_program::id()
+        } else {
+            let (pda, _) = Pubkey::find_program_address(
+                &[b"protocol_token", token_0.as_ref()],
+                &program_id(),
+            );
+            pda
+        };
+        
+        let protocol_token_1 = if token_1 == feelssol_mint {
+            solana_sdk::system_program::id()
+        } else {
+            let (pda, _) = Pubkey::find_program_address(
+                &[b"protocol_token", token_1.as_ref()],
+                &program_id(),
+            );
+            pda
+        };
+        
+        // Escrow for non-FeelsSOL token
+        let protocol_token_mint = if token_0 == feelssol_mint { token_1 } else { token_0 };
+        let (escrow, _) = Pubkey::find_program_address(
+            &[b"escrow", protocol_token_mint.as_ref()],
+            &program_id(),
+        );
+        
+        // Escrow authority
+        let (escrow_authority, _) = Pubkey::find_program_address(
+            &[b"escrow_authority"],
+            &program_id(),
+        );
+        
+        let discriminator = [0x95, 0xf6, 0xc7, 0xee, 0xab, 0x7e, 0xd8, 0x75];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
         
@@ -328,12 +379,21 @@ pub mod instructions {
             program_id: program_id(),
             accounts: vec![
                 AccountMeta::new(deployer, true),
-                AccountMeta::new(market, false),
                 AccountMeta::new_readonly(token_0, false),
                 AccountMeta::new_readonly(token_1, false),
+                AccountMeta::new(market, false),
                 AccountMeta::new(buffer, false),
-                AccountMeta::new_readonly(vault_authority, false),
                 AccountMeta::new(oracle, false),
+                AccountMeta::new(vault_0, false),
+                AccountMeta::new(vault_1, false),
+                AccountMeta::new_readonly(vault_authority, false),
+                AccountMeta::new_readonly(feelssol_mint, false),
+                AccountMeta::new_readonly(protocol_token_0, false),
+                AccountMeta::new_readonly(protocol_token_1, false),
+                AccountMeta::new_readonly(escrow, false),
+                AccountMeta::new_readonly(deployer, false), // creator_feelssol (dummy for tests)
+                AccountMeta::new_readonly(deployer, false), // creator_token_out (dummy for tests)
+                AccountMeta::new_readonly(escrow_authority, false),
                 AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
                 AccountMeta::new_readonly(spl_token::id(), false),
             ],

@@ -51,6 +51,7 @@ pub mod client;
 pub mod core;
 pub mod instructions;
 pub mod protocol;
+pub mod jupiter;
 
 // Re-export main types and functions
 pub use client::FeelsClient;
@@ -62,6 +63,12 @@ pub use protocol::{
     align_tick, calculate_fee_amount, calculate_price_impact_bps, calculate_swap_fees,
     find_market_address, is_full_range_only, sqrt_price_to_price, sqrt_price_to_tick,
     tick_to_sqrt_price,
+};
+
+// Re-export Jupiter integration types
+pub use jupiter::{
+    MarketState, ParsedTickArray, SwapSimulator, TickArrayFormat, TickArrayLoader, TickArrayView,
+    TickData, parse_tick_array_auto,
 };
 
 /// SDK version

@@ -126,6 +126,19 @@ impl PostgresManager {
 
         Ok(markets)
     }
+    
+    /// Find market by token pair
+    pub async fn find_market_by_tokens(&self, token_0: &str, token_1: &str) -> Result<Option<Market>> {
+        let market = sqlx::query_as!(
+            Market,
+            "SELECT * FROM markets WHERE token_0 = $1 AND token_1 = $2",
+            token_0,
+            token_1
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(market)
+    }
 
     /// Insert a new swap
     pub async fn insert_swap(&self, swap: &Swap) -> Result<()> {

@@ -8,7 +8,7 @@
  * https://dev.jup.ag/docs/swap-api/
  */
 
-import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { Connection, VersionedTransaction } from '@solana/web3.js';
 import solanaLogoImage from '@/assets/images/solana_logo.svg';
 
 // Jupiter API base URL
@@ -228,7 +228,7 @@ export class JupiterClient {
    */
   async deserializeSwapTransaction(
     swapTransaction: string,
-    connection: Connection
+    _connection: Connection
   ): Promise<VersionedTransaction> {
     const transactionBuf = Buffer.from(swapTransaction, 'base64');
     return VersionedTransaction.deserialize(transactionBuf);
@@ -259,7 +259,7 @@ export class JupiterClient {
     }
 
     // Get quote and swap transaction
-    const { quote, swap } = await this.getQuoteAndSwap(
+    const { swap } = await this.getQuoteAndSwap(
       inputMint,
       outputMint,
       amount,

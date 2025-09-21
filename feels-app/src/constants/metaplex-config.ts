@@ -28,7 +28,7 @@ if (typeof window !== 'undefined') {
  * Get the Metaplex Token Metadata program ID for the current network
  */
 export function getMetaplexProgramId(): PublicKey {
-  const network = process.env.NEXT_PUBLIC_NETWORK || 'localnet';
+  const network = process.env['NEXT_PUBLIC_NETWORK'] || 'localnet';
   
   if (network === 'localnet' && localnetMetaplexId) {
     return new PublicKey(localnetMetaplexId);

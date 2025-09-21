@@ -3,8 +3,14 @@
 mod handlers;
 mod routes;
 mod responses;
+mod swap_simulation;
+mod token_balance;
+mod transaction_builder;
+mod websocket;
+mod jupiter_integration;
 
 pub use routes::*;
+pub use websocket::UpdateBroadcaster;
 
 use crate::config::ApiConfig;
 use crate::database::DatabaseManager;
@@ -69,6 +75,9 @@ async fn create_app(db_manager: Arc<DatabaseManager>) -> Result<Router> {
         .merge(create_swap_routes())
         .merge(create_position_routes())
         .merge(create_protocol_routes())
+        .merge(create_token_routes())
+        .merge(websocket::create_websocket_routes())
+        .merge(jupiter_integration::create_jupiter_routes())
         .route("/health", get(health_handler))
         .with_state(api_state)
         .layer(
@@ -99,10 +108,14 @@ async fn metrics_handler() -> Result<String, StatusCode> {
 #[derive(Clone)]
 pub struct ApiState {
     pub db_manager: Arc<DatabaseManager>,
+    pub db: Arc<DatabaseManager>, // Alias for compatibility
 }
 
 impl ApiState {
     pub fn new(db_manager: Arc<DatabaseManager>) -> Self {
-        Self { db_manager }
+        Self { 
+            db: db_manager.clone(),
+            db_manager,
+        }
     }
 }

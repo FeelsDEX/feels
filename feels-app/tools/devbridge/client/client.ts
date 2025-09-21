@@ -10,7 +10,7 @@ interface DevBridgeAPI {
   connected: boolean;
 }
 
-const DEVBRIDGE_URL = process.env.NEXT_PUBLIC_DEVBRIDGE_URL || 'ws://127.0.0.1:54040';
+const DEVBRIDGE_URL = process.env['NEXT_PUBLIC_DEVBRIDGE_URL'] || 'ws://127.0.0.1:54040';
 
 // Command registry
 const commandRegistry = new Map<string, (args?: any) => Promise<any> | any>();
@@ -49,7 +49,7 @@ export function useDevBridge(): DevBridgeAPI {
 
   useEffect(() => {
     // Only connect if explicitly enabled and in development
-    const enabled = process.env.NEXT_PUBLIC_DEVBRIDGE_ENABLED === 'true' && 
+    const enabled = process.env['NEXT_PUBLIC_DEVBRIDGE_ENABLED'] === 'true' && 
                    process.env.NODE_ENV !== 'production';
     
     if (!enabled) {
@@ -155,6 +155,7 @@ export function useDevBridge(): DevBridgeAPI {
       };
     } catch (error) {
       console.error('[devbridge] Failed to initialize:', error);
+      return undefined;
     }
   }, []);
 

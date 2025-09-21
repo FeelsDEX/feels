@@ -48,11 +48,14 @@ export function TokenSearchFilters({
                 onCheckedChange={() => toggleFacet('marketCapRange', bucket.label)}
               />
               <span className="text-sm flex-1">{bucket.label}</span>
-              {facetCounts.marketCapRange?.[bucket.label] > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {facetCounts.marketCapRange[bucket.label]}
-                </Badge>
-              )}
+              {(() => {
+                const count = facetCounts['marketCapRange']?.[bucket.label];
+                return count && count > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
             </label>
           ))}
         </div>
@@ -72,11 +75,14 @@ export function TokenSearchFilters({
                 onCheckedChange={() => toggleFacet('volumeRange', bucket.label)}
               />
               <span className="text-sm flex-1">{bucket.label}</span>
-              {facetCounts.volumeRange?.[bucket.label] > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {facetCounts.volumeRange[bucket.label]}
-                </Badge>
-              )}
+              {(() => {
+                const count = facetCounts['volumeRange']?.[bucket.label];
+                return count && count > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
             </label>
           ))}
         </div>
@@ -96,11 +102,14 @@ export function TokenSearchFilters({
                 onCheckedChange={() => toggleFacet('priceChange', bucket.label)}
               />
               <span className="text-sm flex-1">{bucket.label}</span>
-              {facetCounts.priceChange?.[bucket.label] > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {facetCounts.priceChange[bucket.label]}
-                </Badge>
-              )}
+              {(() => {
+                const count = facetCounts['priceChange']?.[bucket.label];
+                return count && count > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
             </label>
           ))}
         </div>
@@ -120,11 +129,14 @@ export function TokenSearchFilters({
                 onCheckedChange={() => toggleFacet('age', bucket.label)}
               />
               <span className="text-sm flex-1">{bucket.label}</span>
-              {facetCounts.age?.[bucket.label] > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {facetCounts.age[bucket.label]}
-                </Badge>
-              )}
+              {(() => {
+                const count = facetCounts['age']?.[bucket.label];
+                return count && count > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
             </label>
           ))}
         </div>
@@ -144,11 +156,14 @@ export function TokenSearchFilters({
                 onCheckedChange={() => toggleFacet('features', option.value)}
               />
               <span className="text-sm flex-1">{option.label}</span>
-              {facetCounts.features?.[option.value] > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {facetCounts.features[option.value]}
-                </Badge>
-              )}
+              {(() => {
+                const count = facetCounts['features']?.[option.value];
+                return count && count > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
             </label>
           ))}
         </div>

@@ -76,7 +76,7 @@ build-localnet:
     
     # Try localnet build if Metaplex is available
     if [[ -n "{{metaplex-id}}" ]] && [[ -f "e2e/build-localnet.sh" ]]; then
-        show_progress "Building with localnet feature"
+        echo "{{YELLOW}}Building with localnet feature...{{NC}}"
         if ./e2e/build-localnet.sh > logs/build.log 2>&1; then
             BUILD_SUCCESS=true
         fi
@@ -85,7 +85,7 @@ build-localnet:
     # Try standard builds
     if [[ "$BUILD_SUCCESS" != "true" ]]; then
         if command -v just &> /dev/null; then
-            show_building
+            echo "{{YELLOW}}Building programs...{{NC}}"
             if just build > logs/build.log 2>&1; then
                 BUILD_SUCCESS=true
             fi
@@ -93,14 +93,15 @@ build-localnet:
     fi
     
     if [[ "$BUILD_SUCCESS" != "true" ]] && command -v anchor &> /dev/null; then
-        show_progress "Building with anchor (fallback)"
+        echo "{{YELLOW}}Building with anchor (fallback)...{{NC}}"
         if RUSTFLAGS="-C opt-level=2 -C inline-threshold=0" anchor build --no-idl > logs/build.log 2>&1; then
             BUILD_SUCCESS=true
         fi
     fi
     
     if [[ "$BUILD_SUCCESS" != "true" ]]; then
-        exit_with_code $EXIT_BUILD_FAILURE "Build failed. Check logs/build.log"
+        echo "{{RED}}Error: Build failed. Check logs/build.log{{NC}}"
+        exit 1
     fi
 
 # Start Solana validator
@@ -111,18 +112,18 @@ validator:
     mkdir -p logs
     
     # Check if validator is already running
-    if check_service "http://localhost:8899" "Solana validator"; then
-        show_warning "Validator already running on port 8899"
-        exit $EXIT_SUCCESS
+    if curl -s http://localhost:8899 >/dev/null 2>&1; then
+        echo "{{YELLOW}}Validator already running on port 8899{{NC}}"
+        exit 0
     fi
     
-    show_progress "Starting Solana validator"
+    echo "{{YELLOW}}Starting Solana validator...{{NC}}"
     solana-test-validator --reset --quiet > logs/validator.log 2>&1 &
     VALIDATOR_PID=$!
     echo "Validator PID: $VALIDATOR_PID"
     
     # Wait for validator with timeout
-    show_progress "Waiting for validator to start"
+    echo "{{YELLOW}}Waiting for validator to start...{{NC}}"
     timeout=30
     while ! curl -s http://localhost:8899 >/dev/null 2>&1 && [ $timeout -gt 0 ]; do
         sleep 1
@@ -130,9 +131,10 @@ validator:
     done
     
     if [ $timeout -eq 0 ]; then
-        exit_with_code $EXIT_SERVICE_START_FAILURE "Validator failed to start within 30 seconds"
+        echo "{{RED}}Error: Validator failed to start within 30 seconds{{NC}}"
+        exit 1
     else
-        show_success "Validator ready"
+        echo "{{GREEN}}✓ Validator ready{{NC}}"
     fi
 
 # Deploy program to localnet
@@ -171,13 +173,14 @@ deploy: _build
         exit 1
     fi
     
-    show_deploying
+    echo "{{YELLOW}}Deploying program...{{NC}}"
     if solana program deploy "$PROGRAM_SO" --program-id "$KEYPAIR_PATH"; then
-        show_success "Program deployed: $PROGRAM_ID"
+        echo "{{GREEN}}✓ Program deployed: $PROGRAM_ID{{NC}}"
         # Export for other commands
         echo "$PROGRAM_ID" > e2e/.deployed-program-id
     else
-        exit_with_code $EXIT_DEPLOY_FAILURE "Failed to deploy program"
+        echo "{{RED}}Error: Failed to deploy program{{NC}}"
+        exit 1
     fi
 
 # Generate IDL
@@ -458,3 +461,46 @@ check:
     @just status
     @echo ""
     @echo "To view logs: just logs [service]"
+
+# Check services for pipeline tests
+check-services:
+    #!/usr/bin/env bash
+    all_running=true
+    
+    # Check validator
+    if curl -s http://localhost:8899 >/dev/null 2>&1; then
+        echo "✓ Solana Validator: Running"
+    else
+        echo "✗ Solana Validator: Not running"
+        all_running=false
+    fi
+    
+    # Check indexer
+    if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+        echo "✓ Indexer: Running"
+    else
+        echo "✗ Indexer: Not running"
+        all_running=false
+    fi
+    
+    # Check frontend
+    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+        echo "✓ Frontend App: Running"
+    else
+        echo "✗ Frontend App: Not running"
+        all_running=false
+    fi
+    
+    # Check streaming adapter
+    if curl -s http://localhost:10000/status >/dev/null 2>&1; then
+        echo "✓ Streaming Adapter: Running"
+    else
+        echo "✗ Streaming Adapter: Not running"
+        all_running=false
+    fi
+    
+    if [ "$all_running" = false ]; then
+        echo ""
+        echo "{{YELLOW}}⚠️  Not all services are running{{NC}}"
+        echo "To start the full E2E environment: just dev-e2e"
+    fi

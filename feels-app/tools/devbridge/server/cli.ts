@@ -4,7 +4,7 @@ import { createInterface } from 'readline';
 import { BridgeMsg } from '../types';
 import { randomUUID } from 'crypto';
 
-const DEVBRIDGE_URL = process.env.DEVBRIDGE_URL || 'ws://127.0.0.1:54040';
+const DEVBRIDGE_URL = process.env['DEVBRIDGE_URL'] || 'ws://127.0.0.1:54040';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -119,7 +119,7 @@ async function main() {
         const cmdArgs = args[2] ? JSON.parse(args[2]) : undefined;
         
         try {
-          const result = await sendCommand(cmdName, cmdArgs);
+          const result = await sendCommand(cmdName ?? '', cmdArgs);
           console.log(JSON.stringify(result, null, 2));
           process.exit(0);
         } catch (error) {
@@ -137,11 +137,11 @@ async function main() {
         const sendName = args[1];
         const argsIndex = args.indexOf('--args');
         const sendArgs = argsIndex >= 0 && args[argsIndex + 1] 
-          ? JSON.parse(args[argsIndex + 1]) 
+          ? JSON.parse(args[argsIndex + 1] ?? '{}') 
           : undefined;
         
         try {
-          const result = await sendCommand(sendName, sendArgs);
+          const result = await sendCommand(sendName ?? '', sendArgs);
           console.log('Success:', result);
           process.exit(0);
         } catch (error) {
@@ -167,7 +167,7 @@ async function main() {
           }
           
           try {
-            const result = await sendCommand(parts[0], parts[1] ? JSON.parse(parts[1]) : undefined);
+            const result = await sendCommand(parts[0] ?? '', parts[1] ? JSON.parse(parts[1]) : undefined);
             console.log('Result:', JSON.stringify(result, null, 2));
           } catch (error) {
             console.error('Error:', error);

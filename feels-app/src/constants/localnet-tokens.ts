@@ -55,7 +55,7 @@ export async function ensureLocalnetTokensLoaded(): Promise<void> {
  * Get the JitoSOL mint address for the current environment
  */
 export function getJitoSOLMint(): PublicKey {
-  const network = process.env.NEXT_PUBLIC_NETWORK || 'localnet';
+  const network = process.env['NEXT_PUBLIC_NETWORK'] || 'localnet';
   
   if (network === 'mainnet-beta') {
     // Real JitoSOL on mainnet
@@ -77,6 +77,6 @@ export function getFeelsSOLMint(): PublicKey {
  * Check if we're using localnet tokens
  */
 export function isLocalnet(): boolean {
-  const network = process.env.NEXT_PUBLIC_NETWORK || 'localnet';
+  const network = process.env['NEXT_PUBLIC_NETWORK'] || 'localnet';
   return network === 'localnet';
 }

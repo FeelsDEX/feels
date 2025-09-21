@@ -2,12 +2,9 @@ import { useState, useMemo, useCallback } from 'react';
 import Fuse from 'fuse.js';
 import { useQuery } from '@tanstack/react-query';
 import { 
-  TokenSearchResult, 
   SelectedFacets, 
   convertToSearchResult,
-  searchFacets,
-  FacetBucket,
-  DateFacetBucket
+  searchFacets
 } from '@/utils/token-search';
 import { FEELS_TOKENS } from '@/data/tokens';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
@@ -61,12 +58,14 @@ export function useTokenSearch(initialQuery: string = '') {
             marketCap: 0,
             marketCapFormatted: '$0',
             volume24h: 0,
-            volumeFormatted: '$0',
+            volume24hFormatted: '$0', // Added missing property
+            launched: 'Live', // Added missing property
             launchDate: new Date(),
             isVerified: true,
             hasLiquidity: parseFloat(market.liquidity) > 0,
             isGraduated: market.phase === 'SteadyState',
-            _score: undefined
+            description: `Token ${index + 1}`, // Added missing property
+            decimals: 9 // Added missing property
           };
         });
       }
@@ -89,10 +88,7 @@ export function useTokenSearch(initialQuery: string = '') {
     if (searchQuery.trim()) {
       const fuse = new Fuse(results, fuseOptions);
       const searchResults = fuse.search(searchQuery);
-      results = searchResults.map(result => ({
-        ...result.item,
-        _score: result.score
-      }));
+      results = searchResults.map(result => result.item);
     }
     
     // Apply facet filters
@@ -205,21 +201,21 @@ export function useTokenSearch(initialQuery: string = '') {
       // Market cap counts
       searchFacets.marketCapRange.buckets.forEach(bucket => {
         if (token.marketCap >= bucket.min && token.marketCap < bucket.max) {
-          counts.marketCapRange[bucket.label] = (counts.marketCapRange[bucket.label] || 0) + 1;
+          if (counts['marketCapRange']) counts['marketCapRange'][bucket.label] = (counts['marketCapRange']?.[bucket.label] || 0) + 1;
         }
       });
       
       // Volume counts
       searchFacets.volumeRange.buckets.forEach(bucket => {
         if (token.volume24h >= bucket.min && token.volume24h < bucket.max) {
-          counts.volumeRange[bucket.label] = (counts.volumeRange[bucket.label] || 0) + 1;
+          if (counts['volumeRange']) counts['volumeRange'][bucket.label] = (counts['volumeRange']?.[bucket.label] || 0) + 1;
         }
       });
       
       // Price change counts
       searchFacets.priceChange.buckets.forEach(bucket => {
         if (token.priceChange24h >= bucket.min && token.priceChange24h < bucket.max) {
-          counts.priceChange[bucket.label] = (counts.priceChange[bucket.label] || 0) + 1;
+          if (counts['priceChange']) counts['priceChange'][bucket.label] = (counts['priceChange']?.[bucket.label] || 0) + 1;
         }
       });
       
@@ -232,14 +228,14 @@ export function useTokenSearch(initialQuery: string = '') {
         const minDays = prevBucket ? prevBucket.days : 0;
         
         if (bucket.days === Infinity ? ageInDays > 7 : (ageInDays >= minDays && ageInDays < bucket.days)) {
-          counts.age[bucket.label] = (counts.age[bucket.label] || 0) + 1;
+          if (counts['age']) counts['age'][bucket.label] = (counts['age']?.[bucket.label] || 0) + 1;
         }
       });
       
       // Feature counts
-      if (token.isVerified) counts.features['verified'] = (counts.features['verified'] || 0) + 1;
-      if (token.hasLiquidity) counts.features['hasLiquidity'] = (counts.features['hasLiquidity'] || 0) + 1;
-      if (token.isGraduated) counts.features['graduated'] = (counts.features['graduated'] || 0) + 1;
+      if (token.isVerified && counts['features']) counts['features']['verified'] = (counts['features']?.['verified'] || 0) + 1;
+      if (token.hasLiquidity && counts['features']) counts['features']['hasLiquidity'] = (counts['features']?.['hasLiquidity'] || 0) + 1;
+      if (token.isGraduated && counts['features']) counts['features']['graduated'] = (counts['features']?.['graduated'] || 0) + 1;
     });
     
     return counts;

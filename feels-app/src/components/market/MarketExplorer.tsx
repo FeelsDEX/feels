@@ -7,14 +7,14 @@ import { useMarkets } from '@/hooks/useIndexer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, DollarSign, Percent, Clock, Hash, Copy } from 'lucide-react';
+import { DollarSign, Percent, Clock, Hash, Copy } from 'lucide-react';
 
 interface MarketExplorerProps {
   program: Program<Idl> | null;
   connection: Connection;
 }
 
-export function MarketExplorer({ program, connection }: MarketExplorerProps) {
+export function MarketExplorer({}: MarketExplorerProps) {
   const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
   const marketsData = useMarkets({
     refreshInterval: 15000, // Refresh every 15 seconds

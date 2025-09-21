@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  FeelsIndexerClient, 
   createIndexerClient, 
   IndexedMarket, 
   IndexedSwap, 
   ProtocolStats,
   MarketStats,
-  IndexedFloor,
-  OHLCVCandle 
+  IndexedFloor
 } from '@/services/indexer-client';
 import { useDataSource } from '@/contexts/DataSourceContext';
 
@@ -61,6 +59,8 @@ export function useIndexer(options: UseIndexerOptions = {}) {
       setIsConnected(false);
       setConnectionError('Using test data mode');
     }
+    // Return undefined for other cases
+    return undefined;
   }, [checkHealth, options.enabled, dataSource]);
 
   return {
@@ -113,6 +113,8 @@ export function useProtocolStats(options: UseIndexerOptions = {}) {
       const timer = setInterval(fetchStats, interval);
       return () => clearInterval(timer);
     }
+    // Return undefined for other cases
+    return undefined;
   }, [fetchStats, isConnected, options.enabled, options.refreshInterval, dataSource]);
 
   return {
@@ -163,6 +165,8 @@ export function useMarkets(options: UseIndexerOptions = {}) {
       const timer = setInterval(fetchMarkets, interval);
       return () => clearInterval(timer);
     }
+    // Return undefined for other cases
+    return undefined;
   }, [fetchMarkets, isConnected, options.enabled, options.refreshInterval, dataSource]);
 
   return {
@@ -261,6 +265,8 @@ export function useMarketData(marketAddress: string, options: UseIndexerOptions 
       const timer = setInterval(fetchMarketData, interval);
       return () => clearInterval(timer);
     }
+    // Return undefined for other cases
+    return undefined;
   }, [fetchMarketData, isConnected, marketAddress, options.enabled, options.refreshInterval, dataSource]);
 
   return {
@@ -318,6 +324,8 @@ export function useMarketSwaps(
       const timer = setInterval(fetchSwaps, interval);
       return () => clearInterval(timer);
     }
+    // Return undefined for other cases
+    return undefined;
   }, [fetchSwaps, isConnected, marketAddress, options.enabled, options.refreshInterval, dataSource]);
 
   return {

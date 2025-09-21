@@ -16,7 +16,7 @@ interface TokenHoldersProps {
   tokenCreator?: string;
 }
 
-export function TokenHolders({ tokenAddress, tokenCreator }: TokenHoldersProps) {
+export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
   // Mock data - in production this would come from the indexer/API
   // Generate mock holders with realistic distribution
   const generateMockHolders = (): TokenHolder[] => {
@@ -50,11 +50,13 @@ export function TokenHolders({ tokenAddress, tokenCreator }: TokenHoldersProps) 
     topHolderAddresses.forEach((address, index) => {
       if (address !== tokenCreator && index < percentages.length) {
         const percentage = percentages[index];
-        holders.push({
-          address,
-          percentage
-        });
-        remainingPercentage -= percentage;
+        if (percentage !== undefined) {
+          holders.push({
+            address,
+            percentage
+          });
+          remainingPercentage -= percentage;
+        }
       }
     });
     

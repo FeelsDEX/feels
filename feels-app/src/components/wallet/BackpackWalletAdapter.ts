@@ -41,7 +41,7 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
       ? WalletReadyState.Unsupported
       : WalletReadyState.Loadable;
 
-  constructor(config: BackpackWalletAdapterConfig = {}) {
+  constructor(_config: BackpackWalletAdapterConfig = {}) {
     super();
     this._connecting = false;
     this._publicKey = null;
@@ -139,7 +139,7 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
     }
   }
 
-  async signAllTransactions<T extends Transaction | VersionedTransaction>(
+  override async signAllTransactions<T extends Transaction | VersionedTransaction>(
     transactions: T[]
   ): Promise<T[]> {
     try {

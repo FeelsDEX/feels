@@ -11,7 +11,7 @@ import { useIndexer } from '@/hooks/useIndexer';
 
 // Lazy load the CreateMarket component
 const CreateMarket = dynamic(
-  () => import('@/components/CreateMarket').then(mod => ({ default: mod.CreateMarket })),
+  () => import('@/components/market/CreateMarket').then(mod => ({ default: mod.CreateMarket })),
   { 
     ssr: false,
     loading: () => (
@@ -68,26 +68,6 @@ export default function LaunchPage() {
                   onMarketCreated={handleMarketCreated}
                 />
               </Suspense>
-            )}
-            
-            <Alert id="market-requirements-alert" className="mt-6">
-              <AlertDescription>
-                <strong>Requirements:</strong>
-                <ul id="requirements-list" className="list-disc list-inside mt-2 space-y-1">
-                  <li>You need FeelsSOL tokens for initial liquidity</li>
-                  <li>The local validator must be running</li>
-                  <li>Ensure the program is deployed</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-            
-            {!indexerConnected && (
-              <Alert id="indexer-warning-alert" className="mt-4" variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  The indexer is not running. Your market will be created on-chain but won&apos;t appear in the explorer until the indexer is started.
-                </AlertDescription>
-              </Alert>
             )}
           </div>
         ) : (

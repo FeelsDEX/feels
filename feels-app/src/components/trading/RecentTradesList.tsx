@@ -22,9 +22,9 @@ interface RecentTradesListProps {
   tokenAddress?: string;
 }
 
-export function RecentTradesList({ tokenSymbol, tokenAddress }: RecentTradesListProps) {
+export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const { data: indexerStats } = useProtocolStats({ refreshInterval: 5000 });
+  useProtocolStats({ refreshInterval: 5000 });
 
   // Generate mock trades data
   useEffect(() => {

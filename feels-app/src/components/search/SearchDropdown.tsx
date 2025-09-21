@@ -56,6 +56,7 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
         behavior: 'instant' // Changed from 'smooth' to 'instant' for snappier feel
       });
     }
+    return undefined;
   }, [selectedIndex]);
   
   if (!searchQuery.trim()) return null;

@@ -56,12 +56,12 @@ in {
       package = idlBuilderConfig.idl-build;
       help = "Build IDL for Anchor programs";
     }
-    # Metaplex download script
+    # Metaplex download command
     {
       name = "download-metaplex";
       help = "Download Metaplex Token Metadata program for tests";
       command = ''
-        ${pkgs.bash}/bin/bash ./scripts/download-metaplex.sh
+        ${pkgs.just}/bin/just -f justfiles/solana-tools.just download-metaplex
       '';
     }
   ];
@@ -163,7 +163,7 @@ in {
   devshell.startup.setup-solana = {
     deps = [];
     text = ''
-      echo "${projectConfig.devEnv.welcomeMessage}"
+      ${projectConfig.devEnv.welcomeMessage}
       echo ""
       echo "Available tools:"
       echo "  - solana: Solana CLI and validator"

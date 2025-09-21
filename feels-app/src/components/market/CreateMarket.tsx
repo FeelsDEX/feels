@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection } from '@solana/web3.js';
-import { FEELS_IDL } from '@/sdk/sdk';
 import { createFeelsProgram } from '@/sdk/program-workaround';
 import { PROTOCOL_CONSTANTS, PDA_SEEDS } from '@/constants/constants';
 import { getFeelsSOLMint, ensureLocalnetTokensLoaded } from '@/constants/localnet-tokens';
@@ -77,14 +76,12 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       // Dynamically import heavy dependencies only when needed
       const [
         { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, Keypair, Transaction },
-        { Program, AnchorProvider, BN },
-        { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync },
-        { FEELS_IDL, FEELS_PROGRAM_ID }
+        { AnchorProvider, BN },
+        { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync }
       ] = await Promise.all([
         import('@solana/web3.js'),
         import('@coral-xyz/anchor'),
-        import('@solana/spl-token'),
-        import('@/sdk/sdk')
+        import('@solana/spl-token')
       ]);
 
       // Create provider and program
@@ -183,8 +180,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
 
       // Build combined transaction with all three instructions
       // @ts-ignore - Anchor types are complex with dynamic imports
-      const mintTokenIx = await program.methods
-        .mintToken({
+      const mintTokenIx = await program.methods['mintToken']({
           ticker: params.tokenSymbol,
           name: params.tokenName,
           uri: params.tokenUri,
@@ -210,8 +206,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
         .instruction();
 
       // @ts-ignore - Anchor types are complex with dynamic imports
-      const initializeMarketIx = await program.methods
-        .initializeMarket({
+      const initializeMarketIx = await program.methods['initializeMarket']({
           baseFeesBps: params.baseFeesBps,
           tickSpacing: params.tickSpacing,
           initialSqrtPrice: new BN(params.initialSqrtPrice),
@@ -241,8 +236,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
         .instruction();
 
       // @ts-ignore - Anchor types are complex with dynamic imports
-      const deployLiquidityIx = await program.methods
-        .deployInitialLiquidity({
+      const deployLiquidityIx = await program.methods['deployInitialLiquidity']({
           tickStepSize: params.tickStepSize,
           initialBuyFeelssolAmount: new BN(params.initialBuyFeelsSOLAmount * 1e9),
         })

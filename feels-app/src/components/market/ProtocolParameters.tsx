@@ -26,7 +26,7 @@ interface Parameter {
   type?: 'fee' | 'time' | 'feature' | 'safety';
 }
 
-export function ProtocolParameters({ program, connection }: ProtocolParametersProps) {
+export function ProtocolParameters({}: ProtocolParametersProps) {
   const [loading, setLoading] = useState(true);
   
   // Mock protocol parameters based on documentation

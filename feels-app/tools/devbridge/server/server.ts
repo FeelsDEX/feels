@@ -6,7 +6,7 @@ const DEVBRIDGE_PORT = 54040;
 const DEVBRIDGE_HOST = '127.0.0.1';
 
 // Only start if enabled
-if (process.env.DEVBRIDGE_ENABLED !== 'true') {
+if (process.env['DEVBRIDGE_ENABLED'] !== 'true') {
   console.log('[devbridge] Server disabled (DEVBRIDGE_ENABLED != true)');
   process.exit(0);
 }

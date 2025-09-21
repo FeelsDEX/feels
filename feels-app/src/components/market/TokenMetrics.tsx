@@ -1,8 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ExternalLink, BarChart3 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 
 export interface TokenMetricsProps {
   currentPrice: number;
@@ -26,9 +25,7 @@ export function TokenMetrics({
   currentPrice,
   currentFloor,
   currentGtwap,
-  allPriceData,
-  tokenCreator,
-  tokenAddress
+  allPriceData
 }: TokenMetricsProps) {
   // Calculate 24h metrics
   const last96Candles = allPriceData.slice(-96); // 96 * 15min = 24h
@@ -44,8 +41,14 @@ export function TokenMetrics({
   
   const volume24h = last96Candles.reduce((sum, d) => sum + (d.volume || 0), 0);
   
-  const floorChange24h = allPriceData.length > dayAgoIndex
-    ? ((allPriceData[allPriceData.length - 1].floor - allPriceData[dayAgoIndex].floor) / allPriceData[dayAgoIndex].floor) * 100
+  const lastDataPoint = allPriceData[allPriceData.length - 1];
+  const dayAgoDataPoint = allPriceData[dayAgoIndex];
+  
+  const floorChange24h = allPriceData.length > dayAgoIndex && 
+    dayAgoDataPoint && 
+    lastDataPoint &&
+    dayAgoDataPoint.floor > 0
+    ? ((lastDataPoint.floor - dayAgoDataPoint.floor) / dayAgoDataPoint.floor) * 100
     : 0;
   
   const marketCap = currentPrice * 1000000 * 2.5; // Assuming 1M supply * 2.5 multiplier

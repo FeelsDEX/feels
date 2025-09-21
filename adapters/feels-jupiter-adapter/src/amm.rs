@@ -127,7 +127,7 @@ impl FeelsAmm {
         let result = simulator.simulate_swap(amount_in, is_token_0_to_1)
             .map_err(|e| anyhow::anyhow!("Swap simulation failed: {}", e))?;
         
-        Ok((result.amount_out, result.fee_amount))
+        Ok((result.amount_out, result.fee_paid))
     }
     
     /// Convert adapter state to SDK MarketState format
@@ -152,19 +152,29 @@ impl FeelsAmm {
     fn to_tick_array_loader(&self) -> Result<feels_sdk::TickArrayLoader> {
         let mut loader = feels_sdk::TickArrayLoader::new();
         
-        // Convert cached tick arrays to SDK format using the shared parser
+        // Convert cached tick arrays to SDK format
         for (start_index, view) in &self.tick_arrays {
+            // Convert TickArrayView back to initialized ticks HashMap
+            let mut initialized_ticks = std::collections::HashMap::new();
+            
+            // Extract initialized ticks from the view
+            for (i, is_initialized) in view.initialized_bitmap.iter().enumerate() {
+                if *is_initialized {
+                    let tick_index = view.start_tick_index + (i as i32);
+                    initialized_ticks.insert(tick_index, view.ticks[i].liquidity_net);
+                }
+            }
+            
             // Create ParsedTickArray from our cached data
             let parsed = feels_sdk::ParsedTickArray {
                 format: feels_sdk::TickArrayFormat::V1,
                 market: self.key,
                 start_tick_index: *start_index,
-                initialized_ticks: view.inits.clone(),
-                initialized_count: Some(view.inits.len() as u16),
+                initialized_ticks: initialized_ticks.clone(),
+                initialized_count: Some(initialized_ticks.len() as u16),
             };
             
-            loader.add_parsed_array(parsed)
-                .map_err(|e| anyhow::anyhow!("Failed to add parsed array: {}", e))?;
+            loader.add_parsed_array(parsed);
         }
         
         Ok(loader)
@@ -334,7 +344,7 @@ impl Amm for FeelsAmm {
 
     /// Return the number of accounts required for a Feels swap instruction
     fn get_accounts_len(&self) -> usize {
-        17 // Updated for fee distribution accounts: protocol_config, treasury, protocol_token, creator_account
+        16 // Core: 11 + Fee distribution: 4 + Optional: 1 = 16
     }
 
     /// Generate swap instruction and account metas for Jupiter routing
@@ -437,7 +447,7 @@ impl Amm for FeelsAmm {
 
         // Build account metas matching the Swap struct from swap.rs
         // Order is critical - must match exactly for instruction parsing
-        let account_metas = vec![
+        let mut account_metas = vec![
             // Core swap accounts
             AccountMeta::new(*token_transfer_authority, true), // user (signer)
             AccountMeta::new(self.key, false), // market
@@ -461,18 +471,22 @@ impl Amm for FeelsAmm {
             AccountMeta::new_readonly(protocol_config, false), // protocol_config
             AccountMeta::new(protocol_treasury, false), // protocol_treasury (must be correct ATA)
             
-            // Optional protocol token accounts
-            if protocol_token != Pubkey::default() {
-                AccountMeta::new_readonly(protocol_token, false) // protocol_token
-            } else {
-                AccountMeta::new_readonly(Pubkey::default(), false) // None placeholder
-            },
-            if creator_token_account != Pubkey::default() {
-                AccountMeta::new(creator_token_account, false) // creator_token_account  
-            } else {
-                AccountMeta::new_readonly(Pubkey::default(), false) // None placeholder
-            },
+            // Additional required accounts for fee routing
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false), // associated_token_program
         ];
+        
+        // Add optional protocol token accounts
+        if protocol_token != Pubkey::default() {
+            account_metas.push(AccountMeta::new_readonly(protocol_token, false)); // protocol_token
+        } else {
+            account_metas.push(AccountMeta::new_readonly(Pubkey::default(), false)); // None placeholder
+        }
+        
+        if creator_token_account != Pubkey::default() {
+            account_metas.push(AccountMeta::new(creator_token_account, false)); // creator_token_account  
+        } else {
+            account_metas.push(AccountMeta::new_readonly(Pubkey::default(), false)); // None placeholder
+        }
         
         Ok(SwapAndAccountMetas {
             swap: Swap::Saber, // Jupiter uses Saber variant for generic AMM swaps

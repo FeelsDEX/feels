@@ -50,14 +50,15 @@ export function SearchBar({
       // Clear immediately when search is cleared
       setSearchQuery('');
       setShowDropdown(false);
-    } else {
-      const timer = setTimeout(() => {
-        setSearchQuery(localSearchQuery);
-        setShowDropdown(localSearchQuery.trim().length > 0);
-      }, 100);
-      
-      return () => clearTimeout(timer);
+      return;
     }
+    
+    const timer = setTimeout(() => {
+      setSearchQuery(localSearchQuery);
+      setShowDropdown(localSearchQuery.trim().length > 0);
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [localSearchQuery, setSearchQuery]);
 
   // Handle click outside to close dropdown
@@ -88,6 +89,7 @@ export function SearchBar({
       }, 100);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [autoFocus]);
 
   const handleSearch = (e: React.FormEvent) => {

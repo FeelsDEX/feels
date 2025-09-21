@@ -1,23 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { PublicKey } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { getConnection } from '@/services/connection';
-
-// Import SDK wrapper
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
 import { createFeelsProgram } from '@/sdk/program-workaround';
+
 import { MarketExplorer } from '@/components/market/MarketExplorer';
 import { FeelsMetrics } from '@/components/market/FeelsMetrics';
-import { RecentSwaps } from '@/components/market/RecentSwaps';
 
 // Import shadcn/ui components
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function InfoPage() {
   const { publicKey, signTransaction, signAllTransactions } = useWallet();

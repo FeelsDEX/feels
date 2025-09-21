@@ -42,7 +42,7 @@ export class OKXWalletAdapter extends BaseMessageSignerWalletAdapter {
       ? WalletReadyState.Unsupported
       : WalletReadyState.Loadable;
 
-  constructor(config: OKXWalletAdapterConfig = {}) {
+  constructor(_config: OKXWalletAdapterConfig = {}) {
     super();
     this._connecting = false;
     this._publicKey = null;
@@ -141,7 +141,7 @@ export class OKXWalletAdapter extends BaseMessageSignerWalletAdapter {
     }
   }
 
-  async signAllTransactions<T extends Transaction | VersionedTransaction>(
+  override async signAllTransactions<T extends Transaction | VersionedTransaction>(
     transactions: T[]
   ): Promise<T[]> {
     try {

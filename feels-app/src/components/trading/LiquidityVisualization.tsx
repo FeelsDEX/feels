@@ -279,10 +279,10 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
     });
     
     // Get price range for calculation
-    const priceExtent = [
+    const priceExtent: [number, number] = tickData.length > 0 ? [
       Math.min(...tickData.map(d => d.logPrice)),
       Math.max(...tickData.map(d => d.logPrice))
-    ];
+    ] : [0, 0];
     
     // Create high-resolution price grid
     const numPoints = 300;
@@ -331,17 +331,17 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
   const verticalPadding = 20; // pixels of padding on top and bottom
 
   // Calculate scales
-  const liquidityExtent = tickData.length > 0 ? [
+  const liquidityExtent: [number, number] = tickData.length > 0 ? [
     0,
     Math.max(...tickData.map(d => d.liquidity))
   ] : [0, 1];
 
-  const cumulativeExtent = cumulativeLiquidityData.length > 0 ? [
+  const cumulativeExtent: [number, number] = cumulativeLiquidityData.length > 0 ? [
     0,
     Math.max(...cumulativeLiquidityData.map(d => d.cumulativeLiquidity)) || 1
   ] : [0, 1];
 
-  const priceExtent = tickData.length > 0 ? [
+  const priceExtent: [number, number] = tickData.length > 0 ? [
     Math.min(...tickData.map(d => d.logPrice)),
     Math.max(...tickData.map(d => d.logPrice))
   ] : [0, 1];
@@ -364,7 +364,7 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
     if (tickData.length <= 1) return 1;
     
     // Calculate the average spacing between consecutive ticks in chart coordinates
-    const logPriceSpacing = tickData.length > 1 ? 
+    const logPriceSpacing = tickData.length > 1 && tickData[1] && tickData[0] ? 
       (tickData[1].logPrice - tickData[0].logPrice) : 0.02;
     
     // Convert to chart coordinates

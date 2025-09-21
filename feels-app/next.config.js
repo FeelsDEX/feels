@@ -4,7 +4,18 @@ const webpack = require('webpack');
 const nextConfig = {
   // Disable strict mode for better Solana wallet compatibility
   reactStrictMode: false,
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev, webpack }) => {
+    // Fix for vendor chunk issues with Solana/Anchor dependencies
+    if (!isServer) {
+      // Ensure problematic dependencies are properly resolved
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'eventemitter3': require.resolve('eventemitter3'),
+        '@solana/web3.js': require.resolve('@solana/web3.js'),
+        '@coral-xyz/anchor': require.resolve('@coral-xyz/anchor'),
+        '@project-serum/anchor': require.resolve('@project-serum/anchor'),
+      };
+    }
     if (!isServer) {
       // Provide fallbacks for node modules in the browser
       config.resolve.fallback = {
@@ -41,20 +52,35 @@ const nextConfig = {
       },
     });
     
-    // Add webpack plugins
-    config.plugins.push(
-      new webpack.ProvidePlugin({
-        Buffer: ['buffer', 'Buffer'],
-        process: 'process/browser',
-      })
-    );
-    
-    // Define process.env for browser
-    config.plugins.push(
-      new webpack.DefinePlugin({
-        'process.env': JSON.stringify(process.env),
-      })
-    );
+    // Add webpack plugins - but only in production to avoid chunk issues
+    if (!dev) {
+      config.plugins.push(
+        new webpack.ProvidePlugin({
+          Buffer: ['buffer', 'Buffer'],
+          process: 'process/browser',
+        })
+      );
+      
+      // Define process.env for browser - only include NEXT_PUBLIC_ variables
+      const env = {};
+      Object.keys(process.env).forEach(key => {
+        if (key.startsWith('NEXT_PUBLIC_')) {
+          env[`process.env.${key}`] = JSON.stringify(process.env[key]);
+        }
+      });
+      if (Object.keys(env).length > 0) {
+        config.plugins.push(
+          new webpack.DefinePlugin(env)
+        );
+      }
+    } else {
+      // In dev, provide Buffer globally
+      config.plugins.push(
+        new webpack.ProvidePlugin({
+          Buffer: ['buffer', 'Buffer'],
+        })
+      );
+    }
     
     // Ignore pino-pretty which is only used in development
     config.plugins.push(
@@ -70,6 +96,8 @@ const nextConfig = {
   experimental: {
     esmExternals: 'loose',
   },
+  // Re-enabled SWC minification for better performance
+  swcMinify: true,
   transpilePackages: [
     '@solana/web3.js',
     '@solana/wallet-adapter-base',

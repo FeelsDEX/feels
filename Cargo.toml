@@ -6,7 +6,7 @@ members = [
 ]
 # Exclude Jupiter adapter from workspace as it's a library not for BPF deployment
 exclude = [
-    "programs/feels-jupiter-adapter",
+    "adapters/feels-jupiter-adapter",
     "feels-streaming-adapter",
     "feels-indexer",
     "simple-streaming-adapter",

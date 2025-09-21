@@ -20,7 +20,7 @@ interface WalletModalProps {
 }
 
 export function WalletModal({ open, onOpenChange }: WalletModalProps) {
-  const { wallets, select, wallet, connect, connecting, disconnect, connected, publicKey } = useWallet();
+  const { wallets, select, wallet, connect, connecting, disconnect, connected } = useWallet();
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [showMoreWallets, setShowMoreWallets] = useState(false);
   const [hoveredWallet, setHoveredWallet] = useState<string | null>(null);
@@ -93,6 +93,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
     if (!open) {
       setShowMoreWallets(false);
     }
+    return undefined;
   }, [open]);
 
   return (
@@ -232,6 +233,9 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                             )}
                             <span>{wallet.adapter.name}</span>
                           </div>
+                          <span className="ml-auto text-sm text-muted-foreground">
+                            Install
+                          </span>
                         </Button>
                   ))}
                 </div>

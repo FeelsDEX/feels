@@ -24,8 +24,7 @@ fn build_market_init_ix(
         initial_sqrt_price,
         initial_buy_feelssol_amount,
     };
-    let (market, _) = sdk_compat::find_market_address(&token_0, &token_1);
-    sdk_compat::initialize_market(deployer, market, token_0, token_1, params)
+    sdk_compat::instructions::initialize_market(deployer, token_0, token_1, params).unwrap()
 }
 
 // Test market initialization with existing dummy accounts

@@ -41,8 +41,10 @@ prost-types = "0.12"
 bs58 = "0.5"
 
 # Feels Protocol
-# feels-sdk = { path = "../sdk" }
+feels-sdk = { path = "../sdk" }
 anchor-lang = "0.31.1"
+spl-token = "6.0"
+spl-associated-token-account = "5.0"
 
 # Version overrides to resolve conflicts
 base64ct = "=1.6.0"

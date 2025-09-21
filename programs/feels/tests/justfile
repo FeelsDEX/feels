@@ -45,6 +45,92 @@ e2e:
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
     nix develop -c cargo test -p feels e2e:: -- --test-threads=1
 
+# Run E2E pipeline tests (indexer + frontend integration)
+e2e-pipeline:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "╔═══════════════════════════════════════════════════════════════════╗"
+    echo "║ Running E2E Pipeline Tests                                        ║"
+    echo "╚═══════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "Checking E2E services..."
+    
+    # Check services inline
+    all_running=true
+    
+    if curl -s http://localhost:8899 >/dev/null 2>&1; then
+        echo "✓ Solana Validator: Running"
+    else
+        echo "✗ Solana Validator: Not running"
+        all_running=false
+    fi
+    
+    if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+        echo "✓ Indexer: Running"
+    else
+        echo "✗ Indexer: Not running"
+        all_running=false
+    fi
+    
+    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+        echo "✓ Frontend App: Running"
+    else
+        echo "✗ Frontend App: Not running"
+        all_running=false
+    fi
+    
+    if curl -s http://localhost:10000/status >/dev/null 2>&1; then
+        echo "✓ Streaming Adapter: Running"
+    else
+        echo "✗ Streaming Adapter: Not running"
+        all_running=false
+    fi
+    
+    if [ "$all_running" = false ]; then
+        echo ""
+        echo "⚠️  Not all services are running"
+        echo "To start the full E2E environment: just dev-e2e"
+        echo ""
+    fi
+    
+    echo ""
+    echo "Running pipeline tests..."
+    just e2e-pipeline-indexer
+    just e2e-pipeline-frontend
+    @echo ""
+    @echo "✅ E2E Pipeline tests complete!"
+
+# Run indexer pipeline tests
+e2e-pipeline-indexer:
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Testing Indexer Data Pipeline"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    nix develop -c cargo test -p feels test_indexer_complete_pipeline -- --nocapture --test-threads=1
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Testing Indexer Analytics"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    nix develop -c cargo test -p feels test_indexer_market_stats_and_ohlcv -- --nocapture --test-threads=1
+
+# Run frontend DevBridge tests
+e2e-pipeline-frontend:
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Testing Frontend DevBridge Integration"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    nix develop -c cargo test -p feels test_frontend_complete_flow_via_devbridge -- --nocapture --test-threads=1
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Testing Frontend Real-Time Updates"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    nix develop -c cargo test -p feels test_frontend_real_time_updates -- --nocapture --test-threads=1
+    @echo ""
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    @echo "Testing Frontend Error Handling"
+    @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    nix develop -c cargo test -p feels test_frontend_error_handling -- --nocapture --test-threads=1
+
 # Run tests matching a pattern
 filter PATTERN:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"

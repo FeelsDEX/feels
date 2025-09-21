@@ -510,6 +510,6 @@ This application is part of the Feels Protocol ecosystem. See the root repositor
 - **[Feels Protocol Core](../programs/feels/)** - Main Solana program
 - **[Feels Indexer](../feels-indexer/)** - Real-time data indexing
 - **[Feels SDK](../sdk/)** - Rust SDK for protocol interaction
-- **[Jupiter Adapter](../programs/feels-jupiter-adapter/)** - Jupiter integration layer
+- **[Jupiter Adapter](../adapters/feels-jupiter-adapter/)** - Jupiter integration layer
 
 For more information about the complete Feels Protocol ecosystem, see the [main repository README](../README.md).

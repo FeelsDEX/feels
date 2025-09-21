@@ -89,12 +89,46 @@ pub async fn get_market(
 
 /// Get market statistics
 pub async fn get_market_stats(
-    State(_state): State<ApiState>,
-    Path(_address): Path<String>,
-    Query(_time_range): Query<TimeRangeQuery>,
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+    Query(time_range): Query<TimeRangeQuery>,
 ) -> Result<Json<MarketStatsResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let _pubkey = Pubkey::from_str(&address)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    // Get market to validate it exists
+    let market = state.db_manager.postgres
+        .get_market_by_address(&address)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let market = match market {
+        Some(m) => m,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+    
+    // Get time range (default to 24h)
+    let end_time = time_range.end_time.unwrap_or_else(|| chrono::Utc::now().timestamp());
+    let start_time = time_range.start_time.unwrap_or(end_time - 86400); // 24 hours ago
+    
+    // Get market stats from PostgreSQL
+    let stats = state.db_manager.postgres
+        .get_market_stats(market.id, start_time, end_time)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    use rust_decimal::prelude::ToPrimitive;
+    
+    Ok(Json(MarketStatsResponse {
+        market_address: address,
+        volume_24h: stats.volume_24h.to_f64().unwrap_or(0.0),
+        fees_24h: stats.fees_24h.to_f64().unwrap_or(0.0),
+        swaps_24h: stats.swaps_24h as u64,
+        unique_traders_24h: stats.unique_traders_24h as u64,
+        price_change_24h: stats.price_change_24h.to_f64().unwrap_or(0.0),
+        liquidity_change_24h: stats.liquidity_change_24h.to_f64().unwrap_or(0.0),
+        timestamp: chrono::Utc::now().timestamp(),
+    }))
 }
 
 /// Get market swaps
@@ -183,21 +217,91 @@ pub async fn get_market_positions(
 
 /// Get market floor information
 pub async fn get_market_floor(
-    State(_state): State<ApiState>,
-    Path(_address): Path<String>,
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
 ) -> Result<Json<FloorResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let _pubkey = Pubkey::from_str(&address)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    // Get market to validate it exists
+    let market = state.db_manager.postgres
+        .get_market_by_address(&address)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let market = match market {
+        Some(m) => m,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+    
+    // Get floor data from PostgreSQL
+    let floor = state.db_manager.postgres
+        .get_market_floor(market.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    use rust_decimal::prelude::ToPrimitive;
+    
+    Ok(Json(FloorResponse {
+        market_address: address,
+        current_floor_tick: floor.floor_tick,
+        current_floor_price: floor.floor_price.to_f64().unwrap_or(0.0),
+        jitosol_reserves: floor.jitosol_reserves.to_string(),
+        circulating_supply: floor.circulating_supply.to_string(),
+        last_update_slot: floor.last_update_slot,
+        timestamp: chrono::Utc::now().timestamp(),
+    }))
 }
 
 /// Get market OHLCV data
 pub async fn get_market_ohlcv(
-    State(_state): State<ApiState>,
-    Path(_address): Path<String>,
-    Query(_time_range): Query<TimeRangeQuery>,
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+    Query(time_range): Query<TimeRangeQuery>,
 ) -> Result<Json<OHLCVResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let _pubkey = Pubkey::from_str(&address)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    // Get market to validate it exists
+    let market = state.db_manager.postgres
+        .get_market_by_address(&address)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let market = match market {
+        Some(m) => m,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+    
+    // Get time range (default to 24h)
+    let end_time = time_range.end_time.unwrap_or_else(|| chrono::Utc::now().timestamp());
+    let start_time = time_range.start_time.unwrap_or(end_time - 86400); // 24 hours ago
+    
+    // Get OHLCV data from PostgreSQL
+    let candles = state.db_manager.postgres
+        .get_market_ohlcv(market.id, start_time, end_time, "1h")
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    use rust_decimal::prelude::ToPrimitive;
+    
+    let ohlcv_candles = candles.into_iter()
+        .map(|c| OHLCVCandle {
+            timestamp: c.timestamp,
+            open: c.open.to_f64().unwrap_or(0.0),
+            high: c.high.to_f64().unwrap_or(0.0),
+            low: c.low.to_f64().unwrap_or(0.0),
+            close: c.close.to_f64().unwrap_or(0.0),
+            volume: c.volume.to_f64().unwrap_or(0.0),
+        })
+        .collect();
+    
+    Ok(Json(OHLCVResponse {
+        market_address: address,
+        candles: ohlcv_candles,
+        interval: "1h".to_string(),
+        timestamp: chrono::Utc::now().timestamp(),
+    }))
 }
 
 /// List swaps
@@ -246,12 +350,33 @@ pub async fn get_swap(
 
 /// Get user swaps
 pub async fn get_user_swaps(
-    State(_state): State<ApiState>,
-    Path(_address): Path<String>,
-    Query(_pagination): Query<PaginationQuery>,
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+    Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<SwapsResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let _pubkey = Pubkey::from_str(&address)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    let limit = pagination.limit.unwrap_or(50).min(100) as i64;
+    let offset = pagination.offset.unwrap_or(0) as i64;
+    
+    // Get swaps for this user
+    let swaps = state.db_manager.postgres
+        .get_swaps_by_user(&address, limit, offset)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let total = state.db_manager.postgres
+        .get_swaps_count_by_user(&address)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
+    
+    Ok(Json(SwapsResponse {
+        swaps,
+        total,
+        limit: limit as usize,
+        offset: offset as usize,
+    }))
 }
 
 /// List positions
@@ -303,12 +428,33 @@ pub async fn get_position(
 
 /// Get user positions
 pub async fn get_user_positions(
-    State(_state): State<ApiState>,
-    Path(_address): Path<String>,
-    Query(_pagination): Query<PaginationQuery>,
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+    Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<PositionsResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    let _pubkey = Pubkey::from_str(&address)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    let limit = pagination.limit.unwrap_or(50).min(100) as i64;
+    let offset = pagination.offset.unwrap_or(0) as i64;
+    
+    // Get positions for this user
+    let positions = state.db_manager.postgres
+        .get_positions_by_user(&address, limit, offset)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let total = state.db_manager.postgres
+        .get_positions_count_by_user(&address)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
+    
+    Ok(Json(PositionsResponse {
+        positions,
+        total,
+        limit: limit as usize,
+        offset: offset as usize,
+    }))
 }
 
 /// Get protocol statistics
@@ -348,9 +494,34 @@ pub async fn get_protocol_markets(
 
 /// Get protocol volume
 pub async fn get_protocol_volume(
-    State(_state): State<ApiState>,
-    Query(_time_range): Query<TimeRangeQuery>,
+    State(state): State<ApiState>,
+    Query(time_range): Query<TimeRangeQuery>,
 ) -> Result<Json<VolumeResponse>, StatusCode> {
-    // Placeholder implementation
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get time range (default to 30 days)
+    let end_time = time_range.end_time.unwrap_or_else(|| chrono::Utc::now().timestamp());
+    let start_time = time_range.start_time.unwrap_or(end_time - 2592000); // 30 days ago
+    
+    // Get volume data from PostgreSQL
+    let volume_data = state.db_manager.postgres
+        .get_protocol_volume_history(start_time, end_time)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    use rust_decimal::prelude::ToPrimitive;
+    
+    let daily_volumes = volume_data.into_iter()
+        .map(|v| DailyVolume {
+            date: v.date,
+            volume: v.volume.to_f64().unwrap_or(0.0),
+            fees: v.fees.to_f64().unwrap_or(0.0),
+            swap_count: v.swap_count as u64,
+        })
+        .collect();
+    
+    Ok(Json(VolumeResponse {
+        daily_volumes,
+        total_volume: daily_volumes.iter().map(|v| v.volume).sum(),
+        total_fees: daily_volumes.iter().map(|v| v.fees).sum(),
+        timestamp: chrono::Utc::now().timestamp(),
+    }))
 }

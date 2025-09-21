@@ -4,6 +4,7 @@ mod tests {
     use anchor_lang::prelude::*;
     use solana_program::pubkey::Pubkey;
     use feels::state::{Market, PolicyV1, TokenType, TokenOrigin};
+    use jupiter_amm_interface::Amm;
     use std::str::FromStr;
 
     // Helper function to create a test market
@@ -19,6 +20,9 @@ mod tests {
             token_1_type: TokenType::Spl,
             token_0_origin: TokenOrigin::External,
             token_1_origin: TokenOrigin::External,
+            vault_0: Pubkey::new_unique(),
+            vault_1: Pubkey::new_unique(),
+            hub_protocol: None,
             sqrt_price: 79228162514264337593543950336, // ~1.0 price
             liquidity: 1000000000000,
             current_tick: 0,
@@ -28,6 +32,8 @@ mod tests {
             floor_liquidity: 0,
             fee_growth_global_0_x64: 0,
             fee_growth_global_1_x64: 0,
+            fee_growth_global_0: 0,
+            fee_growth_global_1: 0,
             base_fee_bps: 30, // 0.3%
             buffer: Pubkey::new_unique(),
             authority: Pubkey::new_unique(),
@@ -41,7 +47,33 @@ mod tests {
             vault_1_bump: 255,
             reentrancy_guard: false,
             initial_liquidity_deployed: true,
-            _reserved: [0; 31],
+            jit_enabled: false,
+            jit_base_cap_bps: 300,
+            jit_per_slot_cap_bps: 500,
+            jit_concentration_width: 100,
+            jit_max_multiplier: 10,
+            jit_drain_protection_bps: 7000,
+            jit_circuit_breaker_bps: 3000,
+            floor_tick: -887272,
+            floor_buffer_ticks: 1000,
+            last_floor_ratchet_ts: 0,
+            floor_cooldown_secs: 3600,
+            steady_state_seeded: false,
+            cleanup_complete: false,
+            phase: 0,
+            phase_start_slot: 0,
+            phase_start_timestamp: 0,
+            last_phase_transition_slot: 0,
+            last_phase_trigger: 0,
+            total_volume_token_0: 0,
+            total_volume_token_1: 0,
+            rolling_buy_volume: 0,
+            rolling_sell_volume: 0,
+            rolling_total_volume: 0,
+            rolling_window_start_slot: 0,
+            tick_snapshot_1hr: 0,
+            last_snapshot_timestamp: 0,
+            _reserved: [0; 1],
         }
     }
 
@@ -182,11 +214,11 @@ mod tests {
         assert_eq!(fee_amount, 30_000); // 0.3% of 10 tokens
         
         // Test case 2: Medium swap crossing multiple ticks
-        let medium_amount = 100_000_000; // 100 tokens
+        let _medium_amount = 100_000_000; // 100 tokens
         // With alternating liquidity, price impact would vary
         
         // Test case 3: Large swap hitting liquidity gaps
-        let large_amount = 1_000_000_000; // 1000 tokens
+        let _large_amount = 1_000_000_000; // 1000 tokens
         // This would significantly impact price with 1M liquidity
         
         // Verify key invariants:
@@ -222,8 +254,7 @@ mod tests {
 
     #[test]
     fn test_quote_execution_parity_comprehensive() {
-        use crate::amm::{calculate_swap_output_with_tracking, TickArrayView};
-        use ahash::AHashMap;
+        use feels_sdk::jupiter::{MarketState, TickArrayLoader};
         
         // Create test market with realistic parameters
         let mut market = create_test_market();
@@ -244,36 +275,48 @@ mod tests {
         ];
         
         for (amount_in, is_token_0_to_1) in test_cases {
-            // Empty tick arrays (no initialized ticks to cross)
-            let tick_arrays = AHashMap::new();
+            // Create market state
+            let market_state = MarketState {
+                market_key: Pubkey::new_unique(),
+                token_0: market.token_0,
+                token_1: market.token_1,
+                sqrt_price: market.sqrt_price,
+                current_tick: market.current_tick,
+                liquidity: market.liquidity,
+                fee_bps: market.base_fee_bps,
+                tick_spacing: market.tick_spacing,
+                global_lower_tick: market.global_lower_tick,
+                global_upper_tick: market.global_upper_tick,
+                fee_growth_global_0: market.fee_growth_global_0_x64,
+                fee_growth_global_1: market.fee_growth_global_1_x64,
+            };
             
-            // Calculate quote using adapter logic
-            let (amount_out, fee_amount) = calculate_swap_output_with_tracking(
-                &market,
-                &tick_arrays,
-                amount_in,
-                is_token_0_to_1,
-            ).unwrap();
+            // Empty tick arrays (no initialized ticks to cross)
+            let tick_arrays = TickArrayLoader::new();
+            
+            // Create simulator and calculate
+            let simulator = feels_sdk::jupiter::SwapSimulator::new(&market_state, &tick_arrays);
+            let result = simulator.simulate_swap(amount_in, is_token_0_to_1).unwrap();
             
             // Verify fee calculation exactly matches on-chain logic
             let expected_fee = ((amount_in as u128 * market.base_fee_bps as u128 + 9999) / 10000) as u64;
             assert_eq!(
-                fee_amount, expected_fee,
+                result.fee_paid, expected_fee,
                 "Fee mismatch for {} {} direction",
                 amount_in,
                 if is_token_0_to_1 { "0->1" } else { "1->0" }
             );
             
             // Verify invariants
-            let amount_after_fee = amount_in.saturating_sub(fee_amount);
+            let amount_after_fee = amount_in.saturating_sub(result.fee_paid);
             if amount_after_fee > 0 && market.liquidity > 0 {
-                assert!(amount_out > 0, "Should have output for non-zero input");
+                assert!(result.amount_out > 0, "Should have output for non-zero input");
                 
                 // Output should be less than input (no free money)
                 assert!(
-                    amount_out < amount_in,
+                    result.amount_out < amount_in,
                     "Output {} should be less than input {}",
-                    amount_out, amount_in
+                    result.amount_out, amount_in
                 );
             }
         }
@@ -281,56 +324,71 @@ mod tests {
 
     #[test]
     fn test_tick_array_quote_consistency() {
-        use crate::amm::{calculate_swap_output_with_tracking, TickArrayView};
-        use ahash::AHashMap;
+        use feels_sdk::jupiter::{MarketState, TickArrayLoader, ParsedTickArray, TickArrayFormat};
+        use std::collections::HashMap;
         
         let mut market = create_test_market();
         market.liquidity = 5_000_000_000_000u128;
         market.current_tick = 100;
         market.tick_spacing = 10;
         
-        // Create tick arrays with liquidity changes
-        let mut tick_arrays = AHashMap::new();
-        let mut view1 = TickArrayView {
-            start_tick_index: 0,
-            inits: AHashMap::new(),
+        // Create market state
+        let market_state = MarketState {
+            market_key: Pubkey::new_unique(),
+            token_0: market.token_0,
+            token_1: market.token_1,
+            sqrt_price: market.sqrt_price,
+            current_tick: market.current_tick,
+            liquidity: market.liquidity,
+            fee_bps: market.base_fee_bps,
+            tick_spacing: market.tick_spacing,
+            global_lower_tick: market.global_lower_tick,
+            global_upper_tick: market.global_upper_tick,
+            fee_growth_global_0: market.fee_growth_global_0_x64,
+            fee_growth_global_1: market.fee_growth_global_1_x64,
         };
         
-        // Add ticks with liquidity changes
-        view1.inits.insert(50, 1_000_000_000i128);    // Add liquidity
-        view1.inits.insert(80, -500_000_000i128);     // Remove liquidity  
-        view1.inits.insert(110, 2_000_000_000i128);   // Add more
-        view1.inits.insert(150, -2_500_000_000i128);  // Remove most
+        // Create tick arrays with liquidity changes
+        let mut tick_arrays = TickArrayLoader::new();
+        let mut initialized_ticks = HashMap::new();
         
-        tick_arrays.insert(0, view1);
+        // Add ticks with liquidity changes
+        initialized_ticks.insert(50, 1_000_000_000i128);    // Add liquidity
+        initialized_ticks.insert(80, -500_000_000i128);     // Remove liquidity  
+        initialized_ticks.insert(110, 2_000_000_000i128);   // Add more
+        initialized_ticks.insert(150, -2_500_000_000i128);  // Remove most
+        
+        // Create ParsedTickArray
+        let parsed = ParsedTickArray {
+            format: TickArrayFormat::V1,
+            market: market_state.market_key,
+            start_tick_index: 0,
+            initialized_ticks,
+            initialized_count: Some(4),
+        };
+        
+        tick_arrays.add_parsed_array(parsed);
         
         // Test swaps in both directions
         let amounts = vec![1_000_000u64, 50_000_000u64, 200_000_000u64];
         
         for amount_in in amounts {
+            // Create simulators for each direction
+            let simulator = feels_sdk::jupiter::SwapSimulator::new(&market_state, &tick_arrays);
+            
             // Swap up (crossing positive ticks)
-            let (out_up, fee_up) = calculate_swap_output_with_tracking(
-                &market,
-                &tick_arrays,
-                amount_in,
-                false, // token1->token0, price increases
-            ).unwrap();
+            let result_up = simulator.simulate_swap(amount_in, false).unwrap(); // token1->token0, price increases
             
             // Swap down (crossing negative ticks)
-            let (out_down, fee_down) = calculate_swap_output_with_tracking(
-                &market,
-                &tick_arrays,
-                amount_in,
-                true, // token0->token1, price decreases  
-            ).unwrap();
+            let result_down = simulator.simulate_swap(amount_in, true).unwrap(); // token0->token1, price decreases
             
             // Fees should be identical (same input amount)
-            assert_eq!(fee_up, fee_down, "Fees should match for same input");
+            assert_eq!(result_up.fee_paid, result_down.fee_paid, "Fees should match for same input");
             
             // Outputs may differ due to tick crossings and liquidity changes
             // But both should be valid
-            assert!(out_up > 0 || amount_in <= fee_up);
-            assert!(out_down > 0 || amount_in <= fee_down);
+            assert!(result_up.amount_out > 0 || amount_in <= result_up.fee_paid);
+            assert!(result_down.amount_out > 0 || amount_in <= result_down.fee_paid);
         }
     }
     
@@ -432,7 +490,6 @@ mod tests {
     #[test]
     fn test_tick_array_initialized_tick_extraction() {
         use feels_sdk::{TickArrayFormat, parse_tick_array_auto};
-        use feels::state::{TickArray, Tick};
         
         // Create a valid tick array with some initialized ticks
         let mut data = vec![0u8; TickArrayFormat::V1.calculate_total_size()];
@@ -491,9 +548,8 @@ mod tests {
     #[test]
     fn test_adapter_tick_array_update_resilience() {
         use crate::amm::FeelsAmm;
-        use jupiter_amm_interface::{AccountMap, KeyedAccount, AmmContext};
-        use solana_program::account_info::Account as SolanaAccount;
-        use ahash::AHashMap;
+        use jupiter_amm_interface::{KeyedAccount, AmmContext};
+        use solana_sdk::account::Account as SolanaAccount;
         use feels_sdk::TickArrayFormat;
         
         // Create test market
@@ -515,22 +571,77 @@ mod tests {
         };
         
         // Create AMM instance
-        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        let amm_context = AmmContext {
+            clock_ref: Default::default(),
+        };
+        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context).unwrap();
         
         // Create account map with tick array data
-        let mut account_map = AHashMap::new();
+        let mut account_map = ahash::AHashMap::<Pubkey, SolanaAccount>::new();
         
         // Add vault accounts
-        let vault_data = vec![0u8; spl_token::state::Account::LEN];
-        account_map.insert(amm.vault_0, vault_data.clone());
-        account_map.insert(amm.vault_1, vault_data.clone());
+        use solana_program::program_pack::Pack;
+        use spl_token::state::AccountState;
+        
+        // Create properly initialized SPL token accounts
+        let mut vault_0_data = vec![0u8; spl_token::state::Account::LEN];
+        let vault_0_account = spl_token::state::Account {
+            mint: market.token_0,
+            owner: keyed_account.key,
+            amount: 1_000_000_000_000,
+            delegate: None.into(),
+            state: AccountState::Initialized,
+            is_native: None.into(),
+            delegated_amount: 0,
+            close_authority: None.into(),
+        };
+        vault_0_account.pack_into_slice(&mut vault_0_data);
+        
+        let mut vault_1_data = vec![0u8; spl_token::state::Account::LEN];
+        let vault_1_account = spl_token::state::Account {
+            mint: market.token_1,
+            owner: keyed_account.key,
+            amount: 1_000_000_000_000,
+            delegate: None.into(),
+            state: AccountState::Initialized,
+            is_native: None.into(),
+            delegated_amount: 0,
+            close_authority: None.into(),
+        };
+        vault_1_account.pack_into_slice(&mut vault_1_data);
+        
+        // Get accounts to update (includes vaults)
+        let accounts = amm.get_accounts_to_update();
+        if accounts.len() >= 2 {
+            account_map.insert(accounts[0], SolanaAccount {
+                lamports: 1_000_000,
+                data: vault_0_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            });
+            account_map.insert(accounts[1], SolanaAccount {
+                lamports: 1_000_000,
+                data: vault_1_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            });
+        }
         
         // Add tick array with V1 format
-        let tick_array_key = amm.tick_array_keys[0];
+        // Tick array keys are at index 2+ in accounts list
+        let tick_array_key = if accounts.len() > 2 { accounts[2] } else { Pubkey::new_unique() };
         let mut tick_data = vec![0u8; TickArrayFormat::V1.calculate_total_size()];
         tick_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
         tick_data[8..40].copy_from_slice(market_key.as_ref());
-        account_map.insert(tick_array_key, tick_data);
+        account_map.insert(tick_array_key, SolanaAccount {
+            lamports: 1_000_000,
+            data: tick_data,
+            owner: feels::ID,
+            executable: false,
+            rent_epoch: 0,
+        });
         
         // Update should succeed with V1 format
         let result = amm.update(&account_map);
@@ -540,7 +651,13 @@ mod tests {
         let mut extended_data = vec![0u8; TickArrayFormat::V1.calculate_total_size() + 100];
         extended_data[..8].copy_from_slice(&TickArrayFormat::V1.discriminator);
         extended_data[8..40].copy_from_slice(market_key.as_ref());
-        account_map.insert(tick_array_key, extended_data);
+        account_map.insert(tick_array_key, SolanaAccount {
+            lamports: 1_000_000,
+            data: extended_data,
+            owner: feels::ID,
+            executable: false,
+            rent_epoch: 0,
+        });
         
         // Update should still succeed with extended format
         let result = amm.update(&account_map);
@@ -554,7 +671,7 @@ mod tests {
     fn test_sdk_onchain_quote_parity() {
         use crate::amm::FeelsAmm;
         use jupiter_amm_interface::{QuoteParams, AmmContext, KeyedAccount};
-        use solana_program::account_info::Account as SolanaAccount;
+        use solana_sdk::account::Account as SolanaAccount;
         
         // Create a test market with specific parameters
         let mut market = create_test_market();
@@ -578,7 +695,10 @@ mod tests {
         };
         
         // Create AMM instance
-        let amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        let amm_context = AmmContext {
+            clock_ref: Default::default(),
+        };
+        let amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context).unwrap();
         
         // Test various swap amounts
         let test_amounts = vec![
@@ -630,9 +750,8 @@ mod tests {
     #[test]
     fn test_quote_consistency_across_updates() {
         use crate::amm::FeelsAmm;
-        use jupiter_amm_interface::{QuoteParams, AccountMap, AmmContext, KeyedAccount};
-        use solana_program::account_info::Account as SolanaAccount;
-        use ahash::AHashMap;
+        use jupiter_amm_interface::{QuoteParams, AmmContext, KeyedAccount};
+        use solana_sdk::account::Account as SolanaAccount;
         
         // Create market and AMM
         let market = create_test_market();
@@ -651,7 +770,10 @@ mod tests {
             params: None,
         };
         
-        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        let amm_context = AmmContext {
+            clock_ref: Default::default(),
+        };
+        let mut amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context).unwrap();
         
         // Get initial quote
         let quote_params = QuoteParams {
@@ -664,10 +786,55 @@ mod tests {
         let quote1 = amm.quote(&quote_params).unwrap();
         
         // Update with empty tick arrays (no change in liquidity)
-        let mut account_map = AHashMap::new();
-        let vault_data = vec![0u8; spl_token::state::Account::LEN];
-        account_map.insert(amm.vault_0, vault_data.clone());
-        account_map.insert(amm.vault_1, vault_data);
+        let mut account_map = ahash::AHashMap::<Pubkey, SolanaAccount>::new();
+        let accounts = amm.get_accounts_to_update();
+        
+        // Create properly initialized SPL token account data
+        use spl_token::state::AccountState;
+        use solana_program::program_pack::Pack;
+        
+        let mut vault_0_data = vec![0u8; spl_token::state::Account::LEN];
+        let vault_0_account = spl_token::state::Account {
+            mint: market.token_0,
+            owner: keyed_account.key, // Market owns the vault
+            amount: 1_000_000_000_000, // 1M tokens
+            delegate: None.into(),
+            state: AccountState::Initialized,
+            is_native: None.into(),
+            delegated_amount: 0,
+            close_authority: None.into(),
+        };
+        vault_0_account.pack_into_slice(&mut vault_0_data);
+        
+        let mut vault_1_data = vec![0u8; spl_token::state::Account::LEN];
+        let vault_1_account = spl_token::state::Account {
+            mint: market.token_1,
+            owner: keyed_account.key, // Market owns the vault
+            amount: 1_000_000_000_000, // 1M tokens
+            delegate: None.into(),
+            state: AccountState::Initialized,
+            is_native: None.into(),
+            delegated_amount: 0,
+            close_authority: None.into(),
+        };
+        vault_1_account.pack_into_slice(&mut vault_1_data);
+        
+        if accounts.len() >= 2 {
+            account_map.insert(accounts[0], SolanaAccount {
+                lamports: 1_000_000,
+                data: vault_0_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            });
+            account_map.insert(accounts[1], SolanaAccount {
+                lamports: 1_000_000,
+                data: vault_1_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            });
+        }
         
         amm.update(&account_map).unwrap();
         
@@ -688,7 +855,7 @@ mod tests {
     fn test_swap_account_generation() {
         use crate::amm::FeelsAmm;
         use jupiter_amm_interface::{SwapParams, KeyedAccount, AmmContext};
-        use solana_program::account_info::Account as SolanaAccount;
+        use solana_sdk::account::Account as SolanaAccount;
         use crate::config::set_treasury;
         
         // Configure treasury
@@ -713,23 +880,25 @@ mod tests {
         };
         
         // Create AMM instance
-        let amm = FeelsAmm::from_keyed_account(&keyed_account, &AmmContext::default()).unwrap();
+        let amm_context = AmmContext {
+            clock_ref: Default::default(),
+        };
+        let amm = FeelsAmm::from_keyed_account(&keyed_account, &amm_context).unwrap();
         
         // Test swap params
+        let jupiter_program_id = Pubkey::new_unique();
         let swap_params = SwapParams {
             source_mint: market.token_0,
             destination_mint: market.token_1,
             source_token_account: Pubkey::new_unique(),
             destination_token_account: Pubkey::new_unique(),
             token_transfer_authority: Pubkey::new_unique(),
-            open_order_address: None,
             quote_mint_to_referrer: None,
-            jupiter_program_id: &Pubkey::new_unique(),
+            jupiter_program_id: &jupiter_program_id,
+            swap_mode: jupiter_amm_interface::SwapMode::ExactIn,
+            in_amount: 1_000_000,
+            out_amount: 0,
             missing_dynamic_accounts_as_default: false,
-            wrap_and_unwrap_sol: false,
-            in_amount: Some(1_000_000),
-            out_amount: None,
-            destination_token_account_is_native: false,
         };
         
         // Generate swap accounts
@@ -740,6 +909,7 @@ mod tests {
         let accounts = swap_and_metas.account_metas;
         
         // Verify we have the correct number of accounts
+        // Updated to expect 17 accounts including fee distribution accounts
         assert_eq!(
             accounts.len(),
             amm.get_accounts_len(),

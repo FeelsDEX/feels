@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useSearchContext } from '@/contexts/SearchContext';
-import { useTokenSearch } from '@/hooks/useTokenSearch';
 import { TextSearch, X } from 'lucide-react';
 
 interface SearchPageHeaderProps {
@@ -49,13 +48,16 @@ export function SearchPageHeader({ searchQuery, onSearchChange, onActiveChange }
     return () => clearTimeout(timer);
   }, [localSearchQuery, onSearchChange]);
 
-  // Handle click outside to deactivate search
+  // Handle click outside to deactivate search (only if search is empty)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchFocused(false);
-        setIsActive(false);
-        onActiveChange?.(false);
+        // Only deactivate if search is empty
+        if (!localSearchQuery.trim()) {
+          setIsActive(false);
+          onActiveChange?.(false);
+        }
       }
     };
     
@@ -63,7 +65,8 @@ export function SearchPageHeader({ searchQuery, onSearchChange, onActiveChange }
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isActive, onActiveChange]);
+    return undefined;
+  }, [isActive, onActiveChange, localSearchQuery]);
 
   // Notify parent when active state changes
   useEffect(() => {

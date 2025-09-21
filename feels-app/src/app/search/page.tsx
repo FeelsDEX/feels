@@ -49,8 +49,8 @@ function TokensContent() {
         />
       )}
       
-      {/* Main Content - with padding to account for fixed header */}
-      <div className={`container mx-auto px-4 pb-8 ${searchActive ? 'pt-24' : 'pt-4'}`}>
+      {/* Main Content */}
+      <div className="container mx-auto px-4 pb-8 pt-4">
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -87,17 +87,17 @@ function TokensContent() {
               )}
             </div>
             
-            {!searchActive && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSearchActive(true)}
-                className="flex items-center gap-2"
-              >
-                <Search className="h-3 w-3" />
-                Search
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchActive(true)}
+              className={`flex items-center gap-2 transition-opacity ${
+                searchActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+            >
+              <Search className="h-3 w-3" />
+              Find
+            </Button>
           </div>
           
           {hasActiveFilters && (
