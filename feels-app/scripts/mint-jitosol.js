@@ -118,7 +118,7 @@ async function main() {
       [wallet, jitosolAuthority]
     );
 
-    console.log('✓ Successfully minted', amount, 'JitoSOL');
+    console.log('Success: Successfully minted', amount, 'JitoSOL');
     console.log('Transaction:', signature);
 
     // Check balance

@@ -117,7 +117,7 @@ async function main() {
       { commitment: 'confirmed' }
     );
 
-    console.log('\n✓ Minted successfully!');
+    console.log('\nSuccess: Minted successfully!');
     console.log('Transaction:', signature);
     console.log('Token account:', ata.toBase58());
     console.log('Amount minted:', amount, 'JitoSOL');

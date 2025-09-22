@@ -99,7 +99,7 @@ async function initializeHub() {
     // Check if already initialized
     const hubAccount = await connection.getAccountInfo(feelssolHub);
     if (hubAccount) {
-      console.log('✓ Hub already initialized');
+      console.log('Success: Hub already initialized');
       const hub = await (program.account as any)['feelssolHub'].fetch(feelssolHub);
       console.log('Hub state:', {
         mint: hub.mint.toBase58(),
@@ -120,7 +120,7 @@ async function initializeHub() {
       })
       .rpc();
       
-    console.log('\n✓ Hub initialized successfully!');
+    console.log('\nSuccess: Hub initialized successfully!');
     console.log('Transaction:', tx);
     
     // Read the hub state

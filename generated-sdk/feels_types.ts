@@ -483,10 +483,16 @@ export type Feels = {
         },
         {
           "name": "market",
+          "docs": [
+            "Market account"
+          ],
           "writable": true
         },
         {
           "name": "buffer",
+          "docs": [
+            "Buffer account"
+          ],
           "writable": true
         },
         {
@@ -1047,16 +1053,14 @@ export type Feels = {
         {
           "name": "vault0",
           "docs": [
-            "Protocol-owned vault holding token_0 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_0 reserves"
           ],
           "writable": true
         },
         {
           "name": "vault1",
           "docs": [
-            "Protocol-owned vault holding token_1 reserves",
-            "PDA derived from market tokens with deterministic ordering"
+            "Protocol-owned vault holding token_1 reserves"
           ],
           "writable": true
         },
@@ -1070,16 +1074,14 @@ export type Feels = {
         {
           "name": "buffer",
           "docs": [
-            "Buffer account for fee collection and protocol-owned market making",
-            "Accumulates impact fees for later deployment as liquidity"
+            "Buffer account for fee collection and protocol-owned market making"
           ],
           "writable": true
         },
         {
           "name": "oracle",
           "docs": [
-            "Oracle account for tracking time-weighted average prices (TWAP)",
-            "Updated on every swap to maintain accurate price history"
+            "Oracle account for tracking time-weighted average prices (TWAP)"
           ],
           "writable": true
         },
@@ -1146,79 +1148,6 @@ export type Feels = {
           "type": {
             "defined": {
               "name": "feels::instructions::swap::SwapParams"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "swapExactOut",
-      "docs": [
-        "Swap tokens with exact output amount"
-      ],
-      "discriminator": [
-        250,
-        73,
-        101,
-        33,
-        38,
-        207,
-        75,
-        184
-      ],
-      "accounts": [
-        {
-          "name": "user",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "market",
-          "writable": true
-        },
-        {
-          "name": "buffer",
-          "writable": true
-        },
-        {
-          "name": "oracle",
-          "writable": true
-        },
-        {
-          "name": "vault0",
-          "writable": true
-        },
-        {
-          "name": "vault1",
-          "writable": true
-        },
-        {
-          "name": "userAccount0",
-          "writable": true
-        },
-        {
-          "name": "userAccount1",
-          "writable": true
-        },
-        {
-          "name": "marketAuthority"
-        },
-        {
-          "name": "protocolConfig"
-        },
-        {
-          "name": "tokenProgram"
-        },
-        {
-          "name": "clock"
-        }
-      ],
-      "args": [
-        {
-          "name": "params",
-          "type": {
-            "defined": {
-              "name": "feels::instructions::swap_exact_out::SwapExactOutParams"
             }
           }
         }
@@ -1864,8 +1793,7 @@ export type Feels = {
         {
           "name": "buffer",
           "docs": [
-            "Market buffer account (for fee collection, not token escrow)",
-            "Buffer is included to update deployment tracking"
+            "Market buffer account (for fee collection, not token escrow)"
           ],
           "writable": true
         },
@@ -1879,8 +1807,7 @@ export type Feels = {
         {
           "name": "escrow",
           "docs": [
-            "Pre-launch escrow for the protocol token",
-            "Escrow is derived from the non-FeelsSOL token mint"
+            "Pre-launch escrow for the protocol token"
           ],
           "writable": true
         },
@@ -2054,8 +1981,7 @@ export type Feels = {
         {
           "name": "provider",
           "docs": [
-            "Liquidity provider",
-            "SECURITY: Must be a system account to prevent PDA identity confusion"
+            "Liquidity provider"
           ],
           "writable": true,
           "signer": true
@@ -2198,8 +2124,7 @@ export type Feels = {
         {
           "name": "owner",
           "docs": [
-            "Position owner",
-            "SECURITY: Must be a system account to prevent PDA identity confusion"
+            "Position owner"
           ],
           "writable": true,
           "signer": true
@@ -2228,9 +2153,7 @@ export type Feels = {
         {
           "name": "position",
           "docs": [
-            "Position account (PDA)",
-            "SECURITY: Removed `close = owner` to prevent fee theft vulnerability.",
-            "Position must be closed in a separate instruction after verification."
+            "Position account (PDA)"
           ],
           "writable": true
         },
@@ -3230,46 +3153,6 @@ export type Feels = {
             "docs": [
               "Maximum total fee in basis points (0 = no cap)",
               "Provides user protection against excessive fees"
-            ],
-            "type": "u16"
-          }
-        ]
-      }
-    },
-    {
-      "name": "feels::instructions::swap_exact_out::SwapExactOutParams",
-      "docs": [
-        "Parameters for exact output swap execution"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "amountOut",
-            "docs": [
-              "Exact amount of output token to receive (after all fees)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "maximumAmountIn",
-            "docs": [
-              "Maximum amount of input token willing to pay (before fees)",
-              "Used for slippage protection"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "maxTicksCrossed",
-            "docs": [
-              "Maximum number of ticks to cross during swap (0 = unlimited)"
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "maxTotalFeeBps",
-            "docs": [
-              "Maximum total fee in basis points (0 = no cap)"
             ],
             "type": "u16"
           }

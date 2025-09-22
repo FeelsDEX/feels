@@ -99,7 +99,7 @@ async function main() {
       { commitment: 'confirmed' }
     );
 
-    console.log('✓ JitoSOL mint created');
+    console.log('JitoSOL mint created');
 
     // Create FeelsSOL mint
     const createFeelssolMintTx = new Transaction().add(
@@ -126,7 +126,7 @@ async function main() {
       { commitment: 'confirmed' }
     );
 
-    console.log('✓ FeelsSOL mint created');
+    console.log('FeelsSOL mint created');
 
     // Create associated token accounts
     const jitosolAta = await getAssociatedTokenAddress(
@@ -183,7 +183,7 @@ async function main() {
         [wallet],
         { commitment: 'confirmed' }
       );
-      console.log('✓ Associated token accounts created');
+      console.log('Associated token accounts created');
     }
 
     // Mint some test JitoSOL
@@ -206,7 +206,7 @@ async function main() {
       { commitment: 'confirmed' }
     );
 
-    console.log(`✓ Minted ${mintAmount / 10 ** JITOSOL_DECIMALS} test JitoSOL`);
+    console.log(`Minted ${mintAmount / 10 ** JITOSOL_DECIMALS} test JitoSOL`);
 
     // Output configuration for use in other scripts
     console.log('\n=== Setup Complete ===');

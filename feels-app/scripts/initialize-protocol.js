@@ -94,7 +94,7 @@ async function main() {
     // Check if already initialized
     const configAccount = await connection.getAccountInfo(protocolConfig);
     if (configAccount) {
-      console.log('✓ Protocol already initialized');
+      console.log('Success: Protocol already initialized');
       console.log('  Config:', protocolConfig.toBase58());
       console.log('  Oracle:', protocolOracle.toBase58());
       console.log('  Safety:', safetyController.toBase58());
@@ -142,7 +142,7 @@ async function main() {
         .signers([wallet])
         .rpc();
 
-      console.log('\n✓ Protocol initialized successfully!');
+      console.log('\nSuccess: Protocol initialized successfully!');
       console.log('Transaction:', tx);
       console.log('\nPDAs created:');
       console.log('  Protocol config:', protocolConfig.toBase58());

@@ -95,7 +95,7 @@ async function main() {
       console.log('Please initialize the protocol separately before running this script.');
       console.log('Continuing with token setup...\n');
     } else {
-      console.log('✓ Protocol already initialized\n');
+      console.log('Success: Protocol already initialized\n');
     }
 
     // Step 1: Create mock JitoSOL mint
@@ -121,7 +121,7 @@ async function main() {
     );
 
     await sendAndConfirmTransaction(connection, createJitosolMintTx, [wallet, jitosol]);
-    console.log('✓ JitoSOL mint created:', jitosol.publicKey.toBase58());
+    console.log('Success: JitoSOL mint created:', jitosol.publicKey.toBase58());
     console.log('  Authority:', jitosolAuthority.publicKey.toBase58());
 
     // Step 2: Use existing FeelsSOL mint from config or create new one
@@ -137,7 +137,7 @@ async function main() {
         console.log('Using existing FeelsSOL mint from config');
         feelssol = { publicKey: new PublicKey(existingConfig.feelssol.mint) };
         mintAuthority = new PublicKey(existingConfig.feelssol.authority);
-        console.log('✓ FeelsSOL mint:', feelssol.publicKey.toBase58());
+        console.log('Success: FeelsSOL mint:', feelssol.publicKey.toBase58());
         console.log('  Authority:', mintAuthority.toBase58());
       }
     }
@@ -186,7 +186,7 @@ async function main() {
           .signers([wallet])
           .rpc();
 
-        console.log('✓ FeelsSOL hub initialized:', tx);
+        console.log('Success: FeelsSOL hub initialized:', tx);
         console.log('  Hub:', feelsHub.toBase58());
         console.log('  JitoSOL vault:', jitosolVault.toBase58());
       } catch (e) {
@@ -195,7 +195,7 @@ async function main() {
         console.log('Please ensure the protocol is initialized before running this script.');
       }
     } else {
-      console.log('✓ FeelsSOL hub already exists:', feelsHub.toBase58());
+      console.log('Success: FeelsSOL hub already exists:', feelsHub.toBase58());
     }
 
     // Step 4: Update configuration with new values
@@ -228,7 +228,7 @@ async function main() {
     config.vaultAuthority = vaultAuthority.toBase58();
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('✓ Configuration updated');
+    console.log('Success: Configuration updated');
 
     // Step 5: Mint some test JitoSOL to the wallet
     console.log('\nStep 5: Minting test JitoSOL...');
@@ -251,7 +251,7 @@ async function main() {
         )
       );
       await sendAndConfirmTransaction(connection, createAtaTx, [wallet]);
-      console.log('✓ Created JitoSOL ATA:', walletJitosol.toBase58());
+      console.log('Success: Created JitoSOL ATA:', walletJitosol.toBase58());
     }
 
     // Mint 1000 JitoSOL for testing
@@ -265,9 +265,9 @@ async function main() {
       )
     );
     await sendAndConfirmTransaction(connection, mintTx, [wallet, jitosolAuthority]);
-    console.log('✓ Minted', mintAmount / Math.pow(10, JITOSOL_DECIMALS), 'JitoSOL to wallet');
+    console.log('Success: Minted', mintAmount / Math.pow(10, JITOSOL_DECIMALS), 'JitoSOL to wallet');
 
-    console.log('\n✅ Setup complete!');
+    console.log('\nSuccess: Setup complete!');
     console.log('\nYou can now:');
     console.log('1. Use the CreateMarket component to create new markets');
     console.log('2. Enter FeelsSOL by swapping JitoSOL');
