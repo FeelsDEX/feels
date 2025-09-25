@@ -1,6 +1,6 @@
 //! Test exact output swap functionality across all scenarios
 //! This ensures the swap_exact_out instruction works correctly in various market conditions
-//! 
+//!
 //! NOTE: This test is simplified for in-memory environments due to constraints
 //! with creating ProtocolToken accounts. The full flow is tested in devnet/localnet.
 
@@ -11,11 +11,11 @@ test_all_environments!(
     test_exact_output_swap_all_scenarios,
     |ctx: TestContext| async move {
         println!("\n=== Test: Exact Output Swap All Scenarios ===");
-        
+
         // For in-memory tests, we'll test a simplified flow
         if matches!(ctx.environment, TestEnvironment::InMemory) {
             println!("Running simplified test for in-memory environment...");
-            
+
             // Test protocol initialization
             if let Err(_) = ctx.initialize_protocol().await {
                 println!("Protocol already initialized");
@@ -25,12 +25,12 @@ test_all_environments!(
             if let Err(_) = ctx.initialize_feels_hub().await {
                 println!("FeelsHub already initialized or not needed");
             }
-            
+
             println!("✓ Simplified exact output swap test passed");
             println!("  - Protocol initialized");
             println!("  - FeelsHub initialized");
             println!("\nFull exact output swap tests require devnet/localnet environment");
-            
+
             return Ok::<(), Box<dyn std::error::Error>>(());
         }
 

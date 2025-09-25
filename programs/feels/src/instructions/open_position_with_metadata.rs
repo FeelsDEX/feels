@@ -129,10 +129,7 @@ pub fn open_position_with_metadata(
         ctx.accounts.market.is_initialized,
         FeelsError::MarketNotInitialized
     );
-    require!(
-        !ctx.accounts.market.is_paused,
-        FeelsError::MarketPaused
-    );
+    require!(!ctx.accounts.market.is_paused, FeelsError::MarketPaused);
     require!(
         ctx.accounts.metadata_program.key() == METADATA_PROGRAM_ID,
         FeelsError::InvalidAccount
@@ -140,11 +137,19 @@ pub fn open_position_with_metadata(
 
     // Validate vault PDAs
     let (expected_vault_0, _) = Pubkey::find_program_address(
-        &[VAULT_SEED, ctx.accounts.market.key().as_ref(), ctx.accounts.market.token_0.as_ref()],
+        &[
+            VAULT_SEED,
+            ctx.accounts.market.key().as_ref(),
+            ctx.accounts.market.token_0.as_ref(),
+        ],
         &crate::ID,
     );
     let (expected_vault_1, _) = Pubkey::find_program_address(
-        &[VAULT_SEED, ctx.accounts.market.key().as_ref(), ctx.accounts.market.token_1.as_ref()],
+        &[
+            VAULT_SEED,
+            ctx.accounts.market.key().as_ref(),
+            ctx.accounts.market.token_1.as_ref(),
+        ],
         &crate::ID,
     );
     require!(

@@ -1,5 +1,5 @@
 //! SDK compatibility layer for tests
-//! 
+//!
 //! Provides functions that were removed from the SDK during reorganization
 
 use anchor_lang::prelude::*;
@@ -7,8 +7,6 @@ use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-// Re-import Result to avoid conflicts
-use anchor_lang::Result;
 
 // Re-export feels_sdk for convenience
 pub use feels_sdk as sdk;
@@ -47,10 +45,7 @@ pub fn find_vault_address(market: &Pubkey, token: &Pubkey) -> (Pubkey, u8) {
     // Determine vault index based on token ordering in market
     // This is simplified - in reality would need to check market state
     let index = if token.as_ref()[0] < 128 { b"0" } else { b"1" };
-    Pubkey::find_program_address(
-        &[VAULT_SEED, market.as_ref(), index],
-        &program_id(),
-    )
+    Pubkey::find_program_address(&[VAULT_SEED, market.as_ref(), index], &program_id())
 }
 
 /// Find vault authority address
@@ -81,12 +76,12 @@ pub fn find_protocol_config_address() -> (Pubkey, u8) {
 /// Utilities module
 pub mod utils {
     use super::*;
-    
+
     /// Find position address from position mint
     pub fn find_position_address(position_mint: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[POSITION_SEED, position_mint.as_ref()], &program_id())
     }
-    
+
     /// Find tick array address
     pub fn find_tick_array_address(market: &Pubkey, start_tick: i32) -> (Pubkey, u8) {
         Pubkey::find_program_address(
@@ -94,12 +89,12 @@ pub mod utils {
             &program_id(),
         )
     }
-    
+
     /// Get tick array start index
     pub fn get_tick_array_start_index(tick: i32, tick_spacing: u16) -> i32 {
         let tick_array_size = feels::state::TICK_ARRAY_SIZE as i32;
         let tick_array_spacing = (tick_spacing as i32) * tick_array_size;
-        
+
         if tick >= 0 {
             (tick / tick_array_spacing) * tick_array_spacing
         } else {
@@ -111,9 +106,9 @@ pub mod utils {
 /// Instructions module additions
 pub mod instructions {
     use super::*;
-    use anchor_lang::prelude::*;
+    use anchor_lang::prelude::{AnchorDeserialize, AnchorSerialize};
     use solana_sdk::instruction::{AccountMeta, Instruction};
-    
+
     /// Initialize protocol params
     #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
     pub struct InitializeProtocolParams {
@@ -130,20 +125,21 @@ pub mod instructions {
         pub dex_twap_stale_age_secs: u32,
         pub dex_whitelist: Vec<Pubkey>,
     }
-    
+
     /// Build initialize protocol instruction
     pub fn initialize_protocol(
         payer: Pubkey,
         params: InitializeProtocolParams,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let (protocol_config, _) = find_protocol_config_address();
-        let (protocol_oracle, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &program_id());
+        let (protocol_oracle, _) =
+            Pubkey::find_program_address(&[b"protocol_oracle"], &program_id());
         let (safety, _) = Pubkey::find_program_address(&[b"safety_controller"], &program_id());
-        
+
         let discriminator = [188, 233, 252, 106, 134, 146, 202, 91];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -156,16 +152,14 @@ pub mod instructions {
             data,
         })
     }
-    
+
     /// Swap params (re-export from feels)
     pub use feels::instructions::SwapParams;
-    
+
     /// Close position params
     pub use feels::instructions::ClosePositionParams;
-    
-    // Re-import Result for instructions module
-    use anchor_lang::Result;
-    
+
+
     /// Build mint token instruction
     pub fn mint_token(
         creator: Pubkey,
@@ -173,49 +167,38 @@ pub mod instructions {
         feelssol_mint: Pubkey,
         creator_feelssol: Pubkey,
         params: feels::instructions::MintTokenParams,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         // Derive all required PDAs
-        let (escrow, _) = Pubkey::find_program_address(
-            &[b"escrow", token_mint.as_ref()],
-            &program_id(),
-        );
+        let (escrow, _) =
+            Pubkey::find_program_address(&[b"escrow", token_mint.as_ref()], &program_id());
         let (escrow_authority, _) = Pubkey::find_program_address(
             &[b"escrow_authority", token_mint.as_ref()],
             &program_id(),
         );
         let (protocol_config, _) = find_protocol_config_address();
-        
+
         // Escrow vaults
-        let escrow_token_vault = spl_associated_token_account::get_associated_token_address(
-            &escrow,
-            &token_mint,
-        );
-        let escrow_feelssol_vault = spl_associated_token_account::get_associated_token_address(
-            &escrow,
-            &feelssol_mint,
-        );
-        
+        let escrow_token_vault =
+            spl_associated_token_account::get_associated_token_address(&escrow, &token_mint);
+        let escrow_feelssol_vault =
+            spl_associated_token_account::get_associated_token_address(&escrow, &feelssol_mint);
+
         // Protocol token registry
-        let (protocol_token, _) = Pubkey::find_program_address(
-            &[b"protocol_token", token_mint.as_ref()],
-            &program_id(),
-        );
-        
+        let (protocol_token, _) =
+            Pubkey::find_program_address(&[b"protocol_token", token_mint.as_ref()], &program_id());
+
         // Metadata account
-        let metadata_program = Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap();
+        let metadata_program =
+            Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap();
         let (metadata_account, _) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                metadata_program.as_ref(),
-                token_mint.as_ref(),
-            ],
+            &[b"metadata", metadata_program.as_ref(), token_mint.as_ref()],
             &metadata_program,
         );
-        
+
         let discriminator = [0x84, 0x85, 0x82, 0x50, 0x40, 0xda, 0xba, 0x96];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -239,7 +222,7 @@ pub mod instructions {
             data,
         })
     }
-    
+
     /// Build open position instruction
     pub fn open_position(
         owner: Pubkey,
@@ -248,13 +231,13 @@ pub mod instructions {
         lower_tick: i32,
         upper_tick: i32,
         liquidity: u128,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let discriminator = [0x87, 0x80, 0xed, 0xec, 0x53, 0x73, 0x18, 0x0e];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&lower_tick.to_le_bytes());
         data.extend_from_slice(&upper_tick.to_le_bytes());
         data.extend_from_slice(&liquidity.to_le_bytes());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -266,18 +249,18 @@ pub mod instructions {
             data,
         })
     }
-    
+
     /// Build close position instruction
     pub fn close_position(
         owner: Pubkey,
         market: Pubkey,
         position: Pubkey,
         params: ClosePositionParams,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let discriminator = [0x7b, 0x86, 0xfd, 0xdc, 0x37, 0xa5, 0xd4, 0xd0];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -289,16 +272,16 @@ pub mod instructions {
             data,
         })
     }
-    
+
     /// Build collect fees instruction
     pub fn collect_fees(
         owner: Pubkey,
         position: Pubkey,
         position_token_account_0: Pubkey,
         position_token_account_1: Pubkey,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let discriminator = [0xb1, 0xd2, 0x35, 0x05, 0x63, 0xea, 0x43, 0xfc];
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -311,70 +294,66 @@ pub mod instructions {
             data: discriminator.to_vec(),
         })
     }
-    
-    
+
     /// Build initialize market instruction
     pub fn initialize_market(
         deployer: Pubkey,
         token_0: Pubkey,
         token_1: Pubkey,
         params: feels::instructions::InitializeMarketParams,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let (market, _) = find_market_address(&token_0, &token_1);
         let (buffer, _) = find_buffer_address(&market);
         let (vault_authority, _) = find_market_authority_address(&market);
         let (oracle, _) = find_oracle_address(&market);
         let (vault_0, _) = find_vault_address(&market, &token_0);
         let (vault_1, _) = find_vault_address(&market, &token_1);
-        
+
         // Determine which is FeelsSOL mint
         // In test context, we pass the actual FeelsSOL mint pubkey
-        let feelssol_mint = if token_0.to_string().starts_with("1") || token_0.to_string().len() < 44 {
-            // Likely a low pubkey that's our test FeelsSOL
-            token_0
-        } else {
-            token_1
-        };
-        
+        let feelssol_mint =
+            if token_0.to_string().starts_with("1") || token_0.to_string().len() < 44 {
+                // Likely a low pubkey that's our test FeelsSOL
+                token_0
+            } else {
+                token_1
+            };
+
         // Protocol token accounts
         // For test environments, use system program for FeelsSOL
         let protocol_token_0 = if token_0 == feelssol_mint {
             solana_sdk::system_program::id()
         } else {
-            let (pda, _) = Pubkey::find_program_address(
-                &[b"protocol_token", token_0.as_ref()],
-                &program_id(),
-            );
+            let (pda, _) =
+                Pubkey::find_program_address(&[b"protocol_token", token_0.as_ref()], &program_id());
             pda
         };
-        
+
         let protocol_token_1 = if token_1 == feelssol_mint {
             solana_sdk::system_program::id()
         } else {
-            let (pda, _) = Pubkey::find_program_address(
-                &[b"protocol_token", token_1.as_ref()],
-                &program_id(),
-            );
+            let (pda, _) =
+                Pubkey::find_program_address(&[b"protocol_token", token_1.as_ref()], &program_id());
             pda
         };
-        
+
         // Escrow for non-FeelsSOL token
-        let protocol_token_mint = if token_0 == feelssol_mint { token_1 } else { token_0 };
-        let (escrow, _) = Pubkey::find_program_address(
-            &[b"escrow", protocol_token_mint.as_ref()],
-            &program_id(),
-        );
-        
+        let protocol_token_mint = if token_0 == feelssol_mint {
+            token_1
+        } else {
+            token_0
+        };
+        let (escrow, _) =
+            Pubkey::find_program_address(&[b"escrow", protocol_token_mint.as_ref()], &program_id());
+
         // Escrow authority
-        let (escrow_authority, _) = Pubkey::find_program_address(
-            &[b"escrow_authority"],
-            &program_id(),
-        );
-        
+        let (escrow_authority, _) =
+            Pubkey::find_program_address(&[b"escrow_authority"], &program_id());
+
         let discriminator = [0x95, 0xf6, 0xc7, 0xee, 0xab, 0x7e, 0xd8, 0x75];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -400,17 +379,17 @@ pub mod instructions {
             data,
         })
     }
-    
+
     /// Build deploy initial liquidity instruction
     pub fn deploy_initial_liquidity(
         deployer: Pubkey,
         market: Pubkey,
         params: feels::instructions::DeployInitialLiquidityParams,
-    ) -> Result<Instruction> {
+    ) -> anchor_lang::Result<Instruction> {
         let discriminator = [0xc9, 0xf6, 0x66, 0x37, 0x03, 0xa4, 0xd0, 0x72];
         let mut data = discriminator.to_vec();
         data.extend_from_slice(&params.try_to_vec().unwrap());
-        
+
         Ok(Instruction {
             program_id: program_id(),
             accounts: vec![
@@ -424,24 +403,16 @@ pub mod instructions {
 }
 
 /// Build initialize hub instruction
-pub fn initialize_hub(
-    payer: Pubkey,
-    feelssol_mint: Pubkey,
-    jitosol_mint: Pubkey,
-) -> Instruction {
-    let (feels_hub, _) = Pubkey::find_program_address(
-        &[FEELS_HUB_SEED, feelssol_mint.as_ref()],
-        &program_id(),
-    );
-    let (jitosol_vault, _) = Pubkey::find_program_address(
-        &[b"jitosol_vault", feelssol_mint.as_ref()],
-        &program_id(),
-    );
+pub fn initialize_hub(payer: Pubkey, feelssol_mint: Pubkey, jitosol_mint: Pubkey) -> Instruction {
+    let (feels_hub, _) =
+        Pubkey::find_program_address(&[FEELS_HUB_SEED, feelssol_mint.as_ref()], &program_id());
+    let (jitosol_vault, _) =
+        Pubkey::find_program_address(&[b"jitosol_vault", feelssol_mint.as_ref()], &program_id());
     let (vault_authority, _) = Pubkey::find_program_address(
         &[VAULT_AUTHORITY_SEED, feelssol_mint.as_ref()],
         &program_id(),
     );
-    
+
     Instruction {
         program_id: program_id(),
         accounts: vec![
@@ -468,23 +439,17 @@ pub fn enter_feelssol(
     amount: u64,
 ) -> Instruction {
     // Derive PDAs
-    let (hub, _) = Pubkey::find_program_address(
-        &[FEELS_HUB_SEED, feelssol_mint.as_ref()],
-        &program_id(),
-    );
-    let (jitosol_vault, _) = Pubkey::find_program_address(
-        &[b"jitosol_vault", feelssol_mint.as_ref()],
-        &program_id(),
-    );
-    let (mint_authority, _) = Pubkey::find_program_address(
-        &[b"mint_authority", feelssol_mint.as_ref()],
-        &program_id(),
-    );
-    
+    let (hub, _) =
+        Pubkey::find_program_address(&[FEELS_HUB_SEED, feelssol_mint.as_ref()], &program_id());
+    let (jitosol_vault, _) =
+        Pubkey::find_program_address(&[b"jitosol_vault", feelssol_mint.as_ref()], &program_id());
+    let (mint_authority, _) =
+        Pubkey::find_program_address(&[b"mint_authority", feelssol_mint.as_ref()], &program_id());
+
     let discriminator = [0xc7, 0xcd, 0x31, 0xad, 0x51, 0x32, 0xba, 0x7e];
     let mut data = discriminator.to_vec();
     data.extend_from_slice(&amount.to_le_bytes());
-    
+
     Instruction {
         program_id: program_id(),
         accounts: vec![
@@ -513,35 +478,23 @@ pub fn exit_feelssol(
     amount: u64,
 ) -> Instruction {
     // Derive PDAs
-    let (hub, _) = Pubkey::find_program_address(
-        &[FEELS_HUB_SEED, feelssol_mint.as_ref()],
-        &program_id(),
-    );
-    let (jitosol_vault, _) = Pubkey::find_program_address(
-        &[b"jitosol_vault", feelssol_mint.as_ref()],
-        &program_id(),
-    );
+    let (hub, _) =
+        Pubkey::find_program_address(&[FEELS_HUB_SEED, feelssol_mint.as_ref()], &program_id());
+    let (jitosol_vault, _) =
+        Pubkey::find_program_address(&[b"jitosol_vault", feelssol_mint.as_ref()], &program_id());
     let (vault_authority, _) = Pubkey::find_program_address(
         &[VAULT_AUTHORITY_SEED, feelssol_mint.as_ref()],
         &program_id(),
     );
-    let (safety_controller, _) = Pubkey::find_program_address(
-        &[b"safety_controller"],
-        &program_id(),
-    );
-    let (protocol_config, _) = Pubkey::find_program_address(
-        &[PROTOCOL_CONFIG_SEED],
-        &program_id(),
-    );
-    let (protocol_oracle, _) = Pubkey::find_program_address(
-        &[b"protocol_oracle"],
-        &program_id(),
-    );
-    
+    let (safety_controller, _) =
+        Pubkey::find_program_address(&[b"safety_controller"], &program_id());
+    let (protocol_config, _) = Pubkey::find_program_address(&[PROTOCOL_CONFIG_SEED], &program_id());
+    let (protocol_oracle, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &program_id());
+
     let discriminator = [0x69, 0x76, 0xa8, 0x94, 0x3d, 0x98, 0x03, 0xaf];
     let mut data = discriminator.to_vec();
     data.extend_from_slice(&amount.to_le_bytes());
-    
+
     Instruction {
         program_id: program_id(),
         accounts: vec![
@@ -593,7 +546,7 @@ pub fn sort_tokens_with_feelssol(
     if token_a == token_b {
         return Err("Cannot create market with identical tokens");
     }
-    
+
     if token_a == feelssol_mint {
         Ok((feelssol_mint, token_b))
     } else if token_b == feelssol_mint {
@@ -604,22 +557,17 @@ pub fn sort_tokens_with_feelssol(
 }
 
 /// Build update native rate instruction
-pub fn update_native_rate(
-    authority: Pubkey,
-    native_rate_q64: u128,
-) -> Instruction {
+pub fn update_native_rate(authority: Pubkey, native_rate_q64: u128) -> Instruction {
     let (protocol_config, _) = find_protocol_config_address();
     let (protocol_oracle, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &program_id());
     let (safety, _) = Pubkey::find_program_address(&[b"safety_controller"], &program_id());
-    
-    let params = feels::instructions::UpdateNativeRateParams {
-        native_rate_q64,
-    };
-    
+
+    let params = feels::instructions::UpdateNativeRateParams { native_rate_q64 };
+
     let discriminator = [100, 175, 161, 10, 254, 80, 99, 77]; // update_native_rate
     let mut data = discriminator.to_vec();
     data.extend_from_slice(&params.try_to_vec().unwrap());
-    
+
     Instruction {
         program_id: program_id(),
         accounts: vec![
@@ -634,26 +582,22 @@ pub fn update_native_rate(
 }
 
 /// Build update dex twap instruction
-pub fn update_dex_twap(
-    updater: Pubkey,
-    dex_twap_rate_q64: u128,
-    venue_id: Pubkey,
-) -> Instruction {
+pub fn update_dex_twap(updater: Pubkey, dex_twap_rate_q64: u128, venue_id: Pubkey) -> Instruction {
     let (protocol_config, _) = find_protocol_config_address();
     let (protocol_oracle, _) = Pubkey::find_program_address(&[b"protocol_oracle"], &program_id());
     let (safety, _) = Pubkey::find_program_address(&[b"safety_controller"], &program_id());
-    
+
     let params = feels::instructions::UpdateDexTwapParams {
         dex_twap_rate_q64,
         window_secs: 300, // 5 minutes default
         obs: 1,
         venue_id,
     };
-    
+
     let discriminator = [144, 64, 180, 12, 223, 33, 140, 232]; // update_dex_twap
     let mut data = discriminator.to_vec();
     data.extend_from_slice(&params.try_to_vec().unwrap());
-    
+
     Instruction {
         program_id: program_id(),
         accounts: vec![

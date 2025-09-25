@@ -38,7 +38,7 @@ pub mod types {
     }
 }
 
-pub const PROGRAM_ID: &str = "EyuKq8zyGxgvjNazRuvZ9uvVoKTDS3isk3GF9rcX3gmp";
+pub const PROGRAM_ID: &str = "FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx";
 
 pub struct FeelsClient {
     program: Program<Rc<Keypair>>,

@@ -187,7 +187,7 @@ mod test_pomm_operations {
         let mut position = create_test_position();
         position.liquidity = 1000;
         position.is_pomm = true;
-        
+
         // Set up fee growth to generate fees
         position.fee_growth_inside_0_last = 0;
         position.fee_growth_inside_1_last = 0;
@@ -213,7 +213,7 @@ mod test_pomm_operations {
         let pomm_tick_width = (tick_spacing)
             .saturating_mul(20)
             .clamp(10, 2000);
-        
+
         assert_eq!(pomm_tick_width, 200); // 10 * 20 = 200
 
         // Test range for single-sided liquidity
@@ -237,7 +237,7 @@ mod test_pomm_operations {
     fn test_pomm_cooldown() {
         let buffer = create_test_buffer();
         let current_time = 1000;
-        
+
         // Test: Within cooldown
         let last_placement = current_time - 30; // 30 seconds ago
         assert!(current_time <= last_placement + POMM_COOLDOWN_SECONDS);
@@ -264,7 +264,7 @@ mod test_pomm_operations {
         let fees_0 = ((fee_growth_0 - position.fee_growth_inside_0_last) as u128)
             .saturating_mul(position.liquidity)
             .saturating_div(1u128 << 64) as u64;
-        
+
         let fees_1 = ((fee_growth_1 - position.fee_growth_inside_1_last) as u128)
             .saturating_mul(position.liquidity)
             .saturating_div(1u128 << 64) as u64;
@@ -283,7 +283,7 @@ mod test_pomm_operations {
         // Simulate adding liquidity
         let amount_0 = 600_000;
         let amount_1 = 400_000;
-        
+
         buffer.fees_token_0 = buffer.fees_token_0.saturating_sub(amount_0 as u128);
         buffer.fees_token_1 = buffer.fees_token_1.saturating_sub(amount_1 as u128);
         buffer.tau_spot = buffer.tau_spot.saturating_sub((amount_0 + amount_1) as u128);

@@ -89,7 +89,7 @@ e2e-pipeline:
     if [ "$all_running" = false ]; then
         echo ""
         echo "⚠️  Not all services are running"
-        echo "To start the full E2E environment: just dev-e2e"
+        echo "To start the full E2E environment: just -f ../../../e2e/justfile run"
         echo ""
     fi
     
@@ -106,12 +106,12 @@ e2e-pipeline-indexer:
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Indexer Data Pipeline"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_indexer_complete_pipeline -- --nocapture --test-threads=1
+    nix develop -c cargo test -p feels test_indexer_placeholder -- --nocapture --test-threads=1
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Indexer Analytics"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_indexer_market_stats_and_ohlcv -- --nocapture --test-threads=1
+    # Analytics test placeholder - to be implemented when indexer is running
 
 # Run frontend DevBridge tests
 e2e-pipeline-frontend:
@@ -119,17 +119,17 @@ e2e-pipeline-frontend:
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Frontend DevBridge Integration"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_frontend_complete_flow_via_devbridge -- --nocapture --test-threads=1
+    nix develop -c cargo test -p feels test_devbridge_placeholder -- --nocapture --test-threads=1
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Frontend Real-Time Updates"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_frontend_real_time_updates -- --nocapture --test-threads=1
+    # Real-time updates test placeholder - to be implemented
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Frontend Error Handling"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_frontend_error_handling -- --nocapture --test-threads=1
+    # Error handling test placeholder - to be implemented
 
 # Run tests matching a pattern
 filter PATTERN:

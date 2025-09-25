@@ -13,6 +13,16 @@ is-macos := if os() == "macos" { "true" } else { "false" }
 is-linux := if os() == "linux" { "true" } else { "false" }  
 is-windows := if os() == "windows" { "true" } else { "false" }
 
+# ===== Nix Environment Helper =====
+# Run command with or without nix develop based on environment
+nix-run command:
+    #!/usr/bin/env bash
+    if [[ -n "$IN_NIX_SHELL" ]]; then
+        {{command}}
+    else
+        nix develop -c {{command}}
+    fi
+
 # ===== Progress Indicators =====
 [private]
 @show-progress message:
@@ -44,13 +54,50 @@ exit-with-error code message:
     @just show-error "{{message}}"
     @exit {{code}}
 
+# ===== Validator Management =====
+[private]
+ensure-validator:
+    #!/usr/bin/env bash
+    # Check if validator is already running
+    if solana cluster-version >/dev/null 2>&1; then
+        just show-success "Validator already running"
+    else
+        just show-progress "Starting local validator"
+        # Start validator in background
+        solana-test-validator \
+            --quiet \
+            --reset \
+            > {{LOGS_PATH}}/validator.log 2>&1 &
+        
+        # Wait for validator to start
+        timeout=30
+        while ! solana cluster-version >/dev/null 2>&1 && [ $timeout -gt 0 ]; do
+            sleep 1
+            ((timeout--))
+        done
+        
+        if [ $timeout -eq 0 ]; then
+            just exit-with-error {{EXIT_SERVICE_START_FAILURE}} "Failed to start validator"
+        else
+            just show-success "Validator started"
+        fi
+    fi
+
 # ===== Command Checks =====
 [private]
 check-command cmd name="":
     #!/usr/bin/env bash
-    if ! command -v {{cmd}} &> /dev/null; then
-        just show-error "{{ if name != "" { name } else { cmd } }} is not installed"
-        exit {{EXIT_MISSING_DEPS}}
+    # Check command availability in Nix environment if not already in shell
+    if [[ -n "$IN_NIX_SHELL" ]]; then
+        if ! command -v {{cmd}} &> /dev/null; then
+            just show-error "{{ if name != "" { name } else { cmd } }} is not installed"
+            exit {{EXIT_MISSING_DEPS}}
+        fi
+    else
+        if ! nix develop -c command -v {{cmd}} &> /dev/null; then
+            just show-error "{{ if name != "" { name } else { cmd } }} is not installed"
+            exit {{EXIT_MISSING_DEPS}}
+        fi
     fi
 
 # ===== File/Directory Checks =====
@@ -113,7 +160,12 @@ get-program-id:
     #!/usr/bin/env bash
     # Try deployed keypair first
     if [[ -f "{{DEPLOY_PATH}}/feels-keypair.json" ]]; then
-        PROGRAM_ID=$(solana-keygen pubkey "{{DEPLOY_PATH}}/feels-keypair.json" 2>/dev/null || echo "")
+        # Use nix develop only if not already in nix shell
+        if [[ -n "$IN_NIX_SHELL" ]]; then
+            PROGRAM_ID=$(solana-keygen pubkey "{{DEPLOY_PATH}}/feels-keypair.json" 2>/dev/null || echo "")
+        else
+            PROGRAM_ID=$(nix develop --quiet -c solana-keygen pubkey "{{DEPLOY_PATH}}/feels-keypair.json" 2>/dev/null || echo "")
+        fi
         if [[ -n "$PROGRAM_ID" ]]; then
             echo "$PROGRAM_ID"
             exit 0

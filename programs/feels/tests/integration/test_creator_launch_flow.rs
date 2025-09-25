@@ -1,6 +1,6 @@
 //! Test the complete creator launch flow from minting to market deployment
 //! This test validates the full lifecycle of a creator launching a new token
-//! 
+//!
 //! NOTE: This test is simplified for in-memory environments due to constraints
 //! with creating ProtocolToken accounts. The full flow is tested in devnet/localnet.
 
@@ -9,11 +9,11 @@ use feels::state::{Market, MarketPhase};
 
 test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
     println!("\n=== Test: Complete Creator Launch Flow ===");
-    
+
     // For in-memory tests, we'll test a simplified flow
     if matches!(ctx.environment, TestEnvironment::InMemory) {
         println!("Running simplified test for in-memory environment...");
-        
+
         // Test protocol initialization and FeelsSOL functionality
         if let Err(_) = ctx.initialize_protocol().await {
             println!("Protocol already initialized");
@@ -23,31 +23,33 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
         if let Err(_) = ctx.initialize_feels_hub().await {
             println!("FeelsHub already initialized or not needed");
         }
-        
+
         // Test entering and exiting FeelsSOL
         let user = &ctx.accounts.alice;
         let user_jitosol = ctx.create_ata(&user.pubkey(), &ctx.jitosol_mint).await?;
         let user_feelssol = ctx.create_ata(&user.pubkey(), &ctx.feelssol_mint).await?;
-        
+
         // Fund user with JitoSOL
         ctx.mint_to(
             &ctx.jitosol_mint,
             &user_jitosol,
             &ctx.jitosol_authority,
             1_000_000_000,
-        ).await?;
-        
+        )
+        .await?;
+
         // Enter FeelsSOL
-        ctx.enter_feelssol(&user, &user_jitosol, &user_feelssol, 500_000_000).await?;
-        
+        ctx.enter_feelssol(&user, &user_jitosol, &user_feelssol, 500_000_000)
+            .await?;
+
         let feelssol_balance = ctx.get_token_balance(&user_feelssol).await?;
         assert!(feelssol_balance > 0, "User should have FeelsSOL balance");
-        
+
         println!("✓ Simplified creator launch flow test passed");
         println!("  - Protocol initialized");
         println!("  - FeelsSOL enter/exit functionality verified");
         println!("\nFull market creation tests require devnet/localnet environment");
-        
+
         return Ok::<(), Box<dyn std::error::Error>>(());
     }
 
@@ -87,16 +89,15 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
     // Step 3: For in-memory tests, create a market between FeelsSOL and itself
     // This is a workaround since we can't create ProtocolToken accounts in tests
     let market_helper = ctx.market_helper();
-    
+
     // Create another FeelsSOL-like token for testing
     let test_token = ctx.create_mint(&creator.pubkey(), 9).await?;
-    
+
     // Initialize a simple market directly
-    let market_id = market_helper.create_simple_market(
-        &ctx.feelssol_mint,
-        &test_token.pubkey(),
-    ).await?;
-    
+    let market_id = market_helper
+        .create_simple_market(&ctx.feelssol_mint, &test_token.pubkey())
+        .await?;
+
     println!("✓ Test market created: {}", market_id);
 
     // Verify the market was created correctly
@@ -183,7 +184,10 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
         )
         .await?;
     let creator_token = ctx
-        .get_token_balance(&ctx.create_ata(&creator.pubkey(), &test_token.pubkey()).await?)
+        .get_token_balance(
+            &ctx.create_ata(&creator.pubkey(), &test_token.pubkey())
+                .await?,
+        )
         .await?;
 
     println!("\n✓ Creator final balances:");

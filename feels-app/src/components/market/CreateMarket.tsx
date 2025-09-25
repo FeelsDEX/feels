@@ -27,9 +27,11 @@ interface MarketParams {
   
   // Market parameters (for initialize_market)
   baseFeesBps: number;
+  baseFeesBpsString?: string; // Keep string representation for proper display
   tickSpacing: number;
   initialSqrtPrice: string; // Q64 format as string for precision
   initialBuyFeelsSOLAmount: number;
+  initialBuyFeelsSOLAmountString?: string; // Keep string representation for proper display
   
   // Liquidity deployment parameters (for deploy_initial_liquidity)
   tickStepSize: number;
@@ -300,9 +302,11 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
         tokenSymbol: '',
         tokenUri: '',
         baseFeesBps: PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS,
+        baseFeesBpsString: undefined,
         tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING,
         initialSqrtPrice: '79228162514264337593543950336',
         initialBuyFeelsSOLAmount: 0,
+        initialBuyFeelsSOLAmountString: undefined,
         tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE,
       });
 
@@ -404,11 +408,27 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
                 <Label htmlFor="initialBuy">Initial Buy (FeelsSOL)</Label>
                 <Input
                   id="initial-buy-input"
-                  type="number"
-                  value={params.initialBuyFeelsSOLAmount}
-                  onChange={(e) => setParams({ ...params, initialBuyFeelsSOLAmount: parseFloat(e.target.value) || 0 })}
-                  min="0"
-                  step="0.1"
+                  type="text"
+                  value={params.initialBuyFeelsSOLAmountString ?? (params.initialBuyFeelsSOLAmount === 0 ? '' : params.initialBuyFeelsSOLAmount.toString())}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow empty string, numbers with decimals
+                    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                      const numValue = value === '' ? 0 : parseFloat(value);
+                      if (!isNaN(numValue) && numValue >= 0) {
+                        setParams({ 
+                          ...params, 
+                          initialBuyFeelsSOLAmount: numValue,
+                          initialBuyFeelsSOLAmountString: value // Keep the string representation
+                        });
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    // Clear the string representation on blur to show the parsed number
+                    setParams({ ...params, initialBuyFeelsSOLAmountString: undefined });
+                  }}
+                  placeholder="0"
                   disabled={isCreating}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -419,10 +439,21 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
                 <Label htmlFor="tickSpacing">Tick Spacing</Label>
                 <Input
                   id="tick-spacing-input"
-                  type="number"
-                  value={params.tickSpacing}
-                  onChange={(e) => setParams({ ...params, tickSpacing: parseInt(e.target.value) || PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING })}
-                  min="1"
+                  type="text"
+                  value={params.tickSpacing.toString()}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow only positive integers
+                    if (/^\d*$/.test(value)) {
+                      const numValue = parseInt(value) || 0;
+                      if (numValue >= 1) {
+                        setParams({ ...params, tickSpacing: numValue });
+                      } else if (value === '') {
+                        setParams({ ...params, tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING });
+                      }
+                    }
+                  }}
+                  placeholder={PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING.toString()}
                   disabled={isCreating}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -433,26 +464,59 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
                 <Label htmlFor="baseFee">Base Fee (%)</Label>
                 <Input
                   id="base-fee-input"
-                  type="number"
-                  value={params.baseFeesBps / 100}
-                  onChange={(e) => setParams({ ...params, baseFeesBps: Math.round(parseFloat(e.target.value) * 100) || PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS })}
-                  min="0.01"
-                  max="10"
-                  step="0.01"
+                  type="text"
+                  value={params.baseFeesBpsString ?? (params.baseFeesBps / 100).toString()}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow numbers with up to 2 decimal places
+                    if (/^\d*\.?\d{0,2}$/.test(value)) {
+                      const numValue = parseFloat(value);
+                      if (!isNaN(numValue) && numValue >= 0.01 && numValue <= 10) {
+                        setParams({ 
+                          ...params, 
+                          baseFeesBps: Math.round(numValue * 100),
+                          baseFeesBpsString: value // Keep the string representation
+                        });
+                      } else if (value === '' || value === '0' || value === '0.' || /^0\.0?$/.test(value)) {
+                        // Allow typing intermediate values like "0.", "0.0"
+                        setParams({ 
+                          ...params, 
+                          baseFeesBps: 0,
+                          baseFeesBpsString: value
+                        });
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    // Clear the string representation on blur to show the parsed number
+                    setParams({ ...params, baseFeesBpsString: undefined });
+                  }}
+                  placeholder={(PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS / 100).toString()}
                   disabled={isCreating}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Trading fee percentage
+                  Trading fee percentage (0.01% - 10%)
                 </p>
               </div>
               <div id="tick-step-size-field">
                 <Label htmlFor="tickStepSize">Tick Step Size</Label>
                 <Input
                   id="tick-step-size-input"
-                  type="number"
-                  value={params.tickStepSize}
-                  onChange={(e) => setParams({ ...params, tickStepSize: parseInt(e.target.value) || PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE })}
-                  min="1"
+                  type="text"
+                  value={params.tickStepSize.toString()}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow only positive integers
+                    if (/^\d*$/.test(value)) {
+                      const numValue = parseInt(value) || 0;
+                      if (numValue >= 1) {
+                        setParams({ ...params, tickStepSize: numValue });
+                      } else if (value === '') {
+                        setParams({ ...params, tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE });
+                      }
+                    }
+                  }}
+                  placeholder={PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE.toString()}
                   disabled={isCreating}
                 />
                 <p className="text-xs text-muted-foreground mt-1">

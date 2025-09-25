@@ -48,29 +48,36 @@ impl TestContext {
     fn generate_low_pubkey_keypair(max_attempts: usize) -> Keypair {
         let mut best_kp = Keypair::new();
         let mut best_first_bytes = best_kp.pubkey().to_bytes()[0..2].to_vec();
-        
+
         for i in 0..max_attempts {
             let kp = Keypair::new();
             let bytes = kp.pubkey().to_bytes();
-            
-            if bytes[0] < best_first_bytes[0] || 
-               (bytes[0] == best_first_bytes[0] && bytes[1] < best_first_bytes[1]) {
+
+            if bytes[0] < best_first_bytes[0]
+                || (bytes[0] == best_first_bytes[0] && bytes[1] < best_first_bytes[1])
+            {
                 best_kp = kp;
                 best_first_bytes = bytes[0..2].to_vec();
-                
+
                 // If we find one starting with 0x00, that's good enough
                 if bytes[0] == 0 {
-                    println!("Found pubkey starting with 0x{:02x}{:02x} after {} attempts", 
-                             bytes[0], bytes[1], i + 1);
+                    println!(
+                        "Found pubkey starting with 0x{:02x}{:02x} after {} attempts",
+                        bytes[0],
+                        bytes[1],
+                        i + 1
+                    );
                     break;
                 }
             }
         }
-        
-        println!("Generated low pubkey: {} (first bytes: 0x{:02x}{:02x})", 
-                 best_kp.pubkey(), 
-                 best_first_bytes[0], 
-                 best_first_bytes[1]);
+
+        println!(
+            "Generated low pubkey: {} (first bytes: 0x{:02x}{:02x})",
+            best_kp.pubkey(),
+            best_first_bytes[0],
+            best_first_bytes[1]
+        );
         best_kp
     }
 
@@ -81,7 +88,11 @@ impl TestContext {
 
         let client = match &environment {
             TestEnvironment::InMemory => TestClient::InMemory(InMemoryClient::new().await?),
-            TestEnvironment::Devnet { url, payer_path, disable_airdrop_rate_limit } => {
+            TestEnvironment::Devnet {
+                url,
+                payer_path,
+                disable_airdrop_rate_limit,
+            } => {
                 let mut client = DevnetClient::new(url, payer_path.as_deref()).await?;
                 client.set_disable_airdrop_rate_limit(*disable_airdrop_rate_limit);
                 TestClient::Devnet(client)
@@ -155,8 +166,9 @@ impl TestContext {
     /// Setup and fund test accounts
     async fn setup_test_accounts(&mut self) -> TestResult<()> {
         // For devnet, check if we should skip initial funding to avoid rate limits
-        if matches!(&self.environment, TestEnvironment::Devnet { .. }) && 
-           std::env::var("SKIP_INITIAL_FUNDING").is_ok() {
+        if matches!(&self.environment, TestEnvironment::Devnet { .. })
+            && std::env::var("SKIP_INITIAL_FUNDING").is_ok()
+        {
             println!("Skipping initial account funding for devnet tests");
             return Ok(());
         }
@@ -173,10 +185,13 @@ impl TestContext {
         if matches!(&self.environment, TestEnvironment::Devnet { .. }) {
             // Fund only essential accounts with smaller amounts
             let essential_accounts = vec![
-                (&self.accounts.market_creator, constants::DEFAULT_AIRDROP / 2),
+                (
+                    &self.accounts.market_creator,
+                    constants::DEFAULT_AIRDROP / 2,
+                ),
                 (&self.accounts.fee_collector, constants::DEFAULT_AIRDROP / 4),
             ];
-            
+
             for (account, amount) in essential_accounts {
                 if let Err(e) = self.airdrop(&account.pubkey(), amount).await {
                     eprintln!("Warning: Failed to fund {}: {}", account.pubkey(), e);
@@ -217,7 +232,11 @@ impl TestContext {
         }
 
         // Use the SDK to build the instruction
-        let ix = crate::common::sdk_compat::initialize_hub(payer_pubkey, self.feelssol_mint, self.jitosol_mint);
+        let ix = crate::common::sdk_compat::initialize_hub(
+            payer_pubkey,
+            self.feelssol_mint,
+            self.jitosol_mint,
+        );
 
         // Get the payer keypair
         let payer = match &*self.client.lock().await {
@@ -328,12 +347,10 @@ impl TestContext {
 
         // Create the token mint with ordering constraint
         // Ensure mint pubkey > feelssol mint so feelssol can be token_0
-        let token_mint = self.create_mint_with_ordering_constraint(
-            &creator.pubkey(), 
-            decimals,
-            &self.feelssol_mint
-        ).await?;
-        
+        let token_mint = self
+            .create_mint_with_ordering_constraint(&creator.pubkey(), decimals, &self.feelssol_mint)
+            .await?;
+
         println!(
             "Created mock protocol token {} at {}",
             token_name,
@@ -341,21 +358,20 @@ impl TestContext {
         );
 
         // Create the ProtocolToken account to satisfy market initialization
+        use feels::constants::PROTOCOL_TOKEN_SEED;
         use feels::state::ProtocolToken;
         use feels::state::TokenType;
-        use feels::constants::PROTOCOL_TOKEN_SEED;
-        
+
         let (protocol_token_pda, _) = Pubkey::find_program_address(
             &[PROTOCOL_TOKEN_SEED, token_mint.pubkey().as_ref()],
             &PROGRAM_ID,
         );
-        
+
         // In ProgramTest environment, we need to add the account to the test
         match &*self.client.lock().await {
             TestClient::InMemory(client) => {
-                use solana_program_test::ProgramTestContext;
                 use solana_sdk::account::Account;
-                
+
                 // Create the protocol token account data
                 let protocol_token = ProtocolToken {
                     mint: token_mint.pubkey(),
@@ -365,16 +381,17 @@ impl TestContext {
                     can_create_markets: true,
                     _reserved: [0; 32],
                 };
-                
+
                 // Serialize the data with discriminator
                 let mut data = vec![0u8; ProtocolToken::LEN];
                 // Write a dummy discriminator (8 bytes)
                 data[0..8].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
                 // Write the account data
-                let protocol_token_bytes = protocol_token.try_to_vec()
+                let protocol_token_bytes = protocol_token
+                    .try_to_vec()
                     .map_err(|e| format!("Failed to serialize ProtocolToken: {}", e))?;
                 data[8..8 + protocol_token_bytes.len()].copy_from_slice(&protocol_token_bytes);
-                
+
                 // Create the account
                 let account = Account {
                     lamports: Rent::default().minimum_balance(ProtocolToken::LEN),
@@ -383,16 +400,22 @@ impl TestContext {
                     executable: false,
                     rent_epoch: 0,
                 };
-                
+
                 // Add the account to the test environment
                 // This requires accessing the banks_client directly
-                println!("Created ProtocolToken account for testing at {}", protocol_token_pda);
-                
+                println!(
+                    "Created ProtocolToken account for testing at {}",
+                    protocol_token_pda
+                );
+
                 // Note: In practice, we can't directly add accounts to ProgramTest after it's started
                 // We'll need to use a different approach
             }
             _ => {
-                println!("ProtocolToken PDA at {} for non-in-memory tests", protocol_token_pda);
+                println!(
+                    "ProtocolToken PDA at {} for non-in-memory tests",
+                    protocol_token_pda
+                );
             }
         }
 
@@ -401,7 +424,7 @@ impl TestContext {
 
     /// Initialize protocol configuration
     pub async fn initialize_protocol(&self) -> TestResult<()> {
-        use crate::common::sdk_compat::{instructions::InitializeProtocolParams, sdk};
+        use crate::common::sdk_compat::instructions::InitializeProtocolParams;
 
         // Try to get protocol config - if it exists, skip initialization
         let (protocol_config, _) = Pubkey::find_program_address(&[b"protocol_config"], &PROGRAM_ID);
@@ -425,22 +448,25 @@ impl TestContext {
 
         // Create initialization parameters with 0 mint fee for testing and sane oracle/safety defaults
         let params = InitializeProtocolParams {
-            mint_fee: 0,                          // No fee for testing
-            treasury: payer_pubkey,               // Use payer as treasury for simplicity
-            default_protocol_fee_rate: Some(30),  // 0.3% for testing
-            default_creator_fee_rate: Some(70),   // 0.7% for testing
-            max_protocol_fee_rate: Some(100),     // 1% max for testing
+            mint_fee: 0,                         // No fee for testing
+            treasury: payer_pubkey,              // Use payer as treasury for simplicity
+            default_protocol_fee_rate: Some(30), // 0.3% for testing
+            default_creator_fee_rate: Some(70),  // 0.7% for testing
+            max_protocol_fee_rate: Some(100),    // 1% max for testing
             dex_twap_updater: payer_pubkey,
             depeg_threshold_bps: 500, // 5%
             depeg_required_obs: 2,
             clear_required_obs: 2,
-            dex_twap_window_secs: 300, // 5m for testing
+            dex_twap_window_secs: 300,     // 5m for testing
             dex_twap_stale_age_secs: 3600, // 1 hour - very lenient for testing
             dex_whitelist: vec![],
         };
 
         // Clone params before passing to SDK
-        let ix = crate::common::sdk_compat::instructions::initialize_protocol(payer_pubkey, params.clone())?;
+        let ix = crate::common::sdk_compat::instructions::initialize_protocol(
+            payer_pubkey,
+            params.clone(),
+        )?;
         println!("Built initialize_protocol instruction successfully");
         println!("Instruction data length: {}", ix.data.len());
         println!("Instruction program_id: {}", ix.program_id);
@@ -497,10 +523,10 @@ impl TestContext {
         match self.process_instruction(ix, &[&payer]).await {
             Ok(_) => {
                 println!("Protocol initialized successfully");
-                
+
                 // Note: In production, oracle rates would be set by an oracle updater
                 // For MVP testing, exit operations will fail if oracle is not updated
-                
+
                 Ok(())
             }
             Err(e) => {
@@ -713,7 +739,7 @@ impl TestContext {
 
         Ok(ata)
     }
-    
+
     /// Alias for create_ata for clarity
     pub async fn get_or_create_ata(&self, owner: &Pubkey, mint: &Pubkey) -> TestResult<Pubkey> {
         self.create_ata(owner, mint).await
@@ -731,7 +757,7 @@ impl TestContext {
         if mint == &self.feelssol_mint {
             return self.mint_feelssol_to(to, amount).await;
         }
-        
+
         let ix = spl_token::instruction::mint_to(
             &spl_token::id(),
             mint,
@@ -743,17 +769,17 @@ impl TestContext {
 
         self.process_instruction(ix, &[authority]).await
     }
-    
+
     /// Mint FeelsSOL tokens by entering with JitoSOL
     async fn mint_feelssol_to(&self, to: &Pubkey, amount: u64) -> TestResult<()> {
         // To mint FeelsSOL, we need to:
         // 1. Fund the user with JitoSOL
         // 2. Call enter_feelssol instruction
-        
+
         // Get or create JitoSOL account for the recipient
         let user_jitosol = self.get_or_create_ata(to, &self.jitosol_mint).await?;
         let user_feelssol = self.get_or_create_ata(to, &self.feelssol_mint).await?;
-        
+
         // Fund with JitoSOL first (1:1 ratio for simplicity)
         let jitosol_ix = spl_token::instruction::mint_to(
             &spl_token::id(),
@@ -763,9 +789,10 @@ impl TestContext {
             &[],
             amount,
         )?;
-        
-        self.process_instruction(jitosol_ix, &[&self.jitosol_authority]).await?;
-        
+
+        self.process_instruction(jitosol_ix, &[&self.jitosol_authority])
+            .await?;
+
         // Get the user's keypair if they're one of our test accounts
         let user_keypair = if to == &self.accounts.alice.pubkey() {
             &self.accounts.alice
@@ -778,10 +805,10 @@ impl TestContext {
         } else {
             return Err("Cannot mint FeelsSOL to unknown user".into());
         };
-        
+
         // Now enter FeelsSOL
         use crate::common::sdk_compat;
-        
+
         // Build enter feelssol instruction
         let (feels_hub, _) = self.derive_feels_hub();
         let enter_ix = sdk_compat::enter_feelssol(
@@ -792,7 +819,7 @@ impl TestContext {
             user_feelssol,
             amount,
         );
-        
+
         self.process_instruction(enter_ix, &[user_keypair]).await
     }
 
@@ -905,44 +932,37 @@ impl TestContext {
     //     // For testing purposes, just simulate success
     //     Ok(())
     // }
-    
+
     /// Update protocol oracle with initial rates for testing
     pub async fn update_protocol_oracle_for_testing(&self) -> TestResult<()> {
         // For testing, we need to set initial oracle rates
         // In production, these would be updated by the oracle updater
-        
+
         // First update native rate (done by protocol authority)
         let authority = self.payer().await;
         let native_rate_q64 = 1u128 << 64; // 1.0 in Q64 format
-        
-        let native_ix = sdk_compat::update_native_rate(
-            authority,
-            native_rate_q64,
-        );
-        
+
+        let native_ix = sdk_compat::update_native_rate(authority, native_rate_q64);
+
         // Get the payer from the client
         let payer = match &*self.client.lock().await {
             TestClient::InMemory(client) => client.payer.insecure_clone(),
             TestClient::Devnet(client) => client.payer.insecure_clone(),
         };
-        
+
         self.process_instruction(native_ix, &[&payer]).await?;
         println!("Updated native rate to 1.0");
-        
+
         // Then update DEX TWAP rate (use payer as updater for testing)
         // In production, this would be the configured dex_twap_updater
         let dex_twap_rate_q64 = 1u128 << 64; // 1.0 in Q64 format
         let venue_id = Pubkey::default(); // For testing
-        
-        let dex_ix = sdk_compat::update_dex_twap(
-            payer.pubkey(),
-            dex_twap_rate_q64,
-            venue_id,
-        );
-        
+
+        let dex_ix = sdk_compat::update_dex_twap(payer.pubkey(), dex_twap_rate_q64, venue_id);
+
         self.process_instruction(dex_ix, &[&payer]).await?;
         println!("Updated DEX TWAP rate to 1.0");
-        
+
         Ok(())
     }
 
@@ -1014,7 +1034,7 @@ impl TestContext {
             initial_sqrt_price,
             initial_buy_feelssol_amount,
         };
-        
+
         let ix = sdk_compat::instructions::initialize_market(
             creator.pubkey(),
             *token_0,
@@ -1040,31 +1060,19 @@ impl TestContext {
     pub fn derive_vault(&self, market: &Pubkey, token: &Pubkey, vault_index: u8) -> (Pubkey, u8) {
         // Determine the actual vault index based on token ordering in the market
         let index_bytes = if vault_index == 0 { b"0" } else { b"1" };
-        Pubkey::find_program_address(
-            &[b"vault", market.as_ref(), index_bytes],
-            &PROGRAM_ID
-        )
+        Pubkey::find_program_address(&[b"vault", market.as_ref(), index_bytes], &PROGRAM_ID)
     }
 
     pub fn derive_market_authority(&self, market: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[b"market_authority", market.as_ref()],
-            &PROGRAM_ID
-        )
+        Pubkey::find_program_address(&[b"market_authority", market.as_ref()], &PROGRAM_ID)
     }
 
     pub fn derive_buffer(&self, market: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[b"buffer", market.as_ref()],
-            &PROGRAM_ID
-        )
+        Pubkey::find_program_address(&[b"buffer", market.as_ref()], &PROGRAM_ID)
     }
 
     pub fn derive_oracle(&self, market: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[b"oracle", market.as_ref()],
-            &PROGRAM_ID
-        )
+        Pubkey::find_program_address(&[b"oracle", market.as_ref()], &PROGRAM_ID)
     }
 
     pub async fn derive_tick_arrays(
@@ -1077,14 +1085,14 @@ impl TestContext {
         let mut tick_arrays = Vec::new();
         let tick_array_size = feels::state::TICK_ARRAY_SIZE as i32;
         let tick_array_spacing = (tick_spacing as i32) * tick_array_size;
-        
+
         // Get start index for current tick
         let mut current_start = if current_tick >= 0 {
             (current_tick / tick_array_spacing) * tick_array_spacing
         } else {
             ((current_tick - tick_array_spacing + 1) / tick_array_spacing) * tick_array_spacing
         };
-        
+
         // Add 3 tick arrays in the swap direction
         for _ in 0..3 {
             let (tick_array, _) = Pubkey::find_program_address(
@@ -1092,7 +1100,7 @@ impl TestContext {
                 &PROGRAM_ID,
             );
             tick_arrays.push(tick_array);
-            
+
             // Move to next array in swap direction
             current_start = if zero_for_one {
                 current_start - tick_array_spacing
@@ -1100,7 +1108,7 @@ impl TestContext {
                 current_start + tick_array_spacing
             };
         }
-        
+
         Ok(tick_arrays)
     }
 }

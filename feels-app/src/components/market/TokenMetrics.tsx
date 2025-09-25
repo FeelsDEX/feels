@@ -67,13 +67,13 @@ export function TokenMetrics({
         <div id="metric-24h-high">
           <p className="text-xs text-muted-foreground">24h High</p>
           <p className="text-sm font-semibold">
-            {high24h.toFixed(4)}
+            {high24h.toFixed(2)}
           </p>
         </div>
         <div id="metric-24h-low">
           <p className="text-xs text-muted-foreground">24h Low</p>
           <p className="text-sm font-semibold">
-            {low24h.toFixed(4)}
+            {low24h.toFixed(2)}
           </p>
         </div>
         <div id="metric-24h-volume">
@@ -85,7 +85,7 @@ export function TokenMetrics({
         <div id="metric-current-floor">
           <p className="text-xs text-muted-foreground">Current Floor</p>
           <p className="text-sm font-semibold">
-            {currentFloor.toFixed(4)}
+            {currentFloor.toFixed(2)}
           </p>
         </div>
         <div id="metric-floor-delta-24h">
@@ -105,7 +105,7 @@ export function TokenMetrics({
         <div id="metric-gtwap">
           <p className="text-xs text-muted-foreground">GTWAP</p>
           <p className="text-sm font-semibold">
-            {currentGtwap.toFixed(4)}
+            {currentGtwap.toFixed(2)}
           </p>
         </div>
         <div id="metric-floor-gtwap-ratio">

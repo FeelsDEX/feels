@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { TokenSearchResult } from '@/utils/token-search';
 import { SearchBar } from '@/components/search/SearchBar';
 import { useSearchContext } from '@/contexts/SearchContext';
+import { Portal } from '@/components/common/Portal';
 
 interface TokenSearchModalProps {
   isOpen: boolean;
@@ -44,14 +45,20 @@ export function TokenSearchModal({
   if (!isOpen) return null;
 
   return (
-    <div id="token-search-modal-container" className="fixed top-0 left-0 right-0 z-[1100] pt-2">
-      <div id="token-search-modal-inner" className="container mx-auto px-4">
-        <div id="token-search-modal-flex" className="flex items-center h-16">
+    <Portal>
+      {/* Full screen backdrop to capture all clicks */}
+      <div 
+        className="fixed inset-0 z-[2000] bg-black/20" 
+        onClick={onClose}
+      />
+      <div id="token-search-modal-container" className="fixed top-0 left-0 right-0 z-[2001] pt-2">
+        <div id="token-search-modal-inner" className="container mx-auto px-4">
+          <div id="token-search-modal-flex" className="flex items-center h-16">
           {/* Spacer for logo area */}
           <div className="flex-1" />
           
           {/* Center - Search (same positioning as NavBar) */}
-          <div id="token-search-modal-search-wrapper" className="flex-1 max-w-xl mx-8 relative z-[1101]">
+          <div id="token-search-modal-search-wrapper" className="flex-1 max-w-xl mx-8 relative z-[2002]">
             <SearchBar
               mode="token-select"
               placeholder={placeholder}
@@ -67,5 +74,6 @@ export function TokenSearchModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

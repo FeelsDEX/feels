@@ -1,93 +1,30 @@
-# E2E Local Development Environment
+# E2E Development Environment
 
-This directory contains the complete end-to-end development environment for Feels Protocol, managed through a unified justfile system.
-
-## Overview
-
-The E2E environment provides a complete local development setup that includes:
-
-1. **Solana Test Validator** - Local blockchain instance
-2. **Feels Program** - The main protocol smart contract
-3. **Streaming Adapter** - Simulates Geyser/Fumarole for real-time data streaming
-4. **Indexer** - Processes and stores blockchain data
-5. **Frontend Application** - Next.js app with full protocol interface
+Complete local development setup for Feels Protocol with integrated testing capabilities.
 
 ## Quick Start
 
-### From Project Root
-
 ```bash
-# Start the complete E2E environment
+# Start complete E2E environment
 just dev-e2e
 
-# Check status of all services
+# Check status
 just dev-e2e-status
-
-# View logs
-just dev-e2e-logs           # Show available logs
-just dev-e2e-logs validator # View specific service logs
 
 # Stop all services
 just dev-e2e-stop
 ```
 
-### From E2E Directory
-
-```bash
-cd e2e
-
-# See all available commands
-just
-
-# Start everything
-just run
-
-# Check status
-just status
-```
-
-## Available Commands
-
-### Core Commands
-
-| Command | Description |
-|---------|-------------|
-| `just run` | Start the complete E2E environment with all services |
-| `just stop` | Stop all running E2E services |
-| `just status` | Check the status of all services |
-| `just check` | Quick status check with helpful hints |
-| `just logs [service]` | View logs (validator/streaming/indexer/app/all) |
-
-### Individual Components
-
-| Command | Description |
-|---------|-------------|
-| `just build-localnet` | Build program with localnet feature (custom Metaplex ID) |
-| `just validator` | Start Solana test validator only |
-| `just deploy` | Build and deploy program to localnet |
-| `just streaming` | Start streaming adapter only |
-| `just indexer` | Start indexer service only |
-| `just app` | Start frontend application only |
-
-### Setup Commands
-
-| Command | Description |
-|---------|-------------|
-| `just setup-metaplex` | Deploy Metaplex Token Metadata program |
-| `just setup-tokens` | Setup JitoSOL and FeelsSOL tokens |
-| `just init-protocol` | Initialize the Feels Protocol |
-| `just idl-generate` | Generate and copy IDL to frontend |
-
 ## Architecture
 
 ```
 ┌─────────────────┐
-│ Solana Validator│
+│ Solana Validator│ ← Local blockchain (port 8899)
 │ localhost:8899  │
 └────────┬────────┘
          │ RPC calls
          ▼
-┌─────────────────┐     SSE Stream    ┌──────────────────┐
+┌─────────────────┐     gRPC Stream   ┌──────────────────┐
 │Streaming Adapter│─────────────────▶│  Feels Indexer   │
 │ localhost:10000 │                  │ localhost:8080   │
 └─────────────────┘                  └──────────────────┘
@@ -101,121 +38,146 @@ just status
 
 ## Components
 
-### minimal-streaming-adapter/
+### streaming-adapter/
+Yellowstone gRPC compatible service that polls Solana RPC and streams blockchain data via gRPC with protobuf messages for local development.
 
-A lightweight Rust service that:
-- Polls the Solana RPC for program accounts and slot updates
-- Streams data via Server-Sent Events (SSE) 
-- Simulates Geyser plugin functionality for local development
-- Configurable polling interval and program filtering
+### Services
+- **Validator**: Local Solana blockchain instance
+- **Streaming Adapter**: Captures and streams blockchain events  
+- **Indexer**: Processes and stores data with API endpoints
+- **Frontend**: Next.js app with full protocol interface
 
-### justfile
+## Commands
 
-The main orchestration tool that provides:
-- **DRY Implementation**: No duplicate code between commands
-- **Automatic Health Checks**: Waits for services to be ready
-- **Colored Output**: Clear visual feedback (green=success, yellow=warning, red=error)
-- **Error Handling**: Proper error propagation and cleanup
-- **Flexible Execution**: Run all services or individual components
-- **Smart Defaults**: Automatically finds program binaries and handles different build outputs
+### Core Operations
+```bash
+# From project root
+just dev-e2e              # Start everything
+just dev-e2e-status       # Check service status
+just dev-e2e-logs [service] # View logs
+just dev-e2e-stop         # Stop all services
+
+# From e2e/ directory  
+just run                  # Start everything
+just status               # Check status
+just stop                 # Stop all services
+just logs [service]       # View logs
+```
+
+### Individual Services
+```bash
+just validator            # Start validator only
+just streaming           # Start streaming adapter only  
+just indexer             # Start indexer only
+just app                 # Start frontend only
+```
+
+### Setup & Deploy
+```bash
+just deploy              # Build and deploy program
+just setup-metaplex      # Deploy Metaplex program
+just setup-tokens        # Setup JitoSOL and FeelsSOL
+just init-protocol       # Initialize protocol
+```
+
+## Testing
+
+### Running E2E Tests
+```bash
+# All E2E tests
+just test-e2e
+
+# Specific test categories
+cargo test -p feels e2e:: -- --nocapture --test-threads=1
+
+# Individual tests
+cargo test -p feels test_indexer_complete_pipeline -- --nocapture
+cargo test -p feels test_frontend_complete_flow_via_devbridge -- --nocapture
+```
+
+### Test Coverage
+E2E tests validate the complete data pipeline:
+1. **On-chain program** execution and events
+2. **Streaming adapter** capturing blockchain data
+3. **Indexer** processing and API serving
+4. **Frontend** integration via DevBridge
+5. **WebSocket** real-time updates
+
+### Prerequisites for Frontend Tests
+```bash
+# In feels-app/.env.local
+DEVBRIDGE_ENABLED=true
+NEXT_PUBLIC_DEVBRIDGE_ENABLED=true
+```
 
 ## Configuration
 
 ### Environment Variables
-
-- `FEELS_PROGRAM_ID` - Override the default program ID
-- `METAPLEX_ID` - Custom Metaplex Token Metadata program ID (auto-detected from config)
+- `FEELS_PROGRAM_ID` - Override default program ID
+- `METAPLEX_ID` - Custom Metaplex program ID (auto-detected)
 
 ### Program ID Management
-
-The E2E environment automatically:
-1. Generates a program keypair if none exists
-2. Updates `declare_id!` in the source code
-3. Deploys to the generated program address
-4. Propagates the ID to all services
-
-### Metaplex Integration
-
-When `feels-app/scripts/metaplex-localnet.json` exists:
-- Builds with `localnet` feature flag
-- Uses custom Metaplex program ID
-- Enables NFT position tracking features
+The environment automatically:
+1. Generates program keypair if needed
+2. Updates `declare_id!` in source code  
+3. Deploys to generated address
+4. Propagates ID to all services
 
 ## Logs
 
-All services output logs to the `logs/` directory:
-
+All services log to `logs/` directory:
 ```
 logs/
-├── validator.log        # Solana validator output
-├── build.log           # Program compilation logs
-├── streaming-adapter.log # Streaming service logs  
-├── indexer.log         # Indexer service logs
-├── app.log             # Frontend application logs
-├── metaplex-setup.log  # Metaplex deployment logs
-├── token-setup.log     # Token creation logs
-└── protocol-init.log   # Protocol initialization logs
-```
-
-View logs with:
-```bash
-just logs validator   # Tail specific log
-just logs            # List all available logs
+├── validator.log         # Solana validator
+├── streaming-adapter.log # Streaming service  
+├── indexer.log          # Indexer service
+├── app.log              # Frontend app
+├── build.log            # Program compilation
+├── metaplex-setup.log   # Metaplex deployment
+└── protocol-init.log    # Protocol initialization
 ```
 
 ## Troubleshooting
 
-### Build Failures
-
-The build system tries multiple strategies in order:
-1. Localnet build with custom Metaplex (if configured)
-2. Standard Nix build via `just build`
-3. Anchor build with reduced optimization flags
-
-Check `logs/build.log` for detailed error messages.
-
-### Service Not Starting
-
-1. Check service status: `just status`
-2. View service logs: `just logs [service]`
-3. Ensure ports are free:
-   - 8899 (Solana RPC)
-   - 10000 (Streaming adapter)
-   - 8080 (Indexer API)
-   - 3000 (Frontend app)
-
-### Stack Size Errors
-
-If you see "Stack offset exceeded" errors during build:
-- These are warnings and can often be ignored for local development
-- The build system automatically tries reduced optimization levels
-- For production builds, refactor large functions to reduce stack usage
-
-### Cleanup
-
-To fully reset the environment:
+### Service Issues
 ```bash
-just stop                    # Stop all services
-rm -rf logs/ test-ledger/    # Remove logs and blockchain data
-rm -rf ~/.cache/solana/      # Clear Solana cache (optional)
+just status              # Check what's running
+just logs [service]      # View specific logs
+lsof -i :8899           # Check port conflicts
+```
+
+### Build Failures
+Check `logs/build.log`. Build system tries:
+1. Localnet build (if Metaplex configured)
+2. Standard Nix build
+3. Anchor build with reduced optimization
+
+### Common Ports
+- 8899: Solana RPC
+- 10000: Streaming adapter  
+- 8080: Indexer API
+- 3000: Frontend app
+
+### Reset Environment
+```bash
+just stop
+rm -rf logs/ test-ledger/
+rm -rf ~/.cache/solana/  # Optional
 ```
 
 ## Development Workflow
 
-1. **Start E2E**: `just dev-e2e`
-2. **Make changes** to your code
-3. **Rebuild & Deploy**: 
-   ```bash
-   just -f e2e/justfile deploy     # Rebuild and deploy program
-   just -f e2e/justfile app         # Restart frontend if needed
-   ```
-4. **Check logs**: `just dev-e2e-logs [service]`
-5. **Stop when done**: `just dev-e2e-stop`
+1. **Start**: `just dev-e2e`
+2. **Develop**: Make code changes
+3. **Deploy**: `just -f e2e/justfile deploy` 
+4. **Test**: `just test-e2e`
+5. **Debug**: `just dev-e2e-logs [service]`
+6. **Stop**: `just dev-e2e-stop`
 
 ## Tips
 
-- Run individual services for faster iteration during development
-- Use `just status` to quickly check what's running
-- The streaming adapter simulates real Geyser plugins - useful for testing indexer logic
-- All commands can be run from either the project root or e2e directory
-- Services are started with health checks - the next service won't start until the previous is ready
+- Use `just status` for quick health checks
+- Run individual services during development for faster iteration
+- Services start with health checks - next service waits for previous to be ready
+- Tests gracefully skip when services aren't available
+- All commands work from project root or e2e directory

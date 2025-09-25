@@ -13,6 +13,7 @@ import { FEELS_TOKENS, getTokenByAddress } from '@/data/tokens';
 import { TokenHolders } from '@/components/market/TokenHolders';
 import { TokenMetrics } from '@/components/market/TokenMetrics';
 import { useDataSource } from '@/contexts/DataSourceContext';
+import { KLineData } from '@/types/trading';
 
 // Dynamic imports to prevent SSR issues
 const SwapInterface = dynamic(() => import('@/components/trading/SwapInterface').then(mod => ({ default: mod.SwapInterface })), {
@@ -52,16 +53,7 @@ function TokenSwapPageContent() {
     currentPrice: number;
     currentFloor: number;
     currentGtwap: number;
-    allPriceData: Array<{
-      timestamp: number;
-      open: number;
-      high: number;
-      low: number;
-      close: number;
-      volume?: number;
-      floor: number;
-      gtwap: number;
-    }>;
+    allPriceData: KLineData[];
   } | null>(null);
 
   // Initialize program only (connection is already available)
@@ -179,7 +171,8 @@ function TokenSwapPageContent() {
             <PriceChart
               tokenSymbol={selectedOutputToken?.symbol || token.symbol}
               tokenAddress={selectedOutputToken?.address || token.address}
-              isFeelsToken={selectedOutputToken?.isFeelsToken || token.isFeelsToken}
+              tokenImage={selectedOutputToken?.logoURI || token.imageUrl}
+              isFeelsToken={dataSource === 'test' ? true : (selectedOutputToken?.isFeelsToken || token.isFeelsToken)}
               onPriceDataUpdate={setPriceData}
             />
           </div>
@@ -191,7 +184,7 @@ function TokenSwapPageContent() {
                 currentPrice={priceData.currentPrice}
                 currentFloor={priceData.currentFloor}
                 currentGtwap={priceData.currentGtwap}
-                allPriceData={priceData.allPriceData}
+                allPriceData={priceData.allPriceData as any}
                 tokenCreator={tokenData?.creator}
                 tokenAddress={token.address}
               />

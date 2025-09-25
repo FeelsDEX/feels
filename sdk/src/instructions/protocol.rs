@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -93,7 +93,7 @@ impl ProtocolInstructionBuilder {
         Ok(FeelsInstructionBuilder::new()
             .add_signer(authority)
             .add_writable(protocol_config)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .add_writable(protocol_oracle)
             .add_writable(safety)
             .with_data(params.build_data()?)
@@ -131,7 +131,7 @@ impl ProtocolInstructionBuilder {
             .add_writable(feels_mint)
             .add_readonly(params.jitosol_mint)
             .add_readonly(protocol_config)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .add_readonly(spl_token::id())
             .with_data(params.build_data()?)
             .build())
@@ -162,7 +162,7 @@ impl ProtocolInstructionBuilder {
             builder = builder.add_optional(None);
         }
 
-        builder = builder.add_readonly(solana_sdk::sysvar::clock::id());
+        builder = builder.add_readonly(solana_program::sysvar::clock::id());
 
         Ok(builder
             .with_data(UpdateFloorParams {}.build_data()?)
@@ -203,7 +203,7 @@ impl ProtocolInstructionBuilder {
             .add_writable(oracle)
             .add_readonly(feelssol_mint)
             .add_readonly(feels_hub)
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(UpdateNativeRateParams {}.build_data()?)
             .build())
     }

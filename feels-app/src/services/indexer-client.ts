@@ -256,7 +256,8 @@ export class FeelsIndexerClient {
 
   // Market endpoints
   async getMarkets(): Promise<IndexedMarket[]> {
-    return this.request<IndexedMarket[]>('/markets');
+    const response = await this.request<{ markets: IndexedMarket[], total: number, limit: number, offset: number }>('/markets');
+    return response.markets;
   }
 
   async getMarket(address: string): Promise<IndexedMarket> {
@@ -459,6 +460,12 @@ export class FeelsWebSocketClient {
   
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Only use WebSocket in browser environment
+      if (typeof window === 'undefined') {
+        reject(new Error('WebSocket is not available in server environment'));
+        return;
+      }
+      
       try {
         this.ws = new WebSocket(`${this.url}/ws`);
         
@@ -517,7 +524,8 @@ export class FeelsWebSocketClient {
   
   subscribe(id: string, subscriptions: SubscriptionType[]): void {
     this.subscriptions.set(id, subscriptions);
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    // Only check WebSocket state in browser environment
+    if (typeof window !== 'undefined' && this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'subscribe',
         id,
@@ -528,7 +536,8 @@ export class FeelsWebSocketClient {
   
   unsubscribe(id: string): void {
     const subscriptions = this.subscriptions.get(id);
-    if (subscriptions && this.ws?.readyState === WebSocket.OPEN) {
+    // Only check WebSocket state in browser environment
+    if (typeof window !== 'undefined' && subscriptions && this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'unsubscribe',
         id,

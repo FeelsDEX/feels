@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Compass, Repeat2, X } from 'lucide-react';
+import { Compass, Repeat2, X, Search, TextSearch } from 'lucide-react';
 import { SearchDropdown } from '@/components/search/SearchDropdown';
 import { TokenSelectDropdown } from '@/components/search/TokenSelectDropdown';
 import { useTokenSearch } from '@/hooks/useTokenSearch';
@@ -12,9 +12,11 @@ interface SearchBarProps {
   placeholder?: string;
   onTokenSelect?: (token: TokenSearchResult) => void;
   excludeAddress?: string;
-  mode?: 'navigation' | 'token-select';
+  mode?: 'navigation' | 'token-select' | 'page-search';
   onClose?: () => void;
   autoFocus?: boolean;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export function SearchBar({ 
@@ -23,11 +25,21 @@ export function SearchBar({
   excludeAddress,
   mode = 'navigation',
   onClose,
-  autoFocus = false
+  autoFocus = false,
+  searchQuery: externalSearchQuery,
+  onSearchChange
 }: SearchBarProps) {
-  const [localSearchQuery, setLocalSearchQuery] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
+  const [localSearchQuery, setLocalSearchQuery] = useState(externalSearchQuery || '');
+  
+  // Update local query when external query changes (for page-search mode)
+  useEffect(() => {
+    if (mode === 'page-search' && externalSearchQuery !== undefined) {
+      setLocalSearchQuery(externalSearchQuery);
+    }
+  }, [externalSearchQuery, mode]);
+  const [searchFocused, setSearchFocused] = useState(autoFocus || false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -46,7 +58,13 @@ export function SearchBar({
 
   // Update search query after debounce
   useEffect(() => {
-    if (localSearchQuery === '') {
+    if (mode === 'page-search') {
+      // For page-search mode, update external search immediately
+      onSearchChange?.(localSearchQuery);
+      return;
+    }
+    
+    if (localSearchQuery === '' || isClearing) {
       // Clear immediately when search is cleared
       setSearchQuery('');
       setShowDropdown(false);
@@ -55,20 +73,26 @@ export function SearchBar({
     
     const timer = setTimeout(() => {
       setSearchQuery(localSearchQuery);
-      setShowDropdown(localSearchQuery.trim().length > 0);
+      // Show dropdown for navigation and token-select modes when not clearing
+      if ((mode === 'navigation' || mode === 'token-select') && !isClearing) {
+        setShowDropdown(localSearchQuery.trim().length > 0);
+      }
     }, 100);
     
     return () => clearTimeout(timer);
-  }, [localSearchQuery, setSearchQuery]);
+  }, [localSearchQuery, setSearchQuery, mode, onSearchChange, isClearing]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Skip if we're clearing (X button was clicked)
+      if (isClearing) return;
+      
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
         setSearchFocused(false);
-        // If in token-select mode, close the modal when clicking outside
-        if (mode === 'token-select' && onClose) {
+        // If in token-select or page-search mode, close the modal when clicking outside
+        if ((mode === 'token-select' || mode === 'page-search') && onClose) {
           onClose();
         }
       }
@@ -76,7 +100,7 @@ export function SearchBar({
     
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [mode, onClose]);
+  }, [mode, onClose, isClearing]);
 
   // Auto focus if requested
   useEffect(() => {
@@ -86,7 +110,7 @@ export function SearchBar({
         inputRef.current?.focus();
         // Also set the search as focused for styling
         setSearchFocused(true);
-      }, 100);
+      }, 150);
       return () => clearTimeout(timer);
     }
     return undefined;
@@ -103,10 +127,17 @@ export function SearchBar({
   };
 
   const clearSearch = () => {
+    setIsClearing(true);
     setLocalSearchQuery('');
     setSearchQuery('');
     setShowDropdown(false);
     setSearchFocused(false);
+    // For navigation mode, blur the input to ensure dropdown doesn't reappear
+    if (mode === 'navigation' && inputRef.current) {
+      inputRef.current.blur();
+    }
+    // Reset clearing flag after a short delay
+    setTimeout(() => setIsClearing(false), 100);
   };
 
   const handleTokenSelect = (token: TokenSearchResult) => {
@@ -132,13 +163,22 @@ export function SearchBar({
         <div 
           id={containerId} 
           className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${
-            searchFocused ? 'border-primary shadow-lg' : 'border-border'
+            (searchFocused || mode === 'token-select' || mode === 'page-search') ? 'border-[#5cca39]' : 'border-border'
           }`}
+          style={{
+            boxShadow: (searchFocused || mode === 'token-select' || mode === 'page-search') 
+              ? '0 0 12px 2px rgba(92, 202, 57, 0.15)' 
+              : 'none'
+          }}
         >
           {mode === 'navigation' ? (
             <Compass className="h-5 w-5 text-muted-foreground ml-3" />
-          ) : (
+          ) : mode === 'token-select' ? (
             <Repeat2 className="h-5 w-5 text-muted-foreground ml-3" />
+          ) : mode === 'page-search' ? (
+            <TextSearch className="h-5 w-5 text-muted-foreground ml-3" />
+          ) : (
+            <Search className="h-5 w-5 text-muted-foreground ml-3" />
           )}
           <input
             ref={inputRef}
@@ -148,13 +188,23 @@ export function SearchBar({
             onChange={(e) => setLocalSearchQuery(e.target.value)}
             onFocus={() => {
               setSearchFocused(true);
-              if (localSearchQuery.trim()) setShowDropdown(true);
+              if (localSearchQuery.trim() && !isClearing && (mode === 'navigation' || mode === 'token-select')) {
+                setShowDropdown(true);
+              }
+            }}
+            onBlur={() => {
+              // Only blur if not clearing
+              if (!isClearing) {
+                setSearchFocused(false);
+                // Don't immediately hide dropdown to allow clicking on results
+                setTimeout(() => setShowDropdown(false), 200);
+              }
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setShowDropdown(false);
                 setSearchFocused(false);
-                if (mode === 'token-select' && onClose) {
+                if ((mode === 'token-select' || mode === 'page-search') && onClose) {
                   onClose();
                 }
               }
@@ -169,16 +219,25 @@ export function SearchBar({
           {localSearchQuery && (
             <button
               type="button"
-              onClick={clearSearch}
-              className="relative z-10 p-2 hover:bg-muted/10 rounded-md transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsClearing(true);
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                clearSearch();
+              }}
+              className="relative z-[1103] p-2 hover:bg-muted/10 rounded-md transition-colors"
             >
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
           )}
         </div>
         
-        {/* Dropdown */}
-        {showDropdown && localSearchQuery.trim() && (
+        {/* Dropdown - show for navigation and token-select modes */}
+        {showDropdown && localSearchQuery.trim() && (mode === 'navigation' || mode === 'token-select') && (
           <div id={`${mode}-dropdown-wrapper`} className="relative z-[1102]">
             {mode === 'token-select' ? (
               <TokenSelectDropdown

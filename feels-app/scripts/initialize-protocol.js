@@ -40,7 +40,15 @@ function loadIDL() {
 function loadConfig() {
   const configPath = path.join(__dirname, 'localnet-tokens.json');
   if (!fs.existsSync(configPath)) {
-    throw new Error('Configuration not found. Please run setup-jitosol.js first.');
+    // For protocol initialization, we can use a dummy JitoSOL mint
+    // The actual JitoSOL will be created later
+    console.log('Warning: localnet-tokens.json not found, using dummy JitoSOL mint');
+    return {
+      jitosol: {
+        // This will be updated when we run setup-jitosol.js
+        mint: '11111111111111111111111111111111'
+      }
+    };
   }
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 }
@@ -66,8 +74,9 @@ async function main() {
     );
     
     const idl = loadIDL();
+    // Add the address to IDL for compatibility
     idl.address = FEELS_PROGRAM_ID.toBase58();
-    const program = new Program(idl, provider);
+    const program = new Program(idl, FEELS_PROGRAM_ID, provider);
 
     // Load token configuration
     const config = loadConfig();

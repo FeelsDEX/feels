@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Connection } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Settings, ChevronDown } from 'lucide-react';
+import { ChevronDown, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import { FEELS_TOKENS } from '@/data/tokens';
 import { TokenSearchModal } from '@/components/search/TokenSearchModal';
@@ -43,12 +43,11 @@ export function SwapInterface({
   const [showToTokenSearch, setShowToTokenSearch] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [limitPrice, setLimitPrice] = useState('');
+  const [slippagePercentage, setSlippagePercentage] = useState('1');
+  const [hasInteractedWithSlippage, setHasInteractedWithSlippage] = useState(false);
 
   // Initialize tokens
   useEffect(() => {
-    const defaultFromToken = FEELS_TOKENS.find(t => t.symbol === (initialFromToken || 'SOL'));
-    const defaultToToken = FEELS_TOKENS.find(t => t.symbol === (initialToToken || 'USDC'));
-    
     // Map FEELS_TOKENS to TokenInfo format with logoURI
     const mapToTokenInfo = (token: typeof FEELS_TOKENS[0]): TokenInfo => ({
       address: token.address,
@@ -58,8 +57,17 @@ export function SwapInterface({
       logoURI: token.imageUrl, // Map imageUrl to logoURI
     });
     
-    setFromToken(mapToTokenInfo(defaultFromToken || FEELS_TOKENS[0]));
-    setToToken(mapToTokenInfo(defaultToToken || FEELS_TOKENS[1]));
+    // Find tokens with fallbacks
+    const defaultFromToken = FEELS_TOKENS.find(t => t.symbol === (initialFromToken || 'SOL')) || FEELS_TOKENS[0];
+    const defaultToToken = FEELS_TOKENS.find(t => t.symbol === (initialToToken || 'USDC')) || FEELS_TOKENS[1];
+    
+    // Only set if we have valid tokens (FEELS_TOKENS should never be empty, but being defensive)
+    if (defaultFromToken) {
+      setFromToken(mapToTokenInfo(defaultFromToken));
+    }
+    if (defaultToToken) {
+      setToToken(mapToTokenInfo(defaultToToken));
+    }
   }, [initialFromToken, initialToToken]);
 
   // Initialize limit price when switching to limit tab
@@ -87,6 +95,9 @@ export function SwapInterface({
     return `$${value.toFixed(2)}`;
   }, [toAmount, toToken]);
 
+  // Check if slippage is high (8% or greater)
+  const isHighSlippage = parseFloat(slippagePercentage) >= 8;
+
   const handlePercentageClick = (percentage: number) => {
     // Mock balance
     const balance = 10; // Mock 10 tokens
@@ -111,7 +122,7 @@ export function SwapInterface({
     try {
       // Mock swap
       await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('Swap executed:', { fromAmount, toAmount, fromToken, toToken });
+      console.log('Swap executed:', { fromAmount, toAmount, fromToken, toToken, slippagePercentage: parseFloat(slippagePercentage) });
       onSwapComplete?.('mock-signature', toAmount, toToken?.symbol || '');
     } catch (error) {
       console.error('Swap failed:', error);
@@ -152,32 +163,74 @@ export function SwapInterface({
             </button>
           ))}
         </div>
-        <button id="settings-button" className="p-4 text-muted-foreground hover:text-foreground transition-colors">
-          <Settings className="h-5 w-5" />
-        </button>
       </div>
 
       <div className="p-6">
         {/* Limit Price Section - Only show for Limit tab */}
         {activeTab === 'limit' && (
           <div id="limit-price-section" className="space-y-3 mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">When 1</span>
+            <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
-                {fromToken?.logoURI ? (
-                  <Image
-                    src={fromToken.logoURI}
-                    alt={fromToken.symbol}
-                    width={20}
-                    height={20}
-                    className="rounded-full"
-                  />
-                ) : (
-                  <div className="w-5 h-5 bg-primary rounded-full" />
-                )}
-                <span className="font-medium">{fromToken?.symbol}</span>
+                <span className="text-muted-foreground">When 1</span>
+                <div className="flex items-center gap-2">
+                  {fromToken?.logoURI ? (
+                    <Image
+                      src={fromToken.logoURI}
+                      alt={fromToken.symbol}
+                      width={20}
+                      height={20}
+                      className="rounded"
+                    />
+                  ) : (
+                    <div className="w-5 h-5 bg-primary rounded" />
+                  )}
+                  <span className="font-medium">{fromToken?.symbol}</span>
+                </div>
+                <span className="text-muted-foreground">is worth</span>
               </div>
-              <span className="text-muted-foreground">is worth</span>
+              
+              <div className="flex items-center gap-1">
+                <button
+                  id="limit-market-button"
+                  onClick={() => {
+                    // Set to market price
+                    setLimitPrice('4543.76'); // Mock market price
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                >
+                  Market
+                </button>
+                <button
+                  id="limit-plus-1-percent"
+                  onClick={() => {
+                    const currentPrice = parseFloat(limitPrice || '4543.76');
+                    setLimitPrice((currentPrice * 1.01).toFixed(2));
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                >
+                  +1%
+                </button>
+                <button
+                  id="limit-plus-5-percent"
+                  onClick={() => {
+                    const currentPrice = parseFloat(limitPrice || '4543.76');
+                    setLimitPrice((currentPrice * 1.05).toFixed(2));
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                >
+                  +5%
+                </button>
+                <button
+                  id="limit-plus-10-percent"
+                  onClick={() => {
+                    const currentPrice = parseFloat(limitPrice || '4543.76');
+                    setLimitPrice((currentPrice * 1.10).toFixed(2));
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                >
+                  +10%
+                </button>
+              </div>
             </div>
             
             <div className="flex items-center gap-2">
@@ -234,93 +287,105 @@ export function SwapInterface({
                     alt={toToken.symbol}
                     width={24}
                     height={24}
-                    className="rounded-full"
+                    className="rounded-md"
                   />
                 ) : (
-                  <div className="w-6 h-6 bg-primary rounded-full" />
+                  <div className="w-6 h-6 bg-primary rounded-md" />
                 )}
                 <span className="font-medium text-lg">{toToken?.symbol}</span>
               </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                id="limit-market-button"
-                onClick={() => {
-                  // Set to market price
-                  setLimitPrice('4543.76'); // Mock market price
-                }}
-                className="px-3 py-1 text-sm font-medium border border-border hover:bg-muted/50 rounded-lg transition-colors"
-              >
-                Market
-              </button>
-              <button
-                id="limit-plus-1-percent"
-                onClick={() => {
-                  const currentPrice = parseFloat(limitPrice || '4543.76');
-                  setLimitPrice((currentPrice * 1.01).toFixed(2));
-                }}
-                className="px-3 py-1 text-sm font-medium border border-border hover:bg-muted/50 rounded-lg transition-colors"
-              >
-                +1%
-              </button>
-              <button
-                id="limit-plus-5-percent"
-                onClick={() => {
-                  const currentPrice = parseFloat(limitPrice || '4543.76');
-                  setLimitPrice((currentPrice * 1.05).toFixed(2));
-                }}
-                className="px-3 py-1 text-sm font-medium border border-border hover:bg-muted/50 rounded-lg transition-colors"
-              >
-                +5%
-              </button>
-              <button
-                id="limit-plus-10-percent"
-                onClick={() => {
-                  const currentPrice = parseFloat(limitPrice || '4543.76');
-                  setLimitPrice((currentPrice * 1.10).toFixed(2));
-                }}
-                className="px-3 py-1 text-sm font-medium border border-border hover:bg-muted/50 rounded-lg transition-colors"
-              >
-                +10%
-              </button>
             </div>
           </div>
         )}
 
         {/* From Section */}
         <div id="from-token-section" className="mb-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground mt-2">Sell</span>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground mr-2">Sell</span>
               <button
                 id="percentage-25"
                 onClick={() => handlePercentageClick(25)}
-                className="px-3 py-1 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
               >
                 25%
               </button>
               <button
                 id="percentage-50"
                 onClick={() => handlePercentageClick(50)}
-                className="px-3 py-1 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
               >
                 50%
               </button>
               <button
                 id="percentage-75"
                 onClick={() => handlePercentageClick(75)}
-                className="px-3 py-1 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
               >
                 75%
               </button>
               <button
                 id="percentage-max"
                 onClick={() => handlePercentageClick(100)}
-                className="px-3 py-1 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
               >
-                Max
+                All
               </button>
+            </div>
+            
+            {/* Slippage controls */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative group w-4 h-4">
+                {isHighSlippage && (
+                  <>
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10">
+                      Warning: high max slippage selected
+                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-gray-900"></div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <label htmlFor="slippage-input" className="text-sm text-muted-foreground whitespace-nowrap">Max slippage:</label>
+              <div className="relative">
+                <input
+                  id="slippage-input"
+                  type="text"
+                  value={slippagePercentage}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow decimal numbers with up to 2 decimal places
+                    if (/^\d*\.?\d{0,2}$/.test(value)) {
+                      setSlippagePercentage(value);
+                      if (value !== '') {
+                        setHasInteractedWithSlippage(true);
+                      }
+                    }
+                  }}
+                  onFocus={() => {
+                    // Clear the value on first interaction
+                    if (!hasInteractedWithSlippage && slippagePercentage === '1') {
+                      setSlippagePercentage('');
+                      setHasInteractedWithSlippage(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Reset to 1 if empty
+                    if (!slippagePercentage || parseFloat(slippagePercentage) === 0) {
+                      setSlippagePercentage('1');
+                      setHasInteractedWithSlippage(false);
+                    }
+                  }}
+                  placeholder="1.0"
+                  className={`feels-input flex h-6 w-10 rounded-lg border bg-background pl-1 pr-4 py-0.5 text-sm placeholder:text-muted-foreground/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 text-center transition-colors ${isHighSlippage ? 'slippage-warning' : ''}`}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                  inputMode="decimal"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
+              </div>
             </div>
           </div>
 
@@ -361,10 +426,10 @@ export function SwapInterface({
                       alt={fromToken.symbol}
                       width={24}
                       height={24}
-                      className="rounded-full"
+                      className="rounded-md"
                     />
                   ) : (
-                    <div className="w-6 h-6 bg-primary rounded-full" />
+                    <div className="w-6 h-6 bg-primary rounded-md" />
                   )}
                   <span className="font-medium">{fromToken?.symbol}</span>
                   <ChevronDown className="h-4 w-4" />
@@ -397,8 +462,8 @@ export function SwapInterface({
               style={{ shapeRendering: 'crispEdges' }}
             >
               <path 
-                d="M12 5L12 19M12 19L6 13M12 19L18 13" 
-                stroke="#6B7280" 
+                d="M12 7L12 19M12 19L6 13M12 19L18 13" 
+                stroke="#4B5563" 
                 strokeWidth="1.5" 
                 strokeLinecap="square" 
                 strokeLinejoin="miter"
@@ -408,8 +473,8 @@ export function SwapInterface({
         </div>
 
         {/* To Section */}
-        <div id="to-token-section" className="-mt-8">
-          <div className="text-sm text-muted-foreground mb-2">Buy</div>
+        <div id="to-token-section" className="-mt-7">
+          <div className="text-sm text-muted-foreground mb-1">Buy</div>
           <div className="rounded-xl p-4" style={{ backgroundColor: '#f8f8f8' }}>
             <div className="flex items-center justify-between">
               <div className="flex-1">
@@ -447,10 +512,10 @@ export function SwapInterface({
                       alt={toToken.symbol}
                       width={24}
                       height={24}
-                      className="rounded-full"
+                      className="rounded-md"
                     />
                   ) : (
-                    <div className="w-6 h-6 bg-primary rounded-full" />
+                    <div className="w-6 h-6 bg-primary rounded-md" />
                   )}
                   <span className="font-medium">{toToken?.symbol}</span>
                   <ChevronDown className="h-4 w-4" />

@@ -17,13 +17,13 @@ test_in_memory!(
         let creator = &ctx.accounts.market_creator;
         let token_mint = Keypair::new();
         let feelssol_mint = ctx.feelssol_mint;
-        
+
         // Get escrow PDA
         let (escrow, _) = Pubkey::find_program_address(
             &[feels::constants::ESCROW_SEED, token_mint.pubkey().as_ref()],
             &feels::ID,
         );
-        
+
         // Get escrow authority PDA
         let (escrow_authority, _) = Pubkey::find_program_address(
             &[feels::constants::ESCROW_AUTHORITY_SEED, escrow.as_ref()],
@@ -85,7 +85,7 @@ test_in_memory!(
 
         let creator = ctx.payer_pubkey();
         let token_mint = Keypair::new();
-        
+
         // Mint the token
         ctx.mint_token_with_keypair(
             &token_mint,
@@ -133,7 +133,7 @@ test_in_memory!(
         let creator = ctx.payer_pubkey();
         let token_mint = Keypair::new();
         let victim = Keypair::new();
-        
+
         // Mint the token
         ctx.mint_token_with_keypair(
             &token_mint,
@@ -181,7 +181,7 @@ test_in_memory!(
 
         let creator = ctx.payer_pubkey();
         let token_mint = Keypair::new();
-        
+
         // Create token and market
         let setup = ctx
             .market_helper()
@@ -224,7 +224,7 @@ test_in_memory!(
 
         let creator = ctx.payer_pubkey();
         let token_mint = Keypair::new();
-        
+
         // Mint the token
         ctx.mint_token_with_keypair(
             &token_mint,
@@ -240,7 +240,7 @@ test_in_memory!(
             &[crate::constants::ESCROW_SEED, token_mint.pubkey().as_ref()],
             &PROGRAM_ID,
         );
-        
+
         let (escrow_authority, escrow_authority_bump) = Pubkey::find_program_address(
             &[crate::constants::ESCROW_AUTHORITY_SEED, escrow.as_ref()],
             &PROGRAM_ID,
@@ -264,7 +264,7 @@ test_in_memory!(
             &[crate::constants::ESCROW_AUTHORITY_SEED, escrow.as_ref()],
             &PROGRAM_ID,
         ).0;
-        
+
         assert_eq!(
             escrow_authority,
             derived_authority,

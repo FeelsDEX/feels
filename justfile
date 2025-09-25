@@ -5,11 +5,8 @@
 # Variables
 # =============================================================================
 
-IDL_PATH := "target/idl/feels.json"
-DEPLOY_PATH := "target/deploy"
-LOGS_PATH := "logs"
-KEYPAIRS_PATH := "keypairs"
-GENERATED_SDK_PATH := "generated-sdk"
+# All paths are now defined in nix-env.just via constants.just
+# IDL_PATH, DEPLOY_PATH, LOGS_PATH, etc. come from the Nix environment
 
 # =============================================================================
 # Imports
@@ -21,9 +18,13 @@ import 'justfiles/validation.just'
 import 'justfiles/build.just'
 import 'justfiles/testing.just'
 import 'justfiles/solana-tools.just'
+import 'justfiles/development.just'
+import 'justfiles/frontend.just'
+import 'justfiles/services.just'
+import 'justfiles/indexer.just'
+import 'justfiles/e2e.just'
 
-# Import test justfile (for backward compatibility)
-import? 'programs/feels/tests/justfile'
+# Note: test justfile import removed to avoid conflicts with modular system
 
 # =============================================================================
 # Default Help
@@ -35,7 +36,7 @@ default:
     @echo "==================================="
     @echo ""
     @echo "Build & Deploy:"
-    @echo "  just build         - Build the protocol with Anchor"
+    @echo "  just build         - Build the protocol (Nix BPF preferred)"
     @echo "  just nix-build     - Build with Nix BPF builder"
     @echo "  just check-env     - Check environment configuration"
     @echo "  just validate [OP] - Validate environment for operation"
@@ -45,7 +46,7 @@ default:
     @echo "Development:"
     @echo "  just clean         - Clean build artifacts"
     @echo "  just local-devnet  - Start local development network"
-    @echo "  just logs          - Tail validator logs"
+    @echo "  just validator-logs - Tail validator logs"
     @echo "  just program-id    - Show program address"
     @echo "  just reset         - Reset local development environment"
     @echo ""
@@ -53,7 +54,7 @@ default:
     @echo "  just idl-build [PROGRAM] - Generate IDL + clients (default: all)"
     @echo "  just idl-validate  - Validate IDL consistency"
     @echo "  just generate-clients - Generate TypeScript & Rust clients"
-    @echo "  just generate-sdk [PROGRAM_ID] - Generate SDK (optionally with custom ID)"
+    @echo "  just frontend::generate-sdk [PROGRAM_ID] - Generate SDK (optionally with custom ID)"
     @echo ""
     @echo "Testing:"
     @echo "  just test          - Run all in-memory tests"
@@ -71,8 +72,14 @@ default:
     @echo "  Common: install, dev, build, test, clean"
     @echo ""
     @echo "Complete E2E Development:"
-    @echo "  just -f e2e/justfile <command>  - Run E2E commands"
-    @echo "  Common: run, stop, status, logs"
+    @echo "  just run          - Start complete E2E environment"
+    @echo "  just stop         - Stop all E2E services" 
+    @echo "  just status       - Check status of all services"
+    @echo "  just logs [service] - View service logs"
+    @echo ""
+    @echo "Indexer Testing:"
+    @echo "  cd feels-indexer/tests && just <command>  - Run indexer test commands"
+    @echo "  Common: test-unit, test-integration, services-start, services-stop"
     @echo ""
     @echo "Solana Tools:"
     @echo "  just airdrop [AMT] - Airdrop SOL to wallet (default: 10)"
@@ -108,8 +115,11 @@ validate OPERATION="all":
 # Deploy to local devnet
 deploy:
     #!/usr/bin/env bash
+    # Ensure validator is running
+    just ensure-validator
+    
     # Pre-flight checks
-    just run-preflight-checks "anchor validator .env"
+    just run-preflight-checks "anchor .env"
     
     just show-deploying
     if nix develop --command anchor deploy --provider.cluster localnet; then
@@ -159,67 +169,7 @@ idl-validate:
 generate-clients:
     @just _generate-clients
 
-# Generate client SDK (with optional custom program ID)
-generate-sdk PROGRAM_ID="":
-    @echo "Generating client SDK..."
-    @echo "Step 1: Building program (without IDL to avoid stack issues)..."
-    just build
-    @echo ""
-    @echo "Step 2: Generating IDL using custom builder..."
-    just idl-build
-    @echo ""
-    @echo "Step 3: Generating TypeScript SDK..."
-    @mkdir -p {{GENERATED_SDK_PATH}}
-    @if [ -f "{{IDL_PATH}}" ]; then \
-        echo "Found IDL at {{IDL_PATH}}"; \
-        echo "Converting IDL to TypeScript..."; \
-        if [ -n "{{PROGRAM_ID}}" ]; then \
-            echo "Using custom program ID: {{PROGRAM_ID}}"; \
-            nix develop --command "node -e \" \
-                const fs = require('fs'); \
-                const idl = JSON.parse(fs.readFileSync('{{IDL_PATH}}', 'utf8')); \
-                const ts = 'export type Feels = ' + JSON.stringify(idl, null, 2) + ';\\\\n\\\\nexport const IDL: Feels = ' + JSON.stringify(idl, null, 2) + ';\\\\n\\\\nexport const PROGRAM_ID = \\\"{{PROGRAM_ID}}\\\";'; \
-                fs.writeFileSync('{{GENERATED_SDK_PATH}}/feels.ts', ts); \
-                console.log('TypeScript IDL generated successfully with program ID: {{PROGRAM_ID}}'); \
-            \""; \
-        else \
-            nix develop --command "node -e \" \
-                const fs = require('fs'); \
-                const idl = JSON.parse(fs.readFileSync('{{IDL_PATH}}', 'utf8')); \
-                const ts = 'export type Feels = ' + JSON.stringify(idl, null, 2) + ';\\\\n\\\\nexport const IDL: Feels = ' + JSON.stringify(idl, null, 2) + ';'; \
-                fs.writeFileSync('{{GENERATED_SDK_PATH}}/feels.ts', ts); \
-                console.log('TypeScript IDL generated successfully'); \
-            \""; \
-        fi; \
-    else \
-        echo "Error: IDL not found at {{IDL_PATH}}"; \
-        exit 1; \
-    fi
-    @echo ""
-    @echo "Step 4: Generating TypeScript types using anchor idl type..."
-    nix develop --command "anchor idl type -o {{GENERATED_SDK_PATH}}/feels_types.ts {{IDL_PATH}}" || echo "Note: Type generation failed"
-    @echo ""
-    @echo "Step 5: Creating Rust client bindings..."
-    @echo "Note: Anchor 0.31.1 doesn't include client-gen. For Rust clients, use anchor-client crate with the IDL."
-    @echo ""
-    @echo "Client SDK generated in {{GENERATED_SDK_PATH}}/"
-    @echo "  - IDL: {{IDL_PATH}}"
-    @echo "  - TypeScript: {{GENERATED_SDK_PATH}}/feels.ts"
-    @echo "  - TypeScript Types: {{GENERATED_SDK_PATH}}/feels_types.ts (if generated)"
-    @echo ""
-    @if [ -n "{{PROGRAM_ID}}" ]; then \
-        echo "To use the TypeScript SDK:"; \
-        echo "  import { IDL, PROGRAM_ID } from './{{GENERATED_SDK_PATH}}/feels';"; \
-        echo "  const program = new anchor.Program(IDL, PROGRAM_ID, provider);"; \
-    else \
-        echo "To use the TypeScript SDK:"; \
-        echo "  import { IDL } from './{{GENERATED_SDK_PATH}}/feels';"; \
-        echo "  const program = new anchor.Program(IDL, programId, provider);"; \
-    fi
-    @echo ""
-    @echo "For Rust clients, add to Cargo.toml:"
-    @echo "  anchor-client = \"0.31.1\""
-    @echo "  feels-sdk = { path = \"../sdk\" }"
+# Note: SDK generation is now handled by frontend::generate-sdk
 
 # =============================================================================
 # Testing
@@ -259,25 +209,17 @@ test-localnet:
 # Utilities
 # =============================================================================
 
-# Tail logs from local validator
-logs:
-    @echo "Tailing validator logs..."
-    @if [ -f {{LOGS_PATH}}/validator.log ]; then \
-        tail -f {{LOGS_PATH}}/validator.log ; \
-    else \
-        echo "No validator log found. Start local devnet first with 'just local-devnet'" ; \
-    fi
-
-
 # Airdrop SOL to development wallet
 airdrop AMOUNT="10":
+    @just ensure-validator
     @echo "Airdropping {{AMOUNT}} SOL..."
-    nix develop --command "solana airdrop {{AMOUNT}}"
+    nix develop -c solana airdrop {{AMOUNT}}
 
 # Show account balance
 balance:
+    @just ensure-validator
     @echo "Account balance:"
-    nix develop --command "solana balance"
+    nix develop -c solana balance
 
 # =============================================================================
 # Frontend Application
@@ -297,11 +239,8 @@ balance:
 # =============================================================================
 # Complete E2E Local Development Environment  
 # =============================================================================
-# E2E commands have been moved to e2e/justfile for better modularity.
-# Usage: just -f e2e/justfile <command>
-#
-# Common commands:
-#   just -f e2e/justfile run     - Start complete environment
-#   just -f e2e/justfile stop    - Stop all services
-#   just -f e2e/justfile status  - Check service status
-#   just -f e2e/justfile logs    - View service logs
+# E2E commands are imported from justfiles/e2e.just and available directly:
+#   just run     - Start complete E2E environment
+#   just stop    - Stop all E2E services
+#   just status  - Check status of all services
+#   just logs [service] - View service logs

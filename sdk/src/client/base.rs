@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     account::Account,

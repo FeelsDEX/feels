@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -85,7 +85,7 @@ impl MarketInstructionBuilder {
             .add_signer(authority)
             .add_writable(market)
             .add_readonly(protocol_config)
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(
                 TransitionMarketPhaseParams { new_phase }
                     .build_data()?,
@@ -124,7 +124,7 @@ impl MarketInstructionBuilder {
             .add_readonly(vault_authority)
             .add_readonly(target_pool)
             .add_readonly(spl_token::id())
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(GraduatePoolParams { target_pool }.build_data()?)
             .build())
     }
@@ -175,7 +175,7 @@ impl MarketInstructionBuilder {
             .add_writable(market)
             .add_writable(expired_mint)
             .add_readonly(vault_authority)
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .add_readonly(spl_token::id())
             .with_data(
                 DestroyExpiredTokenParams { refund_recipient }
@@ -195,7 +195,7 @@ impl MarketInstructionBuilder {
         let mut builder = FeelsInstructionBuilder::new()
             .add_signer(payer)
             .add_writable(market)
-            .add_readonly(solana_sdk::system_program::id());
+            .add_readonly(solana_program::system_program::id());
 
         // Add tick arrays for the tranche (usually multiple)
         // This is simplified - in practice would need tick spacing info
@@ -225,7 +225,7 @@ impl MarketInstructionBuilder {
             .add_readonly(market)
             .add_writable(oracle)
             .add_readonly(target_dex_pool)
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(UpdateDexTwapParams {}.build_data()?)
             .build())
     }

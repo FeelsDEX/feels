@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -87,7 +87,7 @@ impl SwapInstructionBuilder {
             .add_writable(accounts.user_token_in)
             .add_writable(accounts.user_token_out)
             .add_readonly(spl_token::id())
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .add_readonly(protocol_config)
             // Protocol treasury (required, placeholder for now)
             .add_writable(Pubkey::default())

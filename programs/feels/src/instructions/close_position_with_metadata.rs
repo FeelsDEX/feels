@@ -147,15 +147,12 @@ pub fn close_position_with_metadata(
         ctx.accounts.owner.owner == &System::id(),
         FeelsError::InvalidAuthority
     );
-    require!(
-        position.market == market.key(),
-        FeelsError::InvalidMarket
-    );
+    require!(position.market == market.key(), FeelsError::InvalidMarket);
     require!(
         position.owner == ctx.accounts.owner.key(),
         FeelsError::InvalidAuthority
     );
-    
+
     // Validate tick arrays
     let lower_array = ctx.accounts.lower_tick_array.load()?;
     let upper_array = ctx.accounts.upper_tick_array.load()?;

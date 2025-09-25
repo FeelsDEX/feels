@@ -31,13 +31,13 @@ export const TokenSearchCard = React.memo(function TokenSearchCard({ token }: To
       <div className="border rounded-lg p-4 hover:shadow-md hover:border-primary/50 transition-all cursor-pointer">
         <div className="flex items-start gap-4">
           {/* Token Image */}
-          <div className="relative h-16 w-16 flex-shrink-0">
+          <div className="relative h-16 w-16 flex-shrink-0 p-1">
             <Image
               src={token.imageUrl}
               alt={token.name}
               fill
               sizes="64px"
-              className="rounded-full object-cover"
+              className="rounded-md object-cover"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.src = feelsGuyImage.src;

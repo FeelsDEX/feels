@@ -5,6 +5,12 @@ const nextConfig = {
   // Disable strict mode for better Solana wallet compatibility
   reactStrictMode: false,
   webpack: (config, { isServer, dev, webpack }) => {
+    // Handle server-side externals and problematic modules
+    if (isServer) {
+      // Don't externalize ws on server since it's needed
+      config.externals = [...(config.externals || [])];
+    }
+    
     // Fix for vendor chunk issues with Solana/Anchor dependencies
     if (!isServer) {
       // Ensure problematic dependencies are properly resolved
@@ -35,12 +41,14 @@ const nextConfig = {
         process: require.resolve('process/browser'),
         util: require.resolve('util'),
         url: require.resolve('url'),
+        ws: false,  // Disable ws module for client-side
       };
       
-      // Add alias for process
+      // Add alias for process and ws
       config.resolve.alias = {
         ...config.resolve.alias,
         process: 'process/browser',
+        ws: require('path').resolve(__dirname, './src/utils/ws-mock.js'),
       };
     }
     
@@ -51,6 +59,42 @@ const nextConfig = {
         fullySpecified: false,
       },
     });
+
+    // Configure optimization for better chunk splitting
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            default: false,
+            vendors: false,
+            // Solana and related packages in their own chunk
+            solana: {
+              test: /[\\/]node_modules[\\/](@solana|@coral-xyz|@project-serum)[\\/]/,
+              name: 'solana',
+              priority: 10,
+              reuseExistingChunk: true,
+            },
+            // Common packages
+            commons: {
+              name: 'commons',
+              minChunks: 2,
+              priority: 5,
+              reuseExistingChunk: true,
+            },
+            // Framework and large dependencies
+            framework: {
+              test: /[\\/]node_modules[\\/](react|react-dom|next)[\\/]/,
+              name: 'framework',
+              priority: 15,
+              reuseExistingChunk: true,
+            },
+          },
+        },
+      };
+    }
+    
     
     // Add webpack plugins - but only in production to avoid chunk issues
     if (!dev) {
@@ -87,6 +131,16 @@ const nextConfig = {
       new webpack.IgnorePlugin({
         resourceRegExp: /^pino-pretty$/,
         contextRegExp: /pino/,
+      })
+    );
+    
+    // Ignore React Native modules which are not needed in web
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^react-native$/,
+      }),
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^@react-native-async-storage\/async-storage$/,
       })
     );
     

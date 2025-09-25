@@ -4,10 +4,9 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Loader2 } from 'lucide-react';
+// Alert components removed - no longer needed
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useIndexer } from '@/hooks/useIndexer';
 
 // Lazy load the CreateMarket component
 const CreateMarket = dynamic(
@@ -30,7 +29,6 @@ const CreateMarket = dynamic(
 export default function LaunchPage() {
   const { publicKey } = useWallet();
   const router = useRouter();
-  const { isConnected: indexerConnected } = useIndexer();
   const [connection, setConnection] = useState<any>(null);
 
   // Lazy load connection
@@ -47,7 +45,7 @@ export default function LaunchPage() {
   };
 
   return (
-    <div id="launch-page-container" className="container mx-auto px-4 py-8">
+    <div id="launch-page-container" className="container mx-auto px-4 pt-4 pb-8">
       {/* Main Content - Create Market */}
       <div id="launch-content-wrapper" className="max-w-6xl mx-auto">
         {publicKey ? (

@@ -1,8 +1,8 @@
 //! High-level test helpers that use SDK for common operations
 
 use super::*;
-use feels::state::{Market, Position};
 use crate::common::sdk_compat;
+use feels::state::{Market, Position};
 use solana_sdk::instruction::{AccountMeta, Instruction};
 
 /// Helper for market operations
@@ -124,7 +124,7 @@ impl MarketHelper {
     ) -> TestResult<TestMarketSetup> {
         // Create market with token paired against FeelsSOL
         let feelssol_mint = self.ctx.feelssol_mint;
-        
+
         // Determine token order (lower pubkey is token_0)
         let (token_0, token_1) = if token_mint < &feelssol_mint {
             (*token_mint, feelssol_mint)
@@ -133,7 +133,7 @@ impl MarketHelper {
         };
 
         let market_id = self.create_simple_market(&token_0, &token_1).await?;
-        
+
         // Calculate all the derived addresses
         let (oracle_id, _) = sdk_compat::find_oracle_address(&market_id);
         let (vault_0, _) = sdk_compat::find_vault_address(&market_id, &token_0);
@@ -191,7 +191,7 @@ impl MarketHelper {
             TestEnvironment::InMemory => {
                 // In-memory environment - create simple token without protocol token
                 println!("  InMemory: Creating simple test token...");
-                
+
                 // Create a simple token mint with ordering constraint
                 // This bypasses the need for Metaplex and ProtocolToken
                 let token_mint = self
@@ -202,20 +202,20 @@ impl MarketHelper {
                         &self.ctx.feelssol_mint,
                     )
                     .await?;
-                
+
                 println!("✓ Created test token: {}", token_mint.pubkey());
-                
+
                 // For tests, we'll create the market with a simplified approach
                 // The initialize_market will get the system program as protocol_token accounts
                 let market_id = self.create_feelssol_market(&token_mint.pubkey()).await?;
-                
+
                 // Determine token ordering
                 let (token_0, token_1) = if self.ctx.feelssol_mint < token_mint.pubkey() {
                     (self.ctx.feelssol_mint, token_mint.pubkey())
                 } else {
                     (token_mint.pubkey(), self.ctx.feelssol_mint)
                 };
-                
+
                 // Calculate all the derived addresses
                 let (oracle_id, _) = sdk_compat::find_oracle_address(&market_id);
                 let (vault_0, _) = sdk_compat::find_vault_address(&market_id, &token_0);
@@ -244,7 +244,7 @@ impl MarketHelper {
             _ => {
                 // For non-in-memory environments, use the same simplified approach
                 println!("  Non-InMemory: Creating simple test token...");
-                
+
                 // Create a simple token mint with ordering constraint
                 let token_mint = self
                     .ctx
@@ -254,7 +254,7 @@ impl MarketHelper {
                         &self.ctx.feelssol_mint,
                     )
                     .await?;
-                
+
                 println!("✓ Created test token: {}", token_mint.pubkey());
 
                 // Initialize market using SDK builder
@@ -420,13 +420,8 @@ impl MarketHelper {
             initial_buy_feelssol_amount: 0,
         };
         let (market_id, _) = sdk_compat::find_market_address(&token_0, &token_1);
-        let ix_init = sdk_compat::initialize_market(
-            creator.pubkey(),
-            market_id,
-            token_0,
-            token_1,
-            params,
-        );
+        let ix_init =
+            sdk_compat::initialize_market(creator.pubkey(), market_id, token_0, token_1, params);
 
         self.ctx.process_instruction(ix_init, &[creator]).await?;
 
@@ -436,11 +431,8 @@ impl MarketHelper {
             tick_step_size: 100,
             initial_buy_feelssol_amount: 0,
         };
-        let ix_deploy = sdk_compat::deploy_initial_liquidity(
-            creator.pubkey(),
-            market_id,
-            deploy_params,
-        );
+        let ix_deploy =
+            sdk_compat::deploy_initial_liquidity(creator.pubkey(), market_id, deploy_params);
 
         self.ctx.process_instruction(ix_deploy, &[creator]).await?;
 

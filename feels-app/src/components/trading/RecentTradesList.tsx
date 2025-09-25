@@ -132,7 +132,7 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
               
               {/* FeelsSOL Amount */}
               <div className="text-sm text-right">
-                {trade.feelsAmount.toFixed(3)} ◈
+                {trade.feelsAmount.toFixed(2)} ◈
               </div>
               
               {/* Market Cap */}

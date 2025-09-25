@@ -7,9 +7,22 @@ import { ReactQueryProvider } from '@/components/common/ReactQueryProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
 import { SearchProvider } from '@/contexts/SearchContext';
+import { BackgroundPrefetch } from '@/components/common/BackgroundPrefetch';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
-// Simple wrapper component for DevBridge
+// Dynamic import for DevBridge to avoid production bundle impact
+const DevBridgeProvider = dynamic(
+  () => import('../../tools/devbridge/client/DevBridgeProvider').then(mod => ({ default: mod.DevBridgeProvider })),
+  { ssr: false }
+);
+
 const DevBridgeWrapper = ({ children }: { children: React.ReactNode }) => {
+  const isDevBridgeEnabled = process.env.NEXT_PUBLIC_DEVBRIDGE_ENABLED === 'true';
+  
+  if (isDevBridgeEnabled) {
+    return <DevBridgeProvider>{children}</DevBridgeProvider>;
+  }
   return <>{children}</>;
 };
 
@@ -52,13 +65,12 @@ export default function RootLayout({
               <SolanaWalletProvider>
                 <DevBridgeWrapper>
                   <div className="min-h-screen bg-background flex flex-col">
-                    <div className="relative z-[1000]">
-                      <NavBar />
-                    </div>
-                    <main className="relative z-10 flex-1">
+                    <NavBar />
+                    <main className="relative z-10 flex-1 flex flex-col">
                       {children}
                     </main>
-                    <footer className="py-12">
+                    <BackgroundPrefetch />
+                    <footer className="py-10 mt-auto">
                       <div className="container mx-auto px-4">
                         <div className="relative flex items-center">
                           <div className="flex-1"></div>
@@ -66,13 +78,13 @@ export default function RootLayout({
                             feels good man
                           </p>
                           <div className="flex-1 flex justify-end">
-                            <div className="flex flex-col space-y-2 text-right">
-                              <a href="/info" className="text-muted-foreground hover:text-foreground transition-colors">
+                            <div className="flex flex-col space-y-1 text-right">
+                              <Link href="/info" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
                                 info
-                              </a>
-                              <a href="/control" className="text-muted-foreground hover:text-foreground transition-colors">
+                              </Link>
+                              <Link href="/control" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
                                 control
-                              </a>
+                              </Link>
                             </div>
                           </div>
                         </div>

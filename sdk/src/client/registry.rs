@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -12,8 +12,9 @@ use crate::{
 use super::BaseClient;
 
 /// Pool registry service
+#[allow(dead_code)]
 pub struct RegistryService {
-    base: Arc<BaseClient>,
+    _base: Arc<BaseClient>,
     pda: Arc<PdaBuilder>,
     builder: RegistryInstructionBuilder,
 }
@@ -21,7 +22,7 @@ pub struct RegistryService {
 impl RegistryService {
     pub fn new(base: Arc<BaseClient>, pda: Arc<PdaBuilder>, program_id: Pubkey) -> Self {
         Self {
-            base,
+            _base: base,
             pda,
             builder: RegistryInstructionBuilder::new(program_id),
         }

@@ -3,9 +3,7 @@
 #[cfg(test)]
 mod test_stale_oracle_protection {
     use anchor_lang::prelude::*;
-    use feels::{
-        state::{ProtocolConfig, ProtocolOracle, SafetyController},
-    };
+    use feels::state::{ProtocolConfig, ProtocolOracle, SafetyController};
 
     fn create_test_protocol_config() -> ProtocolConfig {
         ProtocolConfig {
@@ -59,17 +57,17 @@ mod test_stale_oracle_protection {
             degrade_flags: Default::default(),
             _reserved: [0; 32],
         };
-        
+
         // Current time is 2700, making DEX oracle stale (1700 seconds old)
         let current_ts = 2700;
-        
+
         // Should fail due to stale DEX oracle
         let result = safety_controller.check_redemptions_allowed(
             &protocol_oracle,
             &protocol_config,
             current_ts,
         );
-        
+
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err().to_string().contains("OracleStale"),
@@ -106,17 +104,17 @@ mod test_stale_oracle_protection {
             degrade_flags: Default::default(),
             _reserved: [0; 32],
         };
-        
+
         // Current time is 2700, making native oracle stale
         let current_ts = 2700;
-        
+
         // Should fail due to stale native oracle
         let result = safety_controller.check_redemptions_allowed(
             &protocol_oracle,
             &protocol_config,
             current_ts,
         );
-        
+
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err().to_string().contains("OracleStale"),
@@ -154,17 +152,17 @@ mod test_stale_oracle_protection {
             degrade_flags: Default::default(),
             _reserved: [0; 32],
         };
-        
+
         // Current time is 2700, both oracles are fresh (< 600s old)
         let current_ts = 2700;
-        
+
         // Should succeed with fresh oracles
         let result = safety_controller.check_redemptions_allowed(
             &protocol_oracle,
             &protocol_config,
             current_ts,
         );
-        
+
         assert!(result.is_ok());
     }
 
@@ -198,14 +196,14 @@ mod test_stale_oracle_protection {
             _reserved: [0; 32],
         };
         let current_ts = 2700;
-        
+
         // Should succeed as only DEX oracle is active and fresh
         let result = safety_controller.check_redemptions_allowed(
             &protocol_oracle,
             &protocol_config,
             current_ts,
         );
-        
+
         assert!(result.is_ok());
     }
 
@@ -224,10 +222,10 @@ mod test_stale_oracle_protection {
 
         let current_ts = 2700;
         let max_age_secs = 600;
-        
+
         // Should return None due to stale DEX oracle
         assert_eq!(oracle.min_rate_q64_checked(current_ts, max_age_secs), None);
-        
+
         // Test with both oracles stale
         let current_ts = 3000;
         assert_eq!(oracle.min_rate_q64_checked(current_ts, max_age_secs), None);
@@ -248,7 +246,7 @@ mod test_stale_oracle_protection {
 
         let current_ts = 2700;
         let max_age_secs = 600;
-        
+
         // Should return the minimum rate (native is lower)
         assert_eq!(
             oracle.min_rate_q64_checked(current_ts, max_age_secs),
@@ -271,10 +269,10 @@ mod test_stale_oracle_protection {
 
         let current_ts = 2700;
         let max_age_secs = 600;
-        
+
         // DEX oracle should be considered stale with zero timestamp
         assert!(oracle.is_dex_oracle_stale(current_ts, max_age_secs));
-        
+
         // min_rate_q64_checked should return None
         assert_eq!(oracle.min_rate_q64_checked(current_ts, max_age_secs), None);
     }
@@ -285,8 +283,8 @@ mod test_stale_oracle_protection {
         let protocol_oracle = ProtocolOracle {
             native_rate_q64: 1 << 64,
             dex_twap_rate_q64: (1 << 63), // 50% divergence
-            dex_last_update_ts: 1000, // stale
-            native_last_update_ts: 2400, // fresh
+            dex_last_update_ts: 1000,     // stale
+            native_last_update_ts: 2400,  // fresh
             dex_last_update_slot: 100,
             native_last_update_slot: 240,
             dex_window_secs: 300,
@@ -310,20 +308,20 @@ mod test_stale_oracle_protection {
             _reserved: [0; 32],
         };
         let current_ts = 2700;
-        
+
         // Should fail due to staleness, not divergence
         let result = safety_controller.check_redemptions_allowed(
             &protocol_oracle,
             &protocol_config,
             current_ts,
         );
-        
+
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err().to_string().contains("OracleStale"),
             true
         ));
-        
+
         // Divergence check should not have been performed
         assert_eq!(safety_controller.consecutive_breaches, 0);
     }

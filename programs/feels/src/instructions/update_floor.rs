@@ -58,8 +58,10 @@ pub fn update_floor(ctx: Context<UpdateFloor>) -> Result<()> {
 
     // Validate constraints (moved from struct to save stack space)
     require!(
-        (ctx.accounts.project_mint.key() == market.token_0 && market.token_1 == market.feelssol_mint) ||
-        (ctx.accounts.project_mint.key() == market.token_1 && market.token_0 == market.feelssol_mint),
+        (ctx.accounts.project_mint.key() == market.token_0
+            && market.token_1 == market.feelssol_mint)
+            || (ctx.accounts.project_mint.key() == market.token_1
+                && market.token_0 == market.feelssol_mint),
         FeelsError::InvalidProjectMint
     );
     require!(

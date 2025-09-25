@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -12,8 +12,9 @@ use crate::{
 use super::BaseClient;
 
 /// Position management service (with NFT support)
+#[allow(dead_code)]
 pub struct PositionService {
-    base: Arc<BaseClient>,
+    _base: Arc<BaseClient>,
     pda: Arc<PdaBuilder>,
     builder: PositionInstructionBuilder,
 }
@@ -21,7 +22,7 @@ pub struct PositionService {
 impl PositionService {
     pub fn new(base: Arc<BaseClient>, pda: Arc<PdaBuilder>, program_id: Pubkey) -> Self {
         Self {
-            base,
+            _base: base,
             pda,
             builder: PositionInstructionBuilder::new(program_id),
         }

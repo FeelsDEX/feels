@@ -197,5 +197,5 @@ changes:
     @git diff --name-status main...HEAD
 
 # Run pre-commit checks
-pre-commit: format lint _test-unit
+pre-commit: _format _lint _test-unit
     @just show-success "Pre-commit checks passed"

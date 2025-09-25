@@ -35,7 +35,9 @@ const path = require('path');
 // Constants
 const FEELSSOL_DECIMALS = 9;
 const JITOSOL_DECIMALS = 9;
-const FEELS_PROGRAM_ID = new PublicKey('Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N');
+// Get program ID from environment or use deployed ID
+const programIdStr = process.env.FEELS_PROGRAM_ID || 'FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx';
+const FEELS_PROGRAM_ID = new PublicKey(programIdStr);
 
 // Load wallet from local keypair file
 function loadWallet() {

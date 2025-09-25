@@ -169,14 +169,18 @@ export default function AccountPage() {
                     key={holding.tokenAddress}
                     id={`token-holding-${holding.tokenSymbol.toLowerCase()}`}
                     href={`/token/${holding.tokenAddress}`}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between p-4 rounded-lg border hover:shadow-md hover:border-primary/50 transition-all"
                   >
                     <div className="flex items-center gap-4">
                       <img
                         id={`token-image-${holding.tokenSymbol.toLowerCase()}`}
                         src={holding.tokenImage}
                         alt={holding.tokenName}
-                        className="w-12 h-12 rounded-full"
+                        className="w-12 h-12 rounded-lg object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = feelsGuyImage.src;
+                        }}
                       />
                       <div>
                         <h3 id={`token-name-${holding.tokenSymbol.toLowerCase()}`} className="font-semibold">{holding.tokenName}</h3>
@@ -207,43 +211,52 @@ export default function AccountPage() {
             {createdTokens.length === 0 ? (
               <p id="no-created-tokens-message" className="text-muted-foreground">No tokens created by this account</p>
             ) : (
-              <div id="created-tokens-grid" className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div id="created-tokens-grid" className="space-y-3">
                 {createdTokens.map((token) => (
                   <Link
                     key={token.address}
                     id={`created-token-${token.symbol.toLowerCase()}`}
                     href={`/token/${token.address}`}
-                    className="block group"
+                    className="block"
                   >
-                    <Card id={`created-token-card-${token.symbol.toLowerCase()}`} className="h-full hover:shadow-lg transition-shadow cursor-pointer">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <div id={`created-token-image-container-${token.symbol.toLowerCase()}`} className="w-14 h-14 rounded-full overflow-hidden bg-muted">
-                            <img
-                              id={`created-token-image-${token.symbol.toLowerCase()}`}
-                              src={token.imageUrl}
-                              alt={token.name}
-                              className="w-full h-full object-cover"
-                            />
+                    <div className="border rounded-lg p-3 hover:shadow-md hover:border-primary/50 transition-all cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        {/* Token Image - square with rounded corners */}
+                        <div className="relative h-12 w-12 flex-shrink-0">
+                          <img
+                            id={`created-token-image-${token.symbol.toLowerCase()}`}
+                            src={token.imageUrl}
+                            alt={token.name}
+                            className="w-full h-full rounded-lg object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = feelsGuyImage.src;
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Token Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold truncate">
+                                {token.name}
+                                <span className="text-muted-foreground ml-2">{token.symbol}</span>
+                              </h3>
+                              <p className="text-xs text-muted-foreground">
+                                {token.address.slice(0, 8)}...{token.address.slice(-8)}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-sm font-medium">{token.marketCap}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {token.launched}
+                              </Badge>
+                            </div>
                           </div>
-                          <Badge id={`created-token-launch-badge-${token.symbol.toLowerCase()}`} variant="outline" className="text-xs">
-                            {token.launched}
-                          </Badge>
                         </div>
-                        <div>
-                          <h3 id={`created-token-header-${token.symbol.toLowerCase()}`} className="font-semibold flex items-center gap-2">
-                            <span id={`created-token-name-${token.symbol.toLowerCase()}`}>{token.name}</span>
-                            <span id={`created-token-symbol-${token.symbol.toLowerCase()}`} className="text-sm text-muted-foreground/70">${token.symbol}</span>
-                          </h3>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div id={`created-token-market-cap-container-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                          <span id={`created-token-market-cap-label-${token.symbol.toLowerCase()}`} className="text-xs text-muted-foreground">Market Cap</span>
-                          <span id={`created-token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-medium">{token.marketCap}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   </Link>
                 ))}
               </div>

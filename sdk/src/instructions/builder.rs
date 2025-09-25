@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 
 use crate::core::{program_id, SdkError, SdkResult};

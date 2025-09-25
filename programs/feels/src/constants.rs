@@ -85,7 +85,10 @@ pub const POMM_MAX_WIDTH: i32 = 2000;
 // Metaplex Token Metadata Program ID
 // For localnet testing, this can be overridden at compile time
 #[cfg(feature = "localnet")]
-pub const METAPLEX_TOKEN_METADATA_ID: &str = env!("METAPLEX_ID", "5JaheUw6ZqL3DvdbcNVSw6cP2cRLgevxNTWPVL89Vvvd");
+pub const METAPLEX_TOKEN_METADATA_ID: &str = env!(
+    "METAPLEX_ID",
+    "5JaheUw6ZqL3DvdbcNVSw6cP2cRLgevxNTWPVL89Vvvd"
+);
 
 #[cfg(not(feature = "localnet"))]
 pub const METAPLEX_TOKEN_METADATA_ID: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";

@@ -17,9 +17,9 @@ async fn test_mint_token_basic() -> std::result::Result<(), Box<dyn std::error::
     } else {
         TestEnvironment::devnet()
     };
-    
+
     let ctx = TestContext::new(env).await.unwrap();
-    
+
     println!("\n=== Test: Basic Token Minting ===");
 
     // Create a fresh creator account
@@ -193,13 +193,13 @@ async fn test_mint_token_basic() -> std::result::Result<(), Box<dyn std::error::
 
 test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
     println!("\n=== Test: Token Minting Validation (Conceptual) ===");
-    
+
     // In MVP, mint_token instruction is not implemented
     // We'll verify the validation concepts without actual execution
-    
+
     println!("Token minting validation rules:");
     println!("   - Ticker: Max 10 characters");
-    println!("   - Name: Max 32 characters");  
+    println!("   - Name: Max 32 characters");
     println!("   - URI: Max 200 characters");
     println!("   - Creator must be a signer (not PDA)");
     println!("   - Creator must pay mint fee in FeelsSOL");
@@ -213,10 +213,14 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
     // Test 1: Invalid ticker length
     let invalid_ticker = "VERYLONGTICKER";
     println!("\n1. Testing ticker validation:");
-    println!("   Ticker '{}' length: {}", invalid_ticker, invalid_ticker.len());
+    println!(
+        "   Ticker '{}' length: {}",
+        invalid_ticker,
+        invalid_ticker.len()
+    );
     println!("   ✓ Would fail: ticker too long (> 10 chars)");
 
-    // Test 2: Invalid name length  
+    // Test 2: Invalid name length
     let invalid_name = "This is a very long token name that exceeds the maximum allowed length";
     println!("\n2. Testing name validation:");
     println!("   Name length: {}", invalid_name.len());
@@ -234,11 +238,23 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
         name: "Test Token".to_string(),
         uri: "https://test.com/metadata.json".to_string(),
     };
-    
+
     println!("\n4. Testing valid parameters:");
-    println!("   Ticker: '{}' (length: {})", valid_params.ticker, valid_params.ticker.len());
-    println!("   Name: '{}' (length: {})", valid_params.name, valid_params.name.len());
-    println!("   URI: '{}' (length: {})", valid_params.uri, valid_params.uri.len());
+    println!(
+        "   Ticker: '{}' (length: {})",
+        valid_params.ticker,
+        valid_params.ticker.len()
+    );
+    println!(
+        "   Name: '{}' (length: {})",
+        valid_params.name,
+        valid_params.name.len()
+    );
+    println!(
+        "   URI: '{}' (length: {})",
+        valid_params.uri,
+        valid_params.uri.len()
+    );
     println!("   ✓ All parameters within valid ranges");
 
     println!("\n=== Token Minting Validation Concepts Verified ===");
@@ -247,10 +263,10 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
 
 test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
     println!("\n=== Test: Minting Multiple Tokens (Conceptual) ===");
-    
+
     // In MVP, mint_token instruction is not implemented
     // We'll verify the concepts of multiple token minting
-    
+
     println!("Multiple token minting concepts:");
     println!("   - Each creator can mint multiple tokens");
     println!("   - Each token gets unique mint address");
@@ -271,8 +287,10 @@ test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
         let token_mint = Keypair::new();
 
         // Simulate PDA derivations
-        let (protocol_token_pda, _) =
-            Pubkey::find_program_address(&[b"protocol_token", token_mint.pubkey().as_ref()], &PROGRAM_ID);
+        let (protocol_token_pda, _) = Pubkey::find_program_address(
+            &[b"protocol_token", token_mint.pubkey().as_ref()],
+            &PROGRAM_ID,
+        );
 
         let (escrow_pda, _) =
             Pubkey::find_program_address(&[b"escrow", token_mint.pubkey().as_ref()], &PROGRAM_ID);
@@ -282,7 +300,7 @@ test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
         println!("  Mint: {}", token_mint.pubkey());
         println!("  Protocol Token PDA: {}", protocol_token_pda);
         println!("  Escrow PDA: {}", escrow_pda);
-        
+
         simulated_tokens.push((ticker, token_mint.pubkey()));
     }
 
@@ -301,10 +319,10 @@ test_in_memory!(
     test_mint_token_with_metadata,
     |ctx: TestContext| async move {
         println!("\n=== Test: Token Minting with Metadata (Conceptual) ===");
-        
+
         // In MVP, mint_token instruction is not implemented
         // We'll verify metadata concepts without actual execution
-        
+
         println!("Token metadata architecture:");
         println!("   - Uses Metaplex Token Metadata program");
         println!("   - Metadata stored in PDA account");

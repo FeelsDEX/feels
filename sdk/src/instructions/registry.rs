@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -71,7 +71,7 @@ impl RegistryInstructionBuilder {
             .add_writable(pool_registry)
             .add_signer(authority)
             .add_signer(payer)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .with_data(InitializePoolRegistryParams {}.build_data()?)
             .build())
     }
@@ -95,8 +95,8 @@ impl RegistryInstructionBuilder {
             .add_readonly(project_mint)
             .add_signer(creator)
             .add_signer(payer)
-            .add_readonly(solana_sdk::system_program::id())
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::system_program::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(RegisterPoolParams {}.build_data()?)
             .build())
     }
@@ -117,7 +117,7 @@ impl RegistryInstructionBuilder {
             .add_writable(pool_registry)
             .add_readonly(market)
             .add_signer(authority)
-            .add_readonly(solana_sdk::sysvar::clock::id())
+            .add_readonly(solana_program::sysvar::clock::id())
             .with_data(UpdatePoolPhaseParams { new_phase }.build_data()?)
             .build())
     }

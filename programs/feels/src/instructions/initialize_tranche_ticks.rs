@@ -76,7 +76,7 @@ pub fn initialize_tranche_ticks<'info>(
                 TickArray::LEN as u64,
                 &crate::id(),
             );
-            
+
             // Create signer seeds for the PDA
             let start_tick_bytes = start_index.to_le_bytes();
             let seeds = &[
@@ -86,7 +86,7 @@ pub fn initialize_tranche_ticks<'info>(
                 &[bump],
             ];
             let signer_seeds = &[&seeds[..]];
-            
+
             anchor_lang::solana_program::program::invoke_signed(
                 &ix,
                 &[

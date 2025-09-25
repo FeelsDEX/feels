@@ -117,13 +117,13 @@ export function TokenSelectDropdown({
                       alt={token.name}
                       width={32}
                       height={32}
-                      className="rounded-full"
+                      className="rounded-md"
                       onError={(e) => {
                         e.currentTarget.src = feelsGuyImage.src;
                       }}
                     />
                   ) : (
-                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-xs font-bold text-primary-foreground">
+                    <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-xs font-bold text-primary-foreground">
                       {token.symbol.substring(0, 2).toUpperCase()}
                     </div>
                   )}

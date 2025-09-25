@@ -69,3 +69,62 @@ dev-with-indexer: install
 	@echo "Starting full development environment with indexer..."
 	@echo "Make sure the indexer is running on http://localhost:8080"
 	npm run dev:indexer
+
+# Deploy Metaplex Token Metadata program to localnet
+deploy-metaplex:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	
+	echo "Checking for Metaplex Token Metadata program..."
+	
+	METAPLEX_PROGRAM_PATH="../target/external-programs/mpl_token_metadata.so"
+	METAPLEX_PROGRAM_ID="HsYigmf9uvLS4QQkc7q9BkyvSf6mEVPxYyVf6rwwa8Bw"
+	MAINNET_METAPLEX_ID="metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+	CONFIG_FILE="scripts/metaplex-localnet.json"
+	
+	# Check if already downloaded
+	if [[ -f "$METAPLEX_PROGRAM_PATH" ]]; then
+	    echo "✓ Metaplex program already downloaded"
+	else
+	    echo "Downloading Metaplex Token Metadata program..."
+	    mkdir -p ../target/external-programs
+	    
+	    # Download from mainnet
+	    echo "Using solana CLI to dump the program from mainnet..."
+	    if solana program dump $MAINNET_METAPLEX_ID $METAPLEX_PROGRAM_PATH --url mainnet-beta; then
+	        echo "✓ Downloaded from mainnet"
+	    else
+	        echo "Failed to download Metaplex program"
+	        exit 1
+	    fi
+	fi
+	
+	# Check if validator is running
+	if ! curl -s http://localhost:8899 >/dev/null 2>&1; then
+	    echo "Error: Local validator is not running"
+	    echo "Please start the validator with: just validator"
+	    exit 1
+	fi
+	
+	# Check if metaplex keypair exists
+	METAPLEX_KEYPAIR="../target/deploy/metaplex-keypair.json"
+	if [[ ! -f "$METAPLEX_KEYPAIR" ]]; then
+	    echo "Generating Metaplex keypair..."
+	    solana-keygen new -o "$METAPLEX_KEYPAIR" --no-bip39-passphrase --force
+	fi
+	
+	# Get the actual program ID from the keypair
+	ACTUAL_METAPLEX_ID=$(solana-keygen pubkey "$METAPLEX_KEYPAIR")
+	echo "Using Metaplex ID: $ACTUAL_METAPLEX_ID"
+	
+	# Deploy to localnet
+	echo "Deploying Metaplex to localnet..."
+	if solana program deploy --program-id $METAPLEX_KEYPAIR $METAPLEX_PROGRAM_PATH; then
+	    echo "✓ Metaplex deployed successfully at $ACTUAL_METAPLEX_ID"
+	    # Save configuration with actual ID
+	    echo "{\"programId\": \"$ACTUAL_METAPLEX_ID\"}" > $CONFIG_FILE
+	    echo "✓ Configuration saved to $CONFIG_FILE"
+	else
+	    echo "Failed to deploy Metaplex"
+	    exit 1
+	fi

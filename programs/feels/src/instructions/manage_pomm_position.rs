@@ -111,7 +111,7 @@ fn process_pomm_action(
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
-    
+
     // Check cooldown
     if now <= ctx.accounts.buffer.last_floor_placement + POMM_COOLDOWN_SECONDS {
         return Err(FeelsError::PommCooldownActive.into());
@@ -160,24 +160,19 @@ fn handle_add_liquidity(
     let market = &mut ctx.accounts.market;
     let buffer = &mut ctx.accounts.buffer;
     let pomm_position = &mut ctx.accounts.pomm_position;
-    
+
     let clock = Clock::get()?;
     let current_slot = clock.slot;
     let twap_sqrt_price = sqrt_price_from_tick(twap_tick)?;
 
     // Prevent reusing a non-empty position to avoid double-counting liquidity
+    require!(pomm_position.liquidity == 0, FeelsError::PositionNotEmpty);
     require!(
-        pomm_position.liquidity == 0,
-        FeelsError::PositionNotEmpty
-    );
-    require!(
-        pomm_position.market == Pubkey::default()
-            || pomm_position.market == market.key(),
+        pomm_position.market == Pubkey::default() || pomm_position.market == market.key(),
         FeelsError::InvalidMarket
     );
     require!(
-        pomm_position.owner == Pubkey::default()
-            || pomm_position.owner == buffer.key(),
+        pomm_position.owner == Pubkey::default() || pomm_position.owner == buffer.key(),
         FeelsError::InvalidAuthority
     );
 
@@ -218,10 +213,8 @@ fn handle_add_liquidity(
 
     // Transfer tokens
     let market_key = market.key();
-    let (_, buffer_authority_bump) = Pubkey::find_program_address(
-        &[b"buffer_authority", market_key.as_ref()],
-        &crate::ID,
-    );
+    let (_, buffer_authority_bump) =
+        Pubkey::find_program_address(&[b"buffer_authority", market_key.as_ref()], &crate::ID);
     let buffer_authority_seeds = &[
         b"buffer_authority",
         market_key.as_ref(),
@@ -252,8 +245,18 @@ fn handle_add_liquidity(
 
     // Update accounts
     update_pomm_position_state(
-        pomm_position, market, buffer, position_index, tick_lower, tick_upper, 
-        liquidity, amount_0, amount_1, total_amount_u128, current_slot, now
+        pomm_position,
+        market,
+        buffer,
+        position_index,
+        tick_lower,
+        tick_upper,
+        liquidity,
+        amount_0,
+        amount_1,
+        total_amount_u128,
+        current_slot,
+        now,
     )?;
 
     Ok(())
@@ -298,10 +301,9 @@ fn calculate_pomm_range(
     let tick_upper = align_up(raw_upper).min(market.global_upper_tick);
 
     require!(tick_lower < tick_upper, FeelsError::InvalidTickRange);
-    
+
     Ok((tick_lower, tick_upper))
 }
-
 
 /// Update POMM position and market state
 #[inline(never)]
@@ -347,9 +349,7 @@ fn update_pomm_position_state(
         .checked_sub(total_amount_u128)
         .ok_or(FeelsError::InsufficientBufferBalance)?;
     buffer.last_floor_placement = now;
-    buffer.total_distributed = buffer
-        .total_distributed
-        .saturating_add(total_amount_u128);
+    buffer.total_distributed = buffer.total_distributed.saturating_add(total_amount_u128);
 
     // Emit event
     emit!(PommPositionUpdated {
@@ -392,10 +392,7 @@ fn handle_rebalance(
 
 /// Handle collecting fees from a POMM position
 #[inline(never)]
-fn handle_collect_fees(
-    _ctx: &Context<ManagePommPosition>,
-    _now: i64,
-) -> Result<()> {
+fn handle_collect_fees(_ctx: &Context<ManagePommPosition>, _now: i64) -> Result<()> {
     // TODO: Implement collect fees logic
     Ok(())
 }
@@ -428,7 +425,7 @@ fn validate_pomm_constraints(ctx: &Context<ManagePommPosition>) -> Result<()> {
         ctx.accounts.vault_1.key() == ctx.accounts.market.vault_1,
         FeelsError::InvalidVault
     );
-    
+
     // Load buffer vaults to check ownership
     let buffer_vault_0_info = ctx.accounts.buffer_vault_0.to_account_info();
     let buffer_vault_0_data = buffer_vault_0_info.data.borrow();
@@ -439,7 +436,7 @@ fn validate_pomm_constraints(ctx: &Context<ManagePommPosition>) -> Result<()> {
             FeelsError::InvalidBufferVault
         );
     }
-    
+
     let buffer_vault_1_info = ctx.accounts.buffer_vault_1.to_account_info();
     let buffer_vault_1_data = buffer_vault_1_info.data.borrow();
     if buffer_vault_1_data.len() > 0 {
@@ -449,7 +446,7 @@ fn validate_pomm_constraints(ctx: &Context<ManagePommPosition>) -> Result<()> {
             FeelsError::InvalidBufferVault
         );
     }
-    
+
     // Validate buffer authority PDA
     let (expected_buffer_authority, _bump) = Pubkey::find_program_address(
         &[b"buffer_authority", ctx.accounts.market.key().as_ref()],
@@ -459,7 +456,7 @@ fn validate_pomm_constraints(ctx: &Context<ManagePommPosition>) -> Result<()> {
         ctx.accounts.buffer_authority.key() == expected_buffer_authority,
         FeelsError::InvalidAuthority
     );
-    
+
     Ok(())
 }
 

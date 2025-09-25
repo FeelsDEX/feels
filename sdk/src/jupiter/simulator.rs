@@ -2,16 +2,17 @@ use crate::jupiter::types::*;
 use crate::core::SwapSimulation;
 
 /// Swap simulator for Jupiter integration
+#[allow(dead_code)]
 pub struct SwapSimulator<'a> {
     market_state: &'a MarketState,
-    tick_arrays: &'a TickArrayLoader,
+    _tick_arrays: &'a TickArrayLoader,
 }
 
 impl<'a> SwapSimulator<'a> {
     pub fn new(market_state: &'a MarketState, tick_arrays: &'a TickArrayLoader) -> Self {
         Self {
             market_state,
-            tick_arrays,
+            _tick_arrays: tick_arrays,
         }
     }
     

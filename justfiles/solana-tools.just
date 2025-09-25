@@ -119,10 +119,17 @@ _airdrop amount="10" address="":
     just show-success "Airdrop complete"
 
 # Generate new keypair
-keygen name output-dir="{{KEYPAIRS_PATH}}":
+keygen name output-dir="":
     #!/usr/bin/env bash
-    mkdir -p {{output-dir}}
-    output_file="{{output-dir}}/{{name}}.json"
+    # Use KEYPAIRS_PATH if no output-dir specified
+    if [[ -z "{{output-dir}}" ]]; then
+        output_dir="{{KEYPAIRS_PATH}}"
+    else
+        output_dir="{{output-dir}}"
+    fi
+    
+    mkdir -p "$output_dir"
+    output_file="$output_dir/{{name}}.json"
     
     just show-progress "Generating keypair: {{name}}"
     solana-keygen new -o "$output_file" --no-bip39-passphrase --force
@@ -130,6 +137,7 @@ keygen name output-dir="{{KEYPAIRS_PATH}}":
     pubkey=$(solana-keygen pubkey "$output_file")
     just show-success "Keypair generated: $pubkey"
     echo "  Saved to: $output_file"
+    echo "  Pubkey: $pubkey"
 
 # Show keypair info
 keyinfo path:
@@ -163,10 +171,12 @@ tx-info signature:
 
 # Show account info
 account address:
+    @just ensure-validator
     @solana account {{address}} --output json-compact
 
 # Decode account data
 decode-account address program="feels":
+    @just ensure-validator
     @just show-progress "Decoding account data"
     @anchor account --provider.cluster localnet --program-id $(just program-id {{program}}) {{address}}
 
@@ -174,18 +184,22 @@ decode-account address program="feels":
 
 # Get cluster version
 cluster-version:
+    @just ensure-validator
     @solana cluster-version
 
 # Get recent blockhash
 blockhash:
-    @solana blockhash
+    @just ensure-validator
+    @solana block | grep "^Blockhash:" | cut -d' ' -f2
 
 # Get epoch info
 epoch-info:
+    @just ensure-validator
     @solana epoch-info
 
 # Get slot
 slot:
+    @just ensure-validator
     @solana slot
 
 # ===== Development Utilities =====
@@ -193,6 +207,7 @@ slot:
 # Close buffer accounts (cleanup)
 close-buffers:
     #!/usr/bin/env bash
+    just ensure-validator
     just show-progress "Closing program buffer accounts"
     buffers=$(solana program show --buffers | grep -E '^[A-Za-z0-9]{44}' || true)
     if [[ -z "$buffers" ]]; then

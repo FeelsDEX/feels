@@ -188,56 +188,67 @@ pub struct Swap<'info> {
 #[inline(never)]
 fn validate_swap_accounts(ctx: &Context<Swap>) -> Result<()> {
     let market = &ctx.accounts.market;
-    
+
     // Validate vaults
     let vault_0_pda = Pubkey::create_program_address(
-        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"0", &[market.vault_0_bump]],
+        &[
+            VAULT_SEED,
+            market.token_0.as_ref(),
+            market.token_1.as_ref(),
+            b"0",
+            &[market.vault_0_bump],
+        ],
         ctx.program_id,
-    ).map_err(|_| FeelsError::InvalidPDA)?;
+    )
+    .map_err(|_| FeelsError::InvalidPDA)?;
     require!(
         vault_0_pda == ctx.accounts.vault_0.key(),
         FeelsError::InvalidVault
     );
-    
+
     let vault_1_pda = Pubkey::create_program_address(
-        &[VAULT_SEED, market.token_0.as_ref(), market.token_1.as_ref(), b"1", &[market.vault_1_bump]],
+        &[
+            VAULT_SEED,
+            market.token_0.as_ref(),
+            market.token_1.as_ref(),
+            b"1",
+            &[market.vault_1_bump],
+        ],
         ctx.program_id,
-    ).map_err(|_| FeelsError::InvalidPDA)?;
+    )
+    .map_err(|_| FeelsError::InvalidPDA)?;
     require!(
         vault_1_pda == ctx.accounts.vault_1.key(),
         FeelsError::InvalidVault
     );
-    
+
     // Validate buffer
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", market.key().as_ref()],
-        ctx.program_id,
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", market.key().as_ref()], ctx.program_id);
     require!(
         buffer_pda == ctx.accounts.buffer.key(),
         FeelsError::InvalidBuffer
     );
-    
+
     // Validate oracle
     let oracle_pda = Pubkey::create_program_address(
         &[b"oracle", market.key().as_ref(), &[market.oracle_bump]],
         ctx.program_id,
-    ).map_err(|_| FeelsError::InvalidPDA)?;
+    )
+    .map_err(|_| FeelsError::InvalidPDA)?;
     require!(
         oracle_pda == ctx.accounts.oracle.key(),
         FeelsError::InvalidOracle
     );
-    
+
     // Validate protocol config
-    let (protocol_config_pda, _) = Pubkey::find_program_address(
-        &[ProtocolConfig::SEED],
-        ctx.program_id,
-    );
+    let (protocol_config_pda, _) =
+        Pubkey::find_program_address(&[ProtocolConfig::SEED], ctx.program_id);
     require!(
         protocol_config_pda == ctx.accounts.protocol_config.key(),
         FeelsError::InvalidProtocol
     );
-    
+
     Ok(())
 }
 
@@ -253,7 +264,7 @@ fn validate_swap_inputs(
     // Validate swap amount is reasonable (prevents dust/overflow attacks)
     validate_amount(params.amount_in)?;
     crate::utils::validate_swap_amount(params.amount_in, false)?;
-    
+
     // Validate slippage tolerance
     if params.minimum_amount_out > 0 {
         crate::utils::validate_slippage_tolerance(params.minimum_amount_out, params.amount_in)?;
@@ -760,17 +771,18 @@ pub fn swap<'info>(
 ) -> Result<()> {
     // Validate all unchecked accounts
     validate_swap_accounts(&ctx)?;
-    
+
     // Load the unchecked accounts manually to avoid lifetime issues
     let buffer_data = ctx.accounts.buffer.try_borrow_data()?;
     let mut buffer: Buffer = Buffer::try_deserialize(&mut &buffer_data[8..])?;
-    
+
     let oracle_data = ctx.accounts.oracle.try_borrow_data()?;
     let mut oracle: OracleState = OracleState::try_deserialize(&mut &oracle_data[8..])?;
-    
+
     let protocol_config_data = ctx.accounts.protocol_config.try_borrow_data()?;
-    let protocol_config: ProtocolConfig = ProtocolConfig::try_deserialize(&mut &protocol_config_data[8..])?;
-    
+    let protocol_config: ProtocolConfig =
+        ProtocolConfig::try_deserialize(&mut &protocol_config_data[8..])?;
+
     // Set reentrancy guard to prevent recursive calls
     ctx.accounts.market.reentrancy_guard = true;
 
@@ -1150,13 +1162,13 @@ pub fn swap<'info>(
 
     // Clear reentrancy guard and complete swap
     ctx.accounts.market.reentrancy_guard = false;
-    
+
     // Serialize the modified state back to the accounts
     let mut buffer_data = ctx.accounts.buffer.try_borrow_mut_data()?;
     buffer.serialize(&mut &mut buffer_data[8..])?;
-    
+
     let mut oracle_data = ctx.accounts.oracle.try_borrow_mut_data()?;
     oracle.serialize(&mut &mut oracle_data[8..])?;
-    
+
     Ok(())
 }

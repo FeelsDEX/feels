@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test_validations {
     use feels::{
-        constants::{MIN_LIQUIDITY, MAX_LIQUIDITY},
+        constants::{MAX_LIQUIDITY, MIN_LIQUIDITY},
         error::FeelsError,
         state::Position,
         utils::validations::*,
@@ -18,8 +18,14 @@ mod test_validations {
         assert!(validate_amount(u64::MAX / 2).is_ok());
 
         // Invalid amounts
-        assert!(validate_amount(0).unwrap_err().to_string().contains("ZeroAmount"));
-        assert!(validate_amount(u64::MAX / 2 + 1).unwrap_err().to_string().contains("AmountOverflow"));
+        assert!(validate_amount(0)
+            .unwrap_err()
+            .to_string()
+            .contains("ZeroAmount"));
+        assert!(validate_amount(u64::MAX / 2 + 1)
+            .unwrap_err()
+            .to_string()
+            .contains("AmountOverflow"));
     }
 
     #[test]
@@ -30,10 +36,16 @@ mod test_validations {
         assert!(validate_liquidity_amounts(100, 0).is_ok());
 
         // Both zero
-        assert!(validate_liquidity_amounts(0, 0).unwrap_err().to_string().contains("ZeroAmount"));
+        assert!(validate_liquidity_amounts(0, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("ZeroAmount"));
 
         // Overflow
-        assert!(validate_liquidity_amounts(u64::MAX / 2 + 1, 100).unwrap_err().to_string().contains("AmountOverflow"));
+        assert!(validate_liquidity_amounts(u64::MAX / 2 + 1, 100)
+            .unwrap_err()
+            .to_string()
+            .contains("AmountOverflow"));
     }
 
     #[test]
@@ -78,26 +90,19 @@ mod test_validations {
         let other_token_2 = Pubkey::new_unique();
 
         // Valid: FeelsSOL as token_0
-        assert!(validate_pool_includes_feelssol(
-            &feelssol_mint,
-            &other_token_1,
-            &feelssol_mint
-        ).is_ok());
+        assert!(
+            validate_pool_includes_feelssol(&feelssol_mint, &other_token_1, &feelssol_mint).is_ok()
+        );
 
         // Valid: FeelsSOL as token_1
-        assert!(validate_pool_includes_feelssol(
-            &other_token_1,
-            &feelssol_mint,
-            &feelssol_mint
-        ).is_ok());
+        assert!(
+            validate_pool_includes_feelssol(&other_token_1, &feelssol_mint, &feelssol_mint).is_ok()
+        );
 
         // Invalid: Neither token is FeelsSOL
         assert_eq!(
-            validate_pool_includes_feelssol(
-                &other_token_1,
-                &other_token_2,
-                &feelssol_mint
-            ).unwrap_err(),
+            validate_pool_includes_feelssol(&other_token_1, &other_token_2, &feelssol_mint)
+                .unwrap_err(),
             FeelsError::InvalidRoute.into()
         );
     }
@@ -146,8 +151,14 @@ mod test_validations {
         assert!(validate_sqrt_price(1u128 << 64).is_ok()); // ~1.0
 
         // Invalid prices
-        assert!(validate_sqrt_price(MIN_SQRT_PRICE - 1).unwrap_err().to_string().contains("InvalidPrice"));
-        assert!(validate_sqrt_price(MAX_SQRT_PRICE + 1).unwrap_err().to_string().contains("InvalidPrice"));
+        assert!(validate_sqrt_price(MIN_SQRT_PRICE - 1)
+            .unwrap_err()
+            .to_string()
+            .contains("InvalidPrice"));
+        assert!(validate_sqrt_price(MAX_SQRT_PRICE + 1)
+            .unwrap_err()
+            .to_string()
+            .contains("InvalidPrice"));
     }
 
     #[test]
@@ -158,11 +169,20 @@ mod test_validations {
         assert!(validate_liquidity(MAX_LIQUIDITY).is_ok());
 
         // Invalid: too low
-        assert!(validate_liquidity(MIN_LIQUIDITY - 1).unwrap_err().to_string().contains("LiquidityBelowMinimum"));
-        assert!(validate_liquidity(0).unwrap_err().to_string().contains("LiquidityBelowMinimum"));
+        assert!(validate_liquidity(MIN_LIQUIDITY - 1)
+            .unwrap_err()
+            .to_string()
+            .contains("LiquidityBelowMinimum"));
+        assert!(validate_liquidity(0)
+            .unwrap_err()
+            .to_string()
+            .contains("LiquidityBelowMinimum"));
 
         // Invalid: too high
-        assert!(validate_liquidity(MAX_LIQUIDITY + 1).unwrap_err().to_string().contains("LiquidityOverflow"));
+        assert!(validate_liquidity(MAX_LIQUIDITY + 1)
+            .unwrap_err()
+            .to_string()
+            .contains("LiquidityOverflow"));
     }
 
     #[test]
@@ -221,10 +241,16 @@ mod test_validations {
         assert!(validate_buffer_threshold(MAX_BUFFER_THRESHOLD).is_ok());
 
         // Invalid: too low
-        assert!(validate_buffer_threshold(MIN_BUFFER_THRESHOLD - 1).unwrap_err().to_string().contains("InvalidThreshold"));
+        assert!(validate_buffer_threshold(MIN_BUFFER_THRESHOLD - 1)
+            .unwrap_err()
+            .to_string()
+            .contains("InvalidThreshold"));
 
         // Invalid: too high
-        assert!(validate_buffer_threshold(MAX_BUFFER_THRESHOLD + 1).unwrap_err().to_string().contains("InvalidThreshold"));
+        assert!(validate_buffer_threshold(MAX_BUFFER_THRESHOLD + 1)
+            .unwrap_err()
+            .to_string()
+            .contains("InvalidThreshold"));
     }
 
     #[test]
@@ -283,11 +309,11 @@ mod test_validations {
     #[test]
     fn test_validate_sqrt_price_movement() {
         let old_price = 1u128 << 64; // ~1.0
-        
+
         // Valid: 1% movement
         let new_price_up = old_price + (old_price / 100); // +1%
         assert!(validate_sqrt_price_movement(old_price, new_price_up, 200).is_ok()); // 2% limit
-        
+
         let new_price_down = old_price - (old_price / 100); // -1%
         assert!(validate_sqrt_price_movement(old_price, new_price_down, 200).is_ok());
 
@@ -302,14 +328,14 @@ mod test_validations {
     #[test]
     fn test_get_tick_array_start_index() {
         let tick_spacing = 10;
-        
+
         // Test various tick indices
         assert_eq!(get_tick_array_start_index(0, tick_spacing), 0);
         assert_eq!(get_tick_array_start_index(50, tick_spacing), 0);
         assert_eq!(get_tick_array_start_index(639, tick_spacing), 0); // 64 * 10 - 1
         assert_eq!(get_tick_array_start_index(640, tick_spacing), 640);
         assert_eq!(get_tick_array_start_index(700, tick_spacing), 640);
-        
+
         // Negative ticks
         assert_eq!(get_tick_array_start_index(-50, tick_spacing), -640);
         assert_eq!(get_tick_array_start_index(-640, tick_spacing), -640);

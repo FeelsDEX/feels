@@ -32,14 +32,27 @@ services-status:
 pg-start:
     #!/usr/bin/env bash
     mkdir -p {{postgres-data}}
-    if ! pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+    if [[ -n "$IN_NIX_SHELL" ]]; then
+        pg_isready_cmd="pg_isready"
+    else
+        pg_isready_cmd="nix develop --quiet -c pg_isready"
+    fi
+    if ! $pg_isready_cmd -h localhost -p 5432 > /dev/null 2>&1; then
         just show-progress "Starting PostgreSQL"
-        initdb -D {{postgres-data}} > /dev/null 2>&1 || true
-        pg_ctl -D {{postgres-data}} -l {{postgres-data}}.log start
+        if [[ -n "$IN_NIX_SHELL" ]]; then
+            initdb -D {{postgres-data}} > /dev/null 2>&1 || true
+        else
+            nix develop --quiet -c initdb -D {{postgres-data}} > /dev/null 2>&1 || true
+        fi
+        if [[ -n "$IN_NIX_SHELL" ]]; then
+            pg_ctl -D {{postgres-data}} -l {{postgres-data}}.log start
+        else
+            nix develop --quiet -c pg_ctl -D {{postgres-data}} -l {{postgres-data}}.log start
+        fi
         
         # Wait for PostgreSQL to be ready
         timeout=10
-        while ! pg_isready -h localhost -p 5432 > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
+        while ! $pg_isready_cmd -h localhost -p 5432 > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
             sleep 1
             ((timeout--))
         done
@@ -80,13 +93,20 @@ pg-clean:
 redis-start:
     #!/usr/bin/env bash
     mkdir -p {{redis-data}}
-    if ! redis-cli ping > /dev/null 2>&1; then
+    if [[ -n "$IN_NIX_SHELL" ]]; then
+        redis_cli_cmd="redis-cli"
+        redis_server_cmd="redis-server"
+    else
+        redis_cli_cmd="nix develop --quiet -c redis-cli"
+        redis_server_cmd="nix develop --quiet -c redis-server"
+    fi
+    if ! $redis_cli_cmd ping > /dev/null 2>&1; then
         just show-progress "Starting Redis"
-        redis-server --dir {{redis-data}} --daemonize yes --logfile {{redis-data}}.log
+        $redis_server_cmd --dir {{redis-data}} --daemonize yes --logfile {{redis-data}}.log
         
         # Wait for Redis to be ready
         timeout=10
-        while ! redis-cli ping > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
+        while ! $redis_cli_cmd ping > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
             sleep 1
             ((timeout--))
         done

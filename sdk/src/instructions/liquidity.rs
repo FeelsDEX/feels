@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -170,7 +170,7 @@ impl LiquidityInstructionBuilder {
             .add_writable(buffer)
             .add_readonly(vault_authority)
             .add_writable(oracle)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .add_readonly(spl_token::id())
             .with_data(params.build_data()?)
             .build())
@@ -197,7 +197,7 @@ impl LiquidityInstructionBuilder {
             .add_writable(position_metadata)
             .add_writable(lower_tick_array)
             .add_writable(upper_tick_array)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .with_data(params.build_data()?)
             .build())
     }
@@ -280,7 +280,7 @@ impl LiquidityInstructionBuilder {
         // This would need more accounts based on actual implementation
         Ok(FeelsInstructionBuilder::new()
             .add_signer(creator)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .add_readonly(spl_token::id())
             .with_data(params.build_data()?)
             .build())
@@ -431,9 +431,9 @@ pub fn initialize_market(
         .add_readonly(creator_feelssol.unwrap_or_else(|| Pubkey::find_program_address(&[b"dummy_creator_feelssol"], &program_id()).0))  // 13: creator_feelssol
         .add_readonly(creator_token_out.unwrap_or_else(|| Pubkey::find_program_address(&[b"dummy_creator_token_out"], &program_id()).0)) // 14: creator_token_out
         .add_writable(escrow_authority)                         // 15: escrow_authority
-        .add_readonly(solana_sdk::system_program::id())         // 16: system_program
+        .add_readonly(solana_program::system_program::id())         // 16: system_program
         .add_readonly(spl_token::id())                          // 17: token_program
-        .add_readonly(solana_sdk::sysvar::rent::id())           // 18: rent
+        .add_readonly(solana_program::sysvar::rent::id())           // 18: rent
         .with_data(params.build_data()?)
         .build())
 }

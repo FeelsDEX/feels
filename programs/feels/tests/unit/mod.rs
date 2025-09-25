@@ -3,6 +3,7 @@
 /// Core unit tests for protocol components organized by category
 // Category modules
 pub mod buffer;
+pub mod jit;
 pub mod math;
 pub mod oracle;
 pub mod pomm;

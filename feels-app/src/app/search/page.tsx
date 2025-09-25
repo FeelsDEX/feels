@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTokenSearch } from '@/hooks/useTokenSearch';
 import { TokenSearchResults } from '@/components/search/TokenSearchResults';
 import { TokenSearchFilters } from '@/components/search/TokenSearchFilters';
-import { SearchPageHeader } from '@/components/search/SearchPageHeader';
+import { SearchPageModal } from '@/components/search/SearchPageModal';
 import { Button } from '@/components/ui/button';
 import { Filter, Search } from 'lucide-react';
 
@@ -40,12 +40,13 @@ function TokensContent() {
   
   return (
     <>
-      {/* Search Header - positioned like NavBar */}
+      {/* Search Modal - exactly like TokenSearchModal on swap page */}
       {searchActive && (
-        <SearchPageHeader 
+        <SearchPageModal
+          isOpen={searchActive}
+          onClose={() => setSearchActive(false)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onActiveChange={setSearchActive}
         />
       )}
       
@@ -92,7 +93,7 @@ function TokensContent() {
               size="sm"
               onClick={() => setSearchActive(true)}
               className={`flex items-center gap-2 transition-opacity ${
-                searchActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                searchActive ? 'opacity-0 pointer-events-none invisible' : 'opacity-100'
               }`}
             >
               <Search className="h-3 w-3" />

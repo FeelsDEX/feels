@@ -16,7 +16,9 @@ test_devnet!(
 
         // Create token accounts for Alice
         let alice_feelssol_account = ctx.create_ata(&alice.pubkey(), &ctx.feelssol_mint).await?;
-        let alice_token_account = ctx.create_ata(&alice.pubkey(), &setup.custom_token_mint).await?;
+        let alice_token_account = ctx
+            .create_ata(&alice.pubkey(), &setup.custom_token_mint)
+            .await?;
 
         // Mint some FeelsSOL to Alice for testing
         ctx.mint_to(

@@ -3,9 +3,7 @@
 #[cfg(test)]
 mod test_set_protocol_owned_override {
     use anchor_lang::prelude::*;
-    use feels::{
-        state::{Buffer, ProtocolConfig},
-    };
+    use feels::state::{Buffer, ProtocolConfig};
 
     fn create_test_protocol_config() -> ProtocolConfig {
         ProtocolConfig {
@@ -64,14 +62,14 @@ mod test_set_protocol_owned_override {
         let protocol_config = create_test_protocol_config();
         let mut buffer = create_test_buffer();
         let protocol_authority = protocol_config.authority;
-        
+
         // Initially, override should be 0
         assert_eq!(buffer.protocol_owned_override, 0);
-        
+
         // Protocol authority should be able to set override
         // In the real instruction, this would be validated
         buffer.protocol_owned_override = 5_000_000;
-        
+
         assert_eq!(buffer.protocol_owned_override, 5_000_000);
     }
 
@@ -80,10 +78,10 @@ mod test_set_protocol_owned_override {
         let protocol_config = create_test_protocol_config();
         let buffer = create_test_buffer();
         let non_protocol_authority = Pubkey::new_unique();
-        
+
         // Non-protocol authority should not match
         assert_ne!(non_protocol_authority, protocol_config.authority);
-        
+
         // In the real instruction, this would fail with InvalidAuthority error
     }
 
@@ -91,13 +89,13 @@ mod test_set_protocol_owned_override {
     fn test_buffer_authority_not_required_for_override() {
         let protocol_config = create_test_protocol_config();
         let buffer = create_test_buffer();
-        
+
         // Buffer authority is set to market creator
         let market_creator = buffer.authority;
-        
+
         // Protocol authority is different from buffer authority
         assert_ne!(protocol_config.authority, market_creator);
-        
+
         // But protocol authority can still set override
         // This demonstrates the fix - we don't check buffer.authority
     }
@@ -105,11 +103,11 @@ mod test_set_protocol_owned_override {
     #[test]
     fn test_override_can_be_cleared() {
         let mut buffer = create_test_buffer();
-        
+
         // Set override
         buffer.protocol_owned_override = 5_000_000;
         assert_eq!(buffer.protocol_owned_override, 5_000_000);
-        
+
         // Clear override by setting to 0
         buffer.protocol_owned_override = 0;
         assert_eq!(buffer.protocol_owned_override, 0);
@@ -118,7 +116,7 @@ mod test_set_protocol_owned_override {
     #[test]
     fn test_override_used_in_floor_calculation() {
         let buffer = create_test_buffer();
-        
+
         // When protocol_owned_override is set, it should be used
         // instead of dynamic calculations
         if buffer.protocol_owned_override > 0 {
@@ -131,11 +129,11 @@ mod test_set_protocol_owned_override {
     fn test_multiple_buffers_independent_overrides() {
         let mut buffer1 = create_test_buffer();
         let mut buffer2 = create_test_buffer();
-        
+
         // Set different overrides for different buffers
         buffer1.protocol_owned_override = 1_000_000;
         buffer2.protocol_owned_override = 2_000_000;
-        
+
         // Each buffer maintains its own override
         assert_eq!(buffer1.protocol_owned_override, 1_000_000);
         assert_eq!(buffer2.protocol_owned_override, 2_000_000);
@@ -144,14 +142,14 @@ mod test_set_protocol_owned_override {
     #[test]
     fn test_override_persists_across_operations() {
         let mut buffer = create_test_buffer();
-        
+
         // Set override
         buffer.protocol_owned_override = 3_000_000;
-        
+
         // Simulate other buffer operations
         buffer.fees_token_0 = buffer.fees_token_0.saturating_add(100_000);
         buffer.tau_spot = buffer.tau_spot.saturating_add(100_000);
-        
+
         // Override should remain unchanged
         assert_eq!(buffer.protocol_owned_override, 3_000_000);
     }
@@ -160,15 +158,15 @@ mod test_set_protocol_owned_override {
     fn test_governance_risk_control() {
         // This test demonstrates the purpose of the override:
         // It's a risk control lever for governance
-        
+
         let mut buffer = create_test_buffer();
-        
+
         // Normal operation: dynamic calculation
         assert_eq!(buffer.protocol_owned_override, 0);
-        
+
         // Risk scenario: governance sets a fixed amount
         buffer.protocol_owned_override = 10_000_000;
-        
+
         // This fixed amount is now used for floor calculations
         // protecting the protocol from potential calculation issues
         assert_eq!(buffer.protocol_owned_override, 10_000_000);

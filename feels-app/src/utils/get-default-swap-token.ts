@@ -1,7 +1,15 @@
 import { appConfig } from '@/config/app.config';
 import { FEELS_TOKENS } from '@/data/tokens';
+import type { DataSource } from '@/contexts/DataSourceContext';
 
-export function getDefaultSwapToken(): string {
+export function getDefaultSwapToken(dataSource?: DataSource): string {
+  // If using test data, always return Wojak token
+  if (dataSource === 'test') {
+    const wojakToken = FEELS_TOKENS.find(t => t.symbol === 'WOJAK');
+    if (wojakToken) {
+      return wojakToken.address;
+    }
+  }
   // If a specific token address is configured, use it
   if (appConfig.defaultSwapTokenAddress) {
     return appConfig.defaultSwapTokenAddress;

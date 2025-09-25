@@ -8,6 +8,7 @@ import { getDefaultSwapToken } from '@/utils/get-default-swap-token';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSearchContext } from '@/contexts/SearchContext';
+import { useDataSource } from '@/contexts/DataSourceContext';
 import Image from 'next/image';
 import wojakImage from '@/assets/images/wojak.png';
 
@@ -19,13 +20,14 @@ export function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
   const { isTokenSearchModalOpen } = useSearchContext();
+  const { dataSource } = useDataSource();
 
   // Handle hydration
   useEffect(() => {
     setMounted(true);
     // Get default swap token on mount
-    setSwapTokenAddress(getDefaultSwapToken());
-  }, []);
+    setSwapTokenAddress(getDefaultSwapToken(dataSource));
+  }, [dataSource]);
 
   // Check if a link is active
   const isLinkActive = (href: string) => {
@@ -69,20 +71,19 @@ export function NavBar() {
             
             {/* Center - Search placeholder */}
             <div className="flex-1 max-w-xl mx-8">
-              <div className="h-10 bg-muted animate-pulse rounded-lg"></div>
+              <div className="h-10 bg-white animate-pulse rounded-lg"></div>
             </div>
             
             {/* Right side - Nav and Wallet */}
             <div className="flex items-center justify-end flex-1">
-              <nav className="flex items-center space-x-6 mr-6">
-                <div className="h-6 w-12 bg-muted animate-pulse rounded"></div>
-                <div className="h-6 w-16 bg-muted animate-pulse rounded"></div>
-                <div className="h-6 w-14 bg-muted animate-pulse rounded"></div>
+              <nav className="flex items-center space-x-6 mr-8 mt-0.5">
+                <div className="h-7 w-[52px] bg-white animate-pulse rounded"></div>
               </nav>
               
-              <div className="flex items-center space-x-4">
-                <div className="h-9 w-32 bg-muted animate-pulse rounded-md"></div>
-                <div className="h-9 w-32 bg-muted animate-pulse rounded-md"></div>
+              <div className="flex items-center">
+                <div className="px-4 py-2 bg-white animate-pulse rounded-lg">
+                  <div className="h-5 w-[88px]"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -92,7 +93,7 @@ export function NavBar() {
   }
 
   return (
-    <header id="main-nav-header" className="relative z-[1000] pt-2">
+    <header id="main-nav-header" className={`relative pt-2 ${isTokenSearchModalOpen ? 'pointer-events-none' : ''}`}>
       <div id="nav-container" className="container mx-auto px-4">
         <div id="nav-content-wrapper" className="flex items-center h-16">
           {/* Left side - Logo and Nav */}
@@ -133,7 +134,7 @@ export function NavBar() {
                   if (!swapTokenAddress) {
                     e.preventDefault();
                     // If for some reason we don't have a token address yet, get one now
-                    const tokenAddress = getDefaultSwapToken();
+                    const tokenAddress = getDefaultSwapToken(dataSource);
                     setSwapTokenAddress(tokenAddress);
                     router.push(`/token/${tokenAddress}`);
                   }
@@ -148,16 +149,12 @@ export function NavBar() {
           </div>
           
           {/* Center - Search */}
-          {!isTokenSearchModalOpen ? (
-            <div id="search-section" className="flex-1 max-w-xl mx-8 relative z-[1001]">
-              <SearchBar mode="navigation" />
-            </div>
-          ) : (
-            <div className="flex-1 max-w-xl mx-8" />
-          )}
+          <div id="search-section" className={`flex-1 max-w-xl mx-8 relative z-[1001] ${isTokenSearchModalOpen ? 'invisible pointer-events-none' : ''}`}>
+            <SearchBar mode="navigation" />
+          </div>
           
           {/* Right side - Nav and Wallet */}
-          <div id="nav-right-section" className="flex items-center justify-end flex-1">
+          <div id="nav-right-section" className="flex items-center justify-end flex-1 animate-in fade-in duration-300">
             <nav id="right-nav-menu" className="flex items-center space-x-6 mr-8 mt-0.5">
               <Link 
                 id="nav-launch-link"

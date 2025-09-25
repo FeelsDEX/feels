@@ -31,7 +31,7 @@ test_in_memory!(
 
         // Test 2: Conceptually verify market token ordering requirements
         println!("\n2. Verifying market token ordering requirements...");
-        
+
         // In MVP, market creation requires protocol tokens
         // We'll verify the concepts without creating an actual market
         println!("   Market token ordering rules:");
@@ -39,12 +39,12 @@ test_in_memory!(
         println!("   - Protocol tokens must be token_1");
         println!("   - Enforced by pubkey comparison: token_0 < token_1");
         println!("   - FeelsSOL pubkey designed to be lower than most generated keys");
-        
+
         // Test 3: Simulate market setup validation
         let simulated_market_token = token_mint.pubkey();
         let would_be_token_0 = ctx.feelssol_mint;
         let would_be_token_1 = simulated_market_token;
-        
+
         assert!(
             would_be_token_0 < would_be_token_1,
             "Market token ordering would be invalid"
@@ -52,7 +52,7 @@ test_in_memory!(
         println!("   ✓ Token ordering would be valid for market creation");
         println!("   Token 0 (FeelsSOL): {}", would_be_token_0);
         println!("   Token 1 (Custom): {}", would_be_token_1);
-        
+
         // Test 4: Verify ordering constraint helper functionality
         println!("   ✓ Helper correctly enforced token ordering constraint");
         println!("   Generated token {} > FeelsSOL", simulated_market_token);

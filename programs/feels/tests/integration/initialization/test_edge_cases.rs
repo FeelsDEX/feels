@@ -9,7 +9,7 @@ use solana_sdk::instruction::Instruction;
 /// Helper function to create initialize market instruction
 fn build_market_init_ix(
     deployer: Pubkey,
-    token_0: Pubkey, 
+    token_0: Pubkey,
     token_1: Pubkey,
     base_fee_bps: u16,
     tick_spacing: u16,
@@ -17,7 +17,7 @@ fn build_market_init_ix(
     initial_buy_feelssol_amount: u64,
 ) -> solana_sdk::instruction::Instruction {
     // Note: We return instruction directly since SDK validation happens elsewhere
-    
+
     let params = feels::instructions::InitializeMarketParams {
         base_fee_bps,
         tick_spacing,
@@ -50,20 +50,20 @@ test_in_memory!(
     test_initialize_without_dummy_accounts,
     |ctx: TestContext| async move {
         println!("\n=== Test: Initialize Market Without Dummy Accounts ===");
-        
+
         // This test was attempting to verify market initialization without dummy accounts
         // However, it requires mint_token which needs Metaplex
         println!("\nNote: This test requires protocol token minting");
         println!("Converting to conceptual test...");
-        
+
         println!("\nMarket initialization dummy account concepts:");
         println!("- SDK automatically handles dummy account creation");
         println!("- Dummy accounts used for FeelsSOL protocol token");
         println!("- Real protocol token accounts used for minted tokens");
         println!("- Market can be initialized with minimal accounts");
-        
+
         println!("\n✓ Test conceptually verified - SDK handles account management");
-        
+
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 );
@@ -99,7 +99,7 @@ test_in_memory!(test_debug_error_code, |ctx: TestContext| async move {
     let ix = build_market_init_ix(
         creator.pubkey(),
         ctx.feelssol_mint,
-        ctx.feelssol_mint, // Same token  
+        ctx.feelssol_mint, // Same token
         30,
         10,
         79228162514264337593543950336u128,

@@ -15,10 +15,8 @@ async fn test_exact_output_swap_binary_search() {
     } else {
         TestEnvironment::devnet()
     };
-    
-    let ctx = TestContext::new(env)
-        .await
-        .unwrap();
+
+    let ctx = TestContext::new(env).await.unwrap();
     let alice = &ctx.accounts.alice;
     let bob = &ctx.accounts.bob;
 
@@ -38,14 +36,14 @@ async fn test_exact_output_swap_binary_search() {
     // Fund bob with token_0 for swapping
     let amount_to_fund = 10_000_000; // 10 tokens
     let bob_token_0 = ctx.create_ata(&bob.pubkey(), &setup.token_0).await.unwrap();
-    
+
     // Determine mint authority based on which token it is
     let mint_authority = if setup.token_0 == ctx.feelssol_mint {
         &ctx.feelssol_authority
     } else {
         &ctx.accounts.market_creator
     };
-    
+
     ctx.mint_to(&setup.token_0, &bob_token_0, mint_authority, amount_to_fund)
         .await
         .unwrap();
@@ -105,10 +103,8 @@ async fn test_exact_output_swap_edge_cases() {
     } else {
         TestEnvironment::devnet()
     };
-    
-    let ctx = TestContext::new(env)
-        .await
-        .unwrap();
+
+    let ctx = TestContext::new(env).await.unwrap();
     let alice = &ctx.accounts.alice;
     let bob = &ctx.accounts.bob;
 
@@ -117,7 +113,7 @@ async fn test_exact_output_swap_edge_cases() {
     println!("Creating test market with liquidity...");
     let setup = match market_helper
         .create_test_market_with_liquidity(6, alice, -10000, 10000, 1_000_000_000_000)
-        .await 
+        .await
     {
         Ok(s) => {
             println!("Market created successfully!");
@@ -131,14 +127,14 @@ async fn test_exact_output_swap_edge_cases() {
 
     // Fund bob
     let bob_token_0 = ctx.create_ata(&bob.pubkey(), &setup.token_0).await.unwrap();
-    
+
     // Determine mint authority based on which token it is
     let mint_authority = if setup.token_0 == ctx.feelssol_mint {
         &ctx.feelssol_authority
     } else {
         &ctx.accounts.market_creator
     };
-    
+
     ctx.mint_to(&setup.token_0, &bob_token_0, mint_authority, 100_000_000)
         .await
         .unwrap();
@@ -188,7 +184,7 @@ async fn test_sdk_estimate_input_for_output() {
     // Test price estimation logic (SDK function not yet implemented)
     // This test validates the mathematical concepts that would be used
     // in the estimate_input_for_output function when it's implemented
-    
+
     let _sqrt_price_1_to_1 = 1u128 << 64; // sqrt(1) * 2^64
     let _fee_bps = 30; // 0.3%
 
@@ -198,16 +194,28 @@ async fn test_sdk_estimate_input_for_output() {
 
     // Validate the estimation ranges are reasonable
     println!("1:1 price estimation: min={}, max={}", min, max);
-    assert!(min > 600_000 && min < 700_000, "Min estimation out of range");
-    assert!(max > 1_400_000 && max < 1_600_000, "Max estimation out of range");
+    assert!(
+        min > 600_000 && min < 700_000,
+        "Min estimation out of range"
+    );
+    assert!(
+        max > 1_400_000 && max < 1_600_000,
+        "Max estimation out of range"
+    );
 
     // Test with different price (2:1) - mathematical validation
     let _sqrt_price_2_to_1 = (2.0f64.sqrt() * (1u128 << 64) as f64) as u128;
-    // Expected ranges for 2:1 price ratio  
+    // Expected ranges for 2:1 price ratio
     let (min, max) = (1_350_000, 3_050_000);
 
     println!("2:1 price estimation: min={}, max={}", min, max);
     // The SDK's estimation with buffers
-    assert!(min > 1_300_000 && min < 1_400_000, "Min estimation out of range for 2:1");
-    assert!(max > 3_000_000 && max < 3_100_000, "Max estimation out of range for 2:1");
+    assert!(
+        min > 1_300_000 && min < 1_400_000,
+        "Min estimation out of range for 2:1"
+    );
+    assert!(
+        max > 3_000_000 && max < 3_100_000,
+        "Max estimation out of range for 2:1"
+    );
 }

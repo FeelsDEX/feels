@@ -1823,9 +1823,7 @@ name = "feels-sdk"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.12",
- "anchor-client",
  "anchor-lang",
- "anchor-spl",
  "anyhow",
  "borsh 0.10.4",
  "feels",

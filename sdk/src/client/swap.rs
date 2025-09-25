@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::{
     account::Account,
     signature::{Keypair, Signature},

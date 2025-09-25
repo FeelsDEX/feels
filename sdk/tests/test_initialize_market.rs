@@ -42,7 +42,7 @@ mod tests {
         let system_program_count = ix
             .accounts
             .iter()
-            .filter(|meta| meta.pubkey == solana_sdk::system_program::id())
+            .filter(|meta| meta.pubkey == solana_program::system_program::id())
             .count();
         assert_eq!(
             system_program_count, 1,
@@ -52,7 +52,7 @@ mod tests {
         // Verify System Program is at correct position
         assert_eq!(
             ix.accounts[16].pubkey,
-            solana_sdk::system_program::id(),
+            solana_program::system_program::id(),
             "System Program should be at position 16"
         );
 
@@ -60,7 +60,7 @@ mod tests {
         if token_0 == feelssol_mint {
             assert_ne!(
                 ix.accounts[10].pubkey,
-                solana_sdk::system_program::id(),
+                solana_program::system_program::id(),
                 "Protocol token 0 should not be System Program when token is FeelsSOL"
             );
         }
@@ -68,7 +68,7 @@ mod tests {
         if token_1 == feelssol_mint {
             assert_ne!(
                 ix.accounts[11].pubkey,
-                solana_sdk::system_program::id(),
+                solana_program::system_program::id(),
                 "Protocol token 1 should not be System Program when token is FeelsSOL"
             );
         }

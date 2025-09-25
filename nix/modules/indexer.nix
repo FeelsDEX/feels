@@ -24,7 +24,7 @@ let
       hash = "sha256-rbGS0NLljGrv5Ffap0T+28tLN7sRYclMQYJA/BlmiNs=";
     };
 
-    cargoHash = "sha256-KWY0qQya9k674WPm5Oj3rOdKl2PfFnAGT5pS66rQUFc=";
+    cargoHash = "sha256-0izlid1mXhXf9MpHIxFtQPMwpZdDLzOIMrY7KUnR2Uo=";
     
     nativeBuildInputs = with pkgs; [
       pkg-config
@@ -93,7 +93,8 @@ let
     # The plugin is a dynamic library
     postInstall = ''
       mkdir -p $out/lib
-      cp target/release/libyellowstone_grpc_geyser.* $out/lib/
+      # Find and copy the yellowstone library files
+      find target/release -name "libyellowstone_grpc_geyser.*" -type f -exec cp {} $out/lib/ \; || echo "Warning: No yellowstone library files found"
     '';
     
     # Enable features
@@ -140,11 +141,8 @@ in {
     pkgs.curl
     pkgs.jq
     
-    # Rust toolchain (if not already available)
-    pkgs.rustc
-    pkgs.cargo
-    pkgs.clippy
-    pkgs.rustfmt
+    # Rust toolchain is provided by solana-tools module
+    # Don't include rustc, cargo, clippy, or rustfmt to avoid conflicts
     
     # Yellowstone Dragon's Mouth
     yellowstoneDragonsMouth
@@ -184,7 +182,7 @@ in {
         echo "Available tools:"
         echo "  ✓ gRPC and Protocol Buffers"
         echo "  ✓ Yellowstone Dragon's Mouth Geyser plugin"
-        echo "  ✓ Rust development tools"
+        echo "  ✓ Rust tools from Solana toolchain"
         echo ""
         echo "Available commands:"
         echo "  geyser-config              - Show Geyser configuration"

@@ -92,6 +92,7 @@ valence.env
 # Keys
 *.key
 *.keypair
+*keypair.json
 keypairs/
 
 # ==================================
@@ -120,6 +121,10 @@ tmp/
 temp/
 .tmp/
 .temp/
+*-temp.toml
+*.temp
+*.tmp
+preview/
 
 # ==================================
 # Project Specific
@@ -130,6 +135,8 @@ work/
 data/
 logs/
 ext/
+chart-demo/
+test-data/
 
 # Generated SDK files (keep structure but ignore contents)
 generated-sdk/rust/target/
@@ -152,6 +159,7 @@ geyser-*.log
 basic-validator.log
 feels-deployed.so
 e2e/.deployed-program-id
+*.so
 
 # AI documentation
 CLAUDE.md

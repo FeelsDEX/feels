@@ -105,4 +105,3 @@ pub fn initialize_pomm_position(
 
     Ok(())
 }
-

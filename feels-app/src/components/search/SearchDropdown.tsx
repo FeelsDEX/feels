@@ -115,7 +115,7 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
                       alt={token.name}
                       fill
                       sizes="40px"
-                      className="rounded-full object-cover"
+                      className="rounded-md object-cover"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.src = feelsGuyImage.src;

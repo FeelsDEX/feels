@@ -8,7 +8,11 @@ description = "RocksDB indexer for Feels consuming Geyser streams"
 [workspace]
 # Empty workspace to make this a standalone project
 
-# No patching - let Cargo resolve it
+# Override dependency resolution 
+[workspace.dependencies]
+solana-program = "2.2.1"
+solana-sdk = "2.2.1"
+solana-client = "2.2.1"
 
 [lib]
 name = "feels_indexer"
@@ -27,7 +31,7 @@ path = "src/main_minimal.rs"
 zstd = "0.13"
 zstd-safe = "7.2"
 
-# Solana & Geyser - using direct dependencies to avoid version conflicts
+# Solana & Geyser - match workspace versions from root Cargo.toml
 solana-client = "2.2.1"
 solana-sdk = "2.2.1"
 solana-account-decoder = "2.2.1"
@@ -42,9 +46,8 @@ bs58 = "0.5"
 
 # Feels Protocol
 feels-sdk = { path = "../sdk" }
-anchor-lang = "0.31.1"
-spl-token = "6.0"
-spl-associated-token-account = "5.0"
+spl-token = "7.0"
+spl-associated-token-account = "6.0"
 
 # Version overrides to resolve conflicts
 base64ct = "=1.6.0"

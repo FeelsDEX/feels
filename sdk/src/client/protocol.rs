@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -15,17 +15,18 @@ use crate::{
 use super::BaseClient;
 
 /// Protocol management service
+#[allow(dead_code)]
 pub struct ProtocolService {
-    base: Arc<BaseClient>,
-    pda: Arc<PdaBuilder>,
+    _base: Arc<BaseClient>,
+    _pda: Arc<PdaBuilder>,
     builder: ProtocolInstructionBuilder,
 }
 
 impl ProtocolService {
     pub fn new(base: Arc<BaseClient>, pda: Arc<PdaBuilder>, program_id: Pubkey) -> Self {
         Self {
-            base,
-            pda,
+            _base: base,
+            _pda: pda,
             builder: ProtocolInstructionBuilder::new(program_id),
         }
     }

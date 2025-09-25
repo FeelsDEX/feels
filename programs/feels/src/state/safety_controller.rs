@@ -151,13 +151,18 @@ impl SafetyController {
 
         // Check if either oracle is stale
         let dex_stale = oracle.is_dex_oracle_stale(current_ts, config.dex_twap_stale_age_secs);
-        let native_stale = oracle.is_native_oracle_stale(current_ts, config.dex_twap_stale_age_secs);
+        let native_stale =
+            oracle.is_native_oracle_stale(current_ts, config.dex_twap_stale_age_secs);
 
         // If either oracle that contributes to pricing is stale, reject the redemption
-        if (oracle.dex_twap_rate_q64 > 0 && dex_stale) || 
-           (oracle.native_rate_q64 > 0 && native_stale) {
-            msg!("Oracle data is stale - redemptions blocked. DEX stale: {}, Native stale: {}", 
-                 dex_stale, native_stale);
+        if (oracle.dex_twap_rate_q64 > 0 && dex_stale)
+            || (oracle.native_rate_q64 > 0 && native_stale)
+        {
+            msg!(
+                "Oracle data is stale - redemptions blocked. DEX stale: {}, Native stale: {}",
+                dex_stale,
+                native_stale
+            );
             msg!("  Current timestamp: {}", current_ts);
             msg!("  DEX last update: {}", oracle.dex_last_update_ts);
             msg!("  Native last update: {}", oracle.native_last_update_ts);

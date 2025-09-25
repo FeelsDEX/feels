@@ -10010,4 +10010,4 @@ export const IDL: Feels = {
   ]
 };
 
-export const PROGRAM_ID = "EyuKq8zyGxgvjNazRuvZ9uvVoKTDS3isk3GF9rcX3gmp";
+export const PROGRAM_ID = "FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx";

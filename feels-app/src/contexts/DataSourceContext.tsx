@@ -12,7 +12,7 @@ interface DataSourceContextType {
 const DataSourceContext = createContext<DataSourceContextType | undefined>(undefined);
 
 export function DataSourceProvider({ children }: { children: ReactNode }) {
-  const [dataSource, setDataSource] = useState<DataSource>('indexer');
+  const [dataSource, setDataSource] = useState<DataSource>('test');
 
   return (
     <DataSourceContext.Provider value={{ dataSource, setDataSource }}>

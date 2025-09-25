@@ -20,7 +20,7 @@ mod tests {
 
         // DEX oracle should be stale
         assert!(oracle.is_dex_oracle_stale(current_ts, max_age_secs));
-        
+
         // Native oracle should be fresh
         assert!(!oracle.is_native_oracle_stale(current_ts, max_age_secs));
 
@@ -29,7 +29,7 @@ mod tests {
 
         // Update DEX oracle to be fresh
         oracle.dex_last_update_ts = current_ts - 100;
-        
+
         // Now both should be fresh
         assert!(!oracle.is_dex_oracle_stale(current_ts, max_age_secs));
         assert!(!oracle.is_native_oracle_stale(current_ts, max_age_secs));
@@ -51,7 +51,7 @@ mod tests {
             dex_twap_rate_q64: 1 << 64,
             dex_last_update_slot: 0,
             native_last_update_slot: 0,
-            dex_last_update_ts: 0, // Never updated
+            dex_last_update_ts: 0,    // Never updated
             native_last_update_ts: 0, // Never updated
             dex_window_secs: 300,
             flags: 0,
@@ -60,7 +60,7 @@ mod tests {
         // Both oracles should be considered stale
         assert!(oracle.is_dex_oracle_stale(current_ts, max_age_secs));
         assert!(oracle.is_native_oracle_stale(current_ts, max_age_secs));
-        
+
         // min_rate_q64_checked should return None
         assert_eq!(oracle.min_rate_q64_checked(current_ts, max_age_secs), None);
     }

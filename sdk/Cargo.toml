@@ -21,10 +21,10 @@ advanced = []
 # Shared protocol crates
 # feels-core = { workspace = true, features = ["client", "advanced"] }
 
-# Anchor and Solana dependencies
-anchor-client = { workspace = true }
+# Solana dependencies
+# Note: anchor-lang is required for AnchorSerialize/AnchorDeserialize traits
+# used in instruction serialization. anchor-client and anchor-spl are not used.
 anchor-lang = { workspace = true }
-anchor-spl = { workspace = true }
 solana-sdk = { workspace = true }
 solana-client = { workspace = true }
 solana-program = { workspace = true }

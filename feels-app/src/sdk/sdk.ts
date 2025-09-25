@@ -1,7 +1,7 @@
 // SDK wrapper to handle import compatibility issues
 
 // Program ID
-export const FEELS_PROGRAM_ID = 'BLjLS7TzUBncLxXMjFYxezioeg4RVdc5vRpVRYDq8GyQ';
+export const FEELS_PROGRAM_ID = 'FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx';
 
 // Import the IDL - this will be bundled by Next.js
 // Using the full generated IDL

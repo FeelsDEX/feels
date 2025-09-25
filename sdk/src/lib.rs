@@ -52,6 +52,7 @@ pub mod core;
 pub mod instructions;
 pub mod protocol;
 pub mod jupiter;
+pub mod prelude;
 
 // Re-export main types and functions
 pub use client::FeelsClient;

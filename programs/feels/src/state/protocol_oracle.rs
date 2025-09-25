@@ -78,7 +78,7 @@ impl ProtocolOracle {
         if self.native_rate_q64 > 0 && self.is_native_oracle_stale(current_ts, max_age_secs) {
             return None;
         }
-        
+
         // Both oracles are fresh, return the minimum
         Some(self.min_rate_q64())
     }

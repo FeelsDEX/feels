@@ -5,7 +5,7 @@
 use crate::{
     constants::*,
     error::FeelsError,
-    state::{Market, TickArray, Position, ProtocolConfig, TICK_ARRAY_SIZE},
+    state::{Market, Position, ProtocolConfig, TickArray, TICK_ARRAY_SIZE},
 };
 use anchor_lang::prelude::*;
 use solana_program::pubkey::Pubkey;
@@ -130,10 +130,7 @@ pub fn validate_pool_includes_feelssol(
 // ===== NEW COMPREHENSIVE VALIDATIONS =====
 
 /// Validate account ownership
-pub fn validate_account_owner(
-    account_info: &AccountInfo,
-    expected_owner: &Pubkey,
-) -> Result<()> {
+pub fn validate_account_owner(account_info: &AccountInfo, expected_owner: &Pubkey) -> Result<()> {
     require!(
         account_info.owner == expected_owner,
         FeelsError::InvalidAccountOwner
@@ -154,10 +151,7 @@ pub fn validate_pda(
     program_id: &Pubkey,
 ) -> Result<()> {
     let (expected_key, _bump) = Pubkey::find_program_address(seeds, program_id);
-    require!(
-        account_info.key() == expected_key,
-        FeelsError::InvalidPDA
-    );
+    require!(account_info.key() == expected_key, FeelsError::InvalidPDA);
     Ok(())
 }
 
@@ -168,15 +162,10 @@ pub fn validate_pda_with_bump(
     bump: u8,
     program_id: &Pubkey,
 ) -> Result<()> {
-    let expected_key = Pubkey::create_program_address(
-        &[seeds, &[&[bump]]].concat(),
-        program_id
-    ).map_err(|_| FeelsError::InvalidPDA)?;
-    
-    require!(
-        account_info.key() == expected_key,
-        FeelsError::InvalidPDA
-    );
+    let expected_key = Pubkey::create_program_address(&[seeds, &[&[bump]]].concat(), program_id)
+        .map_err(|_| FeelsError::InvalidPDA)?;
+
+    require!(account_info.key() == expected_key, FeelsError::InvalidPDA);
     Ok(())
 }
 
@@ -191,16 +180,11 @@ pub fn validate_pda_with_known_bump(
     let mut seeds_with_bump = seeds.to_vec();
     let bump_array = [bump];
     seeds_with_bump.push(&bump_array);
-    
-    let expected_key = Pubkey::create_program_address(
-        &seeds_with_bump,
-        program_id
-    ).map_err(|_| FeelsError::InvalidPDA)?;
-    
-    require!(
-        account_key == &expected_key,
-        FeelsError::InvalidPDA
-    );
+
+    let expected_key = Pubkey::create_program_address(&seeds_with_bump, program_id)
+        .map_err(|_| FeelsError::InvalidPDA)?;
+
+    require!(account_key == &expected_key, FeelsError::InvalidPDA);
     Ok(())
 }
 
@@ -232,19 +216,13 @@ pub fn validate_slot_constraint(
 
 /// Validate position ownership
 pub fn validate_position_ownership(position: &Position, owner: &Pubkey) -> Result<()> {
-    require!(
-        position.owner == *owner,
-        FeelsError::InvalidPositionOwner
-    );
+    require!(position.owner == *owner, FeelsError::InvalidPositionOwner);
     Ok(())
 }
 
 /// Validate position is for the correct market
 pub fn validate_position_market(position: &Position, market: &Pubkey) -> Result<()> {
-    require!(
-        position.market == *market,
-        FeelsError::InvalidMarket
-    );
+    require!(position.market == *market, FeelsError::InvalidMarket);
     Ok(())
 }
 
@@ -263,10 +241,7 @@ pub fn validate_liquidity(liquidity: u128) -> Result<()> {
         liquidity >= MIN_LIQUIDITY,
         FeelsError::LiquidityBelowMinimum
     );
-    require!(
-        liquidity <= MAX_LIQUIDITY,
-        FeelsError::LiquidityOverflow
-    );
+    require!(liquidity <= MAX_LIQUIDITY, FeelsError::LiquidityOverflow);
     Ok(())
 }
 
@@ -283,31 +258,20 @@ pub fn validate_protocol_authority(
 }
 
 /// Validate token mint matches expected
-pub fn validate_token_mint(
-    token_account: &AccountInfo,
-    expected_mint: &Pubkey,
-) -> Result<()> {
+pub fn validate_token_mint(token_account: &AccountInfo, expected_mint: &Pubkey) -> Result<()> {
     let data = token_account.try_borrow_data()?;
     let mint_offset = 0; // mint is first field in TokenAccount
     let mint_bytes = &data[mint_offset..mint_offset + 32];
-    let actual_mint = Pubkey::new_from_array(
-        mint_bytes.try_into()
-            .map_err(|_| FeelsError::InvalidMint)?
-    );
-    
-    require!(
-        actual_mint == *expected_mint,
-        FeelsError::InvalidMint
-    );
+    let actual_mint =
+        Pubkey::new_from_array(mint_bytes.try_into().map_err(|_| FeelsError::InvalidMint)?);
+
+    require!(actual_mint == *expected_mint, FeelsError::InvalidMint);
     Ok(())
 }
 
 /// Validate that a value hasn't decreased (monotonicity check)
 pub fn validate_monotonic_increase(new_value: u64, old_value: u64) -> Result<()> {
-    require!(
-        new_value >= old_value,
-        FeelsError::InvalidUpdate
-    );
+    require!(new_value >= old_value, FeelsError::InvalidUpdate);
     Ok(())
 }
 
@@ -338,37 +302,24 @@ pub fn validate_fee_cap(fee_amount: u64, amount_in: u64, max_fee_bps: u16) -> Re
     let max_fee = (amount_in as u128)
         .saturating_mul(max_fee_bps as u128)
         .saturating_div(10000) as u64;
-    
-    require!(
-        fee_amount <= max_fee,
-        FeelsError::FeeCapExceeded
-    );
+
+    require!(fee_amount <= max_fee, FeelsError::FeeCapExceeded);
     Ok(())
 }
 
 /// Validate rate limit
-pub fn validate_rate_limit(
-    current_amount: u64,
-    new_amount: u64,
-    cap: u64,
-) -> Result<()> {
+pub fn validate_rate_limit(current_amount: u64, new_amount: u64, cap: u64) -> Result<()> {
     let total = current_amount
         .checked_add(new_amount)
         .ok_or(FeelsError::MathOverflow)?;
-    
-    require!(
-        total <= cap,
-        FeelsError::RateLimitExceeded
-    );
+
+    require!(total <= cap, FeelsError::RateLimitExceeded);
     Ok(())
 }
 
 /// Validate account is not closed
 pub fn validate_account_not_closed(account_info: &AccountInfo) -> Result<()> {
-    require!(
-        account_info.lamports() > 0,
-        FeelsError::AccountClosed
-    );
+    require!(account_info.lamports() > 0, FeelsError::AccountClosed);
     Ok(())
 }
 
@@ -376,7 +327,7 @@ pub fn validate_account_not_closed(account_info: &AccountInfo) -> Result<()> {
 pub fn validate_rent_exempt(account_info: &AccountInfo, rent: &Rent) -> Result<()> {
     let data_len = account_info.data_len();
     let required_lamports = rent.minimum_balance(data_len);
-    
+
     require!(
         account_info.lamports() >= required_lamports,
         FeelsError::NotRentExempt
@@ -386,7 +337,8 @@ pub fn validate_rent_exempt(account_info: &AccountInfo, rent: &Rent) -> Result<(
 
 /// Validate token amounts don't overflow when combined
 pub fn validate_token_amounts_safe(amount_0: u64, amount_1: u64) -> Result<()> {
-    amount_0.checked_add(amount_1)
+    amount_0
+        .checked_add(amount_1)
         .ok_or(FeelsError::MathOverflow)?;
     Ok(())
 }
@@ -406,7 +358,7 @@ pub fn validate_sqrt_price_movement(
             .saturating_mul(10000)
             .saturating_div(old_price)
     };
-    
+
     require!(
         movement <= max_movement_bps as u128,
         FeelsError::PriceMovementTooLarge

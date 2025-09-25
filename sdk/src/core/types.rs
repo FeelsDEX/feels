@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 
 /// Route type for swaps
 #[derive(Clone, Copy, Debug, PartialEq)]

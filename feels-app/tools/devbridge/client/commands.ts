@@ -132,6 +132,128 @@ export function setupBuiltinCommands(
     // This would integrate with your logging system
     return { logLevel: level };
   });
+
+  // Debug chart y-axis type
+  registerCommand('setChartAxisType', ({ type }: { type: string }) => {
+    if (typeof window !== 'undefined' && (window as any).__debugPriceChart) {
+      (window as any).__debugPriceChart.setPriceAxisType(type);
+      return { success: true, type };
+    }
+    return { error: 'Chart debug not available' };
+  });
+
+  // Get chart state
+  registerCommand('getChartState', () => {
+    if (typeof window !== 'undefined' && (window as any).__debugPriceChart) {
+      return (window as any).__debugPriceChart.getState();
+    }
+    return { error: 'Chart debug not available' };
+  });
+
+  // Debug chart instance and available methods
+  registerCommand('debugChart', async () => {
+    // Find the chart container
+    const chartContainer = document.querySelector('#kline-chart') as HTMLElement;
+    if (!chartContainer) {
+      return { error: 'Chart container not found' };
+    }
+
+    // Try to get chart instance from the element data
+    const chartInstance = (chartContainer as any).__chart__ || (chartContainer as any).chart;
+    
+    if (!chartInstance) {
+      // Try global klinecharts registry if available
+      if ((window as any).klinecharts?.instances) {
+        const instances = (window as any).klinecharts.instances;
+        for (const [elem, chart] of instances) {
+          if (elem === chartContainer) {
+            const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(chart))
+              .filter(name => typeof chart[name] === 'function')
+              .sort();
+            return {
+              found: true,
+              instanceLocation: 'klinecharts.instances',
+              methods,
+              hasAdjustVisibleRange: methods.includes('adjustVisibleRange'),
+              hasResetDataVisibleRange: methods.includes('resetDataVisibleRange'),
+              hasZoomAtCoordinate: methods.includes('zoomAtCoordinate'),
+              hasSetVisibleRange: methods.includes('setVisibleRange'),
+              hasGetVisibleRange: methods.includes('getVisibleRange')
+            };
+          }
+        }
+      }
+      return { error: 'Chart instance not found in any known location' };
+    }
+
+    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(chartInstance))
+      .filter(name => typeof chartInstance[name] === 'function')
+      .sort();
+
+    return {
+      found: true,
+      instanceLocation: 'element property',
+      methods,
+      hasAdjustVisibleRange: methods.includes('adjustVisibleRange'),
+      hasResetDataVisibleRange: methods.includes('resetDataVisibleRange'),
+      hasZoomAtCoordinate: methods.includes('zoomAtCoordinate'),
+      hasSetVisibleRange: methods.includes('setVisibleRange'),
+      hasGetVisibleRange: methods.includes('getVisibleRange')
+    };
+  });
+
+  // Force chart zoom recalculation
+  registerCommand('recalcChartZoom', async () => {
+    const chartContainer = document.querySelector('#kline-chart') as HTMLElement;
+    if (!chartContainer) {
+      return { error: 'Chart container not found' };
+    }
+    
+    // Dispatch a custom event that can be listened to by the chart component
+    window.dispatchEvent(new CustomEvent('devbridge:recalcChartZoom'));
+    return { dispatched: true };
+  });
+
+  // Test overlay toggle functionality
+  registerCommand('testOverlayToggle', async () => {
+    const floorButton = document.querySelector('button[aria-label="Toggle floor price line"]') as HTMLButtonElement;
+    const gtwapButton = document.querySelector('button[aria-label="Toggle GTWAP price line"]') as HTMLButtonElement;
+    
+    if (!floorButton || !gtwapButton) {
+      return { error: 'Floor or GTWAP buttons not found' };
+    }
+
+    // Get initial state
+    const initialFloorActive = floorButton.getAttribute('data-state') === 'checked';
+    const initialGtwapActive = gtwapButton.getAttribute('data-state') === 'checked';
+
+    // Toggle floor off if on, wait, then toggle back
+    if (initialFloorActive) {
+      console.log('[testOverlayToggle] Toggling floor OFF');
+      floorButton.click();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('[testOverlayToggle] Toggling floor ON');
+      floorButton.click();
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // Toggle GTWAP off if on, wait, then toggle back  
+    if (initialGtwapActive) {
+      console.log('[testOverlayToggle] Toggling GTWAP OFF');
+      gtwapButton.click();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('[testOverlayToggle] Toggling GTWAP ON');
+      gtwapButton.click();
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return {
+      tested: true,
+      initialFloorActive,
+      initialGtwapActive,
+      message: 'Check console logs and visual display to verify Y-axis recalculation'
+    };
+  });
 }
 
 // Export feature flags for app use

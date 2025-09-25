@@ -506,7 +506,7 @@ _compare-idl-sdk:
 # Clean build artifacts
 _clean:
     @just show-progress "Cleaning build artifacts"
-    @cargo clean || true
+    @if command -v cargo >/dev/null 2>&1; then cargo clean || true; else echo "Cargo not found, skipping cargo clean"; fi
     @rm -rf target/ .anchor/
     @just show-success "Build artifacts cleaned"
 

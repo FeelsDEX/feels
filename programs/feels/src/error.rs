@@ -47,10 +47,10 @@ pub enum FeelsError {
     // Swap errors
     #[msg("Slippage exceeded")]
     SlippageExceeded,
-    
+
     #[msg("Invalid parameter")]
     InvalidParameter,
-    
+
     #[msg("Exact output not achieved")]
     ExactOutputNotAchieved,
 

@@ -14,8 +14,8 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Mint, Token, TokenAccount},
 };
-use spl_token::instruction::AuthorityType;
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3, types::DataV2};
+use spl_token::instruction::AuthorityType;
 
 /// Parameters for minting a new token
 #[derive(Clone, AnchorSerialize, AnchorDeserialize)]
@@ -251,7 +251,7 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
     // SECURITY: Transfer mint and freeze authorities to the escrow authority PDA immediately
     // This prevents the creator from minting additional tokens or freezing accounts
     // The authorities will be fully revoked (set to None) when the market is initialized
-    
+
     // Transfer mint authority to escrow authority PDA
     token::set_authority(
         CpiContext::new(
@@ -265,7 +265,7 @@ pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()
         Some(ctx.accounts.escrow_authority.key()), // Transfer to escrow authority
     )?;
     msg!("Transferred mint authority to escrow");
-    
+
     // Transfer freeze authority to escrow authority PDA
     token::set_authority(
         CpiContext::new(

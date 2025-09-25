@@ -27,7 +27,7 @@ async fn test_feelssol_must_be_token_0() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     println!("Error received: {}", err);
-    
+
     // In the hub-and-spoke model, FeelsSOL must be token_0
     // The error could be either InvalidTokenOrder or TokenNotProtocolMinted
     assert!(
@@ -59,8 +59,11 @@ async fn test_correct_token_ordering() {
     };
 
     // Use SDK to validate token ordering
-    let result =
-        sdk_compat::sort_tokens_with_feelssol(ctx.feelssol_mint, token_mint.pubkey(), ctx.feelssol_mint);
+    let result = sdk_compat::sort_tokens_with_feelssol(
+        ctx.feelssol_mint,
+        token_mint.pubkey(),
+        ctx.feelssol_mint,
+    );
 
     // Should succeed and return FeelsSOL as token_0
     match result {
@@ -109,13 +112,13 @@ async fn test_no_feelssol_fails() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     println!("Error received: {}", err);
-    
+
     // The error could be either RequiresFeelsSOLPair or TokenNotProtocolMinted
     assert!(
         err.to_string().contains("One token must be FeelsSOL") 
             || err.to_string().contains("Only protocol-minted tokens")
             || err.to_string().contains("0xbc4") // RequiresFeelsSOLPair
-            || err.to_string().contains("0x65"), // TokenNotProtocolMinted  
+            || err.to_string().contains("0x65"), // TokenNotProtocolMinted
         "Expected FeelsSOL pair or protocol token error, got: {}",
         err
     );
@@ -144,7 +147,10 @@ async fn test_sdk_validation() {
 
     // SDK doesn't validate token ordering anymore - that's done at program level
     // The instruction should be created successfully
-    assert!(result.is_ok(), "SDK should build instruction regardless of token order");
+    assert!(
+        result.is_ok(),
+        "SDK should build instruction regardless of token order"
+    );
 
     // Test SDK validation for no FeelsSOL
     let other_token = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -163,7 +169,10 @@ async fn test_sdk_validation() {
 
     // SDK doesn't validate FeelsSOL requirement anymore - that's done at program level
     // The instruction should be created successfully
-    assert!(result.is_ok(), "SDK should build instruction regardless of token types");
+    assert!(
+        result.is_ok(),
+        "SDK should build instruction regardless of token types"
+    );
 }
 
 #[tokio::test]

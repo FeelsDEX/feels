@@ -153,7 +153,8 @@ CREATE TABLE floors (
 CREATE INDEX idx_markets_tokens ON markets(token_0, token_1);
 CREATE INDEX idx_markets_phase ON markets(phase);
 CREATE INDEX idx_markets_updated ON markets(updated_at);
-CREATE INDEX idx_markets_volume ON markets(total_volume_0 + total_volume_1);
+CREATE INDEX idx_markets_volume_0 ON markets(total_volume_0);
+CREATE INDEX idx_markets_volume_1 ON markets(total_volume_1);
 
 CREATE INDEX idx_positions_owner ON positions(owner);
 CREATE INDEX idx_positions_market ON positions(market_id);

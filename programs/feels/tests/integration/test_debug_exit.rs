@@ -76,7 +76,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
     println!("\nUpdating protocol oracle...");
     ctx.update_protocol_oracle_for_testing().await?;
     println!("✓ Protocol oracle updated");
-    
+
     // Debug: Check oracle state and clock
     let (protocol_oracle, _) = Pubkey::find_program_address(
         &[b"protocol_oracle"],
@@ -90,7 +90,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
             println!("  Protocol oracle not found: {:?}", e);
         }
     }
-    
+
     // Debug: The issue is that in test environment, the Clock sysvar has a default timestamp
     // which is likely 0 or a very old timestamp. When we update the oracle, it uses this
     // timestamp. Then when we check if it's stale, it's comparing against the same timestamp

@@ -104,7 +104,10 @@ test_in_memory!(
         // Test cooldown mechanism
         let cooldown_seconds = initial_market.floor_cooldown_secs;
         assert!(cooldown_seconds > 0, "Cooldown period should be set");
-        println!("Floor cooldown mechanism configured: {} seconds", cooldown_seconds);
+        println!(
+            "Floor cooldown mechanism configured: {} seconds",
+            cooldown_seconds
+        );
 
         // In a full implementation, we would trigger a floor update here
         // For now, we verify the mechanism is properly configured
@@ -164,10 +167,9 @@ test_in_memory!(
 
         // For unit testing POMM concepts, we'll use a mock market
         let market_id = Pubkey::new_unique();
-        
+
         // Derive the expected market authority PDA
-        let (expected_authority, _) =
-            Market::derive_market_authority(&market_id, &PROGRAM_ID);
+        let (expected_authority, _) = Market::derive_market_authority(&market_id, &PROGRAM_ID);
 
         println!("Protocol ownership:");
         println!("  Market key: {}", market_id);
@@ -181,8 +183,7 @@ test_in_memory!(
         );
 
         // Verify PDA is deterministic
-        let (authority_check, _) =
-            Market::derive_market_authority(&market_id, &PROGRAM_ID);
+        let (authority_check, _) = Market::derive_market_authority(&market_id, &PROGRAM_ID);
         assert_eq!(
             expected_authority, authority_check,
             "PDA derivation should be deterministic"
@@ -205,12 +206,9 @@ test_in_memory!(
         // For unit testing, we'll verify the buffer concepts without creating a real market
         let market_id = Pubkey::new_unique();
 
-        
         // Derive the buffer PDA
-        let (buffer_id, _) = Pubkey::find_program_address(
-            &[b"buffer", market_id.as_ref()],
-            &PROGRAM_ID,
-        );
+        let (buffer_id, _) =
+            Pubkey::find_program_address(&[b"buffer", market_id.as_ref()], &PROGRAM_ID);
 
         println!("Buffer integration:");
         println!("  Market ID: {}", market_id);
@@ -220,10 +218,8 @@ test_in_memory!(
         assert_ne!(buffer_id, Pubkey::default(), "Buffer PDA should be valid");
 
         // Test that buffer PDA is deterministic
-        let (buffer_check, _) = Pubkey::find_program_address(
-            &[b"buffer", market_id.as_ref()],
-            &PROGRAM_ID,
-        );
+        let (buffer_check, _) =
+            Pubkey::find_program_address(&[b"buffer", market_id.as_ref()], &PROGRAM_ID);
         assert_eq!(
             buffer_id, buffer_check,
             "Buffer PDA should be deterministic"

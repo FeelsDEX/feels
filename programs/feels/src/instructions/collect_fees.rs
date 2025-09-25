@@ -196,7 +196,6 @@ fn transfer_accumulated_fees<'info>(
     Ok((amount_0, amount_1))
 }
 
-
 /// Process fee calculation with tick arrays - ultra minimal stack approach
 #[inline(never)]
 #[allow(dead_code)]
@@ -209,24 +208,26 @@ fn process_fee_calculation(
     // Direct approach: just update position without loading full tick arrays
     // This is safe because we only need the fee growth values, not full ticks
     // The position already tracks the last seen fee growth values
-    
+
     // For now, just use the market's global fee growth as a fallback
     // In a real implementation, you'd want to load the tick arrays more efficiently
-    let fee_growth_0_increment = market.fee_growth_global_0_x64
+    let fee_growth_0_increment = market
+        .fee_growth_global_0_x64
         .saturating_sub(position.fee_growth_inside_0_last_x64);
-    let fee_growth_1_increment = market.fee_growth_global_1_x64
+    let fee_growth_1_increment = market
+        .fee_growth_global_1_x64
         .saturating_sub(position.fee_growth_inside_1_last_x64);
-    
+
     // Calculate fees owed increment (simplified calculation)
     let liquidity = position.liquidity;
     if liquidity > 0 {
         let fees_0_increment = ((fee_growth_0_increment as u128 * liquidity) >> 64) as u64;
         let fees_1_increment = ((fee_growth_1_increment as u128 * liquidity) >> 64) as u64;
-        
+
         position.tokens_owed_0 = position.tokens_owed_0.saturating_add(fees_0_increment);
         position.tokens_owed_1 = position.tokens_owed_1.saturating_add(fees_1_increment);
     }
-    
+
     // Update fee growth tracking
     position.fee_growth_inside_0_last_x64 = market.fee_growth_global_0_x64;
     position.fee_growth_inside_1_last_x64 = market.fee_growth_global_1_x64;

@@ -111,20 +111,20 @@ test_in_memory!(
 
 test_in_memory!(test_feelssol_as_hub_token, |ctx: TestContext| async move {
     println!("Testing FeelsSOL as hub token concept...");
-    
+
     // For MVP testing, we'll verify the hub token concept without creating actual markets
-    // This is because market creation requires protocol-minted tokens which aren't 
+    // This is because market creation requires protocol-minted tokens which aren't
     // available in the test environment
-    
+
     println!("Hub-and-spoke model verification:");
     println!("- FeelsSOL mint: {}", ctx.feelssol_mint);
     println!("- All tokens must pair with FeelsSOL");
     println!("- Cross-token swaps route through FeelsSOL");
-    
+
     // Verify FeelsSOL mint exists and has correct properties
     let feelssol_mint = ctx.get_mint(&ctx.feelssol_mint).await?;
     assert_eq!(feelssol_mint.decimals, constants::FEELSSOL_DECIMALS);
-    
+
     // Verify mint authority is the PDA
     use feels::constants::MINT_AUTHORITY_SEED;
     let (expected_authority, _) = Pubkey::find_program_address(
@@ -136,10 +136,10 @@ test_in_memory!(test_feelssol_as_hub_token, |ctx: TestContext| async move {
         Some(expected_authority).into(),
         "FeelsSOL mint authority should be PDA"
     );
-    
+
     println!("FeelsSOL hub token properties verified");
     println!("Hub-and-spoke routing model conceptually verified");
-    
+
     Ok::<(), Box<dyn std::error::Error>>(())
 });
 

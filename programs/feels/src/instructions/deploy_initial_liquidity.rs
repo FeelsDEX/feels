@@ -86,7 +86,7 @@ pub struct DeployInitialLiquidity<'info> {
     /// CHECK: Validated in handler to reduce stack usage
     #[account(mut)]
     pub buffer: Box<Account<'info, crate::state::Buffer>>,
-    
+
     /// Oracle account for price updates
     /// CHECK: Validated in handler to reduce stack usage
     #[account(mut)]
@@ -152,7 +152,7 @@ pub fn deploy_initial_liquidity<'info>(
     params: DeployInitialLiquidityParams,
 ) -> Result<()> {
     // Early validation - fail fast before any state changes
-    
+
     // Validate constraints (moved from struct to save stack space)
     require!(
         ctx.accounts.deployer.key() == ctx.accounts.market.authority,
@@ -189,7 +189,7 @@ pub fn deploy_initial_liquidity<'info>(
         params.tick_step_size % ctx.accounts.market.tick_spacing as i32 == 0,
         FeelsError::TickNotSpaced
     );
-    
+
     // Validate initial buy amount if specified
     if params.initial_buy_feelssol_amount > 0 {
         crate::utils::validate_swap_amount(params.initial_buy_feelssol_amount, false)?;
@@ -381,18 +381,22 @@ pub fn deploy_initial_liquidity<'info>(
 
         // Update market state to reflect the initial buy
         // This ensures the market remains in a consistent state
-        
+
         // 1. Update cumulative volume
         if feelssol_is_token_0 {
-            ctx.accounts.market.total_volume_token_0 = ctx.accounts.market
+            ctx.accounts.market.total_volume_token_0 = ctx
+                .accounts
+                .market
                 .total_volume_token_0
                 .saturating_add(params.initial_buy_feelssol_amount);
         } else {
-            ctx.accounts.market.total_volume_token_1 = ctx.accounts.market
+            ctx.accounts.market.total_volume_token_1 = ctx
+                .accounts
+                .market
                 .total_volume_token_1
                 .saturating_add(params.initial_buy_feelssol_amount);
         }
-        
+
         // 2. Calculate and apply base fee to buffer
         let base_fee_bps = ctx.accounts.market.base_fee_bps;
         let base_fee_amount = if base_fee_bps > 0 {
@@ -400,37 +404,55 @@ pub fn deploy_initial_liquidity<'info>(
         } else {
             0
         };
-        
+
         if base_fee_amount > 0 {
             // Add fees to buffer accounting
             if feelssol_is_token_0 {
-                ctx.accounts.buffer.fees_token_0 = ctx.accounts.buffer
+                ctx.accounts.buffer.fees_token_0 = ctx
+                    .accounts
+                    .buffer
                     .fees_token_0
                     .saturating_add(base_fee_amount as u128);
             } else {
-                ctx.accounts.buffer.fees_token_1 = ctx.accounts.buffer
+                ctx.accounts.buffer.fees_token_1 = ctx
+                    .accounts
+                    .buffer
                     .fees_token_1
                     .saturating_add(base_fee_amount as u128);
             }
-            
-            msg!("  Base fee collected: {} ({}bps)", base_fee_amount, base_fee_bps);
+
+            msg!(
+                "  Base fee collected: {} ({}bps)",
+                base_fee_amount,
+                base_fee_bps
+            );
         }
-        
+
         // 3. Update oracle with current price data
         let clock = Clock::get()?;
-        ctx.accounts.oracle.update(ctx.accounts.market.current_tick, clock.unix_timestamp)?;
-        
+        ctx.accounts
+            .oracle
+            .update(ctx.accounts.market.current_tick, clock.unix_timestamp)?;
+
         // 4. Apply any price impact (simplified for initial buy)
         // Since this is the first trade and liquidity is just deployed,
         // price impact is minimal, but we should still account for it
         let price_impact_bps = 1; // Minimal impact for initial buy
-        
+
         // 5. Emit swap event for the initial buy
         emit!(crate::events::SwapExecuted {
             market: ctx.accounts.market.key(),
             user: ctx.accounts.deployer.key(),
-            token_in: if feelssol_is_token_0 { ctx.accounts.market.token_0 } else { ctx.accounts.market.token_1 },
-            token_out: if feelssol_is_token_0 { ctx.accounts.market.token_1 } else { ctx.accounts.market.token_0 },
+            token_in: if feelssol_is_token_0 {
+                ctx.accounts.market.token_0
+            } else {
+                ctx.accounts.market.token_1
+            },
+            token_out: if feelssol_is_token_0 {
+                ctx.accounts.market.token_1
+            } else {
+                ctx.accounts.market.token_0
+            },
             amount_in: params.initial_buy_feelssol_amount,
             amount_out: output_amount,
             fee_paid: base_fee_amount,
@@ -440,7 +462,7 @@ pub fn deploy_initial_liquidity<'info>(
             timestamp: clock.unix_timestamp,
             version: 2,
         });
-        
+
         msg!("Market state updated after initial buy");
     }
 

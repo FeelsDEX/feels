@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -96,10 +96,10 @@ impl PositionInstructionBuilder {
             .add_writable(position_token_account)
             .add_writable(lower_tick_array)
             .add_writable(upper_tick_array)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .add_readonly(spl_token::id())
             .add_readonly(spl_associated_token_account::id())
-            .add_readonly(solana_sdk::sysvar::rent::id())
+            .add_readonly(solana_program::sysvar::rent::id())
             .add_readonly(mpl_token_metadata::ID)
             .with_data(params.build_data()?)
             .build())

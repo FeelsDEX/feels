@@ -109,7 +109,7 @@ pub fn initialize_protocol(
     let default_protocol_fee = params.default_protocol_fee_rate.unwrap_or(100); // Default 1%
     let default_creator_fee = params.default_creator_fee_rate.unwrap_or(50); // Default 0.5%
     let max_protocol_fee = params.max_protocol_fee_rate.unwrap_or(1000); // Default max 10%
-    
+
     // Enforce reasonable fee bounds
     require!(
         default_protocol_fee <= 1000, // Max 10%
@@ -127,7 +127,7 @@ pub fn initialize_protocol(
         default_protocol_fee + default_creator_fee <= 1000, // Combined max 10%
         FeelsError::InvalidMarket
     );
-    
+
     let config = &mut ctx.accounts.protocol_config;
 
     // Set initial configuration
@@ -289,7 +289,7 @@ pub fn update_protocol(ctx: Context<UpdateProtocol>, params: UpdateProtocolParam
 
     if let Some(creator_fee_rate) = params.default_creator_fee_rate {
         require!(creator_fee_rate <= 500, FeelsError::InvalidMarket); // Max 5% creator fee
-        // Ensure combined fees don't exceed 10%
+                                                                      // Ensure combined fees don't exceed 10%
         require!(
             config.default_protocol_fee_rate + creator_fee_rate <= 1000,
             FeelsError::InvalidMarket

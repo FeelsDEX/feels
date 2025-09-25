@@ -56,8 +56,7 @@ async fn test_backing_invariant_always_holds() -> TestResult<()> {
             println!("  Operation would be rejected to maintain invariant");
         }
 
-        let collateralization =
-            test.jitosol_reserves as f64 / test.feelssol_supply as f64 * 100.0;
+        let collateralization = test.jitosol_reserves as f64 / test.feelssol_supply as f64 * 100.0;
         println!("  Collateralization: {:.2}%", collateralization);
     }
 

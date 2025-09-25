@@ -4,7 +4,10 @@
 //! The actual liquidity deployment happens in a separate instruction.
 
 use crate::{
-    constants::{BUFFER_SEED, ESCROW_AUTHORITY_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED, PROTOCOL_TOKEN_SEED, VAULT_SEED},
+    constants::{
+        BUFFER_SEED, ESCROW_AUTHORITY_SEED, MARKET_AUTHORITY_SEED, MARKET_SEED,
+        PROTOCOL_TOKEN_SEED, VAULT_SEED,
+    },
     error::FeelsError,
     events::MarketInitialized,
     state::{
@@ -131,7 +134,7 @@ pub struct InitializeMarket<'info> {
     /// Creator's token account for receiving initial buy tokens
     /// CHECK: Only validated if initial_buy_feelssol_amount > 0
     pub creator_token_out: AccountInfo<'info>,
-    
+
     /// Escrow authority PDA (holds mint/freeze authorities)
     /// CHECK: PDA validated in handler
     #[account(mut)]
@@ -338,12 +341,13 @@ pub fn initialize_market(
         let expected_escrow_authority = Pubkey::find_program_address(
             &[ESCROW_AUTHORITY_SEED, ctx.accounts.escrow.key().as_ref()],
             ctx.program_id,
-        ).0;
+        )
+        .0;
         require!(
             ctx.accounts.escrow_authority.key() == expected_escrow_authority,
             FeelsError::InvalidAuthority
         );
-        
+
         // Check if escrow authority has mint authority (transferred from creator in mint_token)
         if ctx.accounts.token_0.mint_authority.is_some()
             && ctx.accounts.token_0.mint_authority.unwrap() == ctx.accounts.escrow_authority.key()
@@ -355,7 +359,7 @@ pub fn initialize_market(
                 escrow_key.as_ref(),
                 &[escrow.escrow_authority_bump],
             ];
-            
+
             token::set_authority(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
@@ -382,7 +386,7 @@ pub fn initialize_market(
                 escrow_key.as_ref(),
                 &[escrow.escrow_authority_bump],
             ];
-            
+
             token::set_authority(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
@@ -412,7 +416,7 @@ pub fn initialize_market(
                 escrow_key.as_ref(),
                 &[escrow.escrow_authority_bump],
             ];
-            
+
             token::set_authority(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
@@ -439,7 +443,7 @@ pub fn initialize_market(
                 escrow_key.as_ref(),
                 &[escrow.escrow_authority_bump],
             ];
-            
+
             token::set_authority(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),

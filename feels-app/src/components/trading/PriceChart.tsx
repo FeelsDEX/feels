@@ -1,638 +1,417 @@
+// Displays the interactive token price chart with simulated data and overlay controls.
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ExternalLink, BarChart3 } from 'lucide-react';
-import { init, dispose, registerIndicator } from 'klinecharts';
-import type { Chart, KLineData } from 'klinecharts';
-
-interface ExtendedKLineData extends KLineData {
-  floor: number;
-  gtwap: number;
-}
+import { PriceChartToolbar } from '@/components/trading/PriceChartToolbar';
+import { useSimulatedKlineData } from '@/components/trading/useSimulatedKlineData';
+import { useChartAdapter } from '@/components/trading/useChartAdapter';
+import { useChartIndicators } from '@/components/trading/useChartIndicators';
+import { KLineData } from '@/types/trading';
 
 interface PriceChartProps {
+  tokenAddress: string;
   tokenSymbol?: string;
-  tokenAddress?: string;
-  isFeelsToken: boolean;
+  tokenImage?: string | any;
+  isFeelsToken?: boolean;
   onPriceDataUpdate?: (data: {
     currentPrice: number;
     currentFloor: number;
     currentGtwap: number;
-    allPriceData: ExtendedKLineData[];
+    allPriceData: KLineData[];
   }) => void;
 }
 
-type TimeRange = 'all' | '1M' | '1W' | '1D' | '1H';
+const USD_RATE = 0.004; // Mock conversion rate for USD display
 
-export function PriceChart({ tokenSymbol, tokenAddress, isFeelsToken, onPriceDataUpdate }: PriceChartProps) {
-  const [timeRange] = useState<TimeRange>('all');
-  const [loading, setLoading] = useState(false);
-  const [allPriceData, setAllPriceData] = useState<ExtendedKLineData[]>([]);
-  const [filteredPriceData, setFilteredPriceData] = useState<ExtendedKLineData[]>([]);
-  const [currentPrice, setCurrentPrice] = useState(0);
-  const [currentFloor, setCurrentFloor] = useState(0);
-  const [currentGtwap, setCurrentGtwap] = useState(0);
-  const [chartReady, setChartReady] = useState(false);
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<Chart | null>(null);
+// Available timezone options with GMT offsets
+const TIMEZONE_OPTIONS = [
+  { value: 'Pacific/Midway', label: 'Midway', offset: -11 },
+  { value: 'Pacific/Honolulu', label: 'Honolulu', offset: -10 },
+  { value: 'America/Anchorage', label: 'Anchorage', offset: -9 },
+  { value: 'America/Los_Angeles', label: 'Los Angeles', offset: -8 },
+  { value: 'America/Denver', label: 'Denver', offset: -7 },
+  { value: 'America/Chicago', label: 'Chicago', offset: -6 },
+  { value: 'America/New_York', label: 'New York', offset: -5 },
+  { value: 'America/Caracas', label: 'Caracas', offset: -4 },
+  { value: 'America/Sao_Paulo', label: 'São Paulo', offset: -3 },
+  { value: 'Atlantic/South_Georgia', label: 'South Georgia', offset: -2 },
+  { value: 'Atlantic/Cape_Verde', label: 'Cape Verde', offset: -1 },
+  { value: 'UTC', label: 'London', offset: 0 },
+  { value: 'Europe/Paris', label: 'Paris', offset: 1 },
+  { value: 'Europe/Athens', label: 'Athens', offset: 2 },
+  { value: 'Europe/Moscow', label: 'Moscow', offset: 3 },
+  { value: 'Asia/Dubai', label: 'Dubai', offset: 4 },
+  { value: 'Asia/Karachi', label: 'Karachi', offset: 5 },
+  { value: 'Asia/Dhaka', label: 'Dhaka', offset: 6 },
+  { value: 'Asia/Bangkok', label: 'Bangkok', offset: 7 },
+  { value: 'Asia/Hong_Kong', label: 'Hong Kong', offset: 8 },
+  { value: 'Asia/Tokyo', label: 'Tokyo', offset: 9 },
+  { value: 'Australia/Sydney', label: 'Sydney', offset: 10 },
+  { value: 'Pacific/Noumea', label: 'Nouméa', offset: 11 },
+  { value: 'Pacific/Auckland', label: 'Auckland', offset: 12 }
+] as const;
 
-  // Simple seeded random for consistent data
-  const seededRandom = (seed: number): number => {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-  };
+// ========================================
+// Main Component
+// ========================================
 
-  // Generate all historical data once
-  const generateAllHistoricalData = useMemo(() => {
-    return (): ExtendedKLineData[] => {
-      const now = Date.now();
-      const candles: ExtendedKLineData[] = [];
-      
-      // Simulate token launched 30 days ago
-      const launchDate = now - 30 * 24 * 60 * 60 * 1000;
-      
-      // Generate 15-minute candles for entire history
-      const interval = 15 * 60 * 1000; // 15 minutes
-      const numPoints = Math.floor((now - launchDate) / interval);
-      
-      // Use token address as seed for consistent data
-      const baseSeed = tokenAddress ? tokenAddress.charCodeAt(0) : 42;
-      
-      // Generate realistic-looking candlestick data
-      let basePrice = 0.1; // Start with low price
-      let baseFloor = 0.08; // Initial floor
-      const volatility = 0.02; // 2% volatility
-      const floorVolatility = 0.001; // Floor moves slower (0.1% per period)
-      let gtwapSum = 0;
-      let gtwapWeight = 0;
-      
-      for (let i = 0; i < numPoints; i++) {
-        // Calculate the timestamp for this candle
-        const candleTime = launchDate + (i * interval);
-        
-        // Don't generate candles beyond current time
-        if (candleTime > now) break;
-        
-        // Floor movement - ONLY INCREASES (monotonic)
-        const floorIncrease = seededRandom(baseSeed + i * 1000) * floorVolatility;
-        baseFloor = baseFloor * (1 + floorIncrease);
-        
-        // Generate OHLC data
-        const open = i === 0 ? basePrice : (candles[i - 1]?.close ?? basePrice);
-        
-        // Intrabar movements
-        const intraDayVolatility = volatility * 0.5;
-        const move1 = (seededRandom(baseSeed + i * 1000 + 1) - 0.5) * 2 * intraDayVolatility;
-        const move2 = (seededRandom(baseSeed + i * 1000 + 2) - 0.5) * 2 * intraDayVolatility;
-        const move3 = (seededRandom(baseSeed + i * 1000 + 3) - 0.5) * 2 * intraDayVolatility;
-      
-      const intrabarPrices = [
-        open,
-        open * (1 + move1),
-        open * (1 + move1 + move2),
-        open * (1 + move1 + move2 + move3)
-      ];
-      
-      // Ensure all prices respect the floor
-      const validPrices = intrabarPrices.map(p => Math.max(baseFloor, p));
-      
-      const high = Math.max(...validPrices);
-      const low = Math.min(...validPrices);
-      const close = validPrices[validPrices.length - 1];
-      
-      // Update base price for next candle
-      basePrice = close ?? basePrice;
-      
-      // Calculate GTWAP (simplified - using close prices)
-      gtwapSum += (close ?? 0) * (i + 1);
-      gtwapWeight += (i + 1);
-      const gtwap = gtwapSum / gtwapWeight;
-      
-      // Generate volume (higher when price moves more)
-      const priceChange = Math.abs(((close ?? open) - open) / open);
-      const baseVolume = 100000;
-      const volume = baseVolume * (1 + priceChange * 10) * (0.5 + seededRandom(baseSeed + i * 1000 + 4));
-      
-      candles.push({
-        timestamp: candleTime,
-        open,
-        high,
-        low,
-        close: close ?? 0,
-        volume: Math.round(volume),
-        floor: baseFloor,
-        gtwap
-      });
+export function PriceChart({ tokenAddress, tokenSymbol = 'TOKEN', tokenImage, onPriceDataUpdate }: PriceChartProps) {
+  // ========================================
+  // State Management
+  // ========================================
+  const [timeRange, setTimeRange] = useState('1D');
+  const [timezone, setTimezone] = useState(() => {
+    // Auto-detect user's timezone
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return 'UTC';
     }
-    
-    return candles;
-    };
-  }, [tokenAddress]);
+  });
+  const [showUSD, setShowUSD] = useState(false);
+  const [showFloorPrice, setShowFloorPrice] = useState(true);
+  const [showGTWAPPrice, setShowGTWAPPrice] = useState(true);
+  const [showLastPrice, setShowLastPrice] = useState(true);
+  const [showCrosshair] = useState(true);
+  const [priceAxisType, setPriceAxisType] = useState<'normal' | 'logarithm' | 'percentage'>('normal');
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [chartContainer, setChartContainer] = useState<HTMLDivElement | null>(null);
 
-  // Filter data based on time range
-  const filterDataByTimeRange = (data: ExtendedKLineData[], range: TimeRange): ExtendedKLineData[] => {
-    const now = Date.now();
-    let cutoffTime: number;
-    
-    switch (range) {
-      case 'all':
-        return data; // Return all data
-      case '1M':
-        cutoffTime = now - 30 * 24 * 60 * 60 * 1000;
-        break;
-      case '1W':
-        cutoffTime = now - 7 * 24 * 60 * 60 * 1000;
-        break;
-      case '1D':
-        cutoffTime = now - 24 * 60 * 60 * 1000;
-        break;
-      case '1H':
-        cutoffTime = now - 60 * 60 * 1000;
-        break;
-      default:
-        return data;
-    }
-    
-    return data.filter(candle => candle.timestamp >= cutoffTime);
-  };
-
-  // Register custom indicator once
+  // Update current time every second for live timezone display
   useEffect(() => {
-    registerIndicator({
-      name: 'FloorGTWAP',
-      shortName: 'FG',
-      precision: 4,
-      figures: [
-        { 
-          key: 'floor', 
-          title: 'Floor', 
-          type: 'line',
-          styles: () => ({
-            color: '#5cca39',
-            dashedValue: [4, 4]
-          })
-        },
-        { 
-          key: 'gtwap', 
-          title: 'GTWAP', 
-          type: 'line',
-          styles: () => ({
-            color: '#3b82f6'
-          })
-        }
-      ],
-      calc: (kLineDataList: KLineData[]) => {
-        return kLineDataList.map((kLineData) => {
-          const extendedData = kLineData as ExtendedKLineData;
-          return {
-            floor: extendedData.floor || 0,
-            gtwap: extendedData.gtwap || 0
-          };
-        });
-      }
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // ========================================
+  // Data Fetching
+  // ========================================
+  const { loading, error, klineData, floorPrice, gtwapPrice, floorSeries, gtwapSeries } = useSimulatedKlineData({
+    tokenAddress,
+    timeRange
+  });
+
+  // Notify parent component of price updates
+  useEffect(() => {
+    if (!onPriceDataUpdate || klineData.length === 0) return;
+    const lastCandle = klineData[klineData.length - 1];
+    if (!lastCandle) return;
+    
+      onPriceDataUpdate({
+      currentPrice: showUSD ? lastCandle.close * USD_RATE : lastCandle.close,
+      currentFloor: showUSD ? floorPrice * USD_RATE : floorPrice,
+      currentGtwap: showUSD ? gtwapPrice * USD_RATE : gtwapPrice,
+      allPriceData: klineData
     });
-  }, []);
+  }, [floorPrice, gtwapPrice, klineData, onPriceDataUpdate, showUSD]);
 
-  // Initialize chart
-  useEffect(() => {
-    if (!chartRef.current || !isFeelsToken) return;
+  // ========================================
+  // Data Transformations
+  // ========================================
 
-    // Temporarily suppress console.log to avoid KLineChart welcome message
-    const originalLog = console.log;
-    console.log = () => {};
-    
-    // Create chart instance
-    const chartConfig: any = {
-      locale: 'en-US',
-      timezone: 'UTC',
-      styles: {
-        grid: {
-          show: true,
-          horizontal: {
-            show: true,
-            size: 1,
-            color: 'rgba(180, 180, 180, 0.3)'
-          },
-          vertical: {
-            show: true,
-            size: 1,
-            color: 'rgba(180, 180, 180, 0.3)'
-          }
-        },
-        candle: {
-          type: 'candle_solid',
-          bar: {
-            upColor: '#5cca39',
-            downColor: '#ef4444',
-            borderUpColor: '#5cca39',
-            borderDownColor: '#ef4444',
-            upBorderColor: '#5cca39',
-            downBorderColor: '#ef4444',
-            wickUpColor: '#5cca39',
-            wickDownColor: '#ef4444'
-          }
-        },
-        xAxis: {
-          axisLine: {
-            show: true,
-            color: 'transparent',
-            size: 1
-          },
-          tickLine: {
-            show: true,
-            color: 'transparent',
-            size: 1
-          },
-          tickText: {
-            show: true,
-            color: '#666666',
-            size: 12
-          },
-          tickCount: 6
-        },
-        yAxis: {
-          type: 'normal',
-          position: 'right',
-          axisLine: {
-            show: true,
-            color: 'transparent',
-            size: 1
-          },
-          tickLine: {
-            show: true,
-            color: 'transparent',
-            size: 1
-          },
-          tickText: {
-            show: true,
-            color: '#666666',
-            size: 12
-          }
-        },
-        crosshair: {
-          show: true,
-          horizontal: {
-            show: true,
-            line: {
-              show: true,
-                dashValue: [2, 2],
-              size: 1,
-              color: '#666'
-            },
-            text: {
-              show: true,
-              color: '#fff',
-              size: 12,
-              backgroundColor: '#333',
-              borderSize: 0,
-              paddingLeft: 4,
-              paddingRight: 4,
-              paddingTop: 4,
-              paddingBottom: 4,
-              borderRadius: 4
-            }
-          },
-          vertical: {
-            show: true,
-            line: {
-              show: true,
-              style: 'dashed' as const, 
-              dashValue: [2, 2],
-              size: 1,
-              color: '#666'
-            },
-            text: {
-              show: true,
-              color: '#fff',
-              size: 12,
-              backgroundColor: '#333',
-              borderSize: 0,
-              paddingLeft: 4,
-              paddingRight: 4,
-              paddingTop: 4,
-              paddingBottom: 4,
-              borderRadius: 4
-            }
-          }
+  // Convert price data to USD if needed
+  const priceData = useMemo(() => {
+    if (!showUSD) return klineData;
+    return klineData.map((candle) => ({
+      ...candle,
+      open: candle.open * USD_RATE,
+      high: candle.high * USD_RATE,
+      low: candle.low * USD_RATE,
+      close: candle.close * USD_RATE,
+      volume: candle.volume * USD_RATE,
+      turnover: candle.turnover * USD_RATE
+    }));
+  }, [klineData, showUSD]);
+
+  // ========================================
+  // Formatting Functions
+  // ========================================
+
+  // Format timestamps for chart display based on time range
+  const formatDate = useCallback(
+    (timestamp: number, _format: string, type: number) => {
+          const date = new Date(timestamp);
+          if (type === 2) { // X-axis labels
+        // Short timeframes: show time with seconds
+        if (['1m', '5m', '15m', '30m'].includes(timeRange)) {
+              return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: timezone
+              });
         }
-      }
-    };
-    
-    const chart = init(chartRef.current, chartConfig);
-
-    if (chart) {
-      chartInstanceRef.current = chart;
-
-      // Create the registered indicator
-      chart.createIndicator('FloorGTWAP', true, { id: 'candle_pane' });
-    }
-    
-    // Restore console.log
-    console.log = originalLog;
-
-    // Apply background color to the main canvas
-    setTimeout(() => {
-      if (chartRef.current) {
-        // Find the main chart canvas (first canvas element)
-        const canvas = chartRef.current.querySelector('div > div:first-child > div:first-child > canvas:first-child') as HTMLCanvasElement;
-        if (canvas) {
-          canvas.style.backgroundColor = '#f8f8f8';
+        // Medium timeframes: show time without seconds
+        if (['1h', '6h', '12h'].includes(timeRange)) {
+              return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZone: timezone
+              });
         }
-      }
-    }, 100);
+        // Daily timeframes: show date with hour
+        if (['1D', '3D'].includes(timeRange)) {
+              return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                hour12: false,
+                timeZone: timezone
+              });
+        }
+        // Long timeframes: show date only
+              return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                timeZone: timezone
+              });
+            }
+            // Tooltip format: full date and time
+          return date.toLocaleString('en-US', {
+            timeZone: timezone,
+            dateStyle: 'medium',
+            timeStyle: 'medium'
+          });
+        },
+    [timeRange, timezone]
+  );
 
-    // Cleanup
-    return () => {
-      const chartElement = chartRef.current;
-      if (chartElement) {
-        dispose(chartElement);
+  // Format numbers for chart display (prices, volumes, etc.)
+  const formatBigNumber = useCallback(
+    (value: string | number) => {
+      // Convert string to number if needed
+      const numValue = typeof value === 'string' ? parseFloat(value) : value;
+      // Ensure value is a valid number
+      if (typeof numValue !== 'number' || isNaN(numValue)) {
+        return '0';
       }
-      chartInstanceRef.current = null;
-    };
-  }, [isFeelsToken]);
-
-  // Generate all data once when component mounts or token changes
-  useEffect(() => {
-    if (!isFeelsToken) return;
-    
-    setLoading(true);
-    const data = generateAllHistoricalData();
-    setAllPriceData(data);
-    
-    // Set initial filtered data
-    const filtered = filterDataByTimeRange(data, timeRange);
-    setFilteredPriceData(filtered);
-    if (filtered.length > 0) {
-      const lastCandle = filtered[filtered.length - 1];
-      setCurrentPrice(lastCandle?.close ?? 0);
-      setCurrentFloor(lastCandle?.floor ?? 0);
-      setCurrentGtwap(lastCandle?.gtwap ?? 0);
       
-      // Notify parent component
-      if (onPriceDataUpdate && lastCandle) {
-        onPriceDataUpdate({
-          currentPrice: lastCandle.close,
-          currentFloor: lastCandle.floor,
-          currentGtwap: lastCandle.gtwap,
-          allPriceData: data
-        });
+      // Handle percentage axis
+      if (priceAxisType === 'percentage') {
+        return `${numValue.toFixed(2)}%`;
       }
-    }
-    setLoading(false);
-  }, [isFeelsToken, tokenAddress, generateAllHistoricalData, onPriceDataUpdate]);
-
-  // Filter data when time range changes
-  useEffect(() => {
-    if (!isFeelsToken || allPriceData.length === 0) return;
-
-    const data = filterDataByTimeRange(allPriceData, timeRange);
-    setFilteredPriceData(data);
-    
-    if (data.length > 0) {
-      const lastCandle = data[data.length - 1];
-      setCurrentPrice(lastCandle?.close ?? 0);
-      setCurrentFloor(lastCandle?.floor ?? 0);
-      setCurrentGtwap(lastCandle?.gtwap ?? 0);
-    }
-  }, [timeRange, allPriceData, isFeelsToken]);
-
-  // Apply data to chart when filtered data changes
-  useEffect(() => {
-    if (!chartInstanceRef.current || !isFeelsToken) return;
-
-    let timeoutId: NodeJS.Timeout | undefined;
-    let rangeTimeoutId: NodeJS.Timeout | undefined;
-    let readyTimeoutId: NodeJS.Timeout | undefined;
-
-    // Reset ready state when data changes
-    setChartReady(false);
-
-    // Only apply data if we have some
-    if (filteredPriceData.length > 0) {
-      // Small delay to ensure chart is fully initialized
-      timeoutId = setTimeout(() => {
-        if (chartInstanceRef.current) {
-          chartInstanceRef.current.clearData();
-          chartInstanceRef.current.applyNewData(filteredPriceData);
-        }
-      }, 50);
-    
-      // Set the visible range to show all data for the selected time period
-      // Force the chart to display the full range
-      rangeTimeoutId = setTimeout(() => {
-        if (chartInstanceRef.current) {
-          // Calculate bar width to fit all data points in the visible area
-          const chartWidth = chartRef.current!.clientWidth - 100; // Account for margins
-          const desiredBarWidth = Math.max(2, Math.floor(chartWidth / filteredPriceData.length));
-          
-          // Set bar space to show all data
-          chartInstanceRef.current.setBarSpace(desiredBarWidth);
-          
-          // Set right offset to 0 to align the latest data with the right edge
-          chartInstanceRef.current.setOffsetRightDistance(0);
-          
-          // Ensure we can see all data by setting the left min visible bar count
-          chartInstanceRef.current.setLeftMinVisibleBarCount(filteredPriceData.length);
-        }
-      }, 100);
-
-      // Mark chart as ready after all operations complete
-      readyTimeoutId = setTimeout(() => {
-        setChartReady(true);
-      }, 200);
-    }
       
-    // Set appropriate time format based on time range
-    let customFormatter;
-    switch (timeRange) {
-        case '1H':
-          customFormatter = {
-            xAxis: {
-              tickText: {
-                custom: (timestamp: number) => {
-                  const date = new Date(timestamp);
-                  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                }
-              }
-            }
-          };
-          break;
-        case '1D':
-          customFormatter = {
-            xAxis: {
-              tickText: {
-                custom: (timestamp: number) => {
-                  const date = new Date(timestamp);
-                  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-                }
-              }
-            }
-          };
-          break;
-        case '1W':
-          customFormatter = {
-            xAxis: {
-              tickText: {
-                custom: (timestamp: number) => {
-                  const date = new Date(timestamp);
-                  return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:00`;
-                }
-              }
-            }
-          };
-          break;
-        case '1M':
-          customFormatter = {
-            xAxis: {
-              tickText: {
-                custom: (timestamp: number) => {
-                  const date = new Date(timestamp);
-                  return `${date.getMonth() + 1}/${date.getDate()}`;
-                }
-              }
-            }
-          };
-          break;
-        case 'all':
-          customFormatter = {
-            xAxis: {
-              tickText: {
-                custom: (timestamp: number) => {
-                  const date = new Date(timestamp);
-                  return `${date.getMonth() + 1}/${date.getDate()}`;
-                }
-              }
-            }
-          };
-          break;
+      // Handle USD display
+      if (showUSD) {
+        return `$${numValue.toFixed(2)}`;
       }
-    
-    // Apply custom formatter with y-axis precision
-    if (chartInstanceRef.current && customFormatter) {
-      const styles = {
-        ...customFormatter,
-        yAxis: {
-          tickText: {
-            show: true,
-            color: '#666666',
-            size: 12,
-            custom: (value: number) => value.toFixed(4)
-          }
-        }
-      };
       
-      chartInstanceRef.current.setStyles(styles as any);
-    }
-    
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (rangeTimeoutId) clearTimeout(rangeTimeoutId);
-      if (readyTimeoutId) clearTimeout(readyTimeoutId);
-    };
-  }, [filteredPriceData, isFeelsToken, timeRange]);
+      // Format based on magnitude for readability
+      const abs = Math.abs(numValue);
+      if (abs === 0) return '0';
+      if (abs < 0.000001) return numValue.toExponential(2); // Very small numbers
+      if (abs < 0.00001) return numValue.toFixed(6);
+      if (abs < 0.0001) return numValue.toFixed(5);
+      if (abs < 0.001) return numValue.toFixed(4);
+      if (abs < 0.01) return numValue.toFixed(4);
+      if (abs < 0.1) return numValue.toFixed(3);
+      if (abs < 1) return numValue.toFixed(3);
+      if (abs < 10) return numValue % 1 === 0 ? numValue.toFixed(0) : numValue.toFixed(2);
+      if (abs < 100) return numValue % 1 === 0 ? numValue.toFixed(0) : numValue.toFixed(1);
+      if (abs < 1000) return numValue.toFixed(0);
+      if (abs >= 1_000_000) return `${(numValue / 1_000_000).toFixed(1)}M`; // Millions
+      if (abs >= 1_000) return `${(numValue / 1_000).toFixed(1)}K`; // Thousands
+      return numValue.toFixed(0);
+    },
+    [priceAxisType, showUSD]
+  );
 
+  // ========================================
+  // Chart Integration
+  // ========================================
 
-  // Handle window resize
+  // Initialize chart adapter with formatting functions
+  const { chart, isReady, applyData, applyTimezone, applyAxisType, createLineOverlay, setLastPriceVisibility, setCrosshairVisibility } = useChartAdapter({
+    container: chartContainer,
+    timezone,
+    priceAxisType,
+    formatDate,
+    formatBigNumber
+  });
+  
+  // Initialize chart indicators
+  const chartRef = React.useRef(chart);
+  React.useEffect(() => {
+    chartRef.current = chart;
+  }, [chart]);
+  
+  const { createFloorIndicator, removeFloorIndicator, createGTWAPIndicator, removeGTWAPIndicator } = useChartIndicators(chartRef);
+
+  // ========================================
+  // Chart Configuration Effects
+  // ========================================
+
+  // Apply timezone changes to chart
   useEffect(() => {
-    const handleResize = () => {
-      if (chartInstanceRef.current && chartRef.current) {
-        chartInstanceRef.current.resize();
-      }
+    if (!isReady) return;
+    applyTimezone(timezone);
+  }, [applyTimezone, isReady, timezone]);
+
+  // Apply price axis type changes
+  useEffect(() => {
+    if (!isReady) return;
+    applyAxisType(priceAxisType);
+  }, [applyAxisType, isReady, priceAxisType]);
+
+  // Toggle last price line visibility
+  useEffect(() => {
+    if (!isReady) return;
+    setLastPriceVisibility(showLastPrice);
+  }, [isReady, setLastPriceVisibility, showLastPrice]);
+
+  // Toggle crosshair visibility
+  useEffect(() => {
+    if (!isReady) return;
+    setCrosshairVisibility(showCrosshair);
+  }, [isReady, setCrosshairVisibility, showCrosshair]);
+
+  // Update chart with new price data
+  useEffect(() => {
+    if (!isReady || priceData.length === 0) return;
+    applyData(priceData);
+  }, [applyData, isReady, priceData]);
+
+  // ========================================
+  // Overlay Management
+  // ========================================
+
+  // Manage floor price indicator
+  useEffect(() => {
+    console.log(`[PriceChart] Floor indicator effect triggered - ready: ${isReady}, show: ${showFloorPrice}, points: ${floorSeries.length}`);
+    if (!isReady) return;
+    
+    if (showFloorPrice && floorSeries.length > 0) {
+      createFloorIndicator(
+        floorSeries.map((point) => ({
+          timestamp: point.timestamp,
+          value: showUSD ? point.value * USD_RATE : point.value
+        }))
+      );
+    } else {
+      removeFloorIndicator();
+    }
+  }, [createFloorIndicator, removeFloorIndicator, floorSeries, isReady, showFloorPrice, showUSD]);
+
+  // Manage GTWAP indicator
+  useEffect(() => {
+    console.log(`[PriceChart] GTWAP indicator effect triggered - ready: ${isReady}, show: ${showGTWAPPrice}, points: ${gtwapSeries.length}`);
+    if (!isReady) return;
+    
+    if (showGTWAPPrice && gtwapSeries.length > 0) {
+      createGTWAPIndicator(
+        gtwapSeries.map((point) => ({
+          timestamp: point.timestamp,
+          value: showUSD ? point.value * USD_RATE : point.value
+        }))
+      );
+    } else {
+      removeGTWAPIndicator();
+    }
+  }, [createGTWAPIndicator, removeGTWAPIndicator, gtwapSeries, isReady, showGTWAPPrice, showUSD]);
+
+  // ========================================
+  // Price Change Calculation
+  // ========================================
+
+  // Calculate price change percentage for display
+  const priceChange = useMemo(() => {
+    if (priceData.length < 2) return null;
+    const first = priceData[0]?.close;
+    const last = priceData[priceData.length - 1]?.close;
+    if (!first || !last) return null;
+    const change = last - first;
+          return {
+      value: change,
+      percent: (change / first) * 100,
+      isPositive: change >= 0
     };
+  }, [priceData]);
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Calculate price change percentage
-  const calculatePriceChange = () => {
-    if (filteredPriceData.length < 2) return 0;
-    const firstPrice = filteredPriceData[0]?.close ?? 0;
-    const lastPrice = filteredPriceData[filteredPriceData.length - 1]?.close ?? 0;
-    return ((lastPrice - firstPrice) / firstPrice) * 100;
-  };
-
-  const priceChange = calculatePriceChange();
-
-  if (!isFeelsToken) {
-    return (
-      <Card id="price-chart-empty-state" className="h-full">
-        <CardHeader>
-          <CardTitle className="text-lg">Price Chart</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div id="empty-state-message" className="flex items-center justify-center h-[400px] text-muted-foreground">
-            <p className="text-center">
-              Select a token launched on Feels<br />
-              to view price history
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  // ========================================
+  // Render Component
+  // ========================================
 
   return (
-    <Card id="price-chart-card" className="h-full">
-      <CardHeader id="chart-header-section" className="pl-8 pb-4">
-        <div className="flex justify-between items-end">
-          <div>
-            <div className="flex items-center gap-4">
-              <CardTitle className="text-lg">{tokenSymbol || 'Token'} / FeelsSOL</CardTitle>
-              <div className="flex items-center gap-3 text-xs">
-                {tokenAddress && (
-                  <a 
-                    href={`https://solscan.io/token/${tokenAddress}?cluster=devnet`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1"
-                  >
-                    Explorer
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
+    <Card className="w-full">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          {/* Token info and price change */}
+          <div className="flex items-center gap-3">
+            {/* Token avatar */}
+            <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center overflow-hidden">
+              {tokenImage ? (
+                <img 
+                  src={typeof tokenImage === 'string' ? tokenImage : tokenImage.src || tokenImage}
+                  alt={tokenSymbol}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-sm font-medium">${tokenSymbol?.[0] || 'T'}</span>`;
+                  }}
+                />
+              ) : (
+                <span className="text-sm font-medium">{tokenSymbol?.[0] || 'T'}</span>
+              )}
             </div>
-            <div id="price-display" className="flex items-center gap-2 mt-1">
-              <span id="current-price" className="text-2xl font-bold">{currentPrice.toFixed(4)}</span>
-              <span id="price-change-percentage" className={`text-sm ${priceChange >= 0 ? 'text-primary' : 'text-red-500'}`}>
-                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
-              </span>
-            </div>
+            {/* Token symbol and price change */}
+            <CardTitle className="text-xl font-medium flex items-center gap-2">
+              {tokenSymbol}/FeelsSOL
+              {priceChange && (
+                <span className={`text-sm font-normal ${priceChange.isPositive ? 'text-[#5cca39]' : 'text-red-600'}`}>
+                  {priceChange.isPositive ? '+' : ''}{priceChange.percent.toFixed(2)}%
+                </span>
+              )}
+            </CardTitle>
           </div>
-          <div id="chart-indicators" className="flex items-center gap-4 text-xs text-muted-foreground mr-4 mb-1">
-            <div className="flex items-center gap-1">
-              <BarChart3 className="h-3 w-3" />
-              <span>OHLC</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-0.5 bg-primary"></div>
-              <span>Floor: {currentFloor.toFixed(4)}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-0.5 bg-blue-500"></div>
-              <span>GTWAP: {currentGtwap.toFixed(4)}</span>
-            </div>
-          </div>
-        </div>
+          {/* Chart controls toolbar */}
+          <PriceChartToolbar
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRange}
+            timezone={timezone}
+            onTimezoneChange={setTimezone}
+            currentTime={currentTime}
+            timezones={[...TIMEZONE_OPTIONS]}
+            showUSD={showUSD}
+            onToggleUSD={() => setShowUSD((prev) => !prev)}
+            showFloorPrice={showFloorPrice}
+            onToggleFloor={() => setShowFloorPrice((prev) => !prev)}
+            showGTWAPPrice={showGTWAPPrice}
+            onToggleGTWAP={() => setShowGTWAPPrice((prev) => !prev)}
+            showLastPrice={showLastPrice}
+            onToggleLastPrice={() => setShowLastPrice((prev) => !prev)}
+            priceAxisType={priceAxisType}
+            onPriceAxisTypeChange={setPriceAxisType}
+          />
+                </div>
       </CardHeader>
-      <CardContent className="pl-8 pr-2 pt-0">
-        {/* Always render the chart container */}
-        <div id="chart-canvas-container" className="w-full relative">
+      <CardContent className="pl-8 pr-2 pt-2 pb-4">
+        {/* Error display */}
+        {error && (
+          <div className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+                </div>
+        )}
+        
+        {/* Chart container */}
+        <div id="chart-canvas-container" className="w-full relative overflow-visible">
           <div 
-            ref={chartRef} 
+            ref={setChartContainer}
             id="kline-chart"
             className="klinechart-container"
             style={{ 
               width: '100%', 
-              height: '400px',
-              backgroundColor: 'white',
-              opacity: chartReady ? 1 : 0,
-              transition: 'opacity 0.05s ease-in-out'
+              height: '500px',
+              backgroundColor: '#ffffff',
+              opacity: isReady ? 1 : 0, // Fade in when ready
+              transition: 'opacity 0.2s ease-in-out',
+              position: 'relative'
             }} 
           />
-          {(loading || !chartReady) && (
+          {/* Loading spinner overlay */}
+          {(loading || !isReady) && (
             <div id="chart-loading-spinner" className="absolute inset-0 flex items-center justify-center bg-background">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-muted border-t-primary"></div>
             </div>

@@ -41,8 +41,8 @@ install:
 # Start Next.js development server (port 3000)
 # Hot reload enabled for rapid development (use 'just app' from main justfile)
 frontend-dev:
-    @just show-progress "Starting Next.js development server"
-    @cd {{app-dir}} && npm run dev
+    @just show-progress "Starting Next.js development server with DevBridge"
+    @cd {{app-dir}} && npm run dev:all
 
 # Start with indexer integration enabled
 # Connects to local indexer on port 8080
@@ -190,22 +190,50 @@ _setup-metaplex:
     fi
     
     # Check if already deployed
-    if solana program show "$METAPLEX_PROGRAM_ID" --url "{{LOCALNET_RPC}}" 2>/dev/null | grep -q "Program Id:"; then
+    if [[ -n "$IN_NIX_SHELL" ]]; then
+        DEPLOYED=$(solana program show "$METAPLEX_PROGRAM_ID" --url "{{LOCALNET_RPC}}" 2>/dev/null | grep -q "Program Id:" && echo "yes" || echo "no")
+    else
+        DEPLOYED=$(nix develop --quiet -c solana program show "$METAPLEX_PROGRAM_ID" --url "{{LOCALNET_RPC}}" 2>/dev/null | grep -q "Program Id:" && echo "yes" || echo "no")
+    fi
+    
+    if [[ "$DEPLOYED" == "yes" ]]; then
         just show-success "Metaplex already deployed at: $METAPLEX_PROGRAM_ID"
     else
-        just show-progress "Deploying Metaplex to localnet"
-        if solana program deploy \
-            --url "{{LOCALNET_RPC}}" \
-            --program-id "$METAPLEX_PROGRAM_ID" \
-            mpl_token_metadata.so; then
-            just show-success "Metaplex deployed successfully"
+        # Check if we're on macOS
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            just show-warning "Metaplex binary deployment not supported on macOS"
+            just show-progress "Using mock Metaplex program ID for testing"
             
-            # Save configuration
+            # For macOS, we'll just save the configuration without deploying
+            # The tests will use a mock implementation
             echo "{" > metaplex-localnet.json
             echo "  \"programId\": \"$METAPLEX_PROGRAM_ID\"," >> metaplex-localnet.json
-            echo "  \"deployedAt\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" >> metaplex-localnet.json
+            echo "  \"deployedAt\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"," >> metaplex-localnet.json
+            echo "  \"mock\": true" >> metaplex-localnet.json
             echo "}" >> metaplex-localnet.json
+            
+            just show-success "Mock Metaplex configuration saved"
         else
-            just exit-with-error {{EXIT_DEPLOY_FAILURE}} "Failed to deploy Metaplex"
+            just show-progress "Deploying Metaplex to localnet"
+            if [[ -n "$IN_NIX_SHELL" ]]; then
+                DEPLOY_CMD="solana program deploy"
+            else
+                DEPLOY_CMD="nix develop --quiet -c solana program deploy"
+            fi
+            
+            if $DEPLOY_CMD \
+                --url "{{LOCALNET_RPC}}" \
+                --program-id "$METAPLEX_PROGRAM_ID" \
+                mpl_token_metadata.so; then
+                just show-success "Metaplex deployed successfully"
+                
+                # Save configuration
+                echo "{" > metaplex-localnet.json
+                echo "  \"programId\": \"$METAPLEX_PROGRAM_ID\"," >> metaplex-localnet.json
+                echo "  \"deployedAt\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" >> metaplex-localnet.json
+                echo "}" >> metaplex-localnet.json
+            else
+                just exit-with-error {{EXIT_DEPLOY_FAILURE}} "Failed to deploy Metaplex"
+            fi
         fi
     fi

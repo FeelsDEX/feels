@@ -76,10 +76,7 @@ pub fn validate_swap_params(
 
     // Validate tick crossing limit if specified
     if max_ticks_crossed > 0 {
-        require!(
-            max_ticks_crossed <= 100,
-            FeelsError::InvalidParameter
-        );
+        require!(max_ticks_crossed <= 100, FeelsError::InvalidParameter);
     }
 
     Ok(is_token_0_to_1)
@@ -134,18 +131,18 @@ pub fn distribute_swap_fees(
     creator_allocation_bps: u16,
 ) -> Result<(u64, u64, u64)> {
     let total_fee = base_fee.saturating_add(impact_fee);
-    
+
     // Calculate allocations
     let treasury_amount = (total_fee as u128)
         .saturating_mul(treasury_allocation_bps as u128)
         .checked_div(BASIS_POINTS_DIVISOR as u128)
         .unwrap_or(0) as u64;
-    
+
     let creator_amount = (total_fee as u128)
         .saturating_mul(creator_allocation_bps as u128)
         .checked_div(BASIS_POINTS_DIVISOR as u128)
         .unwrap_or(0) as u64;
-    
+
     let buffer_amount = total_fee
         .saturating_sub(treasury_amount)
         .saturating_sub(creator_amount);
@@ -165,24 +162,16 @@ pub fn distribute_swap_fees(
 }
 
 /// Update market state after swap
-pub fn update_market_state(
-    market: &mut Market,
-    result: &SwapResult,
-    clock: &Clock,
-) -> Result<()> {
+pub fn update_market_state(market: &mut Market, result: &SwapResult, clock: &Clock) -> Result<()> {
     // Update price and tick
     market.sqrt_price = result.sqrt_price_after;
     market.current_tick = result.tick_after;
 
     // Update volume tracking
     if result.is_token_0_to_1 {
-        market.total_volume_token_0 = market
-            .total_volume_token_0
-            .saturating_add(result.amount_in);
+        market.total_volume_token_0 = market.total_volume_token_0.saturating_add(result.amount_in);
     } else {
-        market.total_volume_token_1 = market
-            .total_volume_token_1
-            .saturating_add(result.amount_in);
+        market.total_volume_token_1 = market.total_volume_token_1.saturating_add(result.amount_in);
     }
 
     // Update last snapshot timestamp
@@ -192,11 +181,7 @@ pub fn update_market_state(
 }
 
 /// Update oracle state with new price observation
-pub fn update_oracle_state(
-    oracle: &mut OracleState,
-    tick: i32,
-    timestamp: i64,
-) -> Result<()> {
+pub fn update_oracle_state(oracle: &mut OracleState, tick: i32, timestamp: i64) -> Result<()> {
     oracle.update(tick, timestamp)
 }
 
@@ -227,9 +212,17 @@ pub fn emit_swap_event(
     msg!(
         "Swap executed: {} {} -> {} {} (fee: {} bps, impact: {} bps)",
         result.amount_in,
-        if result.is_token_0_to_1 { "token0" } else { "token1" },
+        if result.is_token_0_to_1 {
+            "token0"
+        } else {
+            "token1"
+        },
         result.amount_out,
-        if result.is_token_0_to_1 { "token1" } else { "token0" },
+        if result.is_token_0_to_1 {
+            "token1"
+        } else {
+            "token0"
+        },
         result.fee_amount * 10000 / result.amount_in,
         result.impact_bps
     );
@@ -238,10 +231,7 @@ pub fn emit_swap_event(
 }
 
 /// Calculate slippage protection for exact output swaps
-pub fn validate_slippage_exact_out(
-    amount_in_required: u64,
-    maximum_amount_in: u64,
-) -> Result<()> {
+pub fn validate_slippage_exact_out(amount_in_required: u64, maximum_amount_in: u64) -> Result<()> {
     require!(
         amount_in_required <= maximum_amount_in,
         FeelsError::SlippageExceeded
@@ -250,10 +240,7 @@ pub fn validate_slippage_exact_out(
 }
 
 /// Calculate slippage protection for regular swaps
-pub fn validate_slippage(
-    amount_out_received: u64,
-    minimum_amount_out: u64,
-) -> Result<()> {
+pub fn validate_slippage(amount_out_received: u64, minimum_amount_out: u64) -> Result<()> {
     require!(
         amount_out_received >= minimum_amount_out,
         FeelsError::SlippageExceeded
@@ -262,21 +249,14 @@ pub fn validate_slippage(
 }
 
 /// Validate fee cap if specified
-pub fn validate_fee_cap(
-    fee_amount: u64,
-    swap_amount: u64,
-    max_total_fee_bps: u16,
-) -> Result<()> {
+pub fn validate_fee_cap(fee_amount: u64, swap_amount: u64, max_total_fee_bps: u16) -> Result<()> {
     if max_total_fee_bps > 0 {
         let fee_bps = (fee_amount as u128)
             .saturating_mul(10000)
             .checked_div(swap_amount as u128)
             .unwrap_or(0) as u16;
-        
-        require!(
-            fee_bps <= max_total_fee_bps,
-            FeelsError::FeeCapExceeded
-        );
+
+        require!(fee_bps <= max_total_fee_bps, FeelsError::FeeCapExceeded);
     }
     Ok(())
 }
@@ -321,7 +301,7 @@ mod tests {
     #[test]
     fn test_fee_distribution() {
         use crate::state::Buffer;
-        
+
         let mut buffer = Buffer {
             market: Pubkey::default(),
             authority: Pubkey::default(),
@@ -348,14 +328,14 @@ mod tests {
             pomm_position_count: 0,
             _padding: [0; 7],
         };
-        
-        let (buffer_amt, treasury_amt, creator_amt) = 
+
+        let (buffer_amt, treasury_amt, creator_amt) =
             distribute_swap_fees(&mut buffer, 1000, 500, true, 1000, 500).unwrap();
-        
+
         assert_eq!(buffer_amt + treasury_amt + creator_amt, 1500);
         assert_eq!(treasury_amt, 150); // 10% of 1500
-        assert_eq!(creator_amt, 75);   // 5% of 1500
-        assert_eq!(buffer_amt, 1275);  // Rest goes to buffer
+        assert_eq!(creator_amt, 75); // 5% of 1500
+        assert_eq!(buffer_amt, 1275); // Rest goes to buffer
     }
 
     #[test]
@@ -363,7 +343,7 @@ mod tests {
         // Regular swap slippage
         assert!(validate_slippage(100, 90).is_ok());
         assert!(validate_slippage(90, 100).is_err());
-        
+
         // Exact out slippage
         assert!(validate_slippage_exact_out(100, 110).is_ok());
         assert!(validate_slippage_exact_out(110, 100).is_err());
@@ -374,7 +354,7 @@ mod tests {
         // 100 bps fee on 10000 amount
         assert!(validate_fee_cap(100, 10000, 200).is_ok());
         assert!(validate_fee_cap(100, 10000, 50).is_err());
-        
+
         // No cap (0 = unlimited)
         assert!(validate_fee_cap(1000, 10000, 0).is_ok());
     }

@@ -20,7 +20,7 @@ use anchor_lang::prelude::*;
 use instructions::*;
 use state::PoolPhase;
 
-declare_id!("EyuKq8zyGxgvjNazRuvZ9uvVoKTDS3isk3GF9rcX3gmp");
+declare_id!("FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*
@@ -132,7 +132,6 @@ pub mod feels {
         let params = Box::new(params);
         instructions::swap(ctx, *params)
     }
-
 
     /// Open a new liquidity position
     pub fn open_position(

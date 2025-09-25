@@ -566,18 +566,18 @@ impl DevnetClient {
     }
 
     pub async fn airdrop(&mut self, to: &Pubkey, lamports: u64) -> TestResult<()> {
-        use tokio::task;
         use std::time::Duration;
+        use tokio::task;
 
         let rpc_url = self.rpc_client.url();
         let commitment = self.commitment;
         let to = *to;
 
         // Check if we should apply rate limiting
-        let disable_rate_limit = self.disable_airdrop_rate_limit || 
-                                std::env::var("DISABLE_AIRDROP_RATE_LIMIT").is_ok();
+        let disable_rate_limit =
+            self.disable_airdrop_rate_limit || std::env::var("DISABLE_AIRDROP_RATE_LIMIT").is_ok();
         let is_localnet = rpc_url.contains("localhost") || rpc_url.contains("127.0.0.1");
-        
+
         // Apply rate limiting for non-localnet unless explicitly disabled
         if !is_localnet && !disable_rate_limit {
             // Wait between airdrops to respect rate limits
@@ -587,14 +587,13 @@ impl DevnetClient {
         // Request airdrop with retry logic
         let mut retries = 3;
         let mut last_error = None;
-        
+
         let sig = loop {
             match task::spawn_blocking({
                 let rpc_url = rpc_url.clone();
                 move || {
                     let client = solana_client::rpc_client::RpcClient::new_with_commitment(
-                        rpc_url,
-                        commitment,
+                        rpc_url, commitment,
                     );
                     client.request_airdrop(&to, lamports)
                 }
@@ -606,7 +605,9 @@ impl DevnetClient {
                     last_error = Some(e);
                     retries -= 1;
                     if retries == 0 {
-                        return Err(format!("Airdrop failed after 3 attempts: {:?}", last_error).into());
+                        return Err(
+                            format!("Airdrop failed after 3 attempts: {:?}", last_error).into()
+                        );
                     }
                     // Wait longer between retries
                     tokio::time::sleep(Duration::from_millis(2000)).await;

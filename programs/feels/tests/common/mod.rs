@@ -10,6 +10,7 @@ pub mod environment;
 pub mod fixtures;
 pub mod helpers;
 pub mod jito;
+pub mod prelude;
 pub mod sdk_compat;
 pub mod time;
 pub mod tracing;
@@ -42,7 +43,13 @@ pub use assertions::{
 pub use crate::{test_all_environments, test_devnet, test_in_memory};
 
 // Common imports for all tests
-pub use anchor_lang::prelude::*;
+pub use anchor_lang::prelude::{
+    error, msg, require, require_eq, require_gt, require_gte, require_keys_eq, require_keys_neq,
+    require_neq, AccountDeserialize, AccountSerialize, AnchorDeserialize, AnchorSerialize, Accounts,
+    AccountsExit, Clock, Id, Key, Owner, ProgramData, ProgramError, Rent, Result, System,
+    ToAccountInfo, ToAccountInfos, ToAccountMetas,
+};
+pub use anchor_lang::prelude::pubkey;
 pub use feels::{instructions::*, state::*, ID as PROGRAM_ID};
 pub use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -63,8 +70,7 @@ pub struct MarketInfo {
 }
 
 // SDK imports
-pub use sdk_compat::*;
-pub use sdk_compat::sdk;
+pub use sdk_compat::{self, sdk};
 
 // Constants
 pub mod constants {
@@ -109,7 +115,7 @@ pub mod constants {
 // Utils module for test helpers
 pub mod utils {
     use super::*;
-    
+
     // Re-export PDA derivation functions
     pub use feels::utils::seeds::{
         derive_buffer, derive_epoch_params, derive_market_authority, derive_oracle,
@@ -120,7 +126,9 @@ pub mod utils {
     pub use feels::utils::seeds::{
         derive_jitosol_vault, derive_mint_authority, derive_vault_authority,
     };
-    
+
     // Re-export tick array utilities from sdk_compat
-    pub use super::sdk_compat::utils::{find_position_address, find_tick_array_address, get_tick_array_start_index};
+    pub use super::sdk_compat::utils::{
+        find_position_address, find_tick_array_address, get_tick_array_start_index,
+    };
 }

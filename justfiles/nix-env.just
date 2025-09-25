@@ -10,17 +10,17 @@ export PROGRAMS_PATH := env_var_or_default("NIX_PROGRAMS_PATH", PROJECT_ROOT + "
 
 # Build artifacts
 export TARGET_PATH := env_var_or_default("NIX_TARGET_PATH", PROJECT_ROOT + "/target")
-# export DEPLOY_PATH := env_var_or_default("NIX_DEPLOY_PATH", TARGET_PATH + "/deploy") # Defined in main justfile
-# export IDL_PATH := env_var_or_default("NIX_IDL_PATH", TARGET_PATH + "/idl/feels.json") # Defined in main justfile
+export DEPLOY_PATH := env_var_or_default("NIX_DEPLOY_PATH", TARGET_PATH + "/deploy")
+export IDL_PATH := env_var_or_default("NIX_IDL_PATH", TARGET_PATH + "/idl/feels.json")
 export TYPES_PATH := env_var_or_default("NIX_TYPES_PATH", TARGET_PATH + "/types")
 
 # Development directories
-# export LOGS_PATH := env_var_or_default("NIX_LOGS_PATH", PROJECT_ROOT + "/logs") # Defined in main justfile
+export LOGS_PATH := env_var_or_default("NIX_LOGS_PATH", PROJECT_ROOT + "/logs")
 export TEST_LEDGER_PATH := env_var_or_default("NIX_LEDGER_PATH", PROJECT_ROOT + "/test-ledger")
-# export KEYPAIRS_PATH := env_var_or_default("NIX_KEYPAIRS_PATH", PROJECT_ROOT + "/keypairs") # Defined in main justfile
+export KEYPAIRS_PATH := env_var_or_default("NIX_KEYPAIRS_PATH", PROJECT_ROOT + "/keypairs")
 
 # Application paths
-# export GENERATED_SDK_PATH := env_var_or_default("NIX_GENERATED_SDK_PATH", PROJECT_ROOT + "/generated-sdk") # Defined in main justfile
+export GENERATED_SDK_PATH := env_var_or_default("NIX_GENERATED_SDK_PATH", PROJECT_ROOT + "/generated-sdk")
 export E2E_PATH := env_var_or_default("NIX_E2E_PATH", PROJECT_ROOT + "/e2e")
 export FEELS_APP_PATH := env_var_or_default("NIX_FEELS_APP_PATH", PROJECT_ROOT + "/feels-app")
 

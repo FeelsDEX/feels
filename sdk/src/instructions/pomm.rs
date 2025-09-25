@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use crate::prelude::*;
 use solana_sdk::instruction::Instruction;
 
 use crate::{
@@ -81,7 +81,7 @@ impl PommInstructionBuilder {
             .add_writable(pomm_position)
             .add_writable(lower_tick_array)
             .add_writable(upper_tick_array)
-            .add_readonly(solana_sdk::system_program::id())
+            .add_readonly(solana_program::system_program::id())
             .with_data(
                 InitializePommPositionParams {
                     tick_lower,
