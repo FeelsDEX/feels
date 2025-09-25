@@ -1,0 +1,27 @@
+[package]
+name        = "feels-amm"
+description = "Concentrated liquidity AMM for the Feels protocol"
+version     = { workspace = true }
+authors     = { workspace = true }
+edition     = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name       = "feels_amm"
+
+[features]
+default        = []
+cpi            = ["no-entrypoint"]
+no-entrypoint  = []
+no-idl         = []
+no-log-ix-name = []
+idl-build      = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl  = { workspace = true }
+
+[dev-dependencies]
+feels-test-utils = { workspace = true }
+tokio            = { workspace = true }
+solana-sdk       = { workspace = true }

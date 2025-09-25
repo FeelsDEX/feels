@@ -1,4 +1,10 @@
+use anchor_client::solana_sdk::system_instruction::create_account;
+#[allow(deprecated)]
 use anchor_lang::prelude::*;
+use anchor_spl::token::{
+    spl_token::{self, instruction::initialize_mint},
+    Mint,
+};
 use solana_address::Address;
 use solana_program_test::*;
 use solana_sdk::{
@@ -180,6 +186,57 @@ impl TestApp {
     /// Warp to a specific slot
     pub async fn warp_to_slot(&mut self, slot: u64) {
         self.context.warp_to_slot(slot).unwrap();
+    }
+
+    /// Create a new SPL token mint
+    pub async fn create_mint(
+        &mut self,
+        mint_authority: Option<&Pubkey>,
+        freeze_authority: Option<&Pubkey>,
+        decimals: u8,
+    ) -> Result<Pubkey> {
+        let mint_keypair = solana_sdk::signer::keypair::Keypair::new();
+        let mint_pubkey = mint_keypair.pubkey();
+
+        let rent = self.context.banks_client.get_rent().await.unwrap();
+        let mint_rent = rent.minimum_balance(Mint::LEN);
+
+        let payer_pubkey = self.payer_pubkey();
+        let mint_authority = mint_authority.unwrap_or(&payer_pubkey);
+
+        let from_pubkey = Pubkey::new_from_array(self.context.payer.pubkey().to_bytes());
+        let to_pubkey = Pubkey::new_from_array(mint_pubkey.to_bytes());
+
+        let create_account_ix = create_account(
+            &from_pubkey,
+            &to_pubkey,
+            mint_rent,
+            Mint::LEN as u64,
+            &spl_token::id(),
+        );
+
+        let init_mint_ix = initialize_mint(
+            &spl_token::id(),
+            &to_pubkey,
+            mint_authority,
+            freeze_authority,
+            decimals,
+        )?;
+
+        let transaction = Transaction::new_signed_with_payer(
+            &to_sdk_instructions(vec![create_account_ix, init_mint_ix]),
+            Some(&self.context.payer.pubkey()),
+            &[&self.context.payer, &mint_keypair],
+            self.context.last_blockhash,
+        );
+
+        self.context
+            .banks_client
+            .process_transaction(transaction)
+            .await
+            .unwrap();
+
+        Ok(Pubkey::new_from_array(mint_pubkey.to_bytes()))
     }
 }
 

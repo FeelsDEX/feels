@@ -4,11 +4,15 @@ pub const FACTORY_PDA_SEED: &[u8] = b"factory";
 pub const FEELSSOL_PDA_SEED: &[u8] = b"feelssol";
 pub const VAULT_PDA_SEED: &[u8] = b"vault";
 pub const KEEPER_PDA_SEED: &[u8] = b"keeper";
+pub const POOL_PDA_SEED: &[u8] = b"pool";
+pub const TOKEN_VAULT_A_PDA_SEED: &[u8] = b"vault_a";
+pub const TOKEN_VAULT_B_PDA_SEED: &[u8] = b"vault_b";
 
 pub const PROTOCOL_PROGRAM_PATH: &str = "../../target/deploy/feels_protocol.so";
 pub const FACTORY_PROGRAM_PATH: &str = "../../target/deploy/feels_token_factory.so";
 pub const FEELSSOL_PROGRAM_PATH: &str = "../../target/deploy/feelssol_controller.so";
 pub const KEEPER_PROGRAM_PATH: &str = "../../target/deploy/feels_keeper.so";
+pub const AMM_PROGRAM_PATH: &str = "../../target/deploy/feels_amm.so";
 
 pub const JITOSOL_MINT: &str = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn";
 pub const JITO_STAKE_POOL: &str = "Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb";

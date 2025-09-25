@@ -10,6 +10,7 @@ target/deploy/*
 !target/deploy/feels_token_factory-keypair.json
 !target/deploy/feelssol_controller-keypair.json
 !target/deploy/feels_keeper-keypair.json
+!target/deploy/feels_amm-keypair.json
 
 **/*.rs.bk
 node_modules

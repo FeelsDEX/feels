@@ -21,7 +21,7 @@ codegen-units = 1
 [workspace.dependencies]
 anchor-lang         = "0.31.1"
 anchor-spl          = "0.31.1"
-solana-program-test = "3.0.0"
+solana-program-test = "3.0.3"
 solana-sdk          = "3.0.0"
 solana-address      = "1.0.0"
 solana-clock        = "3.0.0"

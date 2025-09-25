@@ -14,7 +14,7 @@ pub struct Initialize<'info> {
     )]
     pub feelssol: Account<'info, FeelsSolController>,
 
-    /// FeelsSOL Token-2022 mint (vanity address - passed as signer)
+    /// FeelsSOL mint (vanity address - passed as signer)
     #[account(
         init,
         payer = payer,
