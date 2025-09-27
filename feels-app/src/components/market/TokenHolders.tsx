@@ -94,19 +94,21 @@ export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
           {/* Holder List */}
           <div className="space-y-1">
             {holders.map((holder, index) => (
-              <Link
+              <div
                 key={holder.address}
-                href={`/account/${holder.address}`}
-                className="block grid grid-cols-[1fr,auto] gap-4 py-1 items-center hover:bg-muted/50 rounded-lg px-2 -mx-2 transition-colors cursor-pointer"
-                title={holder.address}
+                className="grid grid-cols-[1fr,auto] gap-4 py-1 items-center hover:bg-muted/30 rounded-lg px-2 -mx-2 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs text-muted-foreground">
                     {(index + 1).toString().padStart(2, '0')}
                   </span>
-                  <span className="text-sm font-mono truncate">
+                  <Link
+                    href={`/account/${holder.address}`}
+                    className="text-sm font-mono truncate text-muted-foreground hover:text-primary transition-colors"
+                    title={holder.address}
+                  >
                     {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
-                  </span>
+                  </Link>
                   {holder.isCreator && (
                     <Badge 
                       variant="outline" 
@@ -119,7 +121,7 @@ export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
                 <div className="text-sm font-medium">
                   {holder.percentage.toFixed(1)}%
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
           

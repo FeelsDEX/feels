@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
+import { JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { NavBar } from '@/components/common/NavBar';
 import { SolanaWalletProvider } from '@/components/wallet/SolanaWalletProvider';
@@ -8,6 +9,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
 import { SearchProvider } from '@/contexts/SearchContext';
 import { BackgroundPrefetch } from '@/components/common/BackgroundPrefetch';
+import { ChunkErrorBoundary } from '@/components/common/ChunkErrorBoundary';
+import { GlobalHotkeyProvider } from '@/components/common/GlobalHotkeyProvider';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
@@ -18,7 +21,7 @@ const DevBridgeProvider = dynamic(
 );
 
 const DevBridgeWrapper = ({ children }: { children: React.ReactNode }) => {
-  const isDevBridgeEnabled = process.env.NEXT_PUBLIC_DEVBRIDGE_ENABLED === 'true';
+  const isDevBridgeEnabled = process.env['NEXT_PUBLIC_DEVBRIDGE_ENABLED'] === 'true';
   
   if (isDevBridgeEnabled) {
     return <DevBridgeProvider>{children}</DevBridgeProvider>;
@@ -31,6 +34,15 @@ const terminalGrotesque = localFont({
   weight: '100 900',
   style: 'normal',
   variable: '--font-terminal-grotesque',
+  display: 'swap',
+  fallback: ['ui-sans-serif', 'system-ui', 'sans-serif'],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800'],
+  style: ['normal', 'italic'],
+  variable: '--font-jetbrains-mono',
   display: 'swap',
   fallback: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
 });
@@ -57,41 +69,45 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={terminalGrotesque.variable}>
+    <html lang="en" className={`${terminalGrotesque.variable} ${jetbrainsMono.variable}`}>
       <body className={terminalGrotesque.className}>
         <ReactQueryProvider>
           <DataSourceProvider>
             <SearchProvider>
               <SolanaWalletProvider>
                 <DevBridgeWrapper>
-                  <div className="min-h-screen bg-background flex flex-col">
-                    <NavBar />
-                    <main className="relative z-10 flex-1 flex flex-col">
-                      {children}
-                    </main>
-                    <BackgroundPrefetch />
-                    <footer className="py-10 mt-auto">
-                      <div className="container mx-auto px-4">
-                        <div className="relative flex items-center">
-                          <div className="flex-1"></div>
-                          <p className="text-center text-muted-foreground">
-                            feels good man
-                          </p>
-                          <div className="flex-1 flex justify-end">
-                            <div className="flex flex-col space-y-1 text-right">
-                              <Link href="/info" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                info
-                              </Link>
-                              <Link href="/control" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                control
-                              </Link>
+                  <ChunkErrorBoundary>
+                    <GlobalHotkeyProvider>
+                      <div className="min-h-screen bg-background flex flex-col">
+                        <NavBar />
+                        <main className="relative z-10 flex-1 flex flex-col">
+                          {children}
+                        </main>
+                        <BackgroundPrefetch />
+                        <footer className="py-10 mt-auto">
+                        <div className="container mx-auto px-4">
+                          <div className="relative flex items-center">
+                            <div className="flex-1"></div>
+                            <p className="text-center text-muted-foreground">
+                              feels good man
+                            </p>
+                            <div className="flex-1 flex justify-end">
+                              <div className="flex flex-col space-y-1 text-right">
+                                <Link href="/info" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
+                                  info
+                                </Link>
+                                <Link href="/control" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
+                                  control
+                                </Link>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </footer>
-                  </div>
-                  <Toaster />
+                      </footer>
+                    </div>
+                    <Toaster />
+                    </GlobalHotkeyProvider>
+                  </ChunkErrorBoundary>
                 </DevBridgeWrapper>
               </SolanaWalletProvider>
             </SearchProvider>

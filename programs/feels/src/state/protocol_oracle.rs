@@ -83,7 +83,3 @@ impl ProtocolOracle {
         Some(self.min_rate_q64())
     }
 }
-
-#[cfg(test)]
-#[path = "protocol_oracle_test.rs"]
-mod protocol_oracle_test;

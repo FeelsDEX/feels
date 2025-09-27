@@ -142,13 +142,13 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
             })}
           </div>
           
-          {/* View All / Go to Search Link */}
+          {/* View All / Go to Search page Link */}
           <Link
             href={`/search?q=${encodeURIComponent(searchQuery)}`}
             onClick={onClose}
             className="block p-3 text-sm text-center text-primary hover:bg-muted/50 border-t border-border transition-colors duration-75"
           >
-            {results.length > 8 ? `View all ${results.length} results` : 'Go to search'}
+            {results.length > 8 ? `View all ${results.length} results` : 'Go to search page'}
           </Link>
         </>
       )}

@@ -22,10 +22,14 @@ const fuseOptions = {
   shouldSort: true,
 };
 
-export function useTokenSearch(initialQuery: string = '') {
+export function useTokenSearch(
+  initialQuery: string = '', 
+  initialFacets: SelectedFacets = {},
+  initialSort: 'relevance' | 'marketCap' | 'volume' | 'priceChange' | 'age' = 'relevance'
+) {
   const [searchQuery, setSearchQuery] = useState(initialQuery);
-  const [selectedFacets, setSelectedFacets] = useState<SelectedFacets>({});
-  const [sortBy, setSortBy] = useState<'relevance' | 'marketCap' | 'volume' | 'priceChange' | 'age'>('relevance');
+  const [selectedFacets, setSelectedFacets] = useState<SelectedFacets>(initialFacets);
+  const [sortBy, setSortBy] = useState<'relevance' | 'marketCap' | 'volume' | 'priceChange' | 'age'>(initialSort);
   const { dataSource } = useDataSource();
   
   // Get market data from indexer when in indexer mode
@@ -89,6 +93,9 @@ export function useTokenSearch(initialQuery: string = '') {
       const fuse = new Fuse(results, fuseOptions);
       const searchResults = fuse.search(searchQuery);
       results = searchResults.map(result => result.item);
+    } else {
+      // If no search query, return popular tokens (sorted by market cap or volume)
+      results = [...tokens].sort((a, b) => b.marketCap - a.marketCap);
     }
     
     // Apply facet filters

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Activity } from 'lucide-react';
 import { useProtocolStats } from '@/hooks/useIndexer';
+import Link from 'next/link';
 
 interface Trade {
   id: string;
@@ -14,6 +15,7 @@ interface Trade {
   feelsAmount: number;
   marketCap: number;
   account: string;
+  accountFull: string; // Full account address for linking
   tokenSymbol: string;
 }
 
@@ -38,6 +40,12 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
       const feelsAmount = Math.random() * 10 + 0.1; // 0.1 to 10 FeelsSOL
       const usdAmount = feelsAmount * 50; // $50 per FeelsSOL
       
+      // Generate a mock Solana address (base58 format)
+      const accountPrefix = ['Gm1z', 'Ape9', 'Dgen', 'Wojk', 'Chad', 'Anon'][Math.floor(Math.random() * 6)];
+      const accountSuffix = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const accountMiddle = Math.random().toString(36).substring(2, 26).toUpperCase();
+      const fullAccount = `${accountPrefix}${accountMiddle}${accountSuffix}`;
+      
       mockTrades.push({
         id: `trade-${i}`,
         timestamp: new Date(now.getTime() - i * 60000 - Math.random() * 30000), // Random times in past hour
@@ -45,7 +53,8 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
         usdAmount,
         feelsAmount,
         marketCap: 420000 + Math.random() * 100000, // $420K - $520K market cap
-        account: `${['Gm1z', 'Ape9', 'Dgen', 'Wojk', 'Chad', 'Anon'][Math.floor(Math.random() * 6)]}...${Math.random().toString(36).substring(7, 11).toUpperCase()}`,
+        account: `${accountPrefix}...${accountSuffix.substring(0, 4)}`,
+        accountFull: fullAccount,
         tokenSymbol: tokenSymbol || 'WOJAK'
       });
     }
@@ -116,10 +125,11 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
               </div>
               
               {/* Direction */}
-              <div>
+              <div className="flex items-center h-full">
                 <Badge 
                   variant={trade.type === 'buy' ? 'default' : 'destructive'} 
-                  className="text-xs w-fit"
+                  className="px-2 py-0 h-5 w-fit"
+                  style={{ fontSize: '11px' }}
                 >
                   {trade.type}
                 </Badge>
@@ -132,7 +142,7 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
               
               {/* FeelsSOL Amount */}
               <div className="text-sm text-right">
-                {trade.feelsAmount.toFixed(2)} ◈
+                {trade.feelsAmount.toFixed(2)}
               </div>
               
               {/* Market Cap */}
@@ -141,8 +151,13 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
               </div>
               
               {/* Account */}
-              <div className="text-sm text-right font-mono text-muted-foreground">
-                {trade.account}
+              <div className="text-sm text-right font-mono">
+                <Link
+                  href={`/account/${trade.accountFull}`}
+                  className="text-muted-foreground hover:text-primary transition-colors"
+                >
+                  {trade.account}
+                </Link>
               </div>
             </div>
           ))}

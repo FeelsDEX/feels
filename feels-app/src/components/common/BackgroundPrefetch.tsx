@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
+import { useTokenSearch } from '@/hooks/useTokenSearch';
 
 // List of routes to prefetch
 const PREFETCH_ROUTES = [
@@ -17,6 +18,9 @@ export function BackgroundPrefetch() {
   const pathname = usePathname();
   const router = useRouter();
   const [hasPrefetched, setHasPrefetched] = useState(false);
+  
+  // Pre-load token search data with empty query to get popular tokens
+  useTokenSearch('');
 
   useEffect(() => {
     // Only prefetch once after initial page load

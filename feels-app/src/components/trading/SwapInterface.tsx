@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { FEELS_TOKENS } from '@/data/tokens';
 import { TokenSearchModal } from '@/components/search/TokenSearchModal';
 import { TokenSearchResult } from '@/utils/token-search';
+import { useTokenSearch } from '@/hooks/useTokenSearch';
 
 interface SwapInterfaceProps {
   connection: Connection;
@@ -45,6 +46,9 @@ export function SwapInterface({
   const [limitPrice, setLimitPrice] = useState('');
   const [slippagePercentage, setSlippagePercentage] = useState('1');
   const [hasInteractedWithSlippage, setHasInteractedWithSlippage] = useState(false);
+  
+  // Pre-fetch token data for instant dropdown display
+  const { results: preloadedTokens } = useTokenSearch('');
 
   // Initialize tokens
   useEffect(() => {

@@ -137,6 +137,7 @@ logs/
 ext/
 chart-demo/
 test-data/
+KLineChart/
 
 # Generated SDK files (keep structure but ignore contents)
 generated-sdk/rust/target/

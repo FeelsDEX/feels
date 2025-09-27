@@ -70,7 +70,7 @@ pub struct MarketInfo {
 }
 
 // SDK imports
-pub use sdk_compat::{self, sdk};
+pub use self::sdk_compat::sdk;
 
 // Constants
 pub mod constants {

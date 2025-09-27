@@ -149,9 +149,14 @@ export function NavBar() {
           </div>
           
           {/* Center - Search */}
-          <div id="search-section" className={`flex-1 max-w-xl mx-8 relative z-[1001] ${isTokenSearchModalOpen ? 'invisible pointer-events-none' : ''}`}>
-            <SearchBar mode="navigation" />
-          </div>
+          {pathname !== '/search' && (
+            <div id="search-section" className={`flex-1 max-w-xl mx-8 relative z-[1001] ${isTokenSearchModalOpen ? 'invisible pointer-events-none' : ''}`}>
+              <SearchBar mode="navigation" />
+            </div>
+          )}
+          {pathname === '/search' && (
+            <div className="flex-1 max-w-xl mx-8" />
+          )}
           
           {/* Right side - Nav and Wallet */}
           <div id="nav-right-section" className="flex items-center justify-end flex-1 animate-in fade-in duration-300">

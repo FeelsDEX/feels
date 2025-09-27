@@ -10,7 +10,7 @@
 //! - Implements the atomic place-execute-remove pattern within swap
 
 use crate::logic::engine::{compute_swap_step, StepResult, SwapContext, SwapDirection};
-use crate::logic::jit_v05::{
+use crate::logic::jit_core::{
     calculate_virtual_liquidity_at_tick, execute_jit_v05, update_jit_state_after_swap, JitContext,
     JitPlacement,
 };

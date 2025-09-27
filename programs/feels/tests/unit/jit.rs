@@ -1,10 +1,10 @@
 //! tests/unit/jit.rs
 
 use anchor_lang::prelude::*;
-use feels::logic::jit::*;
-use feels::logic::jit_v05::{
+use feels::logic::jit_core::{
     calculate_contrarian_placement, calculate_virtual_liquidity_at_tick, JitContext,
 };
+use feels::logic::jit_safety::*;
 use feels::state::{Buffer, Market, PolicyV1, TokenOrigin, TokenType};
 use feels::utils::sqrt_price_from_tick;
 

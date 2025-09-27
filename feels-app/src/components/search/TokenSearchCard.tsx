@@ -8,10 +8,7 @@ import {
   TrendingDown, 
   Activity, 
   DollarSign,
-  Clock,
-  Shield,
-  Droplet,
-  Trophy
+  Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -60,22 +57,9 @@ export const TokenSearchCard = React.memo(function TokenSearchCard({ token }: To
               
               {/* Features */}
               <div className="flex items-center gap-1">
-                {token.isVerified && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Verified
-                  </Badge>
-                )}
                 {token.isGraduated && (
                   <Badge variant="secondary" className="text-xs">
-                    <Trophy className="h-3 w-3 mr-1" />
                     Graduated
-                  </Badge>
-                )}
-                {token.hasLiquidity && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Droplet className="h-3 w-3 mr-1" />
-                    Liquidity
                   </Badge>
                 )}
               </div>

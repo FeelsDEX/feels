@@ -4,6 +4,18 @@
 
 @layer base {
   :root {
+    /* Font Variables */
+    --font-default: 'Terminal Grotesque', Helvetica, ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --font-mono-scale: 0.85; /* Scale factor to normalize JetBrains Mono size with Terminal Grotesque */
+    
+    /* Explicit scaled font sizes for mono font */
+    --text-xs-mono: calc(0.75rem * var(--font-mono-scale));  /* 12px * 0.85 = ~10px */
+    --text-sm-mono: calc(0.875rem * var(--font-mono-scale)); /* 14px * 0.85 = ~12px */
+    --text-base-mono: calc(1rem * var(--font-mono-scale));    /* 16px * 0.85 = ~14px */
+    --text-lg-mono: calc(1.125rem * var(--font-mono-scale));  /* 18px * 0.85 = ~15px */
+    --text-xl-mono: calc(1.25rem * var(--font-mono-scale));   /* 20px * 0.85 = ~17px */
+    
     /* FEELS Brand Colors */
     /* Primary: #5cca39 (Bright Green) - HSL: 108, 57%, 51% */
     /* White: #ffffff - HSL: 0, 0%, 100% */
@@ -68,7 +80,7 @@
   }
 
   html {
-    font-family: var(--font-terminal-grotesque), ui-monospace, monospace;
+    font-family: var(--font-default);
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
@@ -199,11 +211,38 @@
   }
   
   .code {
-    @apply font-mono text-sm bg-muted text-muted-foreground px-2 py-1 pixel-container;
+    @apply text-sm bg-muted text-muted-foreground px-2 py-1 pixel-container;
+    font-family: var(--font-mono);
     border-radius: 0;
     border: 1px solid hsl(var(--border));
   }
 
+  /* Font mixins/utility classes */
+  .font-default {
+    font-family: var(--font-default);
+  }
+  
+  .font-mono {
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+  
+  /* Scaled font size utilities for mono font */
+  .font-mono.text-xs { font-size: var(--text-xs-mono) !important; }
+  .font-mono.text-sm { font-size: var(--text-sm-mono) !important; }
+  .font-mono.text-base { font-size: var(--text-base-mono) !important; }
+  .font-mono.text-lg { font-size: var(--text-lg-mono) !important; }
+  .font-mono.text-xl { font-size: var(--text-xl-mono) !important; }
+  
+  .font-terminal-grotesque {
+    font-family: 'Terminal Grotesque', ui-sans-serif, system-ui, sans-serif;
+  }
+  
+  .font-jetbrains-mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 500;
+  }
+  
   /* FEELS-specific utility classes */
   .text-feels-green {
     color: hsl(var(--feels-green));

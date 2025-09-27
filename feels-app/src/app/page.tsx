@@ -93,25 +93,27 @@ export default function HomePage() {
               className="h-full hover:shadow-lg hover:border-primary transition-all cursor-pointer flex overflow-hidden border"
               style={{ height: 'calc((100vh - 14rem - 2rem) / 2)' }}
             >
-              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 p-4 flex items-center justify-center rounded-lg relative">
-                {typeof token.imageUrl === 'string' ? (
-                  <img 
-                    id={`token-image-${token.symbol.toLowerCase()}`}
-                    src={token.imageUrl} 
-                    alt={token.name}
-                    className="w-full h-full object-contain rounded-lg"
-                    loading="lazy"
-                  />
-                ) : (
-                  <Image 
-                    id={`token-image-${token.symbol.toLowerCase()}`}
-                    src={token.imageUrl} 
-                    alt={token.name}
-                    fill
-                    className="object-contain rounded-lg"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                )}
+              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 flex items-center justify-center rounded-lg p-4">
+                <div className="relative w-full h-full">
+                  {typeof token.imageUrl === 'string' ? (
+                    <img 
+                      id={`token-image-${token.symbol.toLowerCase()}`}
+                      src={token.imageUrl} 
+                      alt={token.name}
+                      className="w-full h-full object-contain rounded-xl"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Image 
+                      id={`token-image-${token.symbol.toLowerCase()}`}
+                      src={token.imageUrl} 
+                      alt={token.name}
+                      fill
+                      className="object-contain rounded-xl"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                  )}
+                </div>
               </div>
               <div className="flex-1 flex flex-col">
                 <CardHeader id={`token-header-${token.symbol.toLowerCase()}`} className="pb-2">
@@ -194,25 +196,27 @@ export default function HomePage() {
               className="h-full hover:shadow-lg hover:border-primary transition-all cursor-pointer flex overflow-hidden border"
               style={{ height: 'calc((100vh - 14rem - 2rem) / 2)' }}
             >
-              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 p-4 flex items-center justify-center rounded-lg relative">
-                {typeof token.imageUrl === 'string' ? (
-                  <img 
-                    id={`token-image-${token.symbol.toLowerCase()}`}
-                    src={token.imageUrl} 
-                    alt={token.name}
-                    className="w-full h-full object-contain rounded-lg"
-                    loading="lazy"
-                  />
-                ) : (
-                  <Image 
-                    id={`token-image-${token.symbol.toLowerCase()}`}
-                    src={token.imageUrl} 
-                    alt={token.name}
-                    fill
-                    className="object-contain rounded-lg"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-                )}
+              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 flex items-center justify-center rounded-lg p-4">
+                <div className="relative w-full h-full">
+                  {typeof token.imageUrl === 'string' ? (
+                    <img 
+                      id={`token-image-${token.symbol.toLowerCase()}`}
+                      src={token.imageUrl} 
+                      alt={token.name}
+                      className="w-full h-full object-contain rounded-xl"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Image 
+                      id={`token-image-${token.symbol.toLowerCase()}`}
+                      src={token.imageUrl} 
+                      alt={token.name}
+                      fill
+                      className="object-contain rounded-xl"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                  )}
+                </div>
               </div>
               <div className="flex-1 flex flex-col">
                 <CardHeader id={`token-header-${token.symbol.toLowerCase()}`} className="pb-2">

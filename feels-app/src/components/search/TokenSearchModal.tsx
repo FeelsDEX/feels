@@ -5,6 +5,7 @@ import { TokenSearchResult } from '@/utils/token-search';
 import { SearchBar } from '@/components/search/SearchBar';
 import { useSearchContext } from '@/contexts/SearchContext';
 import { Portal } from '@/components/common/Portal';
+import { useTokenSearch } from '@/hooks/useTokenSearch';
 
 interface TokenSearchModalProps {
   isOpen: boolean;
@@ -22,6 +23,9 @@ export function TokenSearchModal({
   placeholder = "Find tokens by name, ticker, or address..."
 }: TokenSearchModalProps) {
   const { setIsTokenSearchModalOpen } = useSearchContext();
+  
+  // Pre-load popular tokens for instant display
+  const { results: preloadedTokens } = useTokenSearch('');
 
   // Update context when modal opens/closes
   useEffect(() => {
@@ -42,6 +46,13 @@ export function TokenSearchModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Handle backdrop click to close modal
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -49,7 +60,7 @@ export function TokenSearchModal({
       {/* Full screen backdrop to capture all clicks */}
       <div 
         className="fixed inset-0 z-[2000] bg-black/20" 
-        onClick={onClose}
+        onClick={handleBackdropClick}
       />
       <div id="token-search-modal-container" className="fixed top-0 left-0 right-0 z-[2001] pt-2">
         <div id="token-search-modal-inner" className="container mx-auto px-4">
@@ -66,6 +77,7 @@ export function TokenSearchModal({
               excludeAddress={excludeAddress}
               onClose={onClose}
               autoFocus={true}
+              preloadedTokens={preloadedTokens}
             />
           </div>
           

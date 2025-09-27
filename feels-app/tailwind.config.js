@@ -72,9 +72,9 @@ module.exports = {
         'full': '9999px',
       },
       fontFamily: {
-        sans: ['var(--font-terminal-grotesque)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
-        mono: ['var(--font-terminal-grotesque)', 'JetBrains Mono', 'monospace'],
-        'terminal': ['var(--font-terminal-grotesque)', 'ui-monospace', 'monospace'],
+        sans: ['var(--font-terminal-grotesque)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-jetbrains-mono)', 'JetBrains Mono', 'ui-monospace', 'monospace'],
+        'terminal': ['var(--font-terminal-grotesque)', 'ui-sans-serif', 'sans-serif'],
       },
       keyframes: {
         "accordion-down": {

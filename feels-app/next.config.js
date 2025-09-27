@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const webpack = require('webpack');
+const ChunkLoadErrorFixPlugin = require('./src/utils/webpack-chunk-fix-plugin');
 
 const nextConfig = {
   // Disable strict mode for better Solana wallet compatibility
@@ -7,8 +8,14 @@ const nextConfig = {
   webpack: (config, { isServer, dev, webpack }) => {
     // Handle server-side externals and problematic modules
     if (isServer) {
-      // Don't externalize ws on server since it's needed
-      config.externals = [...(config.externals || [])];
+      // Externalize ws and other node modules on server to prevent bundling issues
+      config.externals = [...(config.externals || []), 'ws', 'bufferutil', 'utf-8-validate'];
+      
+      // Mock ws for server-side rendering where it's not needed
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'ws': require('path').resolve(__dirname, './src/utils/ws-mock.js'),
+      };
     }
     
     // Fix for vendor chunk issues with Solana/Anchor dependencies
@@ -60,34 +67,70 @@ const nextConfig = {
       },
     });
 
+    // Workaround for Next.js webpack runtime issues
+    if (!isServer) {
+      // Ensure webpack runtime doesn't try to dynamically load chunks that don't exist
+      config.output.chunkLoadingGlobal = 'webpackChunkFeelsApp';
+      
+      // Add publicPath to ensure chunks are loaded from the correct location
+      if (!config.output.publicPath) {
+        config.output.publicPath = '/_next/';
+      }
+      
+      // Configure chunk filename to be more predictable
+      config.output.chunkFilename = dev 
+        ? 'static/chunks/[name].js'
+        : 'static/chunks/[name].[contenthash].js';
+    }
+
     // Configure optimization for better chunk splitting
     if (!isServer) {
       config.optimization = {
         ...config.optimization,
+        moduleIds: 'deterministic',
         splitChunks: {
           chunks: 'all',
+          maxAsyncRequests: 30,
+          maxInitialRequests: 30,
           cacheGroups: {
-            default: false,
-            vendors: false,
-            // Solana and related packages in their own chunk
-            solana: {
-              test: /[\\/]node_modules[\\/](@solana|@coral-xyz|@project-serum)[\\/]/,
-              name: 'solana',
-              priority: 10,
-              reuseExistingChunk: true,
-            },
-            // Common packages
-            commons: {
-              name: 'commons',
+            default: {
               minChunks: 2,
-              priority: 5,
+              priority: -20,
               reuseExistingChunk: true,
             },
-            // Framework and large dependencies
-            framework: {
-              test: /[\\/]node_modules[\\/](react|react-dom|next)[\\/]/,
-              name: 'framework',
-              priority: 15,
+            // Handle CSS separately to prevent JS/CSS mixing
+            styles: {
+              test: /\.(css|scss|sass)$/,
+              enforce: true,
+              priority: 20,
+            },
+            // Keep all vendor chunks in a stable vendor bundle
+            // Solana packages - group all @solana packages together
+            'vendor-solana': {
+              test: /[\\/]node_modules[\\/](@solana|@coral-xyz|@project-serum)[\\/]/,
+              name: 'vendor-solana',
+              priority: 30,
+              reuseExistingChunk: true,
+            },
+            // Wallet adapter packages
+            'vendor-wallet': {
+              test: /[\\/]node_modules[\\/].*wallet-adapter.*[\\/]/,
+              name: 'vendor-wallet',
+              priority: 25,
+              reuseExistingChunk: true,
+            },
+            // React/Next packages
+            'vendor-react': {
+              test: /[\\/]node_modules[\\/](react|next)[\\/]/,
+              name: 'vendor-react',
+              priority: 20,
+              reuseExistingChunk: true,
+            },
+            // All other vendor modules
+            'vendor-common': {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendor-common',
+              priority: 10,
               reuseExistingChunk: true,
             },
           },
@@ -133,6 +176,11 @@ const nextConfig = {
         contextRegExp: /pino/,
       })
     );
+    
+    // Add custom chunk fix plugin for client builds
+    if (!isServer) {
+      config.plugins.push(new ChunkLoadErrorFixPlugin());
+    }
     
     // Ignore React Native modules which are not needed in web
     config.plugins.push(

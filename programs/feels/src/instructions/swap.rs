@@ -13,7 +13,7 @@ use crate::{
     error::FeelsError,
     events::{FeeSplitApplied, SwapExecuted},
     logic::fees::{calculate_impact_bps, combine_base_and_impact},
-    logic::jit::{
+    logic::jit_safety::{
         calculate_safe_jit_allowance, update_directional_volume, update_price_snapshot, JitBudget,
     },
     logic::{

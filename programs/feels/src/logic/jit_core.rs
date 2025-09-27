@@ -11,7 +11,7 @@
 //! - Single atomic transaction pattern (place-execute-remove)
 
 use crate::error::FeelsError;
-use crate::logic::jit::{
+use crate::logic::jit_safety::{
     calculate_safe_jit_allowance, update_directional_volume, update_price_snapshot, JitBudget,
 };
 use crate::state::{Buffer, Market, OracleState};
@@ -482,7 +482,7 @@ pub fn calculate_virtual_liquidity_at_tick(
     // - 5x multiplier within 1 width
     // - 2x multiplier within 2 widths
     // - 1x multiplier beyond that
-    use crate::logic::jit::calculate_concentration_multiplier;
+    use crate::logic::jit_safety::calculate_concentration_multiplier;
     let multiplier =
         calculate_concentration_multiplier(current_tick, target_tick, current_slot, market);
 

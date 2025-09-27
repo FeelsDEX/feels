@@ -13,6 +13,7 @@ interface TokenSelectDropdownProps {
   onSelect: (token: TokenSearchResult) => void;
   onClose: () => void;
   excludeAddress?: string; // Address to exclude from results (e.g., already selected token)
+  preloadedTokens?: TokenSearchResult[]; // Pre-loaded popular tokens for instant display
 }
 
 export function TokenSelectDropdown({ 
@@ -21,13 +22,17 @@ export function TokenSelectDropdown({
   searchQuery, 
   onSelect, 
   onClose,
-  excludeAddress 
+  excludeAddress,
+  preloadedTokens 
 }: TokenSelectDropdownProps) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   
+  // Use preloaded tokens when no search query, otherwise use search results
+  const displayTokens = searchQuery.trim() ? results : (preloadedTokens || results);
+  
   // Filter out excluded address
-  const filteredResults = results.filter(token => token.address !== excludeAddress);
+  const filteredResults = displayTokens.filter(token => token.address !== excludeAddress);
   
   useEffect(() => {
     setSelectedIndex(-1);
@@ -46,10 +51,10 @@ export function TokenSelectDropdown({
         const token = filteredResults[selectedIndex];
         if (token) {
           onSelect(token);
-          onClose();
+          onClose?.();
         }
       } else if (e.key === 'Escape') {
-        onClose();
+        onClose?.();
       }
     };
     
@@ -68,29 +73,20 @@ export function TokenSelectDropdown({
     return undefined;
   }, [selectedIndex]);
   
-  if (!searchQuery.trim()) return null;
+  // Always show dropdown, even without search query
   
   return (
-    <>
-      {/* Invisible backdrop */}
-      <div 
-        className="fixed inset-0 z-[1098]" 
-        onClick={onClose}
-      />
-      <div 
-        id="token-select-dropdown"
-        className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-100 z-[1099]"
-      >
-      {isLoading ? (
+    <div 
+      id="token-select-dropdown"
+      className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl overflow-hidden z-[1099]"
+    >
+      {isLoading && searchQuery ? (
         <div id="token-search-loading" className="p-4 text-center text-sm text-muted-foreground">
           Searching...
         </div>
-      ) : filteredResults.length === 0 ? (
-        <div id="token-search-no-results" className="p-4 text-center">
-          <p className="text-sm text-muted-foreground">No tokens found</p>
-        </div>
-      ) : (
-        <div id="token-search-results" className="max-h-[400px] overflow-y-auto">
+      ) : (!searchQuery.trim() || filteredResults.length > 0) ? (
+        <div id="token-search-results">
+          <div className="max-h-[400px] overflow-y-auto">
           {filteredResults.slice(0, 8).map((token, index) => {
             const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
             const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
@@ -148,9 +144,13 @@ export function TokenSelectDropdown({
               </div>
             );
           })}
+          </div>
+        </div>
+      ) : (
+        <div id="token-search-no-results" className="p-4 text-center">
+          <p className="text-sm text-muted-foreground">No tokens found</p>
         </div>
       )}
-      </div>
-    </>
+    </div>
   );
 }
