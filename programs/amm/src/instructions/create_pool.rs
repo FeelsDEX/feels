@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use crate::{math::price_to_tick, state::pool::Pool};
+use crate::{math::sqrt_price_to_tick, state::pool::Pool};
 
 #[derive(Accounts)]
 #[instruction(fee_bps: u16)]
@@ -76,7 +76,7 @@ pub fn create_pool(
     pool.protocol_fee_bps = protocol_fee_bps;
     pool.tick_spacing = tick_spacing;
     pool.sqrt_price = initial_sqrt_price;
-    pool.tick = price_to_tick(initial_sqrt_price)?;
+    pool.tick = sqrt_price_to_tick(initial_sqrt_price)?;
 
     pool.liquidity = 0;
     pool.fee_growth_global_a = 0;
