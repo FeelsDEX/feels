@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use crate::{math::sqrt_price_to_tick, state::pool::Pool};
+use crate::{error::AmmError, math::sqrt_price_to_tick, state::pool::Pool};
 
 #[derive(Accounts)]
 #[instruction(fee_bps: u16)]
@@ -20,10 +20,8 @@ pub struct CreatePool<'info> {
     )]
     pub pool: Account<'info, Pool>,
 
-    /// Token A mint (ordered: token_a < token_b)
     pub token_mint_a: Account<'info, Mint>,
 
-    /// Token B mint (ordered: token_a < token_b)
     pub token_mint_b: Account<'info, Mint>,
 
     /// Pool's token A vault
@@ -61,7 +59,7 @@ pub fn create_pool(
     ctx: Context<CreatePool>,
     fee_bps: u16,             // Pool fee tier in basis points (e.g., 50 = 0.5%)
     protocol_fee_bps: u16,    // Portion of fee_bps that goes to protocol (in basis points)
-    tick_spacing: i32,        // Minimum tick spacing for this fee tier
+    tick_spacing: u32,        // Minimum tick spacing for this fee tier
     initial_sqrt_price: u128, // Initial sqrt price (Q64.64 format)
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
@@ -74,6 +72,10 @@ pub fn create_pool(
 
     pool.fee_bps = fee_bps;
     pool.protocol_fee_bps = protocol_fee_bps;
+
+    // Tick spacing must be positive
+    require!(tick_spacing > 0, AmmError::InvalidTickSpacing);
+
     pool.tick_spacing = tick_spacing;
     pool.sqrt_price = initial_sqrt_price;
     pool.tick = sqrt_price_to_tick(initial_sqrt_price)?;

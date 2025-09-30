@@ -18,7 +18,7 @@ pub struct Pool {
     pub protocol_fee_bps: u16,
 
     /// Tick spacing
-    pub tick_spacing: i32,
+    pub tick_spacing: u32,
 
     /// Current sqrt price (Q64.64)
     pub sqrt_price: u128,

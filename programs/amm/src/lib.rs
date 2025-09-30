@@ -2,6 +2,7 @@
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
 
+pub mod error;
 pub mod instructions;
 pub mod math;
 pub mod state;
@@ -21,7 +22,7 @@ pub mod feels_amm {
         ctx: Context<CreatePool>,
         fee_bps: u16,
         protocol_fee_bps: u16,
-        tick_spacing: i32,
+        tick_spacing: u32,
         initial_sqrt_price: u128,
     ) -> Result<()> {
         instructions::create_pool(

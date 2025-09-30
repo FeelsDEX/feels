@@ -13,7 +13,7 @@ impl InstructionBuilder {
         token_b: &Pubkey,
         fee_bps: u16,
         protocol_fee_bps: u16,
-        tick_spacing: i32,
+        tick_spacing: u32,
         initial_sqrt_price: u128,
     ) -> (
         anchor_lang::solana_program::instruction::Instruction,

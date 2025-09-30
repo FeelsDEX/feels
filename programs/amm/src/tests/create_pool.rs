@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use feels_test_utils::{constants::AMM_PROGRAM_PATH, to_sdk_instruction, TestApp};
 
-use crate::{state::pool::Pool, tests::InstructionBuilder};
+use crate::{error::AmmError, state::pool::Pool, tests::InstructionBuilder};
 
 #[tokio::test]
 async fn test_create_pool() {
@@ -36,4 +36,32 @@ async fn test_create_pool() {
     assert_eq!(pool_data.protocol_fee_bps, 500);
     assert_eq!(pool_data.tick_spacing, 10);
     assert_eq!(pool_data.sqrt_price, 1u128 << 64);
+}
+
+#[tokio::test]
+async fn test_create_pool_fails_invalid_tick_spacing() {
+    let mut app = TestApp::new_with_programs(vec![(crate::id(), AMM_PROGRAM_PATH)]).await;
+
+    let token_a = app.create_mint(None, None, 6).await.unwrap();
+    let token_b = app.create_mint(None, None, 6).await.unwrap();
+    let payer_pubkey = app.payer_pubkey();
+
+    let (instruction, _) = InstructionBuilder::create_pool(
+        &payer_pubkey,
+        &token_a,
+        &token_b,
+        1000,        // fee_bps
+        500,         // protocol_fee_bps
+        0,           // tick_spacing cant be zero
+        1u128 << 64, // initial_sqrt_price (1.0 in Q64.64 format)
+    );
+
+    let error = app
+        .process_instruction(to_sdk_instruction(instruction))
+        .await
+        .unwrap_err();
+
+    let anchor_error_code: u32 = AmmError::InvalidTickSpacing.into();
+    let anchor_hex_error_code = format!("{:x}", anchor_error_code);
+    assert!(error.to_string().contains(&anchor_hex_error_code));
 }
