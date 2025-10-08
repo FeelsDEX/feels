@@ -5,8 +5,6 @@ import { searchFacets, SelectedFacets } from '@/utils/token-search';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
 
 interface TokenSearchFiltersProps {
   selectedFacets: SelectedFacets;
@@ -18,42 +16,23 @@ interface TokenSearchFiltersProps {
 interface FilterSectionProps {
   title: string;
   children: React.ReactNode;
-  defaultOpen?: boolean;
-  collapsible?: boolean;
 }
 
-// Reusable filter section component with collapsible functionality
+// Reusable filter section component
 function FilterSection({ 
   title, 
-  children, 
-  defaultOpen = true,
-  collapsible = true 
+  children
 }: FilterSectionProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-
   return (
     <div className="border-b pb-4 last:border-b-0">
-      <button
-        onClick={() => collapsible && setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between mb-3 ${
-          collapsible ? 'cursor-pointer hover:text-primary' : 'cursor-default'
-        }`}
-        type="button"
-      >
+      <div className="mb-3">
         <span className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
           {title}
         </span>
-        {collapsible && (
-          <span className="text-muted-foreground">
-            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </span>
-        )}
-      </button>
-      {isOpen && (
-        <div className="space-y-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-          {children}
-        </div>
-      )}
+      </div>
+      <div className="space-y-2">
+        {children}
+      </div>
     </div>
   );
 }
@@ -99,27 +78,25 @@ export function TokenSearchFilters({
   const activeFilterCount = Object.values(selectedFacets).reduce((total, arr) => total + arr.length, 0);
   
   return (
-    <div className="bg-background rounded-lg border p-4">
+    <div className="border rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 pb-3 border-b">
-        <h2 className="text-lg font-semibold">Filters</h2>
-        <Button
-          variant="ghost"
-          size="sm"
+      <div className="flex items-center justify-between px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+        <span>Filters</span>
+        <button
           onClick={clearFilters}
-          className={`text-xs py-0.5 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive ${
+          className={`text-xs hover:text-foreground transition-colors ${
             hasActiveFilters 
-              ? 'opacity-100 visible' 
+              ? 'opacity-100 visible cursor-pointer' 
               : 'opacity-0 invisible pointer-events-none'
           }`}
         >
           Clear all ({activeFilterCount})
-        </Button>
+        </button>
       </div>
       
-      <div className="space-y-4">
+      <div className="p-4 space-y-4">
         {/* Market Cap Filter */}
-        <FilterSection title="Market Cap" defaultOpen={true}>
+        <FilterSection title="Market Cap">
           {searchFacets.marketCapRange.buckets.map(bucket => (
             <FilterItem
               key={bucket.label}
@@ -133,7 +110,7 @@ export function TokenSearchFilters({
         </FilterSection>
         
         {/* Volume Filter */}
-        <FilterSection title="24h Volume" defaultOpen={true}>
+        <FilterSection title="24h Volume" >
           {searchFacets.volumeRange.buckets.map(bucket => (
             <FilterItem
               key={bucket.label}
@@ -147,7 +124,7 @@ export function TokenSearchFilters({
         </FilterSection>
         
         {/* Price Change Filter */}
-        <FilterSection title="24h Change" defaultOpen={true}>
+        <FilterSection title="24h Change" >
           {searchFacets.priceChange.buckets.map(bucket => (
             <FilterItem
               key={bucket.label}
@@ -161,7 +138,7 @@ export function TokenSearchFilters({
         </FilterSection>
         
         {/* Age Filter */}
-        <FilterSection title="Age" defaultOpen={true}>
+        <FilterSection title="Age" >
           {searchFacets.age.buckets.map(bucket => (
             <FilterItem
               key={bucket.label}
@@ -175,7 +152,7 @@ export function TokenSearchFilters({
         </FilterSection>
         
         {/* Features Filter */}
-        <FilterSection title="Features" defaultOpen={true}>
+        <FilterSection title="Features" >
           {searchFacets.features.options.map(option => (
             <FilterItem
               key={option.value}

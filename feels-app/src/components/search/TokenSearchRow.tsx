@@ -10,9 +10,10 @@ import feelsGuyImage from '@/assets/images/feels_guy.png';
 
 interface TokenSearchRowProps {
   token: TokenSearchResult;
+  showRelevance?: boolean;
 }
 
-export const TokenSearchRow = React.memo(function TokenSearchRow({ token }: TokenSearchRowProps) {
+export const TokenSearchRow = React.memo(function TokenSearchRow({ token, showRelevance }: TokenSearchRowProps) {
   const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
   const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
   
@@ -36,15 +37,22 @@ export const TokenSearchRow = React.memo(function TokenSearchRow({ token }: Toke
         
         {/* Name & Symbol */}
         <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2">
-            <div>
-              <div className="font-medium">{token.name}</div>
-              <div className="text-sm text-muted-foreground">{token.symbol}</div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div>
+                <div className="font-medium">{token.name}</div>
+                <div className="text-sm text-muted-foreground">{token.symbol}</div>
+              </div>
+              {token.isGraduated && (
+                <Badge variant="secondary" className="text-xs self-start">
+                  Graduated
+                </Badge>
+              )}
             </div>
-            {token.isGraduated && (
-              <Badge variant="secondary" className="text-xs self-start">
-                Graduated
-              </Badge>
+            {showRelevance && token._score !== undefined && (
+              <div className="text-sm text-muted-foreground">
+                {(token._score * 100).toFixed(0)}%
+              </div>
             )}
           </div>
         </div>

@@ -6,8 +6,6 @@ import { useTokenSearch } from '@/hooks/useTokenSearch';
 import { TokenSearchResults } from '@/components/search/TokenSearchResults';
 import { TokenSearchFilters } from '@/components/search/TokenSearchFilters';
 import { SearchBar } from '@/components/search/SearchBar';
-import { Button } from '@/components/ui/button';
-import { Filter } from 'lucide-react';
 import { SelectedFacets } from '@/utils/token-search';
 
 function TokensContent() {
@@ -18,6 +16,7 @@ function TokensContent() {
   // Parse initial values from URL
   const initialQuery = searchParams.get('q') || '';
   const initialSort = searchParams.get('sort') || 'relevance';
+  const initialOrder = searchParams.get('order') || 'desc';
   
   // Parse initial facets from URL with simplified keys
   const initialFacets: SelectedFacets = {};

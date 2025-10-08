@@ -116,7 +116,10 @@ export function SearchBar({
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
         setSearchFocused(false);
-        setLocalSearchQuery('');
+        // Don't clear the search query for page-search mode
+        if (mode !== 'page-search') {
+          setLocalSearchQuery('');
+        }
         // Blur the input to remove focus
         if (inputRef.current) {
           inputRef.current.blur();

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { TokenSearchResult } from '@/utils/token-search';
 import { TokenSearchCard } from '@/components/search/TokenSearchCard';
 import { TokenSearchRow } from '@/components/search/TokenSearchRow';
@@ -12,7 +13,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TextSearch, Filter, ChevronDown } from 'lucide-react';
+import { AlertCircle, TextSearch, Filter, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 
 interface TokenSearchResultsProps {
   results: TokenSearchResult[];
@@ -30,6 +31,9 @@ interface TokenSearchResultsProps {
   onToggleFilters?: () => void;
 }
 
+type SortField = 'relevance' | 'marketCap' | 'volume' | 'price' | 'priceChange' | 'age';
+type SortOrder = 'asc' | 'desc';
+
 export function TokenSearchResults({
   results,
   sortBy,
@@ -45,6 +49,56 @@ export function TokenSearchResults({
   showFilters,
   onToggleFilters
 }: TokenSearchResultsProps) {
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      // Toggle sort order if clicking same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to descending for new column
+      setSortBy(field as any);
+      setSortOrder('desc');
+    }
+  };
+  
+  const getSortIcon = (field: SortField) => {
+    const isSelected = sortBy === field;
+    
+    if (!isSelected) {
+      return <ChevronsUpDown className="h-3 w-3 opacity-50" />;
+    }
+    
+    // When selected, show custom chevrons with the same layout as ChevronsUpDown
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-3 w-3"
+      >
+        <path
+          d="M7 15L12 20L17 15"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={sortOrder === 'desc' ? '1' : '0.3'}
+        />
+        <path
+          d="M7 9L12 4L17 9"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={sortOrder === 'asc' ? '1' : '0.3'}
+        />
+      </svg>
+    );
+  };
+  
   if (error) {
     return (
       <Alert variant="destructive">
@@ -58,22 +112,11 @@ export function TokenSearchResults({
   
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-5 w-32" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-20" />
-            <Skeleton className="h-9 w-32" />
-          </div>
-        </div>
+      <div>
         <div className="border rounded-lg overflow-hidden">
           {/* Table Header */}
-          <div className="flex items-center gap-4 px-4 py-3 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
-            <div className="w-10" />
-            <div className="flex-1 min-w-[200px]">Token</div>
+          <div className="flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+            <div className="flex-1 min-w-[240px]">Token</div>
             <div className="w-24 text-right">Market Cap</div>
             <div className="w-24 text-right">24h Volume</div>
             <div className="w-28 text-right">Price</div>
@@ -122,119 +165,130 @@ export function TokenSearchResults({
     );
   }
   
+  // Sort results based on current sort field and order
+  const sortedResults = [...results].sort((a, b) => {
+    let compareValue = 0;
+    
+    switch (sortBy) {
+      case 'relevance':
+        compareValue = (b._score || 0) - (a._score || 0);
+        break;
+      case 'marketCap':
+        compareValue = b.marketCap - a.marketCap;
+        break;
+      case 'volume':
+        compareValue = b.volume24h - a.volume24h;
+        break;
+      case 'price':
+        compareValue = b.price - a.price;
+        break;
+      case 'priceChange':
+        compareValue = b.priceChange24h - a.priceChange24h;
+        break;
+      case 'age':
+        compareValue = b.launchDate.getTime() - a.launchDate.getTime();
+        break;
+      default:
+        return 0;
+    }
+    
+    // Reverse for ascending order
+    return sortOrder === 'asc' ? -compareValue : compareValue;
+  });
+  
   return (
-    <div className="space-y-6">
-      {/* Sort Controls */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
-          <h3 className="text-lg font-semibold">Results</h3>
-          {totalResults !== undefined && (
-            <span className="text-sm text-muted-foreground">
-              {isLoading ? (
-                <span>Searching...</span>
-              ) : (
-                <span>
-                  ({totalResults} {totalResults === 1 ? 'token' : 'tokens'}
-                  {searchQuery && ` for "${searchQuery}"`})
-                </span>
-              )}
-            </span>
+    <div>
+      {/* Results Table */}
+      <div className="border rounded-lg overflow-hidden relative">
+        {/* Action Buttons */}
+        <div className="absolute top-3 right-4 flex items-center gap-2 z-10">
+          {hasActiveFilters && onClearFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearFilters}
+              className="text-xs h-7 px-2"
+            >
+              Clear filters
+            </Button>
           )}
-        </div>
-        <div className="flex items-center gap-2">
           {onToggleFilters && (
             <Button
               variant="outline"
               size="sm"
               onClick={onToggleFilters}
-              className="lg:hidden hover:border-primary"
+              className="lg:hidden hover:border-primary h-7"
             >
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
+              <Filter className="h-3 w-3" />
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-background border rounded-md hover:border-primary hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-0 w-40 min-h-[2.25rem] transition-all"
-              >
-                <span className="flex-1 text-left">
-                  {sortBy === 'relevance' && 'Relevance'}
-                  {sortBy === 'marketCap' && 'Market Cap'}
-                  {sortBy === 'volume' && '24h Volume'}
-                  {sortBy === 'priceChange' && '24h Change'}
-                  {sortBy === 'age' && 'Recently Launched'}
-                </span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem 
-                onClick={() => setSortBy('relevance')}
-                className={sortBy === 'relevance' ? 'font-semibold' : ''}
-              >
-                Relevance
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => setSortBy('marketCap')}
-                className={sortBy === 'marketCap' ? 'font-semibold' : ''}
-              >
-                Market Cap
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => setSortBy('volume')}
-                className={sortBy === 'volume' ? 'font-semibold' : ''}
-              >
-                24h Volume
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => setSortBy('priceChange')}
-                className={sortBy === 'priceChange' ? 'font-semibold' : ''}
-              >
-                24h Change
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => setSortBy('age')}
-                className={sortBy === 'age' ? 'font-semibold' : ''}
-              >
-                Recently Launched
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
-      </div>
-      
-      {/* Clear Filters */}
-      {hasActiveFilters && onClearFilters && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClearFilters}
-            className="text-xs"
-          >
-            Clear all filters
-          </Button>
-        </div>
-      )}
-      
-      {/* Results Table */}
-      <div className="border rounded-lg overflow-hidden">
         {/* Table Header */}
-        <div className="flex items-center gap-4 px-4 py-3 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
-          <div className="w-10" /> {/* Image column */}
-          <div className="flex-1 min-w-[200px]">Token</div>
-          <div className="w-24 text-right">Market Cap</div>
-          <div className="w-24 text-right">24h Volume</div>
-          <div className="w-28 text-right">Price</div>
-          <div className="w-36 text-right">Price/Change</div>
-          <div className="w-24 text-right">Δ 24h</div>
+        <div className="flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+          <div className="flex-1 min-w-[240px] flex items-center justify-between">
+            <span>
+              Token
+              {totalResults !== undefined && !isLoading && (
+                <span className="ml-2 font-normal">
+                  ({totalResults} {totalResults === 1 ? 'result' : 'results'})
+                </span>
+              )}
+            </span>
+            {searchQuery && (
+              <button
+                onClick={() => handleSort('relevance')}
+                className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
+              >
+                <span>Relevance</span>
+                {getSortIcon('relevance')}
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => handleSort('marketCap')}
+            className="w-24 text-right flex items-center justify-end gap-1 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>Market Cap</span>
+            {getSortIcon('marketCap')}
+          </button>
+          <button
+            onClick={() => handleSort('volume')}
+            className="w-24 text-right flex items-center justify-end gap-1 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>24h Volume</span>
+            {getSortIcon('volume')}
+          </button>
+          <button
+            onClick={() => handleSort('price')}
+            className="w-28 text-right flex items-center justify-end gap-1 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>Price</span>
+            {getSortIcon('price')}
+          </button>
+          <button
+            onClick={() => handleSort('priceChange')}
+            className="w-36 text-right flex items-center justify-end gap-1 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>Price/Change</span>
+            {getSortIcon('priceChange')}
+          </button>
+          <button
+            onClick={() => handleSort('priceChange')}
+            className="w-24 text-right flex items-center justify-end gap-1 hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>Δ 24h</span>
+            {getSortIcon('priceChange')}
+          </button>
         </div>
         
         {/* Table Rows */}
         <div className="divide-y">
-          {results.map(token => (
-            <TokenSearchRow key={token.address} token={token} />
+          {sortedResults.map(token => (
+            <TokenSearchRow 
+              key={token.address} 
+              token={token} 
+              showRelevance={!!searchQuery}
+            />
           ))}
         </div>
       </div>

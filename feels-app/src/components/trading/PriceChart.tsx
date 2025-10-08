@@ -261,6 +261,8 @@ export function PriceChart({
     applyAxisType,
     setLastPriceVisibility,
     setCrosshairVisibility,
+    setFloorVisibility,
+    setGtwapVisibility,
     resetVisibleRange,
   } = useChartAdapter({
     container: chartContainer,
@@ -372,7 +374,17 @@ export function PriceChart({
   // Effects - Overlay Management
   // --------------------------------------------------------------------------
 
-  // Note: Floor and GTWAP indicators are now managed atomically in the main data update effect above
+  // Sync floor indicator visibility
+  useEffect(() => {
+    if (!isReady) return;
+    setFloorVisibility(showFloorPrice);
+  }, [isReady, showFloorPrice, setFloorVisibility]);
+
+  // Sync GTWAP indicator visibility
+  useEffect(() => {
+    if (!isReady) return;
+    setGtwapVisibility(showGTWAPPrice);
+  }, [isReady, showGTWAPPrice, setGtwapVisibility]);
 
   // --------------------------------------------------------------------------
   // Metrics Calculations
@@ -503,7 +515,7 @@ export function PriceChart({
           </div>
 
             {/* Token Metrics Grid */}
-          <div className="flex-1 overflow-x-auto ml-16">
+          <div className="flex-1 overflow-x-auto ml-14">
             <div className="grid grid-cols-5 gap-1 min-w-max">
               <div>
                 <p className="text-xs text-muted-foreground">Market Cap</p>
@@ -530,6 +542,15 @@ export function PriceChart({
                 </p>
               </div>
               <div>
+                <p className="text-xs text-muted-foreground">24hr Floor Δ</p>
+                <p className="text-sm font-semibold">
+                  <span className={metrics.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}>
+                    {metrics.floorChange24h >= 0 ? '+' : ''}
+                    {metrics.floorChange24h.toFixed(2)}%
+                  </span>
+                </p>
+              </div>
+              <div>
                 <div className="flex items-end gap-1">
                   <p className="text-xs text-muted-foreground">Floor/GTWAP</p>
                 </div>
@@ -541,15 +562,6 @@ export function PriceChart({
                     ({metrics.floorGtwapRatio.toFixed(0)}%)
                   </span>
                 </div>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Floor Δ 24h</p>
-                <p className="text-sm font-semibold">
-                  <span className={metrics.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}>
-                    {metrics.floorChange24h >= 0 ? '+' : ''}
-                    {metrics.floorChange24h.toFixed(2)}%
-                  </span>
-                </p>
               </div>
             </div>
           </div>

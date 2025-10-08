@@ -198,8 +198,8 @@ const nextConfig = {
   experimental: {
     esmExternals: 'loose',
   },
-  // Re-enabled SWC minification for better performance
-  swcMinify: true,
+  // Temporarily disable SWC minification to fix CSS issues
+  swcMinify: false,
   transpilePackages: [
     '@solana/web3.js',
     '@solana/wallet-adapter-base',

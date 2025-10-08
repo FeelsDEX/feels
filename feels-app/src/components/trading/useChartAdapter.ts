@@ -47,6 +47,7 @@ const AXIS_NAME: Record<AxisType, AxisType> = {
 interface IndicatorState {
   floorIndicatorId?: string;
   gtwapIndicatorId?: string;
+  overlayIndicatorId?: string; // Combined indicator for both Floor and GTWAP
 }
 
 // Complete chart configuration state
@@ -97,6 +98,8 @@ interface UseChartAdapterResult {
   applyAxisType: (type: 'normal' | 'logarithm' | 'percentage') => Promise<void>;
   setLastPriceVisibility: (visible: boolean) => Promise<void>;
   setCrosshairVisibility: (visible: boolean) => Promise<void>;
+  setFloorVisibility: (visible: boolean) => Promise<void>;
+  setGtwapVisibility: (visible: boolean) => Promise<void>;
   resetVisibleRange: () => void;
 }
 
@@ -349,53 +352,74 @@ async function ensureIndicatorsRegistered() {
 
   const { registerIndicator } = await import('klinecharts');
 
-  // Register Floor Price indicator
+  // Register a combined indicator that shows both Floor and GTWAP
   registerIndicator({
-    name: 'FLOOR_PRICE',
-    shortName: 'Floor',
+    name: 'FEELS_OVERLAY',
+    shortName: 'Feels',
     calcParams: [],
     figures: [
       {
         key: 'floorLine',
         title: 'Floor: ',
         type: 'line',
-        styles: (data: any, indicator: any, defaultStyles: any) => ({
+        styles: (data: any) => ({
           color: '#3B82F6',
           size: 2,
+          lineWidth: 2,
+          solid: true,
         }),
       },
-    ],
-    calc: (kLineDataList: any[], indicator: any) => {
-      const floorData = (window as any).__floorPriceData || new Map();
-      return kLineDataList.map((kLineData: any) => {
-        const value = floorData.get(kLineData.timestamp);
-        return { floorLine: value ?? null };
-      });
-    },
-  });
-
-  // Register GTWAP indicator
-  registerIndicator({
-    name: 'GTWAP',
-    shortName: 'GTWAP',
-    calcParams: [],
-    figures: [
       {
         key: 'gtwapLine',
         title: 'GTWAP: ',
         type: 'line',
-        styles: (data: any, indicator: any, defaultStyles: any) => ({
+        styles: (data: any) => ({
           color: '#5cca39',
           size: 2,
+          lineWidth: 2,
+          solid: true,
         }),
       },
     ],
+    precision: 4,
+    shouldOhlc: false,
+    shouldFormatBigNumber: true,
+    visible: true,
+    minValue: null,
+    maxValue: null,
     calc: (kLineDataList: any[], indicator: any) => {
+      const floorData = (window as any).__floorPriceData || new Map();
       const gtwapData = (window as any).__gtwapPriceData || new Map();
-      return kLineDataList.map((kLineData: any) => {
-        const value = gtwapData.get(kLineData.timestamp);
-        return { gtwapLine: value ?? null };
+      const showFloor = (window as any).__showFloorIndicator ?? true;
+      const showGtwap = (window as any).__showGtwapIndicator ?? true;
+      
+      const results = kLineDataList.map((kLineData: any) => {
+        const floorValue = showFloor ? floorData.get(kLineData.timestamp) : null;
+        const gtwapValue = showGtwap ? gtwapData.get(kLineData.timestamp) : null;
+        return { 
+          floorLine: floorValue ?? null,
+          gtwapLine: gtwapValue ?? null
+        };
       });
+      
+      // Debug logging - only log first calculation
+      if (!(window as any).__overlayCalcLogged) {
+        const firstKline = kLineDataList[0];
+        console.log('[Overlay Indicator] Calc called:', {
+          klineCount: kLineDataList.length,
+          floorDataSize: floorData.size,
+          gtwapDataSize: gtwapData.size,
+          showFloor,
+          showGtwap,
+          firstKlineTimestamp: firstKline?.timestamp,
+          firstResult: results[0],
+          hasFloorValues: results.some(r => r.floorLine !== null),
+          hasGtwapValues: results.some(r => r.gtwapLine !== null)
+        });
+        (window as any).__overlayCalcLogged = true;
+      }
+      
+      return results;
     },
   });
 
@@ -433,8 +457,8 @@ export function useChartAdapter({
     lastPriceVisible: true,
     crosshairVisible: true,
     data: [],
-    showFloor: false,
-    showGtwap: false,
+    showFloor: true,    // Changed to match PriceChart initial state
+    showGtwap: true,    // Changed to match PriceChart initial state
     floorData: new Map(),
     gtwapData: new Map(),
   });
@@ -456,6 +480,11 @@ export function useChartAdapter({
 
   // Register custom indicators on mount
   useEffect(() => {
+    // Reset debug flags
+    (window as any).__floorCalcLogged = false;
+    (window as any).__gtwapCalcLogged = false;
+    (window as any).__overlayCalcLogged = false;
+    
     ensureIndicatorsRegistered().catch((error) => {
       console.error('[useChartAdapter] Failed to register indicators', error);
     });
@@ -563,6 +592,7 @@ export function useChartAdapter({
   /**
    * Core function that applies the merged configuration to the chart
    * This handles axis type, overlays, visibility settings, and styles
+   * This should be pure and idempotent - same config always produces same result
    */
   const applyConfiguration = useCallback(async () => {
     const chart = chartRef.current;
@@ -582,12 +612,12 @@ export function useChartAdapter({
 
     const { LineType } = await import('klinecharts');
     const baseStyles = baseStylesRef.current ?? cloneStyles(chart.getStyles?.() ?? {});
-    const currentData = merged.data.length > 0 ? merged.data : (chart.getDataList() as KLineData[]);
+    const chartData = merged.data.length > 0 ? merged.data : (chart.getDataList() as KLineData[]);
     const configForStyles: ChartConfigState = {
       axisType: merged.axisType,
       lastPriceVisible: merged.lastPriceVisible,
       crosshairVisible: merged.crosshairVisible,
-      data: currentData,
+      data: chartData,
       showFloor: merged.showFloor,
       showGtwap: merged.showGtwap,
       floorData: merged.floorData,
@@ -597,62 +627,78 @@ export function useChartAdapter({
     const stylesToApply = buildStyles(baseStyles, configForStyles, LineType);
     chart.setStyles(stylesToApply as any);
 
-    // Update global data for indicators
+    // Update global data and visibility flags for the combined indicator
     (window as any).__floorPriceData = merged.floorData;
     (window as any).__gtwapPriceData = merged.gtwapData;
+    (window as any).__showFloorIndicator = merged.showFloor;
+    (window as any).__showGtwapIndicator = merged.showGtwap;
+    
+    console.log('[Chart] Applying configuration:', {
+      floorDataSize: merged.floorData.size,
+      gtwapDataSize: merged.gtwapData.size,
+      showFloor: merged.showFloor,
+      showGtwap: merged.showGtwap
+    });
 
-    // Handle Floor indicator
-    if (merged.showFloor && merged.floorData.size > 0) {
-      if (!indicatorStateRef.current.floorIndicatorId) {
-        try {
-          const id = chart.createIndicator({
-            name: 'FLOOR_PRICE',
-            id: 'floor_indicator',
-          }, false, { id: 'candle_pane' });
-          
-          if (id) {
-            indicatorStateRef.current.floorIndicatorId = id;
-            console.log('[Chart] Created floor indicator:', id);
-          }
-        } catch (error) {
-          console.error('[Chart] Failed to create floor indicator:', error);
-        }
-      }
-    } else if (indicatorStateRef.current.floorIndicatorId) {
+    // Get current data before any modifications
+    const currentData = chart.getDataList();
+    const hasData = currentData && currentData.length > 0;
+    
+    // Check if we need the overlay indicator
+    const needsOverlay = (merged.showFloor && merged.floorData.size > 0) || 
+                        (merged.showGtwap && merged.gtwapData.size > 0);
+    const hasOverlay = !!indicatorStateRef.current.overlayIndicatorId;
+    
+    // Remove old individual indicators if they exist (cleanup from old approach)
+    if (indicatorStateRef.current.floorIndicatorId) {
       try {
         chart.removeIndicator({ id: indicatorStateRef.current.floorIndicatorId });
         indicatorStateRef.current.floorIndicatorId = undefined;
-        console.log('[Chart] Removed floor indicator');
       } catch (error) {
-        console.warn('[Chart] Failed to remove floor indicator:', error);
+        // Ignore errors from cleanup
       }
     }
-
-    // Handle GTWAP indicator
-    if (merged.showGtwap && merged.gtwapData.size > 0) {
-      if (!indicatorStateRef.current.gtwapIndicatorId) {
-        try {
-          const id = chart.createIndicator({
-            name: 'GTWAP',
-            id: 'gtwap_indicator',
-          }, false, { id: 'candle_pane' });
-          
-          if (id) {
-            indicatorStateRef.current.gtwapIndicatorId = id;
-            console.log('[Chart] Created GTWAP indicator:', id);
-          }
-        } catch (error) {
-          console.error('[Chart] Failed to create GTWAP indicator:', error);
-        }
-      }
-    } else if (indicatorStateRef.current.gtwapIndicatorId) {
+    
+    if (indicatorStateRef.current.gtwapIndicatorId) {
       try {
         chart.removeIndicator({ id: indicatorStateRef.current.gtwapIndicatorId });
         indicatorStateRef.current.gtwapIndicatorId = undefined;
-        console.log('[Chart] Removed GTWAP indicator');
       } catch (error) {
-        console.warn('[Chart] Failed to remove GTWAP indicator:', error);
+        // Ignore errors from cleanup
       }
+    }
+    
+    // Manage the combined overlay indicator
+    if (!needsOverlay && hasOverlay) {
+      // Remove overlay if not needed
+      try {
+        chart.removeIndicator({ id: indicatorStateRef.current.overlayIndicatorId });
+        indicatorStateRef.current.overlayIndicatorId = undefined;
+        console.log('[Chart] Removed overlay indicator');
+      } catch (error) {
+        console.warn('[Chart] Failed to remove overlay indicator:', error);
+      }
+    } else if (needsOverlay && !hasOverlay) {
+      // Create overlay if needed
+      try {
+        const id = chart.createIndicator({
+          name: 'FEELS_OVERLAY',
+          id: 'overlay_indicator',
+        }, false, { id: 'candle_pane' });
+        
+        if (id) {
+          indicatorStateRef.current.overlayIndicatorId = id;
+          console.log('[Chart] Created overlay indicator:', id);
+        }
+      } catch (error) {
+        console.error('[Chart] Failed to create overlay indicator:', error);
+      }
+    }
+    
+    // Always refresh data if we have any to ensure indicator updates
+    if (hasData && (needsOverlay || hasOverlay)) {
+      console.log('[Chart] Refreshing data after configuration');
+      chart.applyNewData(currentData as any, false);
     }
 
     if (merged.axisType === 'normal') {
@@ -676,6 +722,9 @@ export function useChartAdapter({
       return;
     }
 
+    // Ensure indicators are registered before creating the chart
+    await ensureIndicatorsRegistered();
+
     const { init, DomPosition, LineType, CandleType, TooltipShowRule, TooltipShowType, dispose } =
       await import('klinecharts');
 
@@ -686,6 +735,9 @@ export function useChartAdapter({
 
     chartRef.current = chart;
     if (!chart) return;
+
+    // Expose chart instance on container for debugging
+    (container as any).__chart__ = chart;
 
     chart.setCustomApi({
       formatDate: formatDateRef.current,
@@ -764,6 +816,7 @@ export function useChartAdapter({
 
   /**
    * Applies new price data and indicators to the chart atomically
+   * This is the primary entry point for chart updates
    */
   const applyChartData = useCallback(
     (config: {
@@ -776,68 +829,35 @@ export function useChartAdapter({
         return;
       }
 
-      // Update data in configuration
+      // Update all configuration atomically
       defaultConfigRef.current.data = config.data;
-      if (overridesRef.current.data) {
-        delete overridesRef.current.data;
-      }
-
-      // Update indicator data and visibility
+      
+      // Always update both floor and gtwap data if provided
       if (config.floor) {
-        console.log('[Chart] Floor config:', { 
-          visible: config.floor.visible, 
-          seriesLength: config.floor.series.length,
-          firstPoint: config.floor.series[0],
-          lastPoint: config.floor.series[config.floor.series.length - 1]
-        });
-        
-        // Convert series to Map for efficient lookup
         const floorMap = new Map<number, number>();
         config.floor.series.forEach(point => {
           floorMap.set(point.timestamp, point.value);
         });
-        
         defaultConfigRef.current.floorData = floorMap;
         defaultConfigRef.current.showFloor = config.floor.visible;
-        
-        if (overridesRef.current.floorData) {
-          delete overridesRef.current.floorData;
-        }
-        if (overridesRef.current.showFloor !== undefined) {
-          delete overridesRef.current.showFloor;
-        }
       }
       
-      // Handle GTWAP indicator
       if (config.gtwap) {
-        console.log('[Chart] GTWAP config:', { 
-          visible: config.gtwap.visible, 
-          seriesLength: config.gtwap.series.length,
-          firstPoint: config.gtwap.series[0],
-          lastPoint: config.gtwap.series[config.gtwap.series.length - 1]
-        });
-        
-        // Convert series to Map for efficient lookup
         const gtwapMap = new Map<number, number>();
         config.gtwap.series.forEach(point => {
           gtwapMap.set(point.timestamp, point.value);
         });
-        
         defaultConfigRef.current.gtwapData = gtwapMap;
         defaultConfigRef.current.showGtwap = config.gtwap.visible;
-        
-        if (overridesRef.current.gtwapData) {
-          delete overridesRef.current.gtwapData;
-        }
-        if (overridesRef.current.showGtwap !== undefined) {
-          delete overridesRef.current.showGtwap;
-        }
       }
 
-      // Apply data first
+      // Clear any overrides since we're setting new defaults
+      overridesRef.current = {};
+
+      // Apply new data to chart
       chart.applyNewData(config.data as any, false);
       
-      // Then apply all configuration including indicators atomically
+      // Apply configuration which will handle indicators declaratively
       void applyConfiguration();
     },
     [applyConfiguration]
@@ -946,6 +966,38 @@ export function useChartAdapter({
     [applyConfiguration]
   );
 
+  /**
+   * Toggles visibility of the floor indicator
+   */
+  const setFloorVisibility = useCallback(
+    async (visible: boolean) => {
+      // Update visibility in default config to ensure it persists
+      defaultConfigRef.current.showFloor = visible;
+      // Clear any override
+      if (overridesRef.current.showFloor !== undefined) {
+        delete overridesRef.current.showFloor;
+      }
+      await applyConfiguration();
+    },
+    [applyConfiguration]
+  );
+
+  /**
+   * Toggles visibility of the GTWAP indicator
+   */
+  const setGtwapVisibility = useCallback(
+    async (visible: boolean) => {
+      // Update visibility in default config to ensure it persists
+      defaultConfigRef.current.showGtwap = visible;
+      // Clear any override
+      if (overridesRef.current.showGtwap !== undefined) {
+        delete overridesRef.current.showGtwap;
+      }
+      await applyConfiguration();
+    },
+    [applyConfiguration]
+  );
+
   // --------------------------------------------------------------------------
   // Configuration Sync Effects
   // --------------------------------------------------------------------------
@@ -982,6 +1034,8 @@ export function useChartAdapter({
     applyAxisType,
     setLastPriceVisibility,
     setCrosshairVisibility,
+    setFloorVisibility,
+    setGtwapVisibility,
     resetVisibleRange,
   };
 }

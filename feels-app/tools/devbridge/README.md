@@ -1,13 +1,12 @@
 # DevBridge
 
-DevBridge is a lightweight WebSocket-based development tool that enables CLI tooks to interact with the Feels app during development. It provides real-time log streaming, event monitoring, and command execution capabilities.
+DevBridge is a lightweight WebSocket-based development tool that enables CLI tools to interact with the Feels app during development. It provides real-time log streaming, event monitoring, and command execution capabilities.
 
 ## Features
 
 - **Real-time log streaming**: Mirror browser console logs to CLI
 - **Event tracking**: Monitor route changes, errors, and custom events
 - **Command execution**: Send commands from CLI to browser
-- **LLM-friendly**: Designed for tool-based interaction
 - **Zero production footprint**: Completely disabled in production builds
 
 ## Setup
@@ -56,38 +55,42 @@ npm run devbridge interactive
 
 ## Available Commands
 
+### Core Navigation & Testing
 - `ping` - Test connection (returns `{pong: true}`)
 - `navigate` - Navigate to a route: `{"path": "/path"}`
 - `refresh` - Refresh current route
 - `getPath` - Get current pathname
+- `appInfo` - Get app version and environment
+
+### Feature Flags & Storage
 - `toggleFlag` - Toggle feature flag: `{"name": "flagName"}`
 - `getFlags` - Get all feature flags
-- `appInfo` - Get app version and environment
 - `clearStorage` - Clear localStorage and sessionStorage
 - `storageInfo` - Get storage usage info
+
+### System Information
 - `windowInfo` - Get window dimensions
 - `perfMetrics` - Get performance metrics
+- `setLogLevel` - Set console log level: `{"level": "all" | "warn" | "error" | "none"}`
 
-## LLM Integration
+### Testing & Events
+- `testEvent` - Trigger a test event: `{"message": "optional message"}`
+- `simulateWallet` - Simulate wallet connection: `{"connected": true/false}`
 
-The DevBridge is designed to be used by LLMs through their tool-calling capabilities:
+### Chart Debugging Commands
+- `setChartAxisType` - Set chart y-axis type: `{"type": "linear" | "logarithmic" | "percentage"}`
+- `getChartState` - Get chart state information
+- `debugChart` - Get detailed chart instance info and available methods
+- `recalcChartZoom` - Force chart zoom recalculation
+- `testOverlayToggle` - Test floor/GTWAP overlay toggle functionality
+- `debugUsdToggle` - Debug USD toggle and chart data
+- `debugLogAxis` - Debug logarithmic axis behavior
+- `getChartDebugInfo` - Get comprehensive chart debug information
 
-```typescript
-// Example LLM tool definition
-{
-  name: "devbridge",
-  description: "Interact with Feels app via DevBridge",
-  parameters: {
-    command: "run",
-    name: "navigate",
-    args: { path: "/search" }
-  }
-}
-```
 
 ## Adding Custom Commands
 
-Add commands in `app/devbridge/commands.ts`:
+Add commands in `tools/devbridge/client/commands.ts`:
 
 ```typescript
 registerCommand('myCommand', async ({ param }: { param: string }) => {
