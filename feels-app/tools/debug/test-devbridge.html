@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DevBridge Test</title>
+</head>
+<body>
+    <h1>DevBridge Console Test</h1>
+    <button onclick="testLogs()">Test Console Logs</button>
+    <div id="status">Ready to test</div>
+    
+    <script>
+        function testLogs() {
+            console.log('TEST: This is a test log message');
+            console.log('WASM: Testing WASM-related log');
+            console.warn('TEST: This is a warning');
+            console.error('TEST: This is an error');
+            document.getElementById('status').textContent = 'Logs sent - check DevBridge monitor';
+        }
+        
+        // Test on load
+        console.log('TEST: Page loaded at', new Date().toISOString());
+    </script>
+</body>
+</html>

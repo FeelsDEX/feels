@@ -1,0 +1,20 @@
+# feels-app specific ignores
+# (Most patterns inherited from root .gitignore)
+
+# Next.js build artifacts (specific to this app)
+/.next/
+/out/
+/build
+
+# Testing
+/coverage
+
+# Velite content processor
+.velite
+/public/static/
+
+# Temporary test directories
+/test-data/
+/chart-demo/
+/preview/
+

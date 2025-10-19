@@ -2,47 +2,56 @@
 name = "feels"
 version = "0.1.0"
 edition = "2021"
-description = "Concentrated liquidity AMM protocol for Solana"
-license = "MIT"
-repository = "https://github.com/timewave/feels-solana"
-readme = "../README.md"
-keywords = ["solana", "amm", "defi", "liquidity", "uniswap"]
-categories = ["cryptography::cryptocurrencies", "finance"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "feels"
 
 [features]
-default = []
 no-entrypoint = []
 cpi = ["no-entrypoint"]
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+localnet = []
 anchor-debug = []
+telemetry = []
 custom-heap = []
 custom-panic = []
 no-idl = []
 no-log-ix-name = []
 
 [dependencies]
-anchor-lang = { workspace = true, features = ["init-if-needed"] }
-anchor-spl = { workspace = true }
-solana-program = { workspace = true }
-borsh = { workspace = true }
-bytemuck = { workspace = true }
-spl-token = { workspace = true }
-spl-token-2022 = { workspace = true }
-spl-token-metadata-interface = { workspace = true }
-spl-associated-token-account = { workspace = true }
-spl-math = { version = "0.3.0" }
-ruint = { version = "1.12.0", default-features = false }
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+solana-program = { version = "2.2.1" }
+borsh = { version = "0.10.3" }
+bytemuck = { version = "1.14" }
+spl-token = { version = "7.0" }
+spl-token-2022 = { version = "6.0", default-features = false }
+spl-associated-token-account = { version = "6.0" }
+mpl-token-metadata = { version = "5.1.1", default-features = false }
+orca_whirlpools_core = { version = "2.0.0", default-features = false }
+ethnum = { version = "1.5.0", default-features = false }
+fixed = { version = "1.28", default-features = false, features = ["serde"] }
+num-traits = { version = "0.2", default-features = false }
+micromath = { version = "2.1", default-features = false }
+integer-sqrt = { version = "0.1" }
+getrandom = { version = "0.2.2", features = ["custom"] }
+static_assertions = "1.1"
 
 [dev-dependencies]
-getrandom = { version = "0.2.16", features = ["custom"] }
-# Integration test dependencies disabled due to yanked solana_rbpf
-# solana-program-test = { workspace = true }
-# solana-sdk = { workspace = true }
-# tokio = { workspace = true }
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)', 'cfg(target_os, values("solana"))'] }
+solana-program-test = "=2.2.1"
+solana-sdk = "=2.2.1"
+tokio = { version = "1.33", features = ["full"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+proptest = "1.0"
+rand = "0.8"
+criterion = "0.5"
+mpl-token-metadata = "5.0"
+hex = "0.4"
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+tokio-tungstenite = "0.20"
+futures = "0.3"
+uuid = { version = "1.6", features = ["v4", "serde"] }

@@ -1,0 +1,143 @@
+# Justfile for feels-indexer integration tests
+
+# Import shared modules from main justfile system
+import '../../justfiles/common.just'
+import '../../justfiles/services.just'
+import '../../justfiles/solana-tools.just'
+
+# Default recipe to list all available commands
+default:
+    @just --list
+
+# Run all tests
+test-all: test-unit test-integration
+
+# Run unit tests
+test-unit:
+    nix develop ../..#indexer -c cargo test --lib --bins
+
+# Run integration tests with Geyser-enabled devnet
+test-integration-geyser:
+    @echo "Starting integration test with Geyser-enabled devnet..."
+    @# Ensure services are started using centralized recipes
+    @just services-start
+    @just db-create feels_indexer_test
+    @# Run migrations
+    @nix develop ../..#indexer -c bash -c '\
+        cd .. && DATABASE_URL=postgresql://localhost/feels_indexer_test sqlx migrate run && \
+        cd tests && \
+        echo "Cleaning test data..." && \
+        rm -rf ./test-data && \
+        echo "Running integration test with Geyser..." && \
+        RUST_LOG=info,feels_indexer=debug cargo test integration_devnet -- --ignored --nocapture; \
+        TEST_RESULT=$$?; \
+        exit $$TEST_RESULT \
+    '
+    @# Stop services using centralized recipes
+    @just services-stop
+
+# Run integration tests with local devnet
+test-integration:
+    @echo "Starting integration test with nix environment..."
+    @# Start services using centralized recipes
+    @just services-start
+    @just db-create feels_indexer_test
+    @# Run migrations and tests
+    @nix develop ../..#indexer -c bash -c '\
+        cd .. && DATABASE_URL=postgresql://localhost/feels_indexer_test sqlx migrate run && \
+        cd tests && \
+        echo "Cleaning test data..." && \
+        rm -rf ./test-data && \
+        echo "Running integration test..." && \
+        RUST_LOG=info,feels_indexer=debug cargo test integration_devnet -- --ignored --nocapture; \
+        TEST_RESULT=$$?; \
+        exit $$TEST_RESULT \
+    '
+    @# Stop services using centralized recipes
+    @just services-stop
+
+# Setup test environment (databases, directories)
+setup-test-env:
+    @echo "Setting up test environment..."
+    @just pg-start
+    @just db-create feels_indexer_test
+    @mkdir -p test-data/{rocksdb,tantivy}
+    @just show-success "Test environment ready"
+
+# Clean test environment
+clean-test-env:
+    @echo "Cleaning test environment..."
+    @just db-drop feels_indexer_test
+    @rm -rf test-data
+    @rm -rf test-ledger
+    @just services-stop
+    @just show-success "Test environment cleaned"
+
+# Run specific test with logging
+test name:
+    nix develop ../..#indexer -c bash -c 'RUST_LOG=debug cargo test {{name}} -- --nocapture'
+
+# Run tests with coverage
+test-coverage:
+    nix develop ../..#indexer -c cargo tarpaulin --out Html --output-dir ./coverage
+
+# Run benchmarks
+bench:
+    nix develop ../..#indexer -c cargo bench
+
+# Check for common issues before running tests
+pre-test-check:
+    @echo "Checking test prerequisites in nix environment..."
+    @nix develop ../..#indexer -c bash -c '\
+        echo "Checking PostgreSQL..." && \
+        which pg_isready > /dev/null || (echo "PostgreSQL tools not found in nix env!" && exit 1) && \
+        echo "Checking Redis..." && \
+        which redis-cli > /dev/null || (echo "Redis tools not found in nix env!" && exit 1) && \
+        echo "Checking devnet.nix..." && \
+        test -f ../nix/devnet.nix || (echo "devnet.nix not found!" && exit 1) && \
+        echo "All prerequisites available!" \
+    '
+
+# Start local devnet in background (delegate to main system)
+start-devnet:
+    @cd ../.. && just local-devnet
+
+# Stop local devnet (use the same pattern as main e2e stop)
+stop-devnet:
+    @echo "Stopping local devnet..."
+    @pkill -f "solana-test-validator" || true
+
+# Run integration test in CI mode
+ci-test:
+    @just pre-test-check
+    @just test-integration
+
+# Watch for changes and re-run tests
+watch:
+    nix develop ../..#indexer -c cargo watch -x "test --lib" -i "test-data/*"
+
+# Generate test data for benchmarks
+generate-test-data:
+    @echo "Generating test data..."
+    nix develop ../..#indexer -c cargo run --bin generate-test-data --release
+
+# Profile memory usage during tests
+profile-memory:
+    nix develop ../..#indexer -c bash -c 'RUST_LOG=info valgrind --leak-check=full --show-leak-kinds=all cargo test integration_devnet -- --ignored'
+
+# Run stress test
+stress-test:
+    @echo "Running stress test..."
+    nix develop ../..#indexer -c cargo test stress_test_indexer -- --ignored --release
+
+# Lint test code
+lint:
+    nix develop ../..#indexer -c cargo clippy --tests -- -D warnings
+
+# Format test code
+fmt:
+    nix develop ../..#indexer -c cargo fmt --all
+
+# Run all checks (format, lint, test)
+check-all: fmt lint test-unit
+    @echo "All checks passed!"

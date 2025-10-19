@@ -1,0 +1,54 @@
+{
+  // Rust Analyzer Configuration for Nix Environment
+  
+  // Use rust-analyzer from the Nix devshell
+  "rust-analyzer.server.path": "rust-analyzer",
+  
+  // Ensure proc-macros work properly with Nix
+  "rust-analyzer.procMacro.enable": true,
+  "rust-analyzer.procMacro.attributes.enable": true,
+  "rust-analyzer.procMacro.server": null,
+  
+  // Check on save for better feedback
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": [
+    "--all-targets",
+    "--",
+    "-W",
+    "clippy::all"
+  ],
+  
+  // Cargo configuration
+  "rust-analyzer.cargo.allTargets": true,
+  "rust-analyzer.cargo.features": "all",
+  
+  // Better diagnostics
+  "rust-analyzer.diagnostics.enable": true,
+  "rust-analyzer.diagnostics.experimental.enable": false,
+  
+  // Workspace configuration
+  "rust-analyzer.linkedProjects": [
+    "./Cargo.toml",
+    "./sdk/Cargo.toml",
+    "./feels-indexer/Cargo.toml",
+    "./feels-jupiter-adapter/Cargo.toml"
+  ],
+  
+  // Files to exclude from watching (performance)
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/test-ledger/**": true,
+    "**/node_modules/**": true,
+    "**/ext/**": true,
+    "**/.git/**": true,
+    "**/result": true
+  },
+  
+  // Terminal integration - ensure commands run in Nix shell
+  "terminal.integrated.env.osx": {
+    "IN_NIX_SHELL": "impure"
+  },
+  "terminal.integrated.env.linux": {
+    "IN_NIX_SHELL": "impure"
+  }
+}

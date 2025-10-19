@@ -1,0 +1,57 @@
+/* Override react-easy-crop's grid styles */
+
+/* Target the pseudo-elements that create the grid lines using borders */
+.use-dark-grid-area::before,
+.use-dark-grid-area::after {
+  border-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.use-light-grid-area::before,
+.use-light-grid-area::after {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Also target nested elements that might have grid lines */
+.use-dark-grid-area > *::before,
+.use-dark-grid-area > *::after {
+  border-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.use-light-grid-area > *::before,
+.use-light-grid-area > *::after {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Alternative targeting using container class */
+.use-dark-grid .reactEasyCrop_CropAreaGrid::before,
+.use-dark-grid .reactEasyCrop_CropAreaGrid::after {
+  border-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.use-light-grid .reactEasyCrop_CropAreaGrid::before,
+.use-light-grid .reactEasyCrop_CropAreaGrid::after {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Keep the crop area border consistent with grid lines */
+/* Target the element with all the classes you mentioned */
+.reactEasyCrop_CropArea.reactEasyCrop_CropAreaGrid.use-dark-grid-area {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.reactEasyCrop_CropArea.reactEasyCrop_CropAreaGrid.use-light-grid-area {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Fallback for other targeting methods */
+.use-dark-grid .reactEasyCrop_CropArea {
+  border: 1px solid rgba(0, 0, 0, 0.4) !important;
+}
+
+.use-light-grid .reactEasyCrop_CropArea {
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}

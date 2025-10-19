@@ -1,11 +1,33 @@
 /// Unit test module organization
-/// 
-/// This module organizes unit tests by functional area:
-/// - math_operations: Mathematical utilities and arithmetic
-/// - instruction_validation: Instruction handlers and account constraints
-/// - tick_math: Tick math correctness and safety tests
-/// - math_tick_edge_cases: Comprehensive edge case tests for tick math security
-pub mod instruction_validation;
-pub mod math_operations;
-pub mod math_tick;
-pub mod math_tick_edge_cases;
+///
+/// Core unit tests for protocol components organized by category
+// Category modules
+pub mod buffer;
+pub mod jit;
+pub mod math;
+pub mod oracle;
+pub mod pomm;
+pub mod position;
+pub mod security;
+
+// Instruction tests subdirectory
+pub mod instructions;
+
+// Static compile-time assertions
+pub mod static_assertions;
+pub mod test_static_assertions;
+
+// Simple example test
+pub mod test_simple_example;
+
+// Token ordering validation tests
+pub mod test_token_ordering;
+
+// Test helpers
+pub mod test_helpers;
+
+// Protocol initialization test
+pub mod test_protocol_init;
+
+// Utils tests
+pub mod utils;

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vanity Miner WASM Test</title>
+</head>
+<body>
+    <h1>Vanity Miner WASM Test</h1>
+    <div id="status">Loading...</div>
+    <div id="result"></div>
+    
+    <script type="module">
+        import init, { VanityMiner, generate_random_keypair, benchmark_single_thread } from './pkg/vanity_miner_wasm.js';
+        
+        async function test() {
+            const status = document.getElementById('status');
+            const result = document.getElementById('result');
+            
+            try {
+                // Initialize WASM
+                status.textContent = 'Initializing WASM...';
+                await init();
+                
+                // Test random keypair generation
+                status.textContent = 'Generating random keypair...';
+                const randomKp = generate_random_keypair();
+                console.log('Random keypair:', randomKp);
+                
+                // Benchmark single thread
+                status.textContent = 'Benchmarking...';
+                const rate = benchmark_single_thread(1000);
+                result.innerHTML += `<p>Single thread rate: ${rate.toLocaleString()} attempts/sec</p>`;
+                
+                // Create miner instance
+                status.textContent = 'Initializing miner...';
+                const miner = new VanityMiner('FEEL');
+                result.innerHTML += `<p>Mining for addresses ending with the string 'FEEL'</p>`;
+                
+                // Mine a batch
+                status.textContent = 'Mining vanity address...';
+                const start = performance.now();
+                const found = miner.mine_sync(100000);
+                const elapsed = performance.now() - start;
+                
+                if (found) {
+                    result.innerHTML += `
+                        <p><strong>Found vanity address!</strong></p>
+                        <p>Public Key: ${found.public_key}</p>
+                        <p>Attempts: ${found.attempts.toLocaleString()}</p>
+                        <p>Time: ${elapsed.toFixed(2)}ms</p>
+                    `;
+                } else {
+                    result.innerHTML += `<p>No vanity address found in 100,000 attempts (${elapsed.toFixed(2)}ms)</p>`;
+                }
+                
+                status.textContent = 'Test complete!';
+            } catch (error) {
+                status.textContent = 'Error: ' + error.toString();
+                console.error(error);
+            }
+        }
+        
+        test();
+    </script>
+</body>
+</html>

@@ -1,0 +1,212 @@
+//! Parameter validation utilities
+//!
+//! Provides comprehensive validation for instruction parameters to prevent
+//! malicious or invalid inputs that could compromise market integrity.
+
+use crate::{constants::*, error::FeelsError};
+use anchor_lang::prelude::*;
+
+/// Validate base fee in basis points
+pub fn validate_base_fee_bps(fee_bps: u16) -> Result<()> {
+    // Minimum fee to prevent zero-fee exploitation
+    const MIN_BASE_FEE_BPS: u16 = 1; // 0.01%
+
+    require!(
+        (MIN_BASE_FEE_BPS..=MAX_FEE_BPS).contains(&fee_bps),
+        FeelsError::InvalidPrice
+    );
+
+    // Warn if fee is unusually high
+    if fee_bps > 100 {
+        // 1%
+        msg!("Warning: High base fee of {}bps", fee_bps);
+    }
+
+    Ok(())
+}
+
+/// Validate tick spacing parameters
+pub fn validate_tick_spacing_param(tick_spacing: u16) -> Result<()> {
+    // Valid tick spacings are powers of 2 for efficiency
+    const VALID_TICK_SPACINGS: [u16; 9] = [1, 2, 4, 6, 8, 10, 16, 32, 64];
+
+    require!(
+        VALID_TICK_SPACINGS.contains(&tick_spacing),
+        FeelsError::InvalidTickSpacing
+    );
+
+    Ok(())
+}
+
+/// Validate initial sqrt price
+pub fn validate_initial_sqrt_price(sqrt_price: u128) -> Result<()> {
+    // Minimum sqrt price (prevents extreme prices)
+    const MIN_SQRT_PRICE: u128 = 4295048016; // ~1e-9 price
+                                             // Maximum sqrt price (prevents overflow)
+    const MAX_SQRT_PRICE: u128 = 79226673515401279992447579055; // ~1e9 price
+
+    require!(
+        (MIN_SQRT_PRICE..=MAX_SQRT_PRICE).contains(&sqrt_price),
+        FeelsError::InvalidPrice
+    );
+
+    Ok(())
+}
+
+/// Validate tick range parameters
+pub fn validate_tick_range_params(
+    tick_lower: i32,
+    tick_upper: i32,
+    tick_spacing: u16,
+) -> Result<()> {
+    // Validate bounds
+    require!(
+        (MIN_TICK..=MAX_TICK).contains(&tick_lower),
+        FeelsError::InvalidTickRange
+    );
+    require!(
+        (MIN_TICK..=MAX_TICK).contains(&tick_upper),
+        FeelsError::InvalidTickRange
+    );
+
+    // Validate ordering
+    require!(tick_lower < tick_upper, FeelsError::InvalidTickRange);
+
+    // Validate alignment to tick spacing
+    require!(
+        tick_lower % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+    require!(
+        tick_upper % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+
+    // Validate minimum range width (prevent sandwich attacks)
+    let min_ticks = (tick_spacing as i32) * 10; // At least 10 tick spacings
+    require!(
+        tick_upper - tick_lower >= min_ticks,
+        FeelsError::InvalidTickRange
+    );
+
+    Ok(())
+}
+
+/// Validate liquidity amount
+pub fn validate_liquidity_amount(liquidity: u128) -> Result<()> {
+    require!(
+        liquidity >= MIN_LIQUIDITY,
+        FeelsError::LiquidityBelowMinimum
+    );
+
+    // Check for overflow risk
+    // Check for reasonable upper bound
+    // MAX_LIQUIDITY could be defined in constants if needed
+    require!(
+        liquidity <= u128::MAX / 2, // Leave room for calculations
+        FeelsError::MathOverflow
+    );
+
+    Ok(())
+}
+
+/// Validate swap amount
+pub fn validate_swap_amount(amount: u64, is_exact_out: bool) -> Result<()> {
+    require!(amount > 0, FeelsError::ZeroAmount);
+
+    // For exact out swaps, limit to prevent excessive slippage
+    if is_exact_out {
+        const MAX_EXACT_OUT: u64 = 1_000_000_000_000; // 1M tokens with 6 decimals
+        require!(amount <= MAX_EXACT_OUT, FeelsError::AmountOverflow);
+    }
+
+    Ok(())
+}
+
+/// Validate slippage tolerance
+pub fn validate_slippage_tolerance(amount_min: u64, amount_expected: u64) -> Result<()> {
+    // Maximum allowed slippage: 50%
+    const MAX_SLIPPAGE_BPS: u64 = 5000;
+
+    if amount_expected > 0 {
+        let slippage_bps = ((amount_expected - amount_min) * 10_000) / amount_expected;
+
+        require!(
+            slippage_bps <= MAX_SLIPPAGE_BPS,
+            FeelsError::SlippageExceeded
+        );
+
+        // Warn on high slippage
+        if slippage_bps > 1000 {
+            // 10%
+            msg!("Warning: High slippage tolerance of {}bps", slippage_bps);
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate POMM parameters
+pub fn validate_pomm_tick_width(tick_width: i32, tick_spacing: u16) -> Result<()> {
+    require!(tick_width > 0, FeelsError::InvalidTickRange);
+
+    // Must be aligned to tick spacing
+    require!(
+        tick_width % tick_spacing as i32 == 0,
+        FeelsError::TickNotSpaced
+    );
+
+    // Validate within POMM bounds
+    require!(
+        (POMM_MIN_WIDTH..=POMM_MAX_WIDTH).contains(&tick_width),
+        FeelsError::InvalidTickRange
+    );
+
+    Ok(())
+}
+
+/// Validate floor tick parameters
+pub fn validate_floor_tick(floor_tick: i32, current_tick: i32, buffer_ticks: u16) -> Result<()> {
+    // Floor tick must be below current price with buffer
+    require!(
+        floor_tick < current_tick - buffer_ticks as i32,
+        FeelsError::InvalidPrice
+    );
+
+    // Floor tick must be within valid range
+    require!(
+        (MIN_TICK..=MAX_TICK).contains(&floor_tick),
+        FeelsError::InvalidTickRange
+    );
+
+    Ok(())
+}
+
+/// Validate protocol fee distribution
+pub fn validate_fee_distribution(
+    buffer_tau_bps: u16,
+    treasury_bps: u16,
+    creator_bps: u16,
+) -> Result<()> {
+    // Total must equal 100%
+    let total_bps = buffer_tau_bps as u32 + treasury_bps as u32 + creator_bps as u32;
+    require!(total_bps == 10_000, FeelsError::InvalidPrice);
+
+    // Each component must be reasonable
+    require!(
+        (2000..=8000).contains(&buffer_tau_bps), // 20-80%
+        FeelsError::InvalidPrice
+    );
+
+    require!(
+        treasury_bps <= 3000, // Max 30%
+        FeelsError::InvalidPrice
+    );
+
+    require!(
+        creator_bps <= 1000, // Max 10%
+        FeelsError::InvalidPrice
+    );
+
+    Ok(())
+}

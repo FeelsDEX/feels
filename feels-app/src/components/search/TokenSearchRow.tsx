@@ -1,0 +1,151 @@
+'use client';
+
+import React from 'react';
+import { TokenSearchResult } from '@/utils/token-search';
+import { Badge } from '@/components/ui/badge';
+// import { TrendingUp, TrendingDown } from 'lucide-react';
+import Link from 'next/link';
+import Image from 'next/image';
+import feelsGuyImage from '@/assets/images/feels_guy.png';
+
+interface TokenSearchRowProps {
+  token: TokenSearchResult;
+  showRelevance?: boolean;
+}
+
+export const TokenSearchRow = React.memo(function TokenSearchRow({ token, showRelevance }: TokenSearchRowProps) {
+  const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
+  // const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
+  
+  return (
+    <Link href={`/token/${token.address}`} className="block">
+      {/* Desktop Layout */}
+      <div className="hidden md:flex items-center gap-4 px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+        {/* Token Image */}
+        <div className="w-10 h-10 relative flex-shrink-0">
+          <Image
+            src={token.imageUrl}
+            alt={token.name}
+            fill
+            sizes="40px"
+            className="rounded-md object-cover"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.src = feelsGuyImage.src;
+            }}
+          />
+        </div>
+        
+        {/* Name & Symbol */}
+        <div className="flex-1 min-w-[200px]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div>
+                <div className="font-medium">{token.name}</div>
+                <div className="text-sm text-muted-foreground">{token.symbol}</div>
+              </div>
+              {token.isGraduated && (
+                <Badge variant="secondary" className="text-xs self-start">
+                  Graduated
+                </Badge>
+              )}
+            </div>
+            {showRelevance && token._score !== undefined && (
+              <div className="text-sm text-muted-foreground">
+                {(token._score * 100).toFixed(0)}%
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Market Cap */}
+        <div className="w-24 text-right">
+          <div className="text-sm font-medium">{token.marketCapFormatted}</div>
+        </div>
+        
+        {/* 24h Volume */}
+        <div className="w-24 text-right">
+          <div className="text-sm font-medium">{token.volume24hFormatted}</div>
+        </div>
+        
+        {/* Price (as 24h Range placeholder) */}
+        <div className="w-28 text-right">
+          <div className="text-sm font-medium">${token.price.toFixed(4)}</div>
+        </div>
+        
+        {/* Price/Change (as Floor/GTWAP placeholder) */}
+        <div className="w-36 text-right">
+          <div className="flex items-baseline justify-end gap-0.5">
+            <span className="text-sm font-medium">${token.price.toFixed(2)}</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              ({token.priceChange24h > 0 ? '+' : ''}{token.priceChange24h.toFixed(0)}%)
+            </span>
+          </div>
+        </div>
+        
+        {/* 24h Change (as Floor Δ 24h) */}
+        <div className="w-24 text-right">
+          <div className={`text-sm font-medium ${priceChangeColor}`}>
+            {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
+          </div>
+        </div>
+      </div>
+      
+      {/* Mobile Layout */}
+      <div className="md:hidden px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer">
+        <div className="flex items-center gap-3 mb-2">
+          {/* Token Image */}
+          <div className="w-10 h-10 relative flex-shrink-0">
+            <Image
+              src={token.imageUrl}
+              alt={token.name}
+              fill
+              sizes="40px"
+              className="rounded-md object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = feelsGuyImage.src;
+              }}
+            />
+          </div>
+          
+          {/* Name & Symbol */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{token.name}</div>
+                <div className="text-sm text-muted-foreground">{token.symbol}</div>
+              </div>
+              {token.isGraduated && (
+                <Badge variant="secondary" className="text-xs">
+                  Graduated
+                </Badge>
+              )}
+            </div>
+          </div>
+          
+          {/* Price & Change */}
+          <div className="text-right">
+            <div className="text-sm font-medium">${token.price.toFixed(4)}</div>
+            <div className={`text-xs font-medium ${priceChangeColor}`}>
+              {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
+            </div>
+          </div>
+          
+          {showRelevance && token._score !== undefined && (
+            <div className="text-xs text-muted-foreground">
+              {(token._score * 100).toFixed(0)}%
+            </div>
+          )}
+        </div>
+        
+        {/* Mobile Bottom Stats */}
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Cap: {token.marketCapFormatted}</span>
+          <span>Vol: {token.volume24hFormatted}</span>
+          <span>24h: <span className={priceChangeColor}>{token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(1)}%</span></span>
+        </div>
+      </div>
+    </Link>
+  );
+});

@@ -5,8 +5,10 @@
 # Rust/Cargo
 target/
 .cargo/
+!vanity-miner-wasm/.cargo/config.toml
 **/*.rs.bk
 *.log
+crate-hashes.json
 
 # Node.js
 node_modules/
@@ -14,7 +16,18 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.ts
+pnpm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+.pnpm-store/
+.pnpm/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
 
 # ==================================
 # Solana
@@ -24,10 +37,6 @@ yarn-error.log*
 .anchor/
 anchor/
 **/__client_accounts_*.rs
-
-# Solana test environment
-test-ledger/
-e2e/.test-ledger
 
 # Test artifacts and build targets
 test-helpers/target/
@@ -40,38 +49,71 @@ proptest-regressions/
 # Nix
 # ==================================
 
+# Nix build outputs (anywhere in tree)
 result
+result/
 result-*
+.nix-build/
+
+# Nix environment
 .direnv/
 .nix/
 devenv/
+
+# Nix build outputs and caches
+.nix-profile/
+.nix-defexpr/
+.nix-channels
+nix-build-*
+.gcroots/
 
 # Flake locks (except root)
 */flake.lock
 !flake.lock
 
+# Cachix
+.cachix/
+
+# Cache directories
+.cache/
+.nix-store/
+
+# Build artifacts
+*/target/
+feels-indexer/data/rocksdb/
+feels-indexer/data/tantivy/
+test-ledger/
+
 # ==================================
 # Environment
 # ==================================
 
-# Env
+# Env files
+.env
 .env.local
-.envrc
+.env.production
+.env.development
+.env.*.local
 deployment.env
 valence.env
 .valence-env
+# Note: .envrc is tracked for direnv/Nix integration
 
-# Keys
+# Keys and secrets
 *.key
 *.keypair
-keypairs/
+*keypair.json
+*.pem
 
 # ==================================
 # Editor
 # ==================================
 
 .idea/
-.vscode/
+# Allow .vscode config for rust-analyzer/Nix setup
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .claude/
 .cursor/
 .DS_Store
@@ -82,21 +124,55 @@ keypairs/
 *.sw?
 
 # ==================================
-# Temporary
+# Temporary & Logs
 # ==================================
 
 *.bak
 *.backup
 scratch/
+tmp/
+temp/
+.tmp/
+.temp/
+/.wasm-pack/
+*-temp.toml
+*.temp
+*.tmp
+preview/
+logs/
+*.log.*
+devbridge.log
 
 # ==================================
 # Project Specific
 # ==================================
 
+# Localnet state (all ephemeral local development data)
+localnet/
+
 # Working directories
 work/
-app/
-scripts/
 ext/
+chart-demo/
+KLineChart/
 
+# Generated SDK files (ignore entire directory since it's auto-generated)
+feels-sdk-generated/
 
+# Feels app specific
+feels-app/.velite/
+feels-app/public/static/
+
+# Solana validator data
+*.ledger/
+validator-*.log
+tower-*.bin
+snapshot-*.tar.zst
+geyser-*.log
+basic-validator.log
+feels-deployed.so
+*.so
+
+# AI documentation
+CLAUDE.md
+AGENTS.md

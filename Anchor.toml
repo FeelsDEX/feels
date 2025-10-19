@@ -1,20 +1,20 @@
-[features]
-seeds = true
-
 [toolchain]
-anchor_version = "0.29.0"
+anchor_version = "0.31.1"
+solana_version = "2.2.1"
+
+[features]
+resolution = true
+skip-lint = false
 
 [programs.localnet]
-feels = "Fee1sProtoco11111111111111111111111111111111"
+feels = "B3w6rjs2vDjr6eKUXUiERV44BXud3nRqshctMp5p4au4"
 
 [registry]
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "cargo test"
-
-
