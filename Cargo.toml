@@ -8,11 +8,7 @@ members = [
 exclude = [
     "feels-sdk",
     "feels-jupiter-adapter", 
-    "feels-streaming-adapter",
     "feels-indexer",
-    "simple-streaming-adapter",
-    "minimal-streaming-adapter",
-    "e2e/minimal-streaming-adapter",
     "vanity-miner-wasm",
     "patches/solana-net-utils",
 ]
@@ -23,7 +19,7 @@ anchor-client = "0.31.1"
 anchor-spl = "0.31.1"
 solana-program = "=2.2.1"
 solana-sdk = "=2.2.1"
-solana-client = "=2.2.1"
+# solana-client = "=2.2.1"  # Removed - use lightweight RPC implementations
 # Force older version to avoid Rust 1.85 requirement
 base64ct = "=1.6.0"
 borsh = "0.10.3"

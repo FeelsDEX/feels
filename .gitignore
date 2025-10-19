@@ -76,6 +76,13 @@ nix-build-*
 
 # Cache directories
 .cache/
+.nix-store/
+
+# Build artifacts
+*/target/
+feels-indexer/data/rocksdb/
+feels-indexer/data/tantivy/
+test-ledger/
 
 # ==================================
 # Environment
@@ -149,12 +156,8 @@ ext/
 chart-demo/
 KLineChart/
 
-# Generated SDK files (keep structure but ignore contents)
-feels-sdk-generated/rust/target/
-feels-sdk-generated/rust/Cargo.lock
-feels-sdk-generated/typescript/node_modules/
-feels-sdk-generated/typescript/dist/
-feels-sdk-generated/typescript/*.tsbuildinfo
+# Generated SDK files (ignore entire directory since it's auto-generated)
+feels-sdk-generated/
 
 # Feels app specific
 feels-app/.velite/
