@@ -39,7 +39,7 @@ test_in_memory!(
 
         // The test was attempting to mint a protocol token and then use it in a market
         // Without Metaplex, we cannot mint protocol tokens, so this test is not applicable
-        println!("✓ Test skipped - requires protocol token minting");
+        println!("[OK] Test skipped - requires protocol token minting");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -62,7 +62,7 @@ test_in_memory!(
         println!("- Real protocol token accounts used for minted tokens");
         println!("- Market can be initialized with minimal accounts");
 
-        println!("\n✓ Test conceptually verified - SDK handles account management");
+        println!("\n[OK] Test conceptually verified - SDK handles account management");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -80,7 +80,7 @@ test_in_memory!(
 
         // The test was attempting to use system accounts as dummy accounts for initialization
         // This is no longer necessary with the updated SDK that handles dummy accounts internally
-        println!("✓ Test skipped - requires protocol token minting");
+        println!("[OK] Test skipped - requires protocol token minting");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -165,7 +165,7 @@ test_in_memory!(
 
         // Use existing FeelsSOL mint for testing
         // In production, this would be a protocol-minted token
-        println!("✓ Test environment ready");
+        println!("[OK] Test environment ready");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -191,7 +191,7 @@ test_in_memory!(
                 break mint;
             }
         };
-        println!("✓ Created token mint: {}", token_mint.pubkey());
+        println!("[OK] Created token mint: {}", token_mint.pubkey());
 
         // Ensure FeelsSOL is token_0 (hub-and-spoke requirement)
         let (token_0, token_1) = (ctx.feelssol_mint, token_mint.pubkey());
@@ -209,11 +209,11 @@ test_in_memory!(
 
         match ctx.process_instruction(ix, &[&creator]).await {
             Ok(_) => {
-                println!("✗ Market initialized unexpectedly - should require protocol token");
+                println!("[ERROR] Market initialized unexpectedly - should require protocol token");
                 panic!("Market should not initialize with non-protocol token");
             }
             Err(e) => {
-                println!("✓ Market initialization failed as expected (non-protocol token)");
+                println!("[OK] Market initialization failed as expected (non-protocol token)");
                 println!("  Error: {:?}", e);
                 println!(
                     "Note: This is expected behavior - markets require protocol-minted tokens"
@@ -265,7 +265,7 @@ test_in_memory!(
             79228162514264337593543950336u128,
             0,
         );
-        println!("✓ SDK built instruction (program will validate tick spacing)");
+        println!("[OK] SDK built instruction (program will validate tick spacing)");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }

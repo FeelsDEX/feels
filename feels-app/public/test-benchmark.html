@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vanity Miner Performance Benchmark</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .metric { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .improvement { color: green; font-weight: bold; }
+        .chart { 
+            display: flex; 
+            align-items: flex-end; 
+            height: 200px; 
+            margin: 20px 0;
+            border-bottom: 2px solid #333;
+        }
+        .bar {
+            flex: 1;
+            margin: 0 10px;
+            background: #4CAF50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            position: relative;
+        }
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            font-weight: bold;
+        }
+        .bar-label {
+            margin-top: 10px;
+            margin-bottom: -25px;
+        }
+        button { margin: 5px; padding: 10px; }
+        pre { background: #f5f5f5; padding: 10px; max-height: 300px; overflow-y: auto; }
+        .optimization-list { margin: 20px 0; }
+        .optimization-item { 
+            margin: 10px 0; 
+            padding: 10px; 
+            background: #e8f5e9; 
+            border-left: 4px solid #4CAF50; 
+        }
+    </style>
+</head>
+<body>
+    <h1>Vanity Miner Performance Benchmark</h1>
+    
+    <div class="optimization-list">
+        <h3>Implemented Optimizations:</h3>
+        <div class="optimization-item">✓ ChaCha20 RNG for 2-3x faster secure random generation</div>
+        <div class="optimization-item">✓ Base58 suffix optimization with quick-reject filter</div>
+        <div class="optimization-item">✓ Pre-allocated buffers to reduce allocations</div>
+        <div class="optimization-item">✓ Batch processing with cache-friendly access patterns</div>
+        <div class="optimization-item">✓ Aggressive compiler optimizations (LTO, codegen-units=1)</div>
+    </div>
+    
+    <div class="metric">
+        <strong>Benchmark Status:</strong>
+        <div id="status">Ready to benchmark</div>
+    </div>
+    
+    <div class="metric">
+        <strong>Single-Thread Benchmark Results:</strong>
+        <div id="single-thread-results">Not tested yet</div>
+    </div>
+    
+    <div class="metric">
+        <strong>Multi-Thread Benchmark Results:</strong>
+        <div id="multi-thread-results">Not tested yet</div>
+    </div>
+    
+    <div id="chart-container" style="display: none;">
+        <h3>Performance Comparison:</h3>
+        <div class="chart" id="performance-chart"></div>
+    </div>
+    
+    <div>
+        <button onclick="runBenchmark()">Run Full Benchmark</button>
+        <button onclick="quickTest()">Quick Test (10s)</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+    
+    <h3>Benchmark Log:</h3>
+    <pre id="log"></pre>
+    
+    <script>
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        let benchmarkResults = {
+            singleThread: null,
+            multiThread: null,
+            improvement: null
+        };
+        
+        function log(msg, type = '') {
+            const time = new Date().toLocaleTimeString();
+            const className = type ? ` class="${type}"` : '';
+            logEl.innerHTML += `[${time}] ${msg}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg);
+        }
+        
+        async function runSingleThreadBenchmark(duration = 30000) {
+            log(`Starting single-thread benchmark (${duration/1000}s)...`);
+            
+            try {
+                // Import and initialize WASM
+                const wasmModule = await import('/wasm/vanity_miner_wasm.js');
+                await wasmModule.default();
+                
+                // Run benchmark
+                const rate = Number(wasmModule.benchmark_single_thread(duration));
+                log(`Single-thread rate: ${rate.toLocaleString()} attempts/sec`);
+                
+                return rate;
+            } catch (error) {
+                log(`Single-thread benchmark error: ${error}`, 'error');
+                return null;
+            }
+        }
+        
+        async function runMultiThreadBenchmark(duration = 30000) {
+            log(`Starting multi-thread benchmark (${duration/1000}s)...`);
+            
+            const workerCount = Math.max(1, (navigator.hardwareConcurrency || 4) - 2);
+            log(`Using ${workerCount} workers`);
+            
+            return new Promise((resolve) => {
+                const worker = new Worker('/wasm/vanity-coordinator.js', { type: 'module' });
+                let startTime = null;
+                let totalAttempts = 0;
+                let finalElapsedMs = 0;
+                
+                const timeout = setTimeout(() => {
+                    worker.postMessage({ type: 'stop' });
+                    // Calculate true average: total attempts / total time
+                    const avgRate = finalElapsedMs > 0 
+                        ? Math.round(totalAttempts / (finalElapsedMs / 1000))
+                        : 0;
+                    log(`Multi-thread average rate: ${avgRate.toLocaleString()} attempts/sec`);
+                    worker.terminate();
+                    resolve(avgRate);
+                }, duration + 5000);
+                
+                worker.addEventListener('message', (e) => {
+                    const msg = e.data;
+                    
+                    switch (msg.type) {
+                        case 'ready':
+                            log(`Coordinator ready with ${msg.workers} workers`);
+                            // Start mining
+                            startTime = Date.now();
+                            worker.postMessage({ type: 'start', suffix: 'FEEL' });
+                            break;
+                            
+                        case 'progress':
+                            if (msg.attempts && msg.elapsedMs) {
+                                totalAttempts = msg.attempts;
+                                finalElapsedMs = msg.elapsedMs;
+                                
+                                // Stop after duration
+                                if (Date.now() - startTime >= duration) {
+                                    clearTimeout(timeout);
+                                    worker.postMessage({ type: 'stop' });
+                                    // Calculate true average: total attempts / total time
+                                    const avgRate = Math.round(totalAttempts / (finalElapsedMs / 1000));
+                                    log(`Multi-thread average rate: ${avgRate.toLocaleString()} attempts/sec`);
+                                    worker.terminate();
+                                    resolve(avgRate);
+                                }
+                            }
+                            break;
+                            
+                        case 'found':
+                            // Unlikely during benchmark, but handle it
+                            log('Found match during benchmark!');
+                            clearTimeout(timeout);
+                            worker.terminate();
+                            resolve(msg.rate || 0);
+                            break;
+                    }
+                });
+                
+                worker.addEventListener('error', (error) => {
+                    log(`Multi-thread benchmark error: ${error}`, 'error');
+                    clearTimeout(timeout);
+                    resolve(null);
+                });
+            });
+        }
+        
+        function displayResults() {
+            const singleRate = benchmarkResults.singleThread;
+            const multiRate = benchmarkResults.multiThread;
+            
+            if (!singleRate || !multiRate) return;
+            
+            const improvement = (multiRate / singleRate).toFixed(2);
+            benchmarkResults.improvement = improvement;
+            
+            document.getElementById('single-thread-results').innerHTML = `
+                <div>Rate: <strong>${singleRate.toLocaleString()}</strong> attempts/sec</div>
+                <div>Estimated time for "FEEL": ${(11316496 / singleRate / 60).toFixed(1)} minutes</div>
+            `;
+            
+            document.getElementById('multi-thread-results').innerHTML = `
+                <div>Rate: <strong>${multiRate.toLocaleString()}</strong> attempts/sec</div>
+                <div>Estimated time for "FEEL": ${(11316496 / multiRate / 60).toFixed(1)} minutes</div>
+                <div class="improvement">Performance multiplier: ${improvement}x</div>
+            `;
+            
+            // Create performance chart
+            const chartContainer = document.getElementById('chart-container');
+            const chart = document.getElementById('performance-chart');
+            chartContainer.style.display = 'block';
+            
+            const maxRate = Math.max(singleRate, multiRate);
+            
+            chart.innerHTML = `
+                <div class="bar" style="height: ${(singleRate / maxRate) * 100}%">
+                    <div class="bar-value">${singleRate.toLocaleString()}</div>
+                    <div class="bar-label">Single Thread</div>
+                </div>
+                <div class="bar" style="height: ${(multiRate / maxRate) * 100}%; background: #2196F3;">
+                    <div class="bar-value">${multiRate.toLocaleString()}</div>
+                    <div class="bar-label">Multi Thread</div>
+                </div>
+            `;
+        }
+        
+        async function runBenchmark() {
+            statusEl.textContent = 'Running benchmark...';
+            log('=== Starting Full Benchmark (30s each) ===');
+            
+            // Single thread benchmark
+            benchmarkResults.singleThread = await runSingleThreadBenchmark(30000);
+            
+            // Multi thread benchmark
+            benchmarkResults.multiThread = await runMultiThreadBenchmark(30000);
+            
+            displayResults();
+            
+            statusEl.textContent = 'Benchmark complete';
+            log('=== Benchmark Complete ===');
+            
+            if (benchmarkResults.improvement) {
+                log(`Overall improvement: ${benchmarkResults.improvement}x faster with multi-threading`);
+            }
+        }
+        
+        async function quickTest() {
+            statusEl.textContent = 'Running quick test...';
+            log('=== Starting Quick Test (10s each) ===');
+            
+            // Single thread benchmark
+            benchmarkResults.singleThread = await runSingleThreadBenchmark(10000);
+            
+            // Multi thread benchmark
+            benchmarkResults.multiThread = await runMultiThreadBenchmark(10000);
+            
+            displayResults();
+            
+            statusEl.textContent = 'Quick test complete';
+            log('=== Quick Test Complete ===');
+            
+            if (benchmarkResults.improvement) {
+                log(`Overall improvement: ${benchmarkResults.improvement}x faster with multi-threading`);
+            }
+        }
+        
+        function clearResults() {
+            benchmarkResults = {
+                singleThread: null,
+                multiThread: null,
+                improvement: null
+            };
+            
+            document.getElementById('single-thread-results').textContent = 'Not tested yet';
+            document.getElementById('multi-thread-results').textContent = 'Not tested yet';
+            document.getElementById('chart-container').style.display = 'none';
+            statusEl.textContent = 'Ready to benchmark';
+            logEl.textContent = '';
+            log('Results cleared');
+        }
+        
+        // Check environment on load
+        window.addEventListener('load', () => {
+            const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+            const isCrossOriginIsolated = self.crossOriginIsolated;
+            const cores = navigator.hardwareConcurrency || 'unknown';
+            
+            log(`Environment check:`);
+            log(`- Hardware cores: ${cores}`);
+            log(`- SharedArrayBuffer: ${hasSharedArrayBuffer}`);
+            log(`- crossOriginIsolated: ${isCrossOriginIsolated}`);
+            log(`- Multi-threading available: ${hasSharedArrayBuffer && isCrossOriginIsolated}`);
+        });
+    </script>
+</body>
+</html>

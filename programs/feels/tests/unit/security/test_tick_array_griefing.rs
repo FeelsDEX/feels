@@ -108,10 +108,10 @@ test_in_memory!(test_legitimate_use_cases, |ctx: TestContext| async move {
     // Ensure legitimate use cases aren't affected
 
     // Verify that MAX_TICK_ARRAYS_PER_SWAP accommodates all legitimate swap scenarios:
-    // Case 1: Small swap in tight range (1-2 arrays) - ✓ covered by limit of 10
-    // Case 2: Medium swap across 5% range (3-5 arrays) - ✓ covered by limit of 10
-    // Case 3: Large swap across 10% range (5-8 arrays) - ✓ covered by limit of 10
-    // Case 4: Extreme volatility swap (8-10 arrays) - ✓ covered by limit of 10
+    // Case 1: Small swap in tight range (1-2 arrays) - [OK] covered by limit of 10
+    // Case 2: Medium swap across 5% range (3-5 arrays) - [OK] covered by limit of 10
+    // Case 3: Large swap across 10% range (5-8 arrays) - [OK] covered by limit of 10
+    // Case 4: Extreme volatility swap (8-10 arrays) - [OK] covered by limit of 10
 
     // All legitimate cases fit within the limit of MAX_TICK_ARRAYS_PER_SWAP (10)
 

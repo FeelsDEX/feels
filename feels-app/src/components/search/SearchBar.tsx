@@ -7,6 +7,7 @@ import { TokenSelectDropdown } from '@/components/search/TokenSelectDropdown';
 import { useTokenSearch } from '@/hooks/useTokenSearch';
 import { TokenSearchResult } from '@/utils/token-search';
 import { useRouter } from 'next/navigation';
+import { useSearchContext, SearchContextArea } from '@/contexts/SearchContext';
 
 interface SearchBarProps {
   placeholder?: string;
@@ -38,6 +39,7 @@ export function SearchBar({
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { searchArea } = useSearchContext();
   
   const { 
     searchQuery,
@@ -56,17 +58,20 @@ export function SearchBar({
   // Reset state when token-select mode is closed
   useEffect(() => {
     if (mode === 'token-select') {
+      // Copy ref to local variable for cleanup
+      const input = inputRef.current;
       // Reset everything when the parent component unmounts/closes
       return () => {
         setLocalSearchQuery('');
         setSearchQuery('');
         setSearchFocused(false);
         setShowDropdown(false);
-        if (inputRef.current) {
-          inputRef.current.blur();
+        if (input) {
+          input.blur();
         }
       };
     }
+    return undefined;
   }, [mode, setSearchQuery]);
 
   // Filter results if in token-select mode
@@ -204,7 +209,8 @@ export function SearchBar({
           style={{
             boxShadow: (searchFocused || mode === 'token-select') 
               ? '0 0 12px 2px rgba(92, 202, 57, 0.15)' 
-              : 'none'
+              : '0 0 12px 2px rgba(92, 202, 57, 0)',
+            outline: 'none'
           }}
         >
           {mode === 'navigation' ? (
@@ -244,16 +250,18 @@ export function SearchBar({
                 }
               }
             }}
-            placeholder={placeholder}
+            placeholder={searchArea === SearchContextArea.DOCS ? "Search documentation..." : placeholder}
             className="flex-1 bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none"
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck="false"
           />
-          {((mode === 'navigation' && !localSearchQuery && !searchFocused) || 
-            (mode === 'page-search' && !localSearchQuery && !searchFocused)) && (
-            <div className="mr-3 px-1.5 py-0.5 bg-muted/30 rounded text-xs font-mono text-muted-foreground/70 font-bold">
+          {((mode === 'navigation' && !localSearchQuery) || 
+            (mode === 'page-search' && !localSearchQuery)) && (
+            <div className={`mr-3 px-1.5 py-0.5 bg-muted/30 rounded text-xs font-mono text-muted-foreground/70 font-bold transition-opacity duration-150 select-none ${
+              searchFocused ? 'opacity-0' : 'opacity-100'
+            }`}>
               /
             </div>
           )}
@@ -277,8 +285,8 @@ export function SearchBar({
           )}
         </div>
         
-        {/* Dropdown - show for navigation and token-select modes */}
-        {showDropdown && ((mode === 'navigation' && localSearchQuery.trim()) || mode === 'token-select') && (
+        {/* Dropdown - show for navigation and token-select modes, but not in docs area */}
+        {showDropdown && ((mode === 'navigation' && localSearchQuery.trim()) || mode === 'token-select') && searchArea !== SearchContextArea.DOCS && (
           <div id={`${mode}-dropdown-wrapper`} className="relative z-[1102]">
             {mode === 'token-select' ? (
               <TokenSelectDropdown

@@ -61,7 +61,7 @@ test_in_memory!(
             "Value must be conserved"
         );
 
-        println!("✓ Conservation of value invariant verified conceptually");
+        println!("[OK] Conservation of value invariant verified conceptually");
 
         // Skip actual market creation for property tests
         // These tests focus on invariant validation, not full integration
@@ -96,7 +96,7 @@ test_in_memory!(
             "Price should decrease for token 0 -> token 1 swap"
         );
 
-        println!("✓ Price monotonicity invariant verified conceptually");
+        println!("[OK] Price monotonicity invariant verified conceptually");
 
         // Skip actual market creation for property tests
         return Ok::<(), Box<dyn std::error::Error>>(());
@@ -158,7 +158,7 @@ test_in_memory!(
             "Swap should fail when output < minimum"
         );
 
-        println!("✓ Slippage protection invariant verified conceptually");
+        println!("[OK] Slippage protection invariant verified conceptually");
 
         // Skip actual market creation for property tests
         return Ok::<(), Box<dyn std::error::Error>>(());
@@ -200,7 +200,7 @@ test_in_memory!(
             "Fees should be less than swap amount"
         );
 
-        println!("✓ Fee collection invariant verified conceptually");
+        println!("[OK] Fee collection invariant verified conceptually");
         println!("  Total fee: {} ({} bps)", total_fee, total_fee_bps);
         println!(
             "  Protocol fee: {} ({} bps)",

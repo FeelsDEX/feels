@@ -3,7 +3,7 @@
 
 import { searchFacets, SelectedFacets } from '@/utils/token-search';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Button } from '@/components/ui/button';
+// import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 interface TokenSearchFiltersProps {
@@ -39,14 +39,13 @@ function FilterSection({
 
 interface FilterItemProps {
   label: string;
-  value: string;
   checked: boolean;
   onChange: () => void;
   count?: number;
 }
 
 // Reusable filter item component
-function FilterItem({ label, value, checked, onChange, count }: FilterItemProps) {
+function FilterItem({ label, checked, onChange, count }: FilterItemProps) {
   return (
     <label className="flex items-center space-x-2 cursor-pointer hover:text-primary group">
       <Checkbox
@@ -101,7 +100,6 @@ export function TokenSearchFilters({
             <FilterItem
               key={bucket.label}
               label={bucket.label}
-              value={bucket.label}
               checked={selectedFacets.marketCapRange?.includes(bucket.label) || false}
               onChange={() => toggleFacet('marketCapRange', bucket.label)}
               count={facetCounts['marketCapRange']?.[bucket.label]}
@@ -115,7 +113,6 @@ export function TokenSearchFilters({
             <FilterItem
               key={bucket.label}
               label={bucket.label}
-              value={bucket.label}
               checked={selectedFacets.volumeRange?.includes(bucket.label) || false}
               onChange={() => toggleFacet('volumeRange', bucket.label)}
               count={facetCounts['volumeRange']?.[bucket.label]}
@@ -129,7 +126,6 @@ export function TokenSearchFilters({
             <FilterItem
               key={bucket.label}
               label={bucket.label}
-              value={bucket.label}
               checked={selectedFacets.priceChange?.includes(bucket.label) || false}
               onChange={() => toggleFacet('priceChange', bucket.label)}
               count={facetCounts['priceChange']?.[bucket.label]}
@@ -143,7 +139,6 @@ export function TokenSearchFilters({
             <FilterItem
               key={bucket.label}
               label={bucket.label}
-              value={bucket.label}
               checked={selectedFacets.age?.includes(bucket.label) || false}
               onChange={() => toggleFacet('age', bucket.label)}
               count={facetCounts['age']?.[bucket.label]}
@@ -157,7 +152,6 @@ export function TokenSearchFilters({
             <FilterItem
               key={option.value}
               label={option.label}
-              value={option.value}
               checked={selectedFacets.features?.includes(option.value) || false}
               onChange={() => toggleFacet('features', option.value)}
               count={facetCounts['features']?.[option.value]}

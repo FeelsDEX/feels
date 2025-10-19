@@ -2,25 +2,28 @@
 resolver = "2"
 members = [
     "programs/feels",
-    "sdk",
 ]
-# Exclude Jupiter adapter from workspace as it's a library not for BPF deployment
+# Exclude Jupiter adapter from workspace due to dependency conflicts
+# (requires newer Solana SDK versions than the main workspace)
 exclude = [
-    "adapters/feels-jupiter-adapter",
+    "feels-sdk",
+    "feels-jupiter-adapter", 
     "feels-streaming-adapter",
     "feels-indexer",
     "simple-streaming-adapter",
     "minimal-streaming-adapter",
     "e2e/minimal-streaming-adapter",
+    "vanity-miner-wasm",
+    "patches/solana-net-utils",
 ]
 
 [workspace.dependencies]
 anchor-lang = "0.31.1"
 anchor-client = "0.31.1"
 anchor-spl = "0.31.1"
-solana-program = "2.2.1"
-solana-sdk = "2.2.1"
-solana-client = "2.2.1"
+solana-program = "=2.2.1"
+solana-sdk = "=2.2.1"
+solana-client = "=2.2.1"
 # Force older version to avoid Rust 1.85 requirement
 base64ct = "=1.6.0"
 borsh = "0.10.3"
@@ -41,12 +44,15 @@ thiserror = "1.0"
 rand = "0.8"
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
-fixed = { version = "1.28", features = ["serde", "num-traits"] }
+fixed = { version = "=1.28", features = ["serde", "num-traits"] }
 num-traits = "0.2"
 # Test dependencies disabled due to yanked solana_rbpf dependency
 solana-program-test = "2.2.1"
 
-# Patch section removed - using dependency overrides instead
+# Patch for const function compatibility with Rust 1.82 (needed for tests only)
+[patch.crates-io]
+solana-net-utils = { path = "patches/solana-net-utils" }
+
 
 [profile.release]
 overflow-checks = true

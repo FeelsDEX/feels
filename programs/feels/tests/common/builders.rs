@@ -1,6 +1,7 @@
 //! Builder patterns for complex test setups
 
 use super::*;
+use crate::common::sdk_compat::SwapResult;
 // use async_trait::async_trait;
 
 /// Builder for creating markets with custom configuration
@@ -295,7 +296,7 @@ impl SwapBuilder {
         // Front-run transaction
         let attacker_bytes = attacker.to_bytes();
         let attacker_keypair =
-            Keypair::try_from(&attacker_bytes[..]).expect("Failed to clone keypair");
+            Keypair::from_bytes(&attacker_bytes).expect("Failed to clone keypair");
         self = self.add_swap(
             market,
             attacker_keypair,

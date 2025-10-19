@@ -1,11 +1,8 @@
 {
   description = "Feels Protocol - A concentrated liquidity AMM with unified position-based interactions";
 
-  nixConfig.extra-experimental-features = "nix-command flakes";
-  nixConfig.extra-substituters = "https://timewave.cachix.org";
-  nixConfig.extra-trusted-public-keys = ''
-    timewave.cachix.org-1:nu3Uqsm3sikI9xFK3Mt4AD4Q6z+j6eS9+kND1vtznq4=
-  '';
+  # Note: Nix configuration is managed globally via Home Manager
+  # See ~/.config/nix/nix.conf for substituters and trusted keys
 
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-24.11";
@@ -49,11 +46,13 @@
             databases = import ./nix/modules/databases.nix { inherit pkgs inputs' lib; };
             frontend = import ./nix/modules/frontend.nix { inherit pkgs inputs' lib; };
             indexer = import ./nix/modules/indexer.nix { inherit pkgs inputs' lib; };
+            wasm-tools = import ./nix/modules/wasm-tools.nix { inherit pkgs inputs' lib; };
           };
           
           # Import environment compositions
           environments = import ./nix/project/environments.nix { 
             inherit pkgs inputs' lib modules projectConfig idlBuilder; 
+            projectRoot = ./.;
           };
           
           # Build all configured programs using the new lib functions
@@ -65,22 +64,17 @@
             }
           ) projectConfig.programs;
           
-          # Default package - build all programs
+          # Default package - build using justfile instead of Nix derivations
           defaultPackage = pkgs.writeShellScriptBin "build-all" ''
             set -e
 
             echo "=== Building ${projectConfig.projectName} ==="
             echo ""
-
-            export PATH="${inputs'.zero-nix.packages.solana-tools}/bin:$PATH"
-            export RUST_BACKTRACE=1
-            export MACOSX_DEPLOYMENT_TARGET=11.0
-
-            echo "Building all programs..."
-            ${inputs'.zero-nix.packages.solana-tools}/bin/anchor build
+            echo "Building using justfile (Nix derivations temporarily disabled)..."
+            just build
             echo ""
             echo "=== Build Complete ==="
-            echo "Built artifacts available in: ${projectConfig.directories.deploy}/"
+            echo "Use 'just build' for program compilation"
           '';
           
           # Create validator launcher using lib function
@@ -100,12 +94,12 @@
               programBuildCommands = pkgs.lib.concatStringsSep "\n" (
                 pkgs.lib.mapAttrsToList (key: config: ''
                   echo -e "''${YELLOW}Building ${config.displayName}...''${NC}"
-                  nix build .#${config.name} --out-link ./target/nix-${key}
+                  nix build .#${key} --out-link ./.nix-build/${key}
                 '') projectConfig.programs
               );
               programOutputPaths = pkgs.lib.concatStringsSep "\n" (
                 pkgs.lib.mapAttrsToList (key: config: ''
-                  echo "  - ./target/nix-${key}/deploy/"
+                  echo "  - ./.nix-build/${key}/deploy/"
                 '') projectConfig.programs
               );
             in "${pkgs.writeShellScriptBin "bpf-build" ''
@@ -121,6 +115,9 @@
               RED='\033[0;31m'
               NC='\033[0m' # No Color
               
+              # Create .nix-build directory
+              mkdir -p .nix-build
+              
               # Build programs using nix build
               ${programBuildCommands}
               
@@ -131,7 +128,7 @@
               ${programOutputPaths}
               echo ""
               echo "To deploy programs:"
-              echo "  solana program deploy ./target/nix-<program>/deploy/<program>.so"
+              echo "  solana program deploy ./.nix-build/<program>/deploy/<program>.so"
             ''}/bin/bpf-build";
           };
         in {
@@ -153,8 +150,9 @@
 
           packages = { 
             default = defaultPackage;
-          } // programPackages 
-            // config.crate2nix.packages;
+          } // programPackages; 
+            # Temporarily disabled until Cargo.nix is regenerated
+            # // config.crate2nix.packages;
 
           apps = {
             idl-build = {

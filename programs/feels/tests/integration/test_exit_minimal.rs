@@ -33,7 +33,7 @@ async fn test_exit_feelssol_minimal() -> TestResult<()> {
     ctx.enter_feelssol(&user, &user_jitosol, &user_feelssol, jitosol_amount).await?;
     
     let feelssol_balance = ctx.get_token_balance(&user_feelssol).await?;
-    println!("✓ User has {} FeelsSOL", feelssol_balance);
+    println!("[OK] User has {} FeelsSOL", feelssol_balance);
     
     // Now try to exit
     let exit_amount = 100_000_000;
@@ -41,11 +41,11 @@ async fn test_exit_feelssol_minimal() -> TestResult<()> {
     
     match ctx.exit_feelssol(&user, &user_feelssol, &user_jitosol, exit_amount).await {
         Ok(_) => {
-            println!("✓ Exit successful!");
+            println!("[OK] Exit successful!");
             Ok(())
         },
         Err(e) => {
-            eprintln!("✗ Exit failed: {:?}", e);
+            eprintln!("[ERROR] Exit failed: {:?}", e);
             Err(e)
         }
     }

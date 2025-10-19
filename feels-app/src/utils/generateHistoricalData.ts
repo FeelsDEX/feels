@@ -25,7 +25,7 @@ export interface UnifiedHistoricalData {
 
 interface GeneratorParams {
   tokenAddress: string;
-  basePrice?: number;
+  // basePrice?: number;
   volatility?: number;
   trend?: number;
 }
@@ -92,7 +92,7 @@ function generateVolume(
 function generateFloorPrice(
   previousFloor: number,
   daysSinceStart: number,
-  initialFloorPrice: number,
+  // initialFloorPrice: number,
   seed: number
 ): number {
   // Start with a reasonable initial floor price (10% of initial price)
@@ -134,6 +134,7 @@ function calculateGTWAP(candles: HistoricalDataPoint[]): number {
 
   for (let i = 0; i < candles.length; i++) {
     const candle = candles[i];
+    if (!candle) continue;
     const timeWeight = i === candles.length - 1 ? 1 : 1; // Equal weighting for simplicity
     const logPrice = Math.log(candle.close);
 
@@ -147,7 +148,7 @@ function calculateGTWAP(candles: HistoricalDataPoint[]): number {
 
 export function generateUnifiedHistoricalData({
   tokenAddress,
-  basePrice,
+  // basePrice,
   volatility = 0.02, // 2% base volatility
   trend = 0.0001, // 0.01% daily trend
 }: GeneratorParams): UnifiedHistoricalData {
@@ -166,16 +167,16 @@ export function generateUnifiedHistoricalData({
     { volumeBase: 100e6 }, // Mega cap
   ];
 
-  const scenario = volumeScenarios[priceScenario];
+  const scenario = volumeScenarios[priceScenario] || volumeScenarios[0]!;
   const initialPrice = 1; // Always start at price 1
 
   // Generate data forwards from 2 years ago
-  const allData: HistoricalDataPoint[] = [];
+  // const allData: HistoricalDataPoint[] = [];
   let currentPrice = initialPrice; // Start at 1
 
   // Start from 2 years ago and work forward
   const twoYearsAgo = now - 365 * 2 * 24 * 60 * 60 * 1000;
-  let timestamp = twoYearsAgo;
+  // let timestamp = twoYearsAgo;
 
   // Weekly data for 2 years (104 weeks)
   const weeklyData: HistoricalDataPoint[] = [];
@@ -319,14 +320,14 @@ export function generateUnifiedHistoricalData({
   );
 
   let runningGTWAP = initialPrice;
-  const initialFloorPrice = 0.1; // Start floor at 0.1 (10% of initial price)
+  // const initialFloorPrice = 0.1; // Start floor at 0.1 (10% of initial price)
   let previousFloor = 0; // Start at 0 to trigger initial value in generateFloorPrice
 
   allCandles.forEach((candle, index) => {
     const daysSinceStart = (candle.timestamp - twoYearsAgo) / (24 * 60 * 60 * 1000);
 
     // Generate monotonically increasing floor price
-    const floorPrice = generateFloorPrice(previousFloor, daysSinceStart, initialFloorPrice, seed);
+    const floorPrice = generateFloorPrice(previousFloor, daysSinceStart, seed);
     previousFloor = floorPrice; // Update for next iteration
 
     floorPrices.push({
@@ -348,7 +349,7 @@ export function generateUnifiedHistoricalData({
   });
 
   const finalPrice = currentPrice;
-  const finalFloor = floorPrices[floorPrices.length - 1]?.value || initialFloorPrice;
+  const finalFloor = floorPrices[floorPrices.length - 1]?.value || 0.1;
   const finalGTWAP = Math.max(
     gtwapPrices[gtwapPrices.length - 1]?.value || initialPrice,
     finalFloor
@@ -383,7 +384,7 @@ export function getDataForTimeRange(
   switch (timeRange) {
     case '1m':
       startTime = now - 60 * 60 * 1000; // Last hour
-      klineData = data.minuteData.filter((d) => d.timestamp >= startTime);
+      klineData = data.minuteData.filter((d) => d.timestamp >= startTime) as KLineData[];
       break;
     case '5m':
       startTime = now - 5 * 60 * 60 * 1000; // Last 5 hours
@@ -391,7 +392,7 @@ export function getDataForTimeRange(
       klineData = aggregateCandles(
         data.minuteData.filter((d) => d.timestamp >= startTime),
         5 * 60 * 1000
-      );
+      ) as KLineData[];
       break;
     case '15m':
       startTime = now - 15 * 60 * 60 * 1000; // Last 15 hours
@@ -399,11 +400,11 @@ export function getDataForTimeRange(
       klineData = aggregateCandles(
         data.minuteData.filter((d) => d.timestamp >= startTime),
         15 * 60 * 1000
-      );
+      ) as KLineData[];
       break;
     case '1h':
       startTime = now - 72 * 60 * 60 * 1000; // Last 3 days
-      klineData = data.hourlyData.filter((d) => d.timestamp >= startTime);
+      klineData = data.hourlyData.filter((d) => d.timestamp >= startTime) as KLineData[];
       break;
     case '6h':
       startTime = now - 7 * 24 * 60 * 60 * 1000; // Last week
@@ -411,30 +412,30 @@ export function getDataForTimeRange(
       klineData = aggregateCandles(
         data.hourlyData.filter((d) => d.timestamp >= startTime),
         6 * 60 * 60 * 1000
-      );
+      ) as KLineData[];
       break;
     case '1D':
       startTime = now - 30 * 24 * 60 * 60 * 1000; // Last 30 days
-      klineData = data.dailyData.filter((d) => d.timestamp >= startTime);
+      klineData = data.dailyData.filter((d) => d.timestamp >= startTime) as KLineData[];
       break;
     case '1W':
       startTime = now - 52 * 7 * 24 * 60 * 60 * 1000; // Last year
-      klineData = data.weeklyData.filter((d) => d.timestamp >= startTime);
+      klineData = data.weeklyData.filter((d) => d.timestamp >= startTime) as KLineData[];
       break;
     case '1M':
       startTime = now - 24 * 30 * 24 * 60 * 60 * 1000; // Last 2 years
       // Aggregate weekly data into monthly candles
-      klineData = aggregateCandles(data.weeklyData, 30 * 24 * 60 * 60 * 1000);
+      klineData = aggregateCandles(data.weeklyData, 30 * 24 * 60 * 60 * 1000) as KLineData[];
       break;
     case 'all':
       // Use all weekly data
-      klineData = data.weeklyData;
+      klineData = data.weeklyData as KLineData[];
       startTime = data.weeklyData[0]?.timestamp || now;
       break;
     default:
       // Default to daily view
       startTime = now - 30 * 24 * 60 * 60 * 1000;
-      klineData = data.dailyData.filter((d) => d.timestamp >= startTime);
+      klineData = data.dailyData.filter((d) => d.timestamp >= startTime) as KLineData[];
   }
 
   // Filter floor and GTWAP series to match time range
@@ -454,15 +455,15 @@ function aggregateCandles(candles: HistoricalDataPoint[], intervalMs: number): K
 
   const aggregated: KLineData[] = [];
   let currentBucket: HistoricalDataPoint[] = [];
-  let bucketStart = Math.floor(candles[0].timestamp / intervalMs) * intervalMs;
+  let bucketStart = Math.floor(candles[0]!.timestamp / intervalMs) * intervalMs;
 
   candles.forEach((candle) => {
     const candleBucket = Math.floor(candle.timestamp / intervalMs) * intervalMs;
 
     if (candleBucket !== bucketStart && currentBucket.length > 0) {
       // Process current bucket
-      const open = currentBucket[0].open;
-      const close = currentBucket[currentBucket.length - 1].close;
+      const open = currentBucket[0]!.open;
+      const close = currentBucket[currentBucket.length - 1]!.close;
       const high = Math.max(...currentBucket.map((c) => c.high));
       const low = Math.min(...currentBucket.map((c) => c.low));
       const volume = currentBucket.reduce((sum, c) => sum + c.volume, 0);
@@ -488,8 +489,8 @@ function aggregateCandles(candles: HistoricalDataPoint[], intervalMs: number): K
 
   // Process last bucket
   if (currentBucket.length > 0) {
-    const open = currentBucket[0].open;
-    const close = currentBucket[currentBucket.length - 1].close;
+    const open = currentBucket[0]!.open;
+    const close = currentBucket[currentBucket.length - 1]!.close;
     const high = Math.max(...currentBucket.map((c) => c.high));
     const low = Math.min(...currentBucket.map((c) => c.low));
     const volume = currentBucket.reduce((sum, c) => sum + c.volume, 0);

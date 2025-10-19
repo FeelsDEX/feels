@@ -78,10 +78,12 @@ anchor build
 just test
 
 # Run specific test categories
-just test-unit           # Unit tests only
-just test-integration    # Integration tests only
-just test-e2e           # End-to-end tests only
-just test-property      # Property-based tests only
+just test unit           # Unit tests only
+just test integration    # Integration tests only
+just test e2e           # End-to-end tests only
+just test property      # Property-based tests only
+just test localnet      # Localnet tests with validator
+just test devnet        # Devnet tests
 
 # Run specific tests
 cargo test test_swap_exact_amount

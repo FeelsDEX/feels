@@ -1,5 +1,0 @@
-[api]
-bind_address = "127.0.0.1:8080"
-enable_cors = true
-[storage]
-rocksdb_path = "./data/rocksdb"

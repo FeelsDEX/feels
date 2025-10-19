@@ -7,6 +7,7 @@ import { useMarkets } from '@/hooks/useIndexer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FallbackBanner } from '@/components/ui/fallback-banner';
 import { DollarSign, Percent, Clock, Hash, Copy } from 'lucide-react';
 
 interface MarketExplorerProps {
@@ -90,14 +91,13 @@ export function MarketExplorer({}: MarketExplorerProps) {
             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
               No active markets were found on this network. This is expected in a test environment.
             </p>
-            <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 max-w-md mx-auto text-left">
-              <h4 className="text-sm font-medium mb-1 flex items-center">
-                <span className="text-warning mr-2 font-bold">WARNING</span>
-                Test Environment
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                To see markets, you would need to deploy the protocol and create markets on devnet.
-              </p>
+            <div className="max-w-md mx-auto">
+              <FallbackBanner
+                variant="warning"
+                title="Test Environment"
+                message="To see markets, you would need to deploy the protocol and create markets on devnet."
+                dismissible={false}
+              />
             </div>
           </div>
         ) : (

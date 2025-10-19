@@ -5,10 +5,11 @@
 use anchor_lang::prelude::*;
 
 /// Market lifecycle phase
-#[derive(Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, AnchorSerialize, AnchorDeserialize)]
 #[repr(u8)]
 pub enum MarketPhase {
     /// Initial state - market created but not launched
+    #[default]
     Created = 0,
 
     /// Bonding curve phase - initial liquidity distribution
@@ -28,12 +29,6 @@ pub enum MarketPhase {
 
     /// Deprecated - market no longer active
     Deprecated = 6,
-}
-
-impl Default for MarketPhase {
-    fn default() -> Self {
-        MarketPhase::Created
-    }
 }
 
 impl MarketPhase {

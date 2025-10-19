@@ -156,7 +156,7 @@ pub fn calculate_jit_anchor(
 /// Contrarian placement ensures JIT provides liquidity where it's needed most:
 /// - When takers are buying, JIT offers to sell (ask)
 /// - When takers are selling, JIT offers to buy (bid)
-/// This maximizes fill probability while avoiding adverse selection
+///   This maximizes fill probability while avoiding adverse selection
 pub fn calculate_contrarian_placement(
     ctx: &JitContext,
     anchor_tick: i32,

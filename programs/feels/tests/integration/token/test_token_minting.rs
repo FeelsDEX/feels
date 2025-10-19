@@ -1,7 +1,6 @@
 //! Integration tests for mint_token instruction
 use crate::common::*;
 use feels::state::{PreLaunchEscrow, ProtocolToken};
-use feels_sdk as sdk;
 use solana_sdk::signature::Keypair;
 
 #[tokio::test]
@@ -87,9 +86,9 @@ async fn test_mint_token_basic() -> std::result::Result<(), Box<dyn std::error::
     // Process the instruction
     println!("About to process mint_token instruction...");
     match ctx.process_instruction(ix, &[&creator, &token_mint]).await {
-        Ok(_) => println!("✓ mint_token instruction executed successfully"),
+        Ok(_) => println!("[OK] mint_token instruction executed successfully"),
         Err(e) => {
-            println!("✗ mint_token instruction failed: {:?}", e);
+            println!("[ERROR] mint_token instruction failed: {:?}", e);
             return Err(e);
         }
     }
@@ -110,15 +109,15 @@ async fn test_mint_token_basic() -> std::result::Result<(), Box<dyn std::error::
 
     let escrow: PreLaunchEscrow = match ctx.get_account(&escrow_pda).await {
         Ok(Some(account)) => {
-            println!("✓ Found escrow account");
+            println!("[OK] Found escrow account");
             account
         }
         Ok(None) => {
-            println!("✗ Escrow account not found at expected PDA");
+            println!("[ERROR] Escrow account not found at expected PDA");
             return Err("Escrow not found".into());
         }
         Err(e) => {
-            println!("✗ Error reading escrow account: {:?}", e);
+            println!("[ERROR] Error reading escrow account: {:?}", e);
             return Err(e);
         }
     };
@@ -182,7 +181,7 @@ async fn test_mint_token_basic() -> std::result::Result<(), Box<dyn std::error::
         "Mint authority should still be with creator until market launch"
     );
 
-    println!("✓ Token minted successfully");
+    println!("[OK] Token minted successfully");
     println!("  - Token mint: {}", token_mint.pubkey());
     println!("  - Total supply: 1B tokens");
     println!("  - Escrow PDA: {}", escrow_pda);
@@ -218,19 +217,19 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
         invalid_ticker,
         invalid_ticker.len()
     );
-    println!("   ✓ Would fail: ticker too long (> 10 chars)");
+    println!("   [OK] Would fail: ticker too long (> 10 chars)");
 
     // Test 2: Invalid name length
     let invalid_name = "This is a very long token name that exceeds the maximum allowed length";
     println!("\n2. Testing name validation:");
     println!("   Name length: {}", invalid_name.len());
-    println!("   ✓ Would fail: name too long (> 32 chars)");
+    println!("   [OK] Would fail: name too long (> 32 chars)");
 
     // Test 3: PDA signer validation
     let (pda_creator, _) = Pubkey::find_program_address(&[b"fake_pda"], &PROGRAM_ID);
     println!("\n3. Testing PDA creator validation:");
     println!("   PDA creator: {}", pda_creator);
-    println!("   ✓ Would fail: PDAs cannot sign transactions");
+    println!("   [OK] Would fail: PDAs cannot sign transactions");
 
     // Test 4: Valid parameters
     let valid_params = feels::instructions::MintTokenParams {
@@ -255,7 +254,7 @@ test_in_memory!(test_mint_token_validation, |ctx: TestContext| async move {
         valid_params.uri,
         valid_params.uri.len()
     );
-    println!("   ✓ All parameters within valid ranges");
+    println!("   [OK] All parameters within valid ranges");
 
     println!("\n=== Token Minting Validation Concepts Verified ===");
     Ok::<(), Box<dyn std::error::Error>>(())
@@ -304,7 +303,7 @@ test_in_memory!(test_mint_multiple_tokens, |ctx: TestContext| async move {
         simulated_tokens.push((ticker, token_mint.pubkey()));
     }
 
-    println!("\n✓ Multiple token minting concepts verified");
+    println!("\n[OK] Multiple token minting concepts verified");
     println!("  Total tokens simulated: {}", simulated_tokens.len());
     println!("  Each would have:");
     println!("    - Unique mint address");
@@ -372,7 +371,7 @@ test_in_memory!(
         println!("    ]");
         println!("  }}");
 
-        println!("\n✓ Token metadata concepts verified");
+        println!("\n[OK] Token metadata concepts verified");
         println!("  - Metadata would be stored on-chain");
         println!("  - JSON details stored off-chain");
         println!("  - Discoverable via metadata PDA");

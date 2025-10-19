@@ -59,30 +59,36 @@ tests/
 
 ### Prerequisites
 
-1. **Build the BPF program first**:
+1. **Enter Nix development shell**:
 ```bash
-cargo build-sbf
+nix develop
 ```
 
-2. The tests will automatically find the BPF binary in `target/deploy/feels.so`
+2. **Build the BPF program**:
+```bash
+just build
+```
+
+3. The tests will automatically find the BPF binary in `target/deploy/feels.so`
 
 ### Running Tests
 
 The test suite uses a modular justfile system with all test commands imported into the root justfile:
 
 ```bash
-# From project root
-just test               # Run all tests
-just test-unit          # Run unit tests only
-just test-integration   # Run integration tests only
-just test-property      # Run property tests only
-just test-e2e           # Run e2e tests only
+# From project root (within nix shell)
+just test               # Run all in-memory tests
+just test unit          # Run unit tests only
+just test integration   # Run integration tests only
+just test e2e           # Run e2e tests only
+just test property      # Run property-based tests only
+just test localnet      # Run localnet tests
+just test devnet        # Run devnet tests
 
 # Advanced test commands
-just filter test_swap         # Run tests matching "test_swap"
-just verbose                  # Run with verbose output
-just parallel 4               # Run with 4 threads
-just nocapture                # Don't capture output
+just test-filter test_swap    # Run tests matching "test_swap"
+just test-verbose unit        # Run with verbose output
+just test-parallel 4          # Run with 4 threads
 just release                  # Run in release mode
 just coverage                 # Generate coverage report
 just watch                    # Watch mode (auto-rerun)
@@ -93,22 +99,17 @@ just --list             # Show all test commands
 just all                # Run all tests
 just unit               # Run unit tests
 just integration        # Run integration tests
-just property           # Run property tests
 just e2e                # Run e2e tests
 ```
 
 #### Using cargo directly (within Nix environment)
 
 ```bash
-# Enter Nix development shell first
-nix develop
-
 # Run tests
 cargo test --features test-utils                        # Run all tests
 cargo test --features test-utils unit::                # Unit tests only
 cargo test --features test-utils integration::         # Integration tests only  
 cargo test --features test-utils e2e::                # E2E tests only
-cargo test --features test-utils property::           # Property tests only
 
 # Run specific subdirectory
 cargo test --features test-utils unit::math::          # Math unit tests
@@ -316,7 +317,7 @@ async fn test_my_feature() -> TestResult<()> {
 ## Maintenance
 
 The test infrastructure uses a modular justfile system:
-- Test commands are defined in `programs/feels/tests/justfile`
+- Test commands are defined in `justfiles/testing.just`
 - Commands are imported into the root `justfile` for convenient access
 - All tests run within the Nix environment for consistency
 

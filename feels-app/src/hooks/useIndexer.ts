@@ -6,7 +6,7 @@ import {
   ProtocolStats,
   MarketStats,
   IndexedFloor
-} from '@/services/indexer-client';
+} from '@/services/indexer';
 import { useDataSource } from '@/contexts/DataSourceContext';
 
 export interface UseIndexerOptions {
@@ -124,7 +124,7 @@ export function useProtocolStats(options: UseIndexerOptions = {}) {
 }
 
 export function useMarkets(options: UseIndexerOptions = {}) {
-  const { dataSource } = useDataSource();
+  const { dataSource, isIndexerAvailable } = useDataSource();
   const { client, isConnected } = useIndexer(options);
   const [state, setState] = useState<IndexerState<IndexedMarket[]>>({
     data: null,
@@ -134,8 +134,17 @@ export function useMarkets(options: UseIndexerOptions = {}) {
   });
 
   const fetchMarkets = useCallback(async () => {
-    // Only fetch from indexer if we're in indexer mode
-    if (!isConnected || dataSource !== 'indexer') return;
+    // Only fetch from indexer if we're in indexer mode and it's actually available
+    if (!isConnected || dataSource !== 'indexer' || !isIndexerAvailable) {
+      // Set empty data immediately for unavailable indexer
+      setState({
+        data: [],
+        loading: false,
+        error: null,
+        lastUpdated: Date.now(),
+      });
+      return;
+    }
 
     setState(prev => ({ ...prev, loading: true, error: null }));
     
@@ -148,26 +157,39 @@ export function useMarkets(options: UseIndexerOptions = {}) {
         lastUpdated: Date.now(),
       });
     } catch (error) {
-      setState(prev => ({
-        ...prev,
+      // Set empty data on error rather than showing error state
+      setState({
+        data: [],
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch markets',
-      }));
+        error: null,
+        lastUpdated: Date.now(),
+      });
     }
-  }, [client, isConnected, dataSource]);
+  }, [client, isConnected, dataSource, isIndexerAvailable]);
 
   useEffect(() => {
-    if (options.enabled !== false && isConnected && dataSource === 'indexer') {
-      fetchMarkets();
-      
-      // Set up auto-refresh
-      const interval = options.refreshInterval || 15000; // Default 15 seconds
-      const timer = setInterval(fetchMarkets, interval);
-      return () => clearInterval(timer);
+    if (options.enabled !== false && dataSource === 'indexer') {
+      // Only start fetching if indexer is available
+      if (isIndexerAvailable && isConnected) {
+        fetchMarkets();
+        
+        // Set up auto-refresh
+        const interval = options.refreshInterval || 15000; // Default 15 seconds
+        const timer = setInterval(fetchMarkets, interval);
+        return () => clearInterval(timer);
+      } else {
+        // Set empty data immediately if indexer isn't available
+        setState({
+          data: [],
+          loading: false,
+          error: null,
+          lastUpdated: Date.now(),
+        });
+      }
     }
     // Return undefined for other cases
     return undefined;
-  }, [fetchMarkets, isConnected, options.enabled, options.refreshInterval, dataSource]);
+  }, [fetchMarkets, isConnected, options.enabled, options.refreshInterval, dataSource, isIndexerAvailable]);
 
   return {
     ...state,

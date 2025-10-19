@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 use feels::{
     constants::*,
     error::FeelsError,
-    instructions::SwapParams,
+    logic::SwapParams,
     state::{Buffer, Market},
 };
 use solana_program::pubkey::Pubkey;

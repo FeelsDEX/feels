@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use feels_sdk as sdk;
 use crate::common::context::TestContext;
 use crate::common::helpers::MarketHelper;
 use crate::common::mod as common;

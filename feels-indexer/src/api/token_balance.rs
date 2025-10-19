@@ -10,7 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{pubkey::Pubkey, account::Account};
-use solana_client::nonblocking::rpc_client::RpcClient;
+use crate::rpc_client::LightRpcClient;
 use spl_token::state::Account as TokenAccount;
 use std::str::FromStr;
 use tracing::{info, error};
@@ -70,7 +70,7 @@ pub async fn get_token_balance(
     // Create RPC client
     let rpc_url = std::env::var("SOLANA_RPC_URL")
         .unwrap_or_else(|_| "http://localhost:8899".to_string());
-    let client = RpcClient::new(rpc_url);
+    let client = LightRpcClient::new(rpc_url);
     
     // Get associated token account
     let ata = spl_associated_token_account::get_associated_token_address(
@@ -144,12 +144,12 @@ pub async fn get_wallet_balances(
     // Create RPC client
     let rpc_url = std::env::var("SOLANA_RPC_URL")
         .unwrap_or_else(|_| "http://localhost:8899".to_string());
-    let client = RpcClient::new(rpc_url);
+    let client = LightRpcClient::new(rpc_url);
     
     // Get all token accounts for wallet
     match client.get_token_accounts_by_owner(
         &wallet_pubkey,
-        spl_token::id(),
+        None, // Get all token accounts, not filtered by mint
     ).await {
         Ok(accounts) => {
             let mut balances = Vec::new();

@@ -16,7 +16,7 @@ use solana_sdk::{
     message::Message,
     system_program,
 };
-use solana_client::nonblocking::rpc_client::RpcClient;
+use crate::rpc_client::LightRpcClient;
 use std::str::FromStr;
 use tracing::{info, error};
 use base64::Engine;
@@ -143,7 +143,7 @@ pub async fn build_swap_transaction(
     // Create RPC client
     let rpc_url = std::env::var("SOLANA_RPC_URL")
         .unwrap_or_else(|_| "http://localhost:8899".to_string());
-    let client = RpcClient::new(rpc_url);
+    let client = LightRpcClient::new(rpc_url);
     
     // Get recent blockhash
     let recent_blockhash = match client.get_latest_blockhash().await {
@@ -384,7 +384,7 @@ pub async fn simulate_transaction(
     // Create RPC client
     let rpc_url = std::env::var("SOLANA_RPC_URL")
         .unwrap_or_else(|_| "http://localhost:8899".to_string());
-    let client = RpcClient::new(rpc_url);
+    let client = LightRpcClient::new(rpc_url);
     
     // Simulate transaction
     match client.simulate_transaction(&transaction).await {

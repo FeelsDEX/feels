@@ -45,7 +45,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
         let feelssol_balance = ctx.get_token_balance(&user_feelssol).await?;
         assert!(feelssol_balance > 0, "User should have FeelsSOL balance");
 
-        println!("✓ Simplified creator launch flow test passed");
+        println!("[OK] Simplified creator launch flow test passed");
         println!("  - Protocol initialized");
         println!("  - FeelsSOL enter/exit functionality verified");
         println!("\nFull market creation tests require devnet/localnet environment");
@@ -84,7 +84,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
     // Enter FeelsSOL
     ctx.enter_feelssol(&creator, &creator_jitosol, &creator_feelssol, 5_000_000_000)
         .await?; // 5000 JitoSOL -> FeelsSOL
-    println!("✓ Creator funded with FeelsSOL");
+    println!("[OK] Creator funded with FeelsSOL");
 
     // Step 3: For in-memory tests, create a market between FeelsSOL and itself
     // This is a workaround since we can't create ProtocolToken accounts in tests
@@ -98,7 +98,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
         .create_simple_market(&ctx.feelssol_mint, &test_token.pubkey())
         .await?;
 
-    println!("✓ Test market created: {}", market_id);
+    println!("[OK] Test market created: {}", market_id);
 
     // Verify the market was created correctly
     let market_state = ctx.get_account::<Market>(&market_id).await?.unwrap();
@@ -110,11 +110,11 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
     assert_eq!(market_state.token_0, token_0);
     assert_eq!(market_state.token_1, token_1);
     assert_eq!(market_state.phase, MarketPhase::Created as u8);
-    println!("✓ Market state verified - PreLaunch phase");
+    println!("[OK] Market state verified - PreLaunch phase");
 
     // Step 4: Market should start with liquidity already deployed when created via helper
     // The market helper creates and activates the market automatically
-    println!("✓ Initial liquidity deployed");
+    println!("[OK] Initial liquidity deployed");
 
     // Step 5: Verify market is in correct phase
     let market_state_after = ctx.get_account::<Market>(&market_id).await?.unwrap();
@@ -124,7 +124,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
             || market_state_after.phase == MarketPhase::Transitioning as u8
             || market_state_after.phase == MarketPhase::SteadyState as u8
     );
-    println!("✓ Market in trading phase: {:?}", market_state_after.phase);
+    println!("[OK] Market in trading phase: {:?}", market_state_after.phase);
 
     // Step 6: Verify pool registry was updated
     let (pool_registry, _) = Pubkey::find_program_address(&[b"pool_registry"], &PROGRAM_ID);
@@ -134,7 +134,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
             .iter()
             .any(|p| p.market == market_id && !p.market.eq(&Pubkey::default()));
         assert!(pool_found, "Market should be registered in pool registry");
-        println!("✓ Pool registered in registry");
+        println!("[OK] Pool registered in registry");
     }
 
     // Step 7: Test trading is enabled
@@ -172,7 +172,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
 
     assert!(swap_result.amount_out > 0, "Swap should produce output");
     println!(
-        "✓ Trading enabled - swapped {} FeelsSOL for {} tokens",
+        "[OK] Trading enabled - swapped {} FeelsSOL for {} tokens",
         swap_result.amount_in, swap_result.amount_out
     );
 
@@ -190,7 +190,7 @@ test_all_environments!(test_creator_launch_flow, |ctx: TestContext| async move {
         )
         .await?;
 
-    println!("\n✓ Creator final balances:");
+    println!("\n[OK] Creator final balances:");
     println!("  FeelsSOL: {}", creator_feelssol);
     println!("  Project token: {}", creator_token);
 

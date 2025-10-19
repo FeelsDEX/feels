@@ -25,7 +25,7 @@ test_all_environments!(
         match result {
             Ok(_) => panic!("Market creation should have failed without protocol token!"),
             Err(e) => {
-                println!("   ✓ Expected error: {}", e);
+                println!("   [OK] Expected error: {}", e);
                 println!("   Non-protocol tokens correctly rejected");
             }
         }
@@ -41,7 +41,7 @@ test_all_environments!(
         // In production, users would already have JitoSOL to convert to FeelsSOL
         println!("   Note: JitoSOL integration would be tested with mock tokens");
 
-        println!("\n✓ Market initialization requirements test passed!");
+        println!("\n[OK] Market initialization requirements test passed!");
         println!("  - Non-protocol tokens are correctly rejected");
         println!("  - FeelsSOL infrastructure is set up correctly");
 

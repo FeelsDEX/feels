@@ -23,7 +23,7 @@ pub struct UpdatePoolPhase<'info> {
 
     /// Authority (must be registry authority or market authority)
     #[account(
-        constraint = authority.key() == pool_registry.authority || 
+        constraint = authority.key() == pool_registry.authority ||
                     authority.key() == market.authority @ FeelsError::InvalidAuthority
     )]
     pub authority: Signer<'info>,

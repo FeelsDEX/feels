@@ -1,10 +1,30 @@
-# Nix environment variable bridge
+# Nix environment variable bridge & Constants
 # This module provides a bridge between Nix-defined configuration and justfiles
+# and defines all constants used across the justfile system
+
+# ===== Exit Codes =====
+# These remain constant regardless of environment
+export EXIT_SUCCESS := "0"
+export EXIT_GENERAL_ERROR := "1"
+export EXIT_MISSING_DEPS := "2"
+export EXIT_BUILD_FAILURE := "3"
+export EXIT_DEPLOY_FAILURE := "4"
+export EXIT_TEST_FAILURE := "5"
+export EXIT_CONFIG_ERROR := "10"
+export EXIT_ENV_SETUP_ERROR := "11"
+export EXIT_SERVICE_START_FAILURE := "12"
+
+# ===== Colors =====
+# Terminal colors for output
+export GREEN := '\033[0;32m'
+export YELLOW := '\033[1;33m'
+export RED := '\033[0;31m'
+export NC := '\033[0m' # No Color
 
 # ===== Path Configuration =====
 # Use Nix-provided paths if available, otherwise fall back to defaults
 
-# Project paths
+# Project paths - use invocation directory as root
 export PROJECT_ROOT := env_var_or_default("NIX_PROJECT_ROOT", invocation_directory())
 export PROGRAMS_PATH := env_var_or_default("NIX_PROGRAMS_PATH", PROJECT_ROOT + "/programs")
 
@@ -15,13 +35,13 @@ export IDL_PATH := env_var_or_default("NIX_IDL_PATH", TARGET_PATH + "/idl/feels.
 export TYPES_PATH := env_var_or_default("NIX_TYPES_PATH", TARGET_PATH + "/types")
 
 # Development directories
-export LOGS_PATH := env_var_or_default("NIX_LOGS_PATH", PROJECT_ROOT + "/logs")
-export TEST_LEDGER_PATH := env_var_or_default("NIX_LEDGER_PATH", PROJECT_ROOT + "/test-ledger")
-export KEYPAIRS_PATH := env_var_or_default("NIX_KEYPAIRS_PATH", PROJECT_ROOT + "/keypairs")
+export LOGS_PATH := env_var_or_default("NIX_LOGS_PATH", PROJECT_ROOT + "/localnet/logs")
+export TEST_LEDGER_PATH := env_var_or_default("NIX_LEDGER_PATH", PROJECT_ROOT + "/localnet/validator-ledger")
+export KEYPAIRS_PATH := env_var_or_default("NIX_KEYPAIRS_PATH", PROJECT_ROOT + "/localnet/keypairs")
+export LOCALNET_CONFIG_PATH := env_var_or_default("NIX_CONFIG_PATH", PROJECT_ROOT + "/localnet/config")
 
 # Application paths
-export GENERATED_SDK_PATH := env_var_or_default("NIX_GENERATED_SDK_PATH", PROJECT_ROOT + "/generated-sdk")
-export E2E_PATH := env_var_or_default("NIX_E2E_PATH", PROJECT_ROOT + "/e2e")
+export GENERATED_SDK_PATH := env_var_or_default("NIX_GENERATED_SDK_PATH", PROJECT_ROOT + "/feels-sdk-generated")
 export FEELS_APP_PATH := env_var_or_default("NIX_FEELS_APP_PATH", PROJECT_ROOT + "/feels-app")
 
 # ===== Network Configuration =====
@@ -67,6 +87,8 @@ in-nix-env:
     fi
 
 # Get Nix environment info
+# Nix environment info (use 'just nix info' instead)
+[private]
 nix-info:
     #!/usr/bin/env bash
     echo "Nix Environment Information:"

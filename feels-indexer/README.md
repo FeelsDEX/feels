@@ -8,9 +8,22 @@ The Feels Indexer provides comprehensive protocol state indexing with:
 
 - **Multi-tier Storage**: PostgreSQL for relational queries, RocksDB for raw data, Redis for caching
 - **Full-text Search**: Tantivy integration for market and position discovery
-- **Real-time Updates**: Geyser gRPC streaming (when available)
+- **Real-time Updates**: Geyser gRPC streaming from Solana validator
 - **REST API**: Complete HTTP API for all protocol data
 - **Monitoring**: Prometheus metrics and structured logging
+
+## Components
+
+### Indexer Core (`src/`)
+The main indexer service that processes blockchain data, maintains multiple storage backends, and provides a REST API.
+
+### Geyser Plugin (`geyser-plugin/`)
+A Geyser gRPC plugin that runs **as part of the Solana validator node** (not as a separate service). The plugin:
+- Integrates with the validator's transaction processing pipeline
+- Streams account updates and transaction data in real-time via gRPC
+- Feeds data directly to the indexer core service
+
+**Note:** The Geyser plugin is loaded by the Solana validator at startup via the `--geyser-plugin-config` flag. It runs in the validator's process space, making it a critical infrastructure component rather than a standalone application.
 
 ## Architecture
 
@@ -94,7 +107,7 @@ endpoint = "http://localhost:10000"  # Yellowstone gRPC endpoint (local only - c
 program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
 
 [storage]
-rocksdb_path = "./data/rocksdb"
+rocksdb_path = "../localnet/indexer-storage/rocksdb"
 enable_compression = true
 
 [api]

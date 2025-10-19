@@ -65,7 +65,7 @@ test_devnet!(
             "Alice should have received tokens from swap"
         );
 
-        println!("✓ Swap completed successfully");
+        println!("[OK] Swap completed successfully");
         println!(
             "  FeelsSOL balance: {} -> {}",
             alice_feelssol_balance, alice_feelssol_balance_after

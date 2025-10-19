@@ -7,7 +7,6 @@
 /*
 use crate::common::*;
 use feels::constants::MAX_POMM_POSITIONS;
-use feels_sdk as sdk;
 
 test_in_memory!(
     test_pomm_complete_lifecycle,

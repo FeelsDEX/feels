@@ -20,8 +20,8 @@ no-idl = []
 no-log-ix-name = []
 
 [dependencies]
-anchor-lang = { version = "0.31.1", features = ["idl-build"] }
-anchor-spl = { version = "0.31.1", features = ["idl-build"] }
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
 solana-program = { version = "2.2.1" }
 borsh = { version = "0.10.3" }
 bytemuck = { version = "1.14" }
@@ -39,15 +39,12 @@ getrandom = { version = "0.2.2", features = ["custom"] }
 static_assertions = "1.1"
 
 [dev-dependencies]
-solana-program-test = "2.2.1"
-solana-sdk = "2.2.1"
-solana-client = "2.2.1"
+solana-program-test = "=2.2.1"
+solana-sdk = "=2.2.1"
 tokio = { version = "1.33", features = ["full"] }
-anchor-client = "0.31.1"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-feels-sdk = { path = "../../sdk" }
 proptest = "1.0"
 rand = "0.8"
 criterion = "0.5"

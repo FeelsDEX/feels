@@ -5,7 +5,7 @@ import path from 'path';
 export async function GET() {
   try {
     // Try to read the localnet tokens configuration
-    const configPath = path.join(process.cwd(), 'scripts', 'localnet-tokens.json');
+    const configPath = path.join(process.cwd(), 'config', 'localnet-tokens.json');
     
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));

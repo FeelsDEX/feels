@@ -25,6 +25,10 @@ mod test_set_protocol_owned_override {
             _reserved: [0; 7],
             mint_per_slot_cap_feelssol: 0,
             redeem_per_slot_cap_feelssol: 0,
+            default_base_fee_bps: 30,
+            default_tick_spacing: 64,
+            default_initial_sqrt_price: 5825507814218144,
+            default_tick_step_size: 128,
         }
     }
 

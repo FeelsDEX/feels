@@ -311,7 +311,7 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
     }
 
     loadProtocolConfig();
-  }, [program, publicKey]);
+  }, [program, publicKey, connection]);
 
   const handleParameterChange = (field: string, value: any) => {
     setPendingChanges(prev => ({

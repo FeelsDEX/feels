@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function GET() {
   try {
-    const configPath = path.join(process.cwd(), 'scripts', 'metaplex-localnet.json');
+    const configPath = path.join(process.cwd(), 'config', 'localnet-metaplex.json');
     
     if (!fs.existsSync(configPath)) {
       return NextResponse.json({});

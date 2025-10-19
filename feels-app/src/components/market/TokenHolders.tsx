@@ -104,7 +104,7 @@ export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
                   </span>
                   <Link
                     href={`/account/${holder.address}`}
-                    className="text-sm font-mono truncate text-muted-foreground hover:text-primary transition-colors"
+                    className="text-sm font-mono truncate text-muted-foreground hover:text-primary transition-colors ml-1"
                     title={holder.address}
                   >
                     {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
@@ -112,7 +112,7 @@ export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
                   {holder.isCreator && (
                     <Badge 
                       variant="outline" 
-                      className="text-xs px-1.5 py-0 h-5 bg-primary/10 text-primary border-primary/20"
+                      className="text-xs px-1.5 py-0 h-5 bg-primary/10 text-primary border-primary/20 cursor-default"
                     >
                       Dev
                     </Badge>

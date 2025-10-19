@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -12,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import Image from 'next/image';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, CheckCircle2, LogOut } from 'lucide-react';
+import wojakImage from '@/assets/images/wojak.png';
 
 interface WalletModalProps {
   open: boolean;
@@ -20,7 +20,7 @@ interface WalletModalProps {
 }
 
 export function WalletModal({ open, onOpenChange }: WalletModalProps) {
-  const { wallets, select, wallet, connect, connecting, disconnect, connected } = useWallet();
+  const { wallets, select, wallet, connect, connecting, disconnect, connected, publicKey } = useWallet();
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [showMoreWallets, setShowMoreWallets] = useState(false);
   const [hoveredWallet, setHoveredWallet] = useState<string | null>(null);
@@ -101,9 +101,6 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Connect a wallet</DialogTitle>
-          <DialogDescription>
-            Choose a wallet to start using Feels
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -118,17 +115,70 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                   const isConnecting = connecting && selectedWallet === installedWallet.adapter.name;
                   const isHovered = hoveredWallet === installedWallet.adapter.name;
                   
-                  return (
+                  return isConnected ? (
+                    <div key={installedWallet.adapter.name} className="flex w-full gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 justify-start text-foreground hover:bg-primary hover:text-white hover:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                        onClick={() => handleWalletSelect(installedWallet.adapter.name)}
+                        disabled={isConnecting}
+                        onMouseEnter={() => setHoveredWallet(installedWallet.adapter.name)}
+                        onMouseLeave={() => setHoveredWallet(null)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {installedWallet.adapter.icon && (
+                            <Image
+                              src={installedWallet.adapter.icon}
+                              alt={installedWallet.adapter.name}
+                              width={24}
+                              height={24}
+                              className={`rounded-md ${
+                                installedWallet.adapter.name === 'Ledger' ? 'invert' : ''
+                              }`}
+                            />
+                          )}
+                          <span>{installedWallet.adapter.name}</span>
+                        </div>
+                        <div className="ml-auto">
+                          {isHovered ? (
+                            <LogOut className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                      </Button>
+                      {publicKey && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenChange(false);
+                            window.location.href = `/account/${publicKey.toBase58()}`;
+                          }}
+                          className="flex flex-1 items-center justify-start h-10 px-4 text-sm font-medium border border-input bg-background text-foreground rounded-md hover:bg-primary hover:text-white hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                          title="View Profile"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="rounded-md bg-white p-0.5">
+                              <Image
+                                src={wojakImage}
+                                alt="Profile"
+                                width={20}
+                                height={20}
+                                className="rounded-md"
+                              />
+                            </div>
+                            <span>Your Profile</span>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
                     <Button
                       key={installedWallet.adapter.name}
-                      variant={isConnected ? "default" : "outline"}
-                      className={`w-full justify-start group transition-colors ${
-                        isConnected && isHovered ? 'hover:bg-muted hover:text-foreground' : ''
-                      }`}
+                      variant="outline"
+                      className="w-full justify-start"
                       onClick={() => handleWalletSelect(installedWallet.adapter.name)}
                       disabled={isConnecting}
-                      onMouseEnter={() => setHoveredWallet(installedWallet.adapter.name)}
-                      onMouseLeave={() => setHoveredWallet(null)}
                     >
                       <div className="flex items-center gap-3">
                         {installedWallet.adapter.icon && (
@@ -147,11 +197,6 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                       {isConnecting && (
                         <span className="ml-auto text-sm text-muted-foreground">
                           Connecting...
-                        </span>
-                      )}
-                      {isConnected && !isConnecting && (
-                        <span className="ml-auto text-sm">
-                          {isHovered ? 'Disconnect' : 'Connected'}
                         </span>
                       )}
                     </Button>

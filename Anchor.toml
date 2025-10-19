@@ -1,12 +1,13 @@
 [toolchain]
 anchor_version = "0.31.1"
+solana_version = "2.2.1"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-feels = "BLjLS7TzUBncLxXMjFYxezioeg4RVdc5vRpVRYDq8GyQ"
+feels = "B3w6rjs2vDjr6eKUXUiERV44BXud3nRqshctMp5p4au4"
 
 [registry]
 url = "https://anchor.projectserum.com"

@@ -12,7 +12,6 @@ description = "RocksDB indexer for Feels consuming Geyser streams"
 [workspace.dependencies]
 solana-program = "2.2.1"
 solana-sdk = "2.2.1"
-solana-client = "2.2.1"
 
 [lib]
 name = "feels_indexer"
@@ -31,12 +30,15 @@ path = "src/main_minimal.rs"
 zstd = "0.13"
 zstd-safe = "7.2"
 
-# Solana & Geyser - match workspace versions from root Cargo.toml
-solana-client = "2.2.1"
+# Solana & Geyser - minimal dependencies (removed solana-client to eliminate networking stack)
 solana-sdk = "2.2.1"
 solana-account-decoder = "2.2.1"
 solana-program = "2.2.1"
 solana-transaction-status = "2.2.1"
+
+# Lightweight HTTP client for RPC calls (replaces heavy solana-client)
+ureq = { version = "2.9", features = ["json"] }
+base64 = "0.22"
 
 # gRPC and protobuf for custom Geyser client
 tonic = { version = "0.10", features = ["transport", "codegen", "prost"] }
@@ -44,13 +46,15 @@ prost = "0.12"
 prost-types = "0.12"
 bs58 = "0.5"
 
-# Feels Protocol
-feels-sdk = { path = "../sdk" }
+# Feels Protocol - using internal types to avoid heavy SDK dependencies
+# feels = { path = "../programs/feels", features = ["no-entrypoint"] }
 spl-token = "7.0"
 spl-associated-token-account = "6.0"
 
 # Version overrides to resolve conflicts
 base64ct = "=1.6.0"
+# Pin fixed to a compatible version for Rust 1.82
+fixed = "1.28"
 # Use vendored openssl to avoid system dependency issues
 openssl = { version = "0.10", features = ["vendored"] }
 

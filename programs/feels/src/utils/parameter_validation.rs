@@ -12,7 +12,7 @@ pub fn validate_base_fee_bps(fee_bps: u16) -> Result<()> {
     const MIN_BASE_FEE_BPS: u16 = 1; // 0.01%
 
     require!(
-        fee_bps >= MIN_BASE_FEE_BPS && fee_bps <= MAX_FEE_BPS,
+        (MIN_BASE_FEE_BPS..=MAX_FEE_BPS).contains(&fee_bps),
         FeelsError::InvalidPrice
     );
 
@@ -28,7 +28,7 @@ pub fn validate_base_fee_bps(fee_bps: u16) -> Result<()> {
 /// Validate tick spacing parameters
 pub fn validate_tick_spacing_param(tick_spacing: u16) -> Result<()> {
     // Valid tick spacings are powers of 2 for efficiency
-    const VALID_TICK_SPACINGS: [u16; 8] = [1, 2, 4, 6, 8, 10, 16, 32];
+    const VALID_TICK_SPACINGS: [u16; 9] = [1, 2, 4, 6, 8, 10, 16, 32, 64];
 
     require!(
         VALID_TICK_SPACINGS.contains(&tick_spacing),
@@ -46,7 +46,7 @@ pub fn validate_initial_sqrt_price(sqrt_price: u128) -> Result<()> {
     const MAX_SQRT_PRICE: u128 = 79226673515401279992447579055; // ~1e9 price
 
     require!(
-        sqrt_price >= MIN_SQRT_PRICE && sqrt_price <= MAX_SQRT_PRICE,
+        (MIN_SQRT_PRICE..=MAX_SQRT_PRICE).contains(&sqrt_price),
         FeelsError::InvalidPrice
     );
 
@@ -61,11 +61,11 @@ pub fn validate_tick_range_params(
 ) -> Result<()> {
     // Validate bounds
     require!(
-        tick_lower >= MIN_TICK && tick_lower <= MAX_TICK,
+        (MIN_TICK..=MAX_TICK).contains(&tick_lower),
         FeelsError::InvalidTickRange
     );
     require!(
-        tick_upper >= MIN_TICK && tick_upper <= MAX_TICK,
+        (MIN_TICK..=MAX_TICK).contains(&tick_upper),
         FeelsError::InvalidTickRange
     );
 
@@ -158,7 +158,7 @@ pub fn validate_pomm_tick_width(tick_width: i32, tick_spacing: u16) -> Result<()
 
     // Validate within POMM bounds
     require!(
-        tick_width >= POMM_MIN_WIDTH && tick_width <= POMM_MAX_WIDTH,
+        (POMM_MIN_WIDTH..=POMM_MAX_WIDTH).contains(&tick_width),
         FeelsError::InvalidTickRange
     );
 
@@ -175,7 +175,7 @@ pub fn validate_floor_tick(floor_tick: i32, current_tick: i32, buffer_ticks: u16
 
     // Floor tick must be within valid range
     require!(
-        floor_tick >= MIN_TICK && floor_tick <= MAX_TICK,
+        (MIN_TICK..=MAX_TICK).contains(&floor_tick),
         FeelsError::InvalidTickRange
     );
 
@@ -194,7 +194,7 @@ pub fn validate_fee_distribution(
 
     // Each component must be reasonable
     require!(
-        buffer_tau_bps >= 2000 && buffer_tau_bps <= 8000, // 20-80%
+        (2000..=8000).contains(&buffer_tau_bps), // 20-80%
         FeelsError::InvalidPrice
     );
 

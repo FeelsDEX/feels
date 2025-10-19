@@ -190,6 +190,18 @@ pub fn deploy_initial_liquidity<'info>(
         FeelsError::TickNotSpaced
     );
 
+    // 1.5. Validate admin-controlled parameters (memecoin phase)
+    let protocol_config = &ctx.accounts.protocol_config;
+    let is_protocol_authority = ctx.accounts.deployer.key() == protocol_config.authority;
+
+    // During memecoin phase, only protocol authority can override default tick_step_size
+    if !is_protocol_authority {
+        require!(
+            params.tick_step_size == protocol_config.default_tick_step_size as i32,
+            FeelsError::UnauthorizedSigner
+        );
+    }
+
     // Validate initial buy amount if specified
     if params.initial_buy_feelssol_amount > 0 {
         crate::utils::validate_swap_amount(params.initial_buy_feelssol_amount, false)?;

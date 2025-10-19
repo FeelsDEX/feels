@@ -1,0 +1,197 @@
+/* Prose Style Overrides */
+
+/* Heading styles - using high specificity */
+.prose :where(h1):not(:where([class~="not-prose"] *)) {
+  font-size: 2.25rem !important;
+  line-height: 1.2 !important;
+  margin-top: 0 !important;
+  margin-bottom: 1.5rem !important;
+  font-weight: 700 !important;
+}
+
+.prose :where(h2):not(:where([class~="not-prose"] *)) {
+  font-size: 1.75rem !important;
+  line-height: 1.3 !important;
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.prose :where(h3):not(:where([class~="not-prose"] *)) {
+  font-size: 1.5rem !important;
+  line-height: 1.35 !important;
+  margin-top: 0.875rem !important;
+  margin-bottom: 0.875rem !important;
+}
+
+.prose :where(h4):not(:where([class~="not-prose"] *)) {
+  font-size: 1.25rem !important;
+  line-height: 1.4 !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.prose :where(h5):not(:where([class~="not-prose"] *)) {
+  font-size: 1.125rem !important;
+  line-height: 1.5 !important;
+  margin-top: 1.25rem !important;
+  margin-bottom: 0.625rem !important;
+}
+
+.prose :where(h6):not(:where([class~="not-prose"] *)) {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+  margin-top: 1rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* List styles */
+.prose :where(ul):not(:where([class~="not-prose"] *)) {
+  list-style: none !important;
+  padding-left: 0 !important;
+  margin-top: 0.1rem !important;
+  margin-bottom: 0.2rem !important;
+}
+
+.prose :where(ol):not(:where([class~="not-prose"] *)) {
+  list-style: none !important;
+  padding-left: 0 !important;
+  counter-reset: list-counter;
+  margin-top: 0.1rem !important;
+  margin-bottom: 0.2rem !important;
+}
+
+/* List items */
+.prose :where(li):not(:where([class~="not-prose"] *)) {
+  position: relative;
+}
+
+.prose :where(ul > li):not(:where([class~="not-prose"] *)) {
+  padding-left: 0.75rem;
+}
+
+.prose :where(ol > li):not(:where([class~="not-prose"] *)) {
+  padding-left: 1.25rem;
+  counter-increment: list-counter;
+}
+
+.prose :where(ul > li)::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: currentColor;
+}
+
+.prose :where(ol > li)::before {
+  content: counter(list-counter) ".";
+  position: absolute;
+  left: 0;
+  font-weight: 600;
+}
+
+/* Nested lists */
+.prose :where(ul ul):not(:where([class~="not-prose"] *)),
+.prose :where(ol ol):not(:where([class~="not-prose"] *)),
+.prose :where(ul ol):not(:where([class~="not-prose"] *)),
+.prose :where(ol ul):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0 !important;
+}
+
+/* Paragraph spacing */
+.prose :where(p):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 1rem !important;
+}
+
+.prose :where(p:has(+ ul)):not(:where([class~="not-prose"] *)),
+.prose :where(p:has(+ ol)):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 0 !important;
+}
+
+.prose :where(ul:has(+ p)):not(:where([class~="not-prose"] *)),
+.prose :where(ol:has(+ p)):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 0 !important;
+}
+
+.prose :where(ul + p):not(:where([class~="not-prose"] *)),
+.prose :where(ol + p):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.25rem !important;
+}
+
+/* Code blocks */
+.prose :where(pre):not(:where([class~="not-prose"] *)) {
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.5rem;
+  padding: 1rem 1rem 0.875rem 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-top: 1rem !important;
+  margin-bottom: 1.5rem !important;
+  box-shadow: none !important;
+}
+
+.prose :where(pre code):not(:where([class~="not-prose"] *)) {
+  font-size: 0.9rem !important;
+  line-height: 1.5 !important;
+}
+
+/* Inline code */
+.prose :where(code):not(:where(pre code, [class~="not-prose"] *)) {
+  font-size: 0.875rem !important;
+  color: hsl(0 0% 35%) !important;
+}
+
+/* Inline code in headings */
+.prose :where(h1 code):not(:where([class~="not-prose"] *)),
+.prose :where(h2 code):not(:where([class~="not-prose"] *)),
+.prose :where(h3 code):not(:where([class~="not-prose"] *)),
+.prose :where(h4 code):not(:where([class~="not-prose"] *)),
+.prose :where(h5 code):not(:where([class~="not-prose"] *)),
+.prose :where(h6 code):not(:where([class~="not-prose"] *)) {
+  font-size: 0.9em !important;
+}
+
+/* Links */
+.prose :where(a):not(:where([class~="not-prose"] *)) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s ease;
+}
+
+.prose :where(a:hover):not(:where([class~="not-prose"] *)) {
+  color: hsl(var(--primary));
+  text-decoration-line: underline;
+}
+
+/* HR */
+.prose :where(hr):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Headings with IDs (for anchor links) */
+.prose :where(h1[id]):not(:where([class~="not-prose"] *)),
+.prose :where(h2[id]):not(:where([class~="not-prose"] *)),
+.prose :where(h3[id]):not(:where([class~="not-prose"] *)),
+.prose :where(h4[id]):not(:where([class~="not-prose"] *)),
+.prose :where(h5[id]):not(:where([class~="not-prose"] *)),
+.prose :where(h6[id]):not(:where([class~="not-prose"] *)) {
+  position: relative;
+  scroll-margin-top: 5rem;
+}
+
+/* KaTeX math display */
+.prose :where(.katex):not(:where([class~="not-prose"] *)) {
+  font-size: 1em !important;
+}
+
+.prose :where(.katex-display):not(:where([class~="not-prose"] *)) {
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1rem 0;
+}
+
+.prose :where(.katex-display .katex):not(:where([class~="not-prose"] *)) {
+  font-size: 1.1em !important;
+}

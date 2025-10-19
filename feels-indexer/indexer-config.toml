@@ -1,0 +1,118 @@
+# Feels Indexer Configuration
+# Consolidated configuration file with sections for different deployment modes
+# Use environment variables or command-line args to specify which sections to load
+
+[geyser]
+endpoint = "http://localhost:10000"
+program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
+commitment = "confirmed"
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5
+
+[storage]
+# RocksDB for raw blockchain data
+rocksdb_path = "../localnet/indexer-storage/rocksdb"
+enable_compression = true
+max_open_files = 1000
+write_buffer_size_mb = 256
+max_write_buffer_number = 4
+block_cache_size_mb = 512
+
+[storage.minimal]
+# Minimal RocksDB config for testing/development
+enable_compression = false
+max_open_files = 100
+write_buffer_size_mb = 64
+max_write_buffer_number = 2
+block_cache_size_mb = 128
+
+[database]
+# PostgreSQL for relational queries (production/e2e only)
+postgres_url = "postgresql://feels:feels@localhost:5432/feels_indexer"
+max_connections = 20
+min_connections = 5
+acquire_timeout_secs = 30
+idle_timeout_secs = 600
+max_lifetime_secs = 1800
+
+[redis]
+# Redis for caching and real-time data (production/e2e only)
+url = "redis://localhost:6379"
+max_connections = 10
+connection_timeout_secs = 5
+response_timeout_secs = 2
+
+[search]
+# Tantivy for full-text search (production/e2e only)
+index_path = "../localnet/indexer-storage/tantivy"
+writer_memory_mb = 128
+commit_interval_secs = 30
+
+[api]
+bind_address = "127.0.0.1:8080"
+enable_cors = true
+request_timeout_secs = 30
+max_request_size_mb = 10
+
+[api.minimal]
+# Minimal API config for testing
+request_timeout_secs = 10
+max_request_size_mb = 1
+
+[monitoring]
+metrics_port = 9090
+log_level = "info"
+structured_logging = true
+jaeger_endpoint = "http://localhost:14268/api/traces"
+enable_tracing = true
+
+[monitoring.minimal]
+# Minimal monitoring for testing
+log_level = "debug"
+structured_logging = false
+enable_tracing = false
+
+[monitoring.e2e]
+# E2E monitoring settings
+enable_tracing = false
+
+[indexer]
+# Processing configuration
+batch_size = 1000
+flush_interval_secs = 10
+max_lag_slots = 100
+enable_backfill = true
+backfill_batch_size = 5000
+
+# Configuration profiles for different deployment modes
+[profiles.production]
+storage = "default"
+api = "default"
+monitoring = "default"
+enable_database = true
+enable_redis = true
+enable_search = true
+
+[profiles.e2e]
+storage = "default"
+api = "default"
+monitoring = "e2e"
+enable_database = true
+enable_redis = true
+enable_search = true
+
+[profiles.minimal]
+storage = "minimal"
+api = "minimal"
+monitoring = "minimal"
+enable_database = false
+enable_redis = false
+enable_search = false
+
+[profiles.testing]
+storage = "minimal"
+api = "minimal"
+monitoring = "minimal"
+enable_database = false
+enable_redis = false
+enable_search = false

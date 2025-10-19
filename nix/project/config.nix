@@ -53,9 +53,9 @@ integer-sqrt = { version = "0.1" }
     deploy = "target/deploy";
     idl = "target/idl";
     types = "target/types";
-    logs = "./logs";
-    ledger = "./test-ledger";
-    keypairs = "./keypairs";
+    logs = "./localnet/logs";
+    ledger = "./localnet/validator-ledger";
+    keypairs = "./localnet/keypairs";
   };
   
   buildConfig = {
@@ -67,8 +67,8 @@ integer-sqrt = { version = "0.1" }
   
   devEnv = {
     welcomeMessage = ''
-      echo "Feels Protocol Development Environment"
-      echo "======================================"'';
+Feels Protocol Development Environment
+======================================'';
     
     # Additional custom commands for the project
     customCommands = [];

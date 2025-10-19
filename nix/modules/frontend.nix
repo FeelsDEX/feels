@@ -68,29 +68,22 @@ in {
     frontend = {
       deps = [];
       text = ''
-        echo "Frontend development environment loaded"
-        echo "Node.js version: $(node --version)"
-        echo "npm version: $(npm --version)"
+        echo "Frontend Tools"
+        echo "=============="
         echo ""
-        echo "Available commands:"
-        echo "  app-setup        - Set up Next.js application"
+        echo "Runtime & Package Manager:"
+        echo "  node $(node --version)    - JavaScript runtime"
+        echo "  npm $(npm --version)      - Package manager"
         echo ""
-        echo "In feels-app directory:"
-        echo "  npm install      - Install dependencies"
-        echo "  npm run dev      - Start development server"
-        echo "  npm run build    - Build for production"
-        echo "  npm run lint     - Run ESLint"
-        echo "  npm run format   - Format code with Prettier"
+        echo "Development Commands (via just):"
+        echo "  just frontend dev       - Start Next.js dev server"
+        echo "  just frontend build     - Build for production"
+        echo "  just frontend lint      - Run ESLint"
+        echo "  just frontend format    - Format with Prettier"
         echo ""
-        
-        # Navigate to feels-app directory if it exists
-        if [ -d "feels-app" ]; then
-          echo "Feels app directory found."
-          echo "Run 'cd feels-app && npm run dev' to start development server."
-        else
-          echo "No feels-app directory found."
-          echo "Run 'app-setup' to create a new Next.js application."
-        fi
+        echo "Nix Commands:"
+        echo "  app-setup               - Initialize Next.js app"
+        echo ""
       '';
     };
   };

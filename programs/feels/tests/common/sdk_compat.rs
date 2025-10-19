@@ -7,9 +7,8 @@ use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-
 // Re-export feels_sdk for convenience
-pub use feels_sdk as sdk;
+// SDK compatibility layer - using internal types instead of external feels-sdk
 
 // Constants
 pub const MARKET_SEED: &[u8] = b"market";
@@ -154,11 +153,10 @@ pub mod instructions {
     }
 
     /// Swap params (re-export from feels)
-    pub use feels::instructions::SwapParams;
+    pub use feels::logic::SwapParams;
 
     /// Close position params
     pub use feels::instructions::ClosePositionParams;
-
 
     /// Build mint token instruction
     pub fn mint_token(
@@ -579,6 +577,44 @@ pub fn update_native_rate(authority: Pubkey, native_rate_q64: u128) -> Instructi
         ],
         data,
     }
+}
+
+// Types needed for tests
+#[derive(Debug, Clone)]
+pub struct SwapResult {
+    pub amount_in: u64,
+    pub amount_out: u64,
+    pub price_impact: f64,
+    pub fee_amount: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestMarketSetup {
+    pub market: Pubkey,
+    pub token_0: Pubkey,
+    pub token_1: Pubkey,
+    pub feelssol_mint: Pubkey,
+    pub token_mint: Pubkey,
+}
+
+#[derive(Debug, Clone)]
+pub struct PositionInfo {
+    pub address: Pubkey,
+    pub market: Pubkey,
+    pub owner: Pubkey,
+    pub lower_tick: i32,
+    pub upper_tick: i32,
+    pub liquidity: u128,
+    pub fee_growth_inside_0: u128,
+    pub fee_growth_inside_1: u128,
+    pub tokens_owed_0: u64,
+    pub tokens_owed_1: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollectFeesResult {
+    pub amount_0: u64,
+    pub amount_1: u64,
 }
 
 /// Build update dex twap instruction

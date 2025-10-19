@@ -1,18 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Connection } from '@solana/web3.js';
-import { createFeelsProgram } from '@/sdk/program-workaround';
-import { PROTOCOL_CONSTANTS, PDA_SEEDS } from '@/constants/constants';
-import { getFeelsSOLMint, ensureLocalnetTokensLoaded } from '@/constants/localnet-tokens';
-import { getMetaplexProgramId, ensureMetaplexConfigLoaded } from '@/constants/metaplex-config';
+import { createFeelsProgram } from '@/program/program-workaround';
+import { PROTOCOL_CONSTANTS, PDA_SEEDS } from '@/constants/protocol';
+import { getFeelsSOLMint, ensureLocalnetTokensLoaded, getMetaplexProgramId, ensureMetaplexConfigLoaded } from '@/constants/localnet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, AlertCircle, CheckCircle, Plus } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, Plus, ImageUp, X, Sparkles } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import { processImage, processCroppedImage, cleanupPreview, formatFileSize, ProcessedImage } from '@/utils/image-processing';
+import { ImageCropper } from '@/components/content/ImageCropper';
+import { useVanityAddress } from '@/contexts/VanityAddressContext';
 
 interface CreateMarketProps {
   connection: Connection;
@@ -23,40 +26,241 @@ interface MarketParams {
   // Token parameters (for mint_token)
   tokenName: string;
   tokenSymbol: string; // ticker
-  tokenUri: string;
+  tokenImage?: ProcessedImage; // Processed image for upload
+  uploadId?: string; // Upload ID for recovery
   
-  // Market parameters (for initialize_market)
-  baseFeesBps: number;
-  baseFeesBpsString?: string; // Keep string representation for proper display
-  tickSpacing: number;
-  initialSqrtPrice: string; // Q64 format as string for precision
+  // Optional metadata parameters
+  description?: string;
+  websiteUrl?: string;
+  xHandle?: string;
+  telegramHandle?: string;
+  
+  // User-configurable parameters
   initialBuyFeelsSOLAmount: number;
   initialBuyFeelsSOLAmountString?: string; // Keep string representation for proper display
-  
-  // Liquidity deployment parameters (for deploy_initial_liquidity)
-  tickStepSize: number;
 }
 
 export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps) {
   const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
+  const vanityAddress = useVanityAddress();
   const [isCreating, setIsCreating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [cropperImage, setCropperImage] = useState<{ file: File; preview: string } | null>(null);
   const [params, setParams] = useState<MarketParams>({
     // Token parameters
     tokenName: '',
     tokenSymbol: '',
-    tokenUri: '',
     
-    // Market parameters
-    baseFeesBps: PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS, // 0.3%
-    tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING, // Standard tick spacing for most tokens
-    initialSqrtPrice: '79228162514264337593543950336', // 1:1 price (2^96)
+    // User-configurable parameters
     initialBuyFeelsSOLAmount: 0, // Optional initial buy
-    
-    // Liquidity deployment parameters
-    tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE, // Ticks between each liquidity step
   });
+
+  // Handle image drop
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+    
+    const file = acceptedFiles[0];
+    if (!file) return; // Additional safety check
+    
+    setError(null);
+    
+    try {
+      const processed = await processImage(file);
+      
+      // Check if image needs cropping
+      const img = new Image();
+      img.src = processed.preview;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+      
+      if (img.width !== img.height) {
+        // Image is not square, open cropper
+        setCropperImage({ file: file, preview: processed.preview });
+      } else {
+        // Image is already square, use as-is
+        setParams(prev => ({ 
+          ...prev, 
+          tokenImage: processed,
+          uploadId: undefined // Clear any previous upload ID
+        }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process image');
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+    },
+    maxFiles: 1,
+    multiple: false
+  });
+
+  // Remove image
+  const removeImage = useCallback(() => {
+    if (params.tokenImage) {
+      cleanupPreview(params.tokenImage.preview);
+      setParams(prev => ({ 
+        ...prev, 
+        tokenImage: undefined,
+        uploadId: undefined
+      }));
+    }
+  }, [params.tokenImage]);
+
+  // Handle crop complete
+  const handleCropComplete = useCallback(async (croppedBlob: Blob) => {
+    if (!cropperImage) return;
+    
+    try {
+      const processed = await processCroppedImage(croppedBlob, cropperImage.file.name);
+      setParams(prev => ({ 
+        ...prev, 
+        tokenImage: processed,
+        uploadId: undefined
+      }));
+      
+      // Clean up original image preview
+      cleanupPreview(cropperImage.preview);
+      setCropperImage(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process cropped image');
+    }
+  }, [cropperImage]);
+
+  // Handle crop cancel
+  const handleCropCancel = useCallback(() => {
+    if (cropperImage) {
+      cleanupPreview(cropperImage.preview);
+      setCropperImage(null);
+    }
+  }, [cropperImage]);
+
+  // Upload metadata to IPFS
+  const uploadMetadata = async (): Promise<string> => {
+    if (!params.tokenImage && !params.uploadId) {
+      throw new Error('No image selected');
+    }
+
+    // If we have an uploadId, try to reuse it
+    if (params.uploadId) {
+      try {
+        const response = await fetch(`/api/reuse-metadata/${params.uploadId}`);
+        if (response.ok) {
+          const data = await response.json();
+          return data.uri;
+        }
+      } catch (err) {
+        console.warn('Failed to reuse metadata, will re-upload:', err);
+      }
+    }
+
+    // Upload new metadata
+    if (!params.tokenImage) {
+      throw new Error('No image to upload');
+    }
+
+    const formData = new FormData();
+    formData.append('name', params.tokenName);
+    formData.append('symbol', params.tokenSymbol);
+    
+    // Use custom description if provided, otherwise use default
+    const description = params.description || `The ${params.tokenName} token on Feels Protocol`;
+    formData.append('description', description);
+    
+    formData.append('image', params.tokenImage.file);
+    
+    // Add optional metadata fields if provided
+    if (params.websiteUrl) {
+      formData.append('external_url', params.websiteUrl);
+    }
+    
+    // Add social media attributes
+    const attributes = [];
+    if (params.xHandle) {
+      attributes.push({
+        trait_type: 'X Handle',
+        value: `@${params.xHandle}`
+      });
+    }
+    if (params.telegramHandle) {
+      attributes.push({
+        trait_type: 'Telegram',
+        value: `@${params.telegramHandle}`
+      });
+    }
+    
+    if (attributes.length > 0) {
+      formData.append('attributes', JSON.stringify(attributes));
+    }
+
+    const response = await fetch('/api/upload-metadata', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to upload metadata');
+    }
+
+    const data = await response.json();
+    
+    // Store uploadId for recovery
+    setParams(prev => ({ ...prev, uploadId: data.uploadId }));
+    
+    return data.uri;
+  };
+
+  // Validation functions for metadata fields
+  const validateUrl = (url: string): boolean => {
+    if (!url) return true; // Optional field
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const validateXHandle = (handle: string): boolean => {
+    if (!handle) return true; // Optional field
+    // X handles: 1-15 characters, alphanumeric and underscore, no spaces
+    return /^[a-zA-Z0-9_]{1,15}$/.test(handle);
+  };
+
+  const validateTelegramHandle = (handle: string): boolean => {
+    if (!handle) return true; // Optional field
+    // Telegram handles: 5-32 characters, alphanumeric and underscore, must start with letter
+    return /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(handle);
+  };
+
+  const validateDescription = (description: string): boolean => {
+    if (!description) return true; // Optional field
+    // Description: max 500 characters
+    return description.length <= 500;
+  };
+
+  const validateMetadata = (): string | null => {
+    if (params.websiteUrl && !validateUrl(params.websiteUrl)) {
+      return 'Please enter a valid website URL (e.g., https://example.com)';
+    }
+    if (params.xHandle && !validateXHandle(params.xHandle)) {
+      return 'X handle must be 1-15 characters, alphanumeric and underscore only';
+    }
+    if (params.telegramHandle && !validateTelegramHandle(params.telegramHandle)) {
+      return 'Telegram handle must be 5-32 characters, start with a letter, alphanumeric and underscore only';
+    }
+    if (params.description && !validateDescription(params.description)) {
+      return 'Description must be 500 characters or less';
+    }
+    return null;
+  };
 
   const handleCreateMarket = async () => {
     if (!publicKey || !signTransaction || !signAllTransactions) {
@@ -64,11 +268,34 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       return;
     }
 
+    // Validate vanity address
+    const vanityKeypair = vanityAddress.getSolanaKeypair();
+    if (!vanityKeypair) {
+      setError('Vanity address not ready');
+      return;
+    }
+
+    // Validate metadata fields
+    const validationError = validateMetadata();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setIsCreating(true);
     setError(null);
     setSuccess(null);
 
+    let metadataUri = '';
+    
     try {
+      // Upload metadata (image is required)
+      setIsUploading(true);
+      try {
+        metadataUri = await uploadMetadata();
+      } finally {
+        setIsUploading(false);
+      }
       // Ensure localnet tokens and metaplex config are loaded before proceeding
       await Promise.all([
         ensureLocalnetTokensLoaded(),
@@ -79,7 +306,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       const [
         { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, Keypair, Transaction },
         { AnchorProvider, BN },
-        { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync }
+        { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, Token }
       ] = await Promise.all([
         import('@solana/web3.js'),
         import('@coral-xyz/anchor'),
@@ -96,8 +323,8 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       // @ts-ignore - Anchor types are complex with dynamic imports
       const program = createFeelsProgram(provider);
 
-      // Generate keypair for the new token mint
-      const tokenMint = Keypair.generate();
+      // Use the vanity keypair for the new token mint
+      const tokenMint = vanityKeypair;
       
       // Get FeelsSOL mint - dynamically loaded for the current environment
       const feelssolMint = getFeelsSOLMint();
@@ -174,18 +401,18 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       );
 
       // Get associated token accounts
-      const escrowTokenVault = getAssociatedTokenAddressSync(tokenMint.publicKey, escrowAuthority, true);
-      const escrowFeelssolVault = getAssociatedTokenAddressSync(feelssolMint, escrowAuthority, true);
-      const creatorFeelssolAccount = getAssociatedTokenAddressSync(feelssolMint, publicKey);
-      const deployerFeelssolAccount = getAssociatedTokenAddressSync(feelssolMint, publicKey);
-      const deployerTokenOut = getAssociatedTokenAddressSync(tokenMint.publicKey, publicKey);
+      const escrowTokenVault = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, tokenMint.publicKey, escrowAuthority, true);
+      const escrowFeelssolVault = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, feelssolMint, escrowAuthority, true);
+      const creatorFeelssolAccount = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, feelssolMint, publicKey);
+      const deployerFeelssolAccount = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, feelssolMint, publicKey);
+      const deployerTokenOut = await Token.getAssociatedTokenAddress(ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, tokenMint.publicKey, publicKey);
 
       // Build combined transaction with all three instructions
       // @ts-ignore - Anchor types are complex with dynamic imports
       const mintTokenIx = await program.methods['mintToken']({
           ticker: params.tokenSymbol,
           name: params.tokenName,
-          uri: params.tokenUri,
+          uri: metadataUri,
         })
         .accounts({
           creator: publicKey,
@@ -209,13 +436,14 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
 
       // @ts-ignore - Anchor types are complex with dynamic imports
       const initializeMarketIx = await program.methods['initializeMarket']({
-          baseFeesBps: params.baseFeesBps,
-          tickSpacing: params.tickSpacing,
-          initialSqrtPrice: new BN(params.initialSqrtPrice),
+          baseFeesBps: PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS,
+          tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING,
+          initialSqrtPrice: new BN('5825507814218144'), // ~1e-7 FeelsSOL per token (tick -161216)
           initialBuyFeelssolAmount: new BN(params.initialBuyFeelsSOLAmount * 1e9),
         })
         .accounts({
           creator: publicKey,
+          protocolConfig,
           token0,
           token1,
           market,
@@ -239,7 +467,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
 
       // @ts-ignore - Anchor types are complex with dynamic imports
       const deployLiquidityIx = await program.methods['deployInitialLiquidity']({
-          tickStepSize: params.tickStepSize,
+          tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE,
           initialBuyFeelssolAmount: new BN(params.initialBuyFeelsSOLAmount * 1e9),
         })
         .accounts({
@@ -296,18 +524,32 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
         Market: ${market.toBase58()}
         Token: ${tokenMint.publicKey.toBase58()}`);
       
+      // Confirm upload if using IPFS
+      if (params.uploadId) {
+        try {
+          await fetch(`/api/confirm-metadata/${params.uploadId}`, { method: 'POST' });
+        } catch (err) {
+          console.warn('Failed to confirm metadata upload:', err);
+        }
+      }
+      
+      // Cleanup image preview
+      if (params.tokenImage) {
+        cleanupPreview(params.tokenImage.preview);
+      }
+      
       // Clear form
       setParams({
         tokenName: '',
         tokenSymbol: '',
-        tokenUri: '',
-        baseFeesBps: PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS,
-        baseFeesBpsString: undefined,
-        tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING,
-        initialSqrtPrice: '79228162514264337593543950336',
+        tokenImage: undefined,
+        uploadId: undefined,
+        description: undefined,
+        websiteUrl: undefined,
+        xHandle: undefined,
+        telegramHandle: undefined,
         initialBuyFeelsSOLAmount: 0,
         initialBuyFeelsSOLAmountString: undefined,
-        tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE,
       });
 
       // Callback
@@ -326,12 +568,9 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
     return (
       params.tokenName.trim() !== '' &&
       params.tokenSymbol.trim() !== '' &&
-      params.tokenUri.trim() !== '' &&
-      params.tickSpacing > 0 &&
-      params.baseFeesBps > 0 &&
-      params.initialSqrtPrice.trim() !== '' &&
-      params.tickStepSize > 0 &&
+      params.tokenImage !== undefined && // Image required
       params.initialBuyFeelsSOLAmount >= 0 && // Allow 0 for no initial buy
+      vanityAddress.status.keypair !== null && // Vanity address must be ready
       connected
     );
   };
@@ -351,178 +590,255 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
         <div id="create-market-form" className="space-y-4">
           {/* Token Information */}
           <div id="token-info-section" className="space-y-2">
-            <h3 id="token-info-heading" className="text-sm font-medium">Token Information</h3>
+            <h3 id="token-info-heading" className="text-lg font-semibold">Token Information</h3>
             <div id="token-info-fields" className="grid grid-cols-2 gap-4">
               <div id="token-name-field">
-                <Label htmlFor="tokenName">Token Name</Label>
+                <Label htmlFor="tokenName">Token Name *</Label>
                 <Input
                   id="token-name-input"
                   value={params.tokenName}
                   onChange={(e) => setParams({ ...params, tokenName: e.target.value })}
                   placeholder="My Token"
                   disabled={isCreating}
+                  className="focus:placeholder-transparent"
+                  autoComplete="off"
                 />
               </div>
               <div id="token-symbol-field">
-                <Label htmlFor="tokenSymbol">Token Symbol</Label>
+                <Label htmlFor="tokenSymbol">Token Symbol *</Label>
                 <Input
                   id="token-symbol-input"
                   value={params.tokenSymbol}
                   onChange={(e) => setParams({ ...params, tokenSymbol: e.target.value.toUpperCase() })}
                   placeholder="MTK"
                   disabled={isCreating}
+                  className="focus:placeholder-transparent"
                   maxLength={10}
+                  autoComplete="off"
                 />
               </div>
             </div>
-            <div id="token-uri-field">
-              <Label htmlFor="tokenUri">Metadata URI</Label>
-              <Input
-                id="token-uri-input"
-                value={params.tokenUri}
-                onChange={(e) => setParams({ ...params, tokenUri: e.target.value })}
-                placeholder="https://example.com/token-metadata.json"
-                disabled={isCreating}
-              />
+            <div id="token-image-field" className="col-span-2">
+              <Label>Token Image *</Label>
+              {!params.tokenImage ? (
+                <div
+                  {...getRootProps()}
+                  className={`
+                    border border-dashed rounded-lg p-6 text-center cursor-pointer
+                    transition-colors duration-200
+                    ${isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/40'}
+                    ${isCreating || isUploading ? 'opacity-50 cursor-not-allowed' : ''}
+                  `}
+                  onMouseEnter={(e) => {
+                    if (!isDragActive && !isCreating && !isUploading) {
+                      e.currentTarget.style.backgroundColor = '#fafbfc';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isDragActive) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  <input {...getInputProps()} disabled={isCreating || isUploading} />
+                  <ImageUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" strokeWidth={1.5} />
+                  <p className="text-sm text-muted-foreground/60">
+                    {isDragActive
+                      ? 'Drop the image here'
+                      : 'Drag & drop, or click to select image'}
+                  </p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">
+                  2MB max • Crop to square (PNG, JPG, GIF, WebP) 
+                  </p>
+                </div>
+              ) : (
+                <div className="relative border rounded-lg p-4" style={{ backgroundColor: '#fafbfc' }}>
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={params.tokenImage.preview}
+                      alt="Token preview"
+                      className="h-24 w-24 rounded-lg object-cover"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{params.tokenImage.file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatFileSize(params.tokenImage.file.size)}
+                      </p>
+                      {params.uploadId && !isUploading && (
+                        <p className="text-xs mt-1" style={{ color: '#5cca39' }}>Uploaded</p>
+                      )}
+                      {params.uploadId && isUploading && (
+                        <p className="text-xs text-primary mt-1">Uploading...</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={removeImage}
+                      disabled={isCreating || isUploading}
+                      className="h-8 w-8 p-0 hover:bg-gray-400"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Vanity Address Section */}
+          <div id="vanity-address-section" className="space-y-2">
+            <h3 id="vanity-address-heading" className="text-lg font-semibold">Token Address</h3>
+            <div className="p-4 bg-muted rounded-lg space-y-3">
+              {vanityAddress.status.keypair ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Your token will be created at:</p>
+                      <p className="font-mono text-sm break-all">{vanityAddress.status.keypair.publicKey}</p>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 ml-2" />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Sparkles className="h-3 w-3" />
+                    <span>Vanity address ready • Mined in {(vanityAddress.status.elapsedMs / 1000).toFixed(1)}s ({vanityAddress.status.attempts.toLocaleString()} attempts)</span>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted-foreground">Mining Feels address...</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="font-mono text-xs">
+                      {vanityAddress.status.attempts.toLocaleString()} attempts 
+                      ({(vanityAddress.status.elapsedMs / 1000).toFixed(0)}s)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Optional Metadata */}
+          <div id="metadata-section" className="space-y-2">
+            <h3 id="metadata-heading" className="text-lg font-semibold">Metadata (Optional)</h3>
+            <div id="metadata-fields" className="space-y-4">
+              <div id="description-field">
+                <Label htmlFor="description">Description</Label>
+                <textarea
+                  id="description-input"
+                  className="feels-input flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus:placeholder-transparent"
+                  style={{ height: '135px', minHeight: '135px' }}
+                  value={params.description || ''}
+                  onChange={(e) => setParams({ ...params, description: e.target.value })}
+                  placeholder="Describe your token (max 500 characters)"
+                  disabled={isCreating}
+                  maxLength={500}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {params.description ? `${params.description.length}/500 characters` : '0/500 characters'}
+                </p>
+              </div>
+              
+              <div id="social-fields" className="space-y-4">
+                {/* Website URL on its own row */}
+                <div id="website-field">
+                  <Label htmlFor="websiteUrl">Website URL</Label>
+                  <Input
+                    id="website-input"
+                    value={params.websiteUrl || ''}
+                    onChange={(e) => setParams({ ...params, websiteUrl: e.target.value })}
+                    placeholder="https://example.com"
+                    disabled={isCreating}
+                    className={`focus:placeholder-transparent ${params.websiteUrl && !validateUrl(params.websiteUrl) ? 'border-destructive' : ''}`}
+                    autoComplete="off"
+                  />
+                  {params.websiteUrl && !validateUrl(params.websiteUrl) && (
+                    <p className="text-xs text-destructive mt-1">Please enter a valid URL</p>
+                  )}
+                </div>
+                
+                {/* Social handles on the same row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div id="x-handle-field">
+                    <Label htmlFor="xHandle">X Handle</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm">@</span>
+                      <Input
+                        id="x-handle-input"
+                        value={params.xHandle || ''}
+                        onChange={(e) => setParams({ ...params, xHandle: e.target.value })}
+                        placeholder="username"
+                        disabled={isCreating}
+                        className={`focus:placeholder-transparent ${params.xHandle && !validateXHandle(params.xHandle) ? 'border-destructive' : ''}`}
+                        style={{ paddingLeft: '1.65rem' }}
+                        maxLength={15}
+                        autoComplete="off"
+                      />
+                    </div>
+                    {params.xHandle && !validateXHandle(params.xHandle) && (
+                      <p className="text-xs text-destructive mt-1">1-15 characters, alphanumeric and underscore only</p>
+                    )}
+                  </div>
+                  
+                  <div id="telegram-handle-field">
+                    <Label htmlFor="telegramHandle">Telegram Handle</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm">@</span>
+                      <Input
+                        id="telegram-handle-input"
+                        value={params.telegramHandle || ''}
+                        onChange={(e) => setParams({ ...params, telegramHandle: e.target.value })}
+                        placeholder="username"
+                        disabled={isCreating}
+                        className={`focus:placeholder-transparent ${params.telegramHandle && !validateTelegramHandle(params.telegramHandle) ? 'border-destructive' : ''}`}
+                        style={{ paddingLeft: '1.65rem' }}
+                        maxLength={32}
+                        autoComplete="off"
+                      />
+                    </div>
+                    {params.telegramHandle && !validateTelegramHandle(params.telegramHandle) && (
+                      <p className="text-xs text-destructive mt-1">5-32 characters, start with letter, alphanumeric and underscore only</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Market Parameters */}
           <div id="market-params-section" className="space-y-2">
-            <h3 id="market-params-heading" className="text-sm font-medium">Market Parameters</h3>
-            <div id="market-params-fields" className="grid grid-cols-2 gap-4">
-              <div id="initial-price-field">
-                <Label htmlFor="initialSqrtPrice">Initial Price (sqrt)</Label>
-                <Input
-                  id="initial-sqrt-price-input"
-                  value={params.initialSqrtPrice}
-                  onChange={(e) => setParams({ ...params, initialSqrtPrice: e.target.value })}
-                  placeholder="79228162514264337593543950336"
-                  disabled={isCreating}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Price as Q64 sqrt format (default is 1:1 ratio)
-                </p>
-              </div>
-              <div id="initial-buy-field">
-                <Label htmlFor="initialBuy">Initial Buy (FeelsSOL)</Label>
-                <Input
-                  id="initial-buy-input"
-                  type="text"
-                  value={params.initialBuyFeelsSOLAmountString ?? (params.initialBuyFeelsSOLAmount === 0 ? '' : params.initialBuyFeelsSOLAmount.toString())}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow empty string, numbers with decimals
-                    if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                      const numValue = value === '' ? 0 : parseFloat(value);
-                      if (!isNaN(numValue) && numValue >= 0) {
-                        setParams({ 
-                          ...params, 
-                          initialBuyFeelsSOLAmount: numValue,
-                          initialBuyFeelsSOLAmountString: value // Keep the string representation
-                        });
-                      }
+            <h3 id="market-params-heading" className="text-lg font-semibold">Market Parameters</h3>
+            <div id="initial-buy-field">
+              <Label htmlFor="initialBuy">Initial Purchase Amount (FeelsSOL)</Label>
+              <Input
+                id="initial-buy-input"
+                type="text"
+                value={params.initialBuyFeelsSOLAmountString ?? (params.initialBuyFeelsSOLAmount === 0 ? '' : params.initialBuyFeelsSOLAmount.toString())}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Allow empty string, numbers with decimals
+                  if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                    const numValue = value === '' ? 0 : parseFloat(value);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                      setParams({ 
+                        ...params, 
+                        initialBuyFeelsSOLAmount: numValue,
+                        initialBuyFeelsSOLAmountString: value // Keep the string representation
+                      });
                     }
-                  }}
-                  onBlur={() => {
-                    // Clear the string representation on blur to show the parsed number
-                    setParams({ ...params, initialBuyFeelsSOLAmountString: undefined });
-                  }}
-                  placeholder="0"
-                  disabled={isCreating}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Optional initial purchase amount (0 = no initial buy)
-                </p>
-              </div>
-              <div id="tick-spacing-field">
-                <Label htmlFor="tickSpacing">Tick Spacing</Label>
-                <Input
-                  id="tick-spacing-input"
-                  type="text"
-                  value={params.tickSpacing.toString()}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow only positive integers
-                    if (/^\d*$/.test(value)) {
-                      const numValue = parseInt(value) || 0;
-                      if (numValue >= 1) {
-                        setParams({ ...params, tickSpacing: numValue });
-                      } else if (value === '') {
-                        setParams({ ...params, tickSpacing: PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING });
-                      }
-                    }
-                  }}
-                  placeholder={PROTOCOL_CONSTANTS.DEFAULT_TICK_SPACING.toString()}
-                  disabled={isCreating}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lower = more granular prices
-                </p>
-              </div>
-              <div id="base-fee-field">
-                <Label htmlFor="baseFee">Base Fee (%)</Label>
-                <Input
-                  id="base-fee-input"
-                  type="text"
-                  value={params.baseFeesBpsString ?? (params.baseFeesBps / 100).toString()}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow numbers with up to 2 decimal places
-                    if (/^\d*\.?\d{0,2}$/.test(value)) {
-                      const numValue = parseFloat(value);
-                      if (!isNaN(numValue) && numValue >= 0.01 && numValue <= 10) {
-                        setParams({ 
-                          ...params, 
-                          baseFeesBps: Math.round(numValue * 100),
-                          baseFeesBpsString: value // Keep the string representation
-                        });
-                      } else if (value === '' || value === '0' || value === '0.' || /^0\.0?$/.test(value)) {
-                        // Allow typing intermediate values like "0.", "0.0"
-                        setParams({ 
-                          ...params, 
-                          baseFeesBps: 0,
-                          baseFeesBpsString: value
-                        });
-                      }
-                    }
-                  }}
-                  onBlur={() => {
-                    // Clear the string representation on blur to show the parsed number
-                    setParams({ ...params, baseFeesBpsString: undefined });
-                  }}
-                  placeholder={(PROTOCOL_CONSTANTS.DEFAULT_BASE_FEE_BPS / 100).toString()}
-                  disabled={isCreating}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Trading fee percentage (0.01% - 10%)
-                </p>
-              </div>
-              <div id="tick-step-size-field">
-                <Label htmlFor="tickStepSize">Tick Step Size</Label>
-                <Input
-                  id="tick-step-size-input"
-                  type="text"
-                  value={params.tickStepSize.toString()}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow only positive integers
-                    if (/^\d*$/.test(value)) {
-                      const numValue = parseInt(value) || 0;
-                      if (numValue >= 1) {
-                        setParams({ ...params, tickStepSize: numValue });
-                      } else if (value === '') {
-                        setParams({ ...params, tickStepSize: PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE });
-                      }
-                    }
-                  }}
-                  placeholder={PROTOCOL_CONSTANTS.DEFAULT_TICK_STEP_SIZE.toString()}
-                  disabled={isCreating}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ticks between each liquidity step
-                </p>
-              </div>
+                  }
+                }}
+                onBlur={() => {
+                  // Clear the string representation on blur to show the parsed number
+                  setParams({ ...params, initialBuyFeelsSOLAmountString: undefined });
+                }}
+                placeholder="0"
+                disabled={isCreating}
+                className="focus:placeholder-transparent"
+                autoComplete="off"
+              />
             </div>
           </div>
 
@@ -545,10 +861,15 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
           <Button
             id="create-market-submit-button"
             onClick={handleCreateMarket}
-            disabled={!isFormValid() || isCreating}
+            disabled={!isFormValid() || isCreating || isUploading}
             className="w-full"
           >
-            {isCreating ? (
+            {isUploading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Uploading Metadata...
+              </>
+            ) : isCreating ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Creating Market...
@@ -568,6 +889,16 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
           )}
         </div>
       </CardContent>
+      
+      {/* Image Cropper Dialog */}
+      {cropperImage && (
+        <ImageCropper
+          image={cropperImage.preview}
+          onCropComplete={handleCropComplete}
+          onCancel={handleCropCancel}
+          isOpen={!!cropperImage}
+        />
+      )}
     </Card>
   );
 }

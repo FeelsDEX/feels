@@ -5,37 +5,73 @@ import 'common.just'
 
 # ===== Main Build Commands =====
 
-# Build the protocol using Anchor (internal - use 'just build' from main justfile)
-_build:
-    @just show-building
-    @just run-preflight-checks "anchor anchor.toml"
-    @if [[ "{{USE_NIX_BUILD}}" == "true" ]] && command -v nix >/dev/null 2>&1; then \
-        if anchor build --no-idl --program-name feels; then \
-            just show-success "Programs built and available in {{DEPLOY_PATH}}/"; \
-        else \
-            just exit-with-error {{EXIT_BUILD_FAILURE}} "Anchor build failed"; \
-        fi; \
-    else \
-        just show-warning "Not in Nix environment, using system Anchor"; \
-        if anchor build --no-idl --program-name feels; then \
-            just show-success "Programs built and available in {{DEPLOY_PATH}}/"; \
-        else \
-            just exit-with-error {{EXIT_BUILD_FAILURE}} "Anchor build failed"; \
-        fi; \
-    fi
+# Unified build command - handles all build targets and methods
+# Usage: just build [target] [method]
+# Targets: all (default), feels, indexer, frontend, idl
+# Methods: anchor (default), nix (for feels only)
+build target="all" method="anchor":
+    #!/usr/bin/env bash
+    just show-building
+    
+    case "{{target}}" in
+        all|feels)
+            just run-preflight-checks "anchor anchor.toml"
+            case "{{method}}" in
+                nix)
+                    just show-progress "Building with Nix BPF builder"
+                    if ! nix run .#bpf-build; then
+                        just exit-with-error {{EXIT_BUILD_FAILURE}} "Nix BPF build failed"
+                    fi
+                    ;;
+                anchor|*)
+                    just show-progress "Building with Anchor in Nix environment"
+                    mkdir -p {{DEPLOY_PATH}}
+                    # Use Anchor build in Nix environment with SBF toolchain (skip IDL generation)
+                    if ! just nix-cmd anchor build --no-idl; then
+                        just exit-with-error {{EXIT_BUILD_FAILURE}} "Anchor build failed"
+                    fi
+                    # Copy the built program to the expected location
+                    if [[ -f target/deploy/feels.so ]]; then
+                        cp target/deploy/feels.so {{DEPLOY_PATH}}/
+                    elif [[ -f target/sbf-solana-solana/release/feels.so ]]; then
+                        cp target/sbf-solana-solana/release/feels.so {{DEPLOY_PATH}}/
+                    else
+                        just exit-with-error {{EXIT_BUILD_FAILURE}} "Build succeeded but output file not found"
+                    fi
+                    ;;
+            esac
+            just show-success "Programs built and available in {{DEPLOY_PATH}}/"
+            ;;
+        idl)
+            just _build-idl "feels"
+            ;;
+        indexer)
+            cd {{PROJECT_ROOT}}/feels-indexer
+            just show-progress "Building indexer"
+            if ! just nix-shell-cmd indexer cargo build --release; then
+                just exit-with-error {{EXIT_BUILD_FAILURE}} "Indexer build failed"
+            fi
+            just show-success "Indexer built"
+            ;;
+        frontend)
+            cd {{FEELS_APP_PATH}}
+            just show-progress "Building frontend"
+            if ! just nix-shell-cmd frontend npm run build; then
+                just exit-with-error {{EXIT_BUILD_FAILURE}} "Frontend build failed"
+            fi
+            just show-success "Frontend built"
+            ;;
+        *)
+            just show-error "Unknown build target: {{target}}"
+            echo "Available targets: all, feels, indexer, frontend, idl"
+            exit {{EXIT_GENERAL_ERROR}}
+            ;;
+    esac
 
-# Build with Nix BPF builder (hermetic build)
-_nix-build:
-    @just show-progress "Building with Nix BPF builder"
-    @if command -v nix >/dev/null 2>&1; then \
-        nix run .#bpf-build; \
-    else \
-        just show-error "Nix is not installed. Install Nix to use hermetic builds."; \
-        exit {{EXIT_MISSING_DEPS}}; \
-    fi
-
-# Build IDL files
-_idl-build program="":
+# Build IDL files and generate clients (private - use 'just build idl')
+# Usage: just _build-idl [program]
+[private]
+_build-idl program="feels":
     #!/usr/bin/env bash
     # Always use Nix for IDL generation due to nightly Rust requirements
     if ! command -v nix >/dev/null 2>&1; then
@@ -44,21 +80,12 @@ _idl-build program="":
         exit {{EXIT_MISSING_DEPS}}
     fi
     
-    if [[ -z "{{program}}" ]]; then
-        just show-progress "Generating IDL files for all on-chain programs"
-        nix run .#idl-build -- feels
-        echo "Note: feels-jupiter-adapter is a library, not an on-chain program, so it doesn't have an IDL"
+    just show-progress "Generating IDL for {{program}}"
+    nix run .#idl-build -- {{program}}
+    if [[ "{{program}}" = "feels" ]]; then
         echo ""
         just show-progress "Generating TypeScript and Rust clients from IDL"
         just _generate-clients
-    else
-        just show-progress "Generating IDL for {{program}}"
-        nix run .#idl-build -- {{program}}
-        if [[ "{{program}}" = "feels" ]]; then
-            echo ""
-            just show-progress "Generating TypeScript and Rust clients from IDL"
-            just _generate-clients
-        fi
     fi
 
 # Generate TypeScript and Rust clients from IDL
@@ -99,7 +126,7 @@ fix-idl-anchor-bug:
 [private]
 _generate-typescript-client:
     #!/usr/bin/env bash
-    mkdir -p "{{GENERATED_SDK_PATH}}"
+    mkdir -p "{{GENERATED_SDK_PATH}}/typescript"
     
     if [[ ! -f "{{IDL_PATH}}" ]]; then
         just show-error "IDL not found at {{IDL_PATH}}"
@@ -116,12 +143,12 @@ _generate-typescript-client:
         const fs = require('fs');
         const idl = JSON.parse(fs.readFileSync('{{IDL_PATH}}', 'utf8'));
         const ts = 'export type Feels = ' + JSON.stringify(idl, null, 2) + ';\\n\\nexport const IDL: Feels = ' + JSON.stringify(idl, null, 2) + ';\\n\\nexport const PROGRAM_ID = \"${PROGRAM_ID}\";';
-        fs.writeFileSync('{{GENERATED_SDK_PATH}}/feels.ts', ts);
+        fs.writeFileSync('{{GENERATED_SDK_PATH}}/typescript/feels.ts', ts);
         console.log('TypeScript IDL generated successfully with program ID: ${PROGRAM_ID}');
     "
     
     # Generate TypeScript types
-    if anchor idl type -o "{{GENERATED_SDK_PATH}}/feels_types.ts" "{{IDL_PATH}}" 2>/dev/null; then
+    if anchor idl type -o "{{GENERATED_SDK_PATH}}/typescript/feels_types.ts" "{{IDL_PATH}}" 2>/dev/null; then
         echo "  TypeScript types generated"
     else
         just show-warning "Type generation failed (this is expected with Anchor 0.31.1)"
@@ -303,12 +330,12 @@ generate-rust-client:
 show-client-locations:
     @echo ""
     @echo "Generated clients:"
-    @echo "  TypeScript: {{GENERATED_SDK_PATH}}/feels.ts"
-    @echo "  TypeScript Types: {{GENERATED_SDK_PATH}}/feels_types.ts (if generated)"
+    @echo "  TypeScript: {{GENERATED_SDK_PATH}}/typescript/feels.ts"
+    @echo "  TypeScript Types: {{GENERATED_SDK_PATH}}/typescript/feels_types.ts (if generated)"
     @echo "  Rust: {{GENERATED_SDK_PATH}}/rust/"
     @echo ""
     @echo "To use the TypeScript client:"
-    @echo "  import { IDL, PROGRAM_ID } from './{{GENERATED_SDK_PATH}}/feels';"
+    @echo "  import { IDL, PROGRAM_ID } from './{{GENERATED_SDK_PATH}}/typescript/feels';"
     @echo "  const program = new anchor.Program(IDL, PROGRAM_ID, provider);"
     @echo ""
     @echo "To use the Rust client:"
@@ -328,7 +355,7 @@ _idl-validate:
     
     if [[ ! -f "{{IDL_PATH}}" ]]; then
         just show-error "IDL not found at {{IDL_PATH}}"
-        echo "   Run 'just idl-build' to generate the IDL first"
+        echo "   Run 'just build idl' to generate the IDL first"
         exit {{EXIT_CONFIG_ERROR}}
     fi
     
@@ -385,7 +412,7 @@ _compare-idl-sdk:
         exit {{EXIT_CONFIG_ERROR}}
     fi
     
-    SDK_DIR="sdk/src/instructions"
+    SDK_DIR="feels-sdk/src/instructions"
     if [[ ! -d "$SDK_DIR" ]]; then
         just show-error "SDK instructions directory not found at $SDK_DIR"
         exit {{EXIT_CONFIG_ERROR}}
@@ -503,16 +530,44 @@ _compare-idl-sdk:
 
 # ===== Clean Commands =====
 
-# Clean build artifacts
-_clean:
-    @just show-progress "Cleaning build artifacts"
-    @if command -v cargo >/dev/null 2>&1; then cargo clean || true; else echo "Cargo not found, skipping cargo clean"; fi
-    @rm -rf target/ .anchor/
-    @just show-success "Build artifacts cleaned"
+# Clean build artifacts for specific target or all
+# Usage: just clean [target]
+# Targets: all (default), feels, indexer, frontend, nix
+clean target="all":
+    #!/usr/bin/env bash
+    just show-progress "Cleaning {{target}} artifacts"
+    
+    case "{{target}}" in
+        all)
+            just nix-cmd cargo clean || true
+            rm -rf target/ .anchor/
+            rm -rf .nix-build/ result result-*
+            cd {{PROJECT_ROOT}}/feels-indexer && just nix-cmd cargo clean || true
+            cd {{FEELS_APP_PATH}} && rm -rf .next out node_modules/.cache || true
+            ;;
+        feels)
+            just nix-cmd cargo clean || true
+            rm -rf target/ .anchor/
+            ;;
+        indexer)
+            cd {{PROJECT_ROOT}}/feels-indexer && just nix-cmd cargo clean || true
+            ;;
+        frontend)
+            cd {{FEELS_APP_PATH}} && rm -rf .next out node_modules/.cache || true
+            ;;
+        nix)
+            rm -rf .nix-build/ result result-*
+            ;;
+        *)
+            just show-error "Unknown clean target: {{target}}"
+            exit {{EXIT_GENERAL_ERROR}}
+            ;;
+    esac
+    just show-success "{{target}} artifacts cleaned"
 
-# Reset development environment
-_reset:
+# Reset complete development environment
+reset:
     @just show-progress "Resetting local development environment"
-    @just _clean
-    @rm -rf {{LOGS_PATH}}/ test-ledger/ {{KEYPAIRS_PATH}}/
+    @just clean all
+    @rm -rf {{TEST_LEDGER_PATH}}/
     @just show-success "Reset complete!"

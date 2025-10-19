@@ -307,6 +307,7 @@ fn calculate_pomm_range(
 
 /// Update POMM position and market state
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn update_pomm_position_state(
     pomm_position: &mut Account<Position>,
     market: &mut Account<Market>,
@@ -374,8 +375,7 @@ fn handle_remove_liquidity(
     _liquidity_amount: u128,
     _now: i64,
 ) -> Result<()> {
-    // TODO: Implement remove liquidity logic
-    Ok(())
+    Err(FeelsError::NotImplemented.into())
 }
 
 /// Handle rebalancing a POMM position
@@ -386,15 +386,13 @@ fn handle_rebalance(
     _new_tick_upper: i32,
     _now: i64,
 ) -> Result<()> {
-    // TODO: Implement rebalance logic
-    Ok(())
+    Err(FeelsError::NotImplemented.into())
 }
 
 /// Handle collecting fees from a POMM position
 #[inline(never)]
 fn handle_collect_fees(_ctx: &Context<ManagePommPosition>, _now: i64) -> Result<()> {
-    // TODO: Implement collect fees logic
-    Ok(())
+    Err(FeelsError::NotImplemented.into())
 }
 
 // Add new constants

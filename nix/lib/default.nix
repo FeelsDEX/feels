@@ -1,7 +1,23 @@
 # Reusable library functions for Solana development
 { pkgs, inputs', ... }:
 
+let
+  # Create wrappers for Solana tools that exclude cargo to prevent collisions
+  solana-tools-wrapped = pkgs.runCommand "solana-tools-wrapped" {} ''
+    mkdir -p $out/bin
+    for bin in ${inputs'.zero-nix.packages.solana-tools}/bin/*; do
+      binname=$(basename "$bin")
+      if [[ "$binname" != "cargo"* ]] && [[ "$binname" != "rust"* ]]; then
+        ln -s "$bin" "$out/bin/$binname"
+      fi
+    done
+  '';
+in
+
 rec {
+  # Export wrapped tools for use in other modules
+  inherit solana-tools-wrapped;
+  
   # Environment variable builders
   mkEnvVars = stacks: pkgs.lib.flatten (map (stack: stack.env or []) stacks);
   
@@ -33,7 +49,7 @@ rec {
       inherit src;
       
       nativeBuildInputs = with pkgs; [
-        inputs'.zero-nix.packages.solana-tools
+        solana-tools-wrapped
         pkg-config
         openssl.dev
         git
@@ -58,7 +74,7 @@ rec {
       CARGO_TARGET_SBF_SOLANA_SOLANA_RUSTFLAGS = "-C link-arg=-undefined -C link-arg=dynamic_lookup";
       
       buildPhase = ''
-        export PATH="${inputs'.zero-nix.packages.solana-tools}/bin:$PATH"
+        export PATH="${solana-tools-wrapped}/bin:$PATH"
         export HOME=$TMPDIR
         export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
         export GIT_SSL_CAINFO="$SSL_CERT_FILE"
@@ -88,49 +104,38 @@ rec {
         # Create output directory
         mkdir -p $out/deploy
         
-        # Build the program
-        echo "Building BPF program ${name}..."
+        # Build the program using direct cargo compilation with BPF target
+        echo "Building BPF program ${name} using cargo..."
         
         ${if cargoToml != null then ''
-          # Build specific program
-          echo "Running: cargo build-sbf --manifest-path ${cargoToml}"
-          cargo build-sbf --manifest-path ${cargoToml}
+          # Build specific program with BPF target
+          echo "Running: cargo build --manifest-path ${cargoToml} --target sbf-solana-solana --release"
+          cargo build --manifest-path ${cargoToml} --target sbf-solana-solana --release
         '' else ''
-          # Build all programs in workspace
-          cargo build-sbf
+          # Build all programs in workspace with BPF target
+          echo "Running: cargo build --target sbf-solana-solana --release"
+          cargo build --target sbf-solana-solana --release
         ''}
       '';
       
       installPhase = ''
-        # Programs should be in target/deploy from cargo-build-sbf
+        # Programs should be in target/sbf-solana-solana/release from cargo build
         echo "Looking for built programs..."
         
-        # Find all .so files
-        SO_FILES=$(find target -name "*.so" -type f 2>/dev/null || true)
+        # Find all .so files in the SBF build output
+        SO_FILES=$(find target/sbf-solana-solana/release -name "*.so" -type f 2>/dev/null || true)
         
         if [ -n "$SO_FILES" ]; then
           echo "Found .so files:"
           echo "$SO_FILES"
           
-          # Look in both target/deploy and target/sbf-solana-solana/release
-          if [ -d "target/deploy" ]; then
-            for so in target/deploy/*.so; do
-              if [ -f "$so" ]; then
-                echo "Copying $so to $out/deploy/"
-                cp "$so" $out/deploy/
-              fi
-            done
-          fi
-          
-          # Also check sbf-solana-solana release directory
-          if [ -d "target/sbf-solana-solana/release" ]; then
-            for so in target/sbf-solana-solana/release/*.so; do
-              if [ -f "$so" ]; then
-                echo "Copying $so to $out/deploy/"
-                cp "$so" $out/deploy/
-              fi
-            done
-          fi
+          # Copy all found .so files to output
+          find target/sbf-solana-solana/release -name "*.so" -type f 2>/dev/null | while read so; do
+            if [ -f "$so" ]; then
+              echo "Copying $so to $out/deploy/"
+              cp "$so" $out/deploy/
+            fi
+          done
           
           # Verify we copied something
           if [ -n "$(ls -A $out/deploy 2>/dev/null)" ]; then
@@ -143,9 +148,9 @@ rec {
             exit 1
           fi
         else
-          echo "Error: No .so files were built"
+          echo "Error: No .so files were built in target/sbf-solana-solana/release"
           echo "Build directory structure:"
-          find target -type f -name "*.rs" | head -20
+          find target -type f | head -20
           exit 1
         fi
       '';
@@ -187,9 +192,10 @@ rec {
         ${inputs'.zero-nix.packages.solana-tools}/bin/solana-keygen new --no-bip39-passphrase --silent --outfile "$KEYPAIR_DIR/program.json"
       fi
       
-      # Build the program
+      # Build the program using Nix
       echo "Building ${projectName}..."
-      ${inputs'.zero-nix.packages.solana-tools}/bin/anchor build
+      cd "$HOME"
+      nix build .#main --out-link result >/dev/null 2>&1 || echo "Build failed, but validator can still run"
       
       # Start the validator
       echo "Starting local validator..."
@@ -230,12 +236,16 @@ rec {
       echo "Funding payer account..."
       ${inputs'.zero-nix.packages.solana-tools}/bin/solana airdrop ${toString validator.airdropAmount} "$KEYPAIR_DIR/payer.json" --url http://localhost:${toString validator.rpcPort}
       
-      # Deploy the program
+      # Deploy the program if built
       echo "Deploying ${projectName}..."
-      if ${inputs'.zero-nix.packages.solana-tools}/bin/anchor deploy --provider.cluster localnet; then
-        echo "Program deployed successfully!"
+      if [ -f "result/deploy/feels.so" ]; then
+        if ${inputs'.zero-nix.packages.solana-tools}/bin/solana program deploy result/deploy/feels.so --url http://localhost:${toString validator.rpcPort}; then
+          echo "Program deployed successfully!"
+        else
+          echo "Program deployment failed, but validator is still running"
+        fi
       else
-        echo "Program deployment failed, but validator is still running"
+        echo "No program binary found to deploy, but validator is still running"
       fi
       
       # Show useful information
@@ -329,15 +339,15 @@ EOF
       PROGRAM_BINARY="${directories.deploy}/$PROGRAM_NAME.so"
       
       if [ ! -f "$PROGRAM_BINARY" ]; then
-        echo "Building program first..."
-        # Try anchor build first
-        if [ -f "Anchor.toml" ] && anchor build --skip-lint 2>/dev/null; then
-          echo "Program built with anchor"
+        echo "Building program first using Nix..."
+        # Stay in current directory for relative paths to work
+        if nix build .#main --out-link result >/dev/null 2>&1; then
+          echo "Program built with Nix"
+          # Copy to expected location
+          mkdir -p "${directories.deploy}"
+          cp result/deploy/feels.so "${directories.deploy}/"
         else
-          # Fall back to cargo build-sbf
-          cd "$PROGRAM_DIR"
-          cargo build-sbf 2>&1 || true
-          cd -
+          echo "Program build failed"
         fi
       else
         echo "Program binary already exists"

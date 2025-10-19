@@ -19,7 +19,7 @@ if (fs.existsSync(envPath)) {
 }
 
 // Check the IDL
-const idlPath = path.join(__dirname, '../../../target/idl/feels.json');
+const idlPath = path.join(__dirname, '../../src/idl/feels.json');
 if (fs.existsSync(idlPath)) {
   const idl = JSON.parse(fs.readFileSync(idlPath, 'utf-8'));
   console.log('IDL program address:', idl.address);

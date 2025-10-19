@@ -9,7 +9,7 @@ async fn test_protocol_initialization_minimal() {
     // Create context
     let ctx = match TestContext::new(TestEnvironment::InMemory).await {
         Ok(ctx) => {
-            println!("✓ Test context created successfully");
+            println!("[OK] Test context created successfully");
             ctx
         }
         Err(e) => {
@@ -17,5 +17,5 @@ async fn test_protocol_initialization_minimal() {
         }
     };
 
-    println!("✓ Test completed");
+    println!("[OK] Test completed");
 }

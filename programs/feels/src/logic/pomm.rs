@@ -16,7 +16,7 @@ use anchor_lang::prelude::*;
 /// This function ensures POMM security by:
 /// 1. Using only buffer fee accounting, never vault balances, to prevent flash loan attacks
 /// 2. Using TWAP instead of spot price for liquidity placement to prevent price manipulation
-/// attacks. An attacker cannot manipulate TWAP within a single transaction or block.
+///    attacks. An attacker cannot manipulate TWAP within a single transaction or block.
 pub fn maybe_pomm_add_liquidity(
     market: &mut Account<Market>,
     buffer: &mut Buffer,

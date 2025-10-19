@@ -16,7 +16,7 @@ function TokensContent() {
   // Parse initial values from URL
   const initialQuery = searchParams.get('q') || '';
   const initialSort = searchParams.get('sort') || 'relevance';
-  const initialOrder = searchParams.get('order') || 'desc';
+  // const initialOrder = searchParams.get('order') || 'desc';
   
   // Parse initial facets from URL with simplified keys
   const initialFacets: SelectedFacets = {};
@@ -182,8 +182,8 @@ function TokensContent() {
           {/* Left spacer - same as NavBar */}
           <div className="flex-1" />
           
-          {/* Center - Search (same positioning as NavBar) */}
-          <div className="flex-1 max-w-xl mx-8 pointer-events-auto">
+          {/* Center - Search (wider on mobile) */}
+          <div className="flex-1 max-w-xl mx-2 md:mx-8 pointer-events-auto">
             <SearchBar
               mode="page-search"
               placeholder="Search for tokens..."

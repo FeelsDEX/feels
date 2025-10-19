@@ -5,6 +5,7 @@
 # Rust/Cargo
 target/
 .cargo/
+!vanity-miner-wasm/.cargo/config.toml
 **/*.rs.bk
 *.log
 crate-hashes.json
@@ -16,7 +17,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 .pnpm-store/
@@ -38,11 +38,6 @@ next-env.d.ts
 anchor/
 **/__client_accounts_*.rs
 
-# Solana test environment
-test-ledger/
-test-ledger-*/
-e2e/.test-ledger
-
 # Test artifacts and build targets
 test-helpers/target/
 utils/target/
@@ -54,9 +49,13 @@ proptest-regressions/
 # Nix
 # ==================================
 
+# Nix build outputs (anywhere in tree)
 result
 result/
 result-*
+.nix-build/
+
+# Nix environment
 .direnv/
 .nix/
 devenv/
@@ -75,32 +74,39 @@ nix-build-*
 # Cachix
 .cachix/
 
+# Cache directories
+.cache/
+
 # ==================================
 # Environment
 # ==================================
 
-# Env
+# Env files
 .env
 .env.local
 .env.production
 .env.development
-.envrc
+.env.*.local
 deployment.env
 valence.env
 .valence-env
+# Note: .envrc is tracked for direnv/Nix integration
 
-# Keys
+# Keys and secrets
 *.key
 *.keypair
 *keypair.json
-keypairs/
+*.pem
 
 # ==================================
 # Editor
 # ==================================
 
 .idea/
-.vscode/
+# Allow .vscode config for rust-analyzer/Nix setup
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .claude/
 .cursor/
 .DS_Store
@@ -111,7 +117,7 @@ keypairs/
 *.sw?
 
 # ==================================
-# Temporary
+# Temporary & Logs
 # ==================================
 
 *.bak
@@ -121,35 +127,38 @@ tmp/
 temp/
 .tmp/
 .temp/
+/.wasm-pack/
 *-temp.toml
 *.temp
 *.tmp
 preview/
+logs/
+*.log.*
+devbridge.log
 
 # ==================================
 # Project Specific
 # ==================================
 
+# Localnet state (all ephemeral local development data)
+localnet/
+
 # Working directories
 work/
-data/
-logs/
 ext/
 chart-demo/
-test-data/
 KLineChart/
 
 # Generated SDK files (keep structure but ignore contents)
-generated-sdk/rust/target/
-generated-sdk/rust/Cargo.lock
-generated-sdk/typescript/node_modules/
-generated-sdk/typescript/dist/
-generated-sdk/typescript/*.tsbuildinfo
+feels-sdk-generated/rust/target/
+feels-sdk-generated/rust/Cargo.lock
+feels-sdk-generated/typescript/node_modules/
+feels-sdk-generated/typescript/dist/
+feels-sdk-generated/typescript/*.tsbuildinfo
 
-# Feels app build artifacts (specific ignores within feels-app/)
-feels-app/.next/
-feels-app/node_modules/
-feels-app/*.tsbuildinfo
+# Feels app specific
+feels-app/.velite/
+feels-app/public/static/
 
 # Solana validator data
 *.ledger/
@@ -159,12 +168,8 @@ snapshot-*.tar.zst
 geyser-*.log
 basic-validator.log
 feels-deployed.so
-e2e/.deployed-program-id
 *.so
 
 # AI documentation
 CLAUDE.md
 AGENTS.md
-
-
-.vercel

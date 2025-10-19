@@ -31,7 +31,7 @@ fn create_test_market() -> Market {
         sqrt_price: 0,
         liquidity: 0,
         current_tick: 0,
-        tick_spacing: 1,
+        tick_spacing: 64,
         global_lower_tick: -443636,
         global_upper_tick: 443636,
         floor_liquidity: 0,

@@ -49,12 +49,12 @@ test_in_memory!(
             would_be_token_0 < would_be_token_1,
             "Market token ordering would be invalid"
         );
-        println!("   ✓ Token ordering would be valid for market creation");
+        println!("   [OK] Token ordering would be valid for market creation");
         println!("   Token 0 (FeelsSOL): {}", would_be_token_0);
         println!("   Token 1 (Custom): {}", would_be_token_1);
 
         // Test 4: Verify ordering constraint helper functionality
-        println!("   ✓ Helper correctly enforced token ordering constraint");
+        println!("   [OK] Helper correctly enforced token ordering constraint");
         println!("   Generated token {} > FeelsSOL", simulated_market_token);
 
         // Test 5: Verify builder validates token ordering
@@ -66,7 +66,7 @@ test_in_memory!(
             .token_0(token_mint.pubkey()) // Wrong - not FeelsSOL
             .token_1(ctx.feelssol_mint);
 
-        println!("   ✓ MarketBuilder validates hub-and-spoke constraint");
+        println!("   [OK] MarketBuilder validates hub-and-spoke constraint");
 
         // Test 6: Multiple token generations maintain ordering
         println!("\n4. Testing multiple token generations...");
@@ -84,9 +84,9 @@ test_in_memory!(
                 i
             );
         }
-        println!("   ✓ All generated tokens maintain proper ordering");
+        println!("   [OK] All generated tokens maintain proper ordering");
 
-        println!("\n✓ All token ordering tests passed!");
+        println!("\n[OK] All token ordering tests passed!");
         Ok::<(), Box<dyn std::error::Error>>(())
     }
 );

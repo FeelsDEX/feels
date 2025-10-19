@@ -41,7 +41,7 @@ test_in_memory!(test_position_nft_creation, |ctx: TestContext| async move {
 
     // Verify position mint requirements
     assert_ne!(position_mint.pubkey(), Pubkey::default());
-    println!("✓ Position mint created: {}", position_mint.pubkey());
+    println!("Position mint created: {}", position_mint.pubkey());
 
     // Verify metadata PDA derivation
     use feels::constants::METADATA_SEED;
@@ -55,7 +55,7 @@ test_in_memory!(test_position_nft_creation, |ctx: TestContext| async move {
     );
 
     println!(
-        "✓ Metadata PDA derived: {} (bump: {})",
+        "Metadata PDA derived: {} (bump: {})",
         metadata_pda, metadata_bump
     );
 
@@ -67,7 +67,7 @@ test_in_memory!(test_position_nft_creation, |ctx: TestContext| async move {
     );
 
     println!(
-        "✓ Position PDA derived: {} (bump: {})",
+        "Position PDA derived: {} (bump: {})",
         position_pda, position_bump
     );
 
@@ -138,7 +138,7 @@ test_in_memory!(
         // Test SVG generation for position visualization
         let position_svg = generate_position_svg(tick_lower, tick_upper, liquidity_amount)?;
 
-        println!("✓ Metadata generated:");
+        println!("[OK] Metadata generated:");
         println!("  Name: {}", position_name);
         println!("  Description: {}", position_description);
         println!("  SVG length: {} characters", position_svg.len());
@@ -155,7 +155,7 @@ test_in_memory!(
         assert!(position_svg.contains("<svg"), "Should contain valid SVG");
         assert!(position_svg.contains("</svg>"), "Should be complete SVG");
 
-        println!("✓ Position metadata validation passed");
+        println!("[OK] Position metadata validation passed");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }
@@ -199,7 +199,7 @@ test_in_memory!(test_position_nft_lifecycle, |ctx: TestContext| async move {
     let (position_pda, _) =
         Pubkey::find_program_address(&[b"position", position_mint.pubkey().as_ref()], &PROGRAM_ID);
 
-    println!("✓ NFT accounts derived");
+    println!("[OK] NFT accounts derived");
     println!("  Position mint: {}", position_mint.pubkey());
     println!("  Token account: {}", position_token_account);
     println!("  Metadata PDA: {}", metadata_pda);
@@ -217,7 +217,7 @@ test_in_memory!(test_position_nft_lifecycle, |ctx: TestContext| async move {
     let simulated_fees_0 = 1_000u64;
     let simulated_fees_1 = 2_000u64;
 
-    println!("✓ Position usage simulated");
+    println!("[OK] Position usage simulated");
     println!("  Fees collected token 0: {}", simulated_fees_0);
     println!("  Fees collected token 1: {}", simulated_fees_1);
 
@@ -234,7 +234,7 @@ test_in_memory!(test_position_nft_lifecycle, |ctx: TestContext| async move {
     // 4. Position token must be burned
     // 5. Position account must be closed
 
-    println!("✓ NFT cleanup process verified");
+    println!("[OK] NFT cleanup process verified");
     println!("  - Metadata cleanup: required");
     println!("  - Token burn: required");
     println!("  - Position close: required");
@@ -272,7 +272,7 @@ test_in_memory!(
             "Metadata account should be derived"
         );
 
-        println!("✓ Metadata account derivation compliant");
+        println!("[OK] Metadata account derivation compliant");
 
         // Test DataV2 structure requirements
         use mpl_token_metadata::types::DataV2;
@@ -305,7 +305,7 @@ test_in_memory!(
             "No royalties for positions"
         );
 
-        println!("✓ DataV2 structure compliant");
+        println!("[OK] DataV2 structure compliant");
 
         // Test JSON metadata standard
         let json_metadata = serde_json::json!({
@@ -338,7 +338,7 @@ test_in_memory!(
         assert!(json_metadata["image"].is_string());
         assert!(json_metadata["attributes"].is_array());
 
-        println!("✓ JSON metadata standard compliant");
+        println!("[OK] JSON metadata standard compliant");
         println!("All metadata standards compliance verified");
 
         Ok::<(), Box<dyn std::error::Error>>(())
@@ -348,7 +348,7 @@ test_in_memory!(
 test_in_memory!(
     test_position_nft_enumeration,
     |ctx: TestContext| async move {
-        println!("🔢 Testing position NFT enumeration and discovery...");
+        println!("Testing position NFT enumeration and discovery...");
 
         // In MVP, position NFT enumeration requires:
         // 1. Existing market with protocol tokens
@@ -396,7 +396,7 @@ test_in_memory!(
         // In a real implementation, we would query all token accounts owned by user
         // and filter for position tokens
 
-        println!("✓ Position enumeration structure verified");
+        println!("[OK] Position enumeration structure verified");
         println!("  Total positions: {}", position_count);
         println!("  Position mints: {:?}", position_mints);
         println!("  Position PDAs: {:?}", position_pdas);
@@ -411,7 +411,7 @@ test_in_memory!(
             println!("Position {} metadata PDA: {}", i, metadata_pda);
         }
 
-        println!("✓ Position NFT enumeration and discovery conceptually verified");
+        println!("[OK] Position NFT enumeration and discovery conceptually verified");
 
         Ok::<(), Box<dyn std::error::Error>>(())
     }

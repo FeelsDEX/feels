@@ -2,18 +2,18 @@
 
 import { useState } from 'react';
 import { TokenSearchResult } from '@/utils/token-search';
-import { TokenSearchCard } from '@/components/search/TokenSearchCard';
+// import { TokenSearchCard } from '@/components/search/TokenSearchCard';
 import { TokenSearchRow } from '@/components/search/TokenSearchRow';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+// import {
+//   DropdownMenu,
+//   DropdownMenuContent,
+//   DropdownMenuItem,
+//   DropdownMenuTrigger,
+// } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TextSearch, Filter, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+import { AlertCircle, Filter, ChevronsUpDown } from 'lucide-react';
 
 interface TokenSearchResultsProps {
   results: TokenSearchResult[];
@@ -21,7 +21,7 @@ interface TokenSearchResultsProps {
   setSortBy: (sort: 'relevance' | 'marketCap' | 'volume' | 'priceChange' | 'age') => void;
   isLoading: boolean;
   error: any;
-  searchActive?: boolean;
+  // searchActive?: boolean;
   onSearchClick?: () => void;
   totalResults?: number;
   searchQuery?: string;
@@ -40,13 +40,13 @@ export function TokenSearchResults({
   setSortBy,
   isLoading,
   error,
-  searchActive,
-  onSearchClick,
+  // searchActive,
+  // onSearchClick,
   totalResults,
   searchQuery,
   hasActiveFilters,
   onClearFilters,
-  showFilters,
+  // showFilters,
   onToggleFilters
 }: TokenSearchResultsProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -114,8 +114,8 @@ export function TokenSearchResults({
     return (
       <div>
         <div className="border rounded-lg overflow-hidden">
-          {/* Table Header */}
-          <div className="flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+          {/* Desktop Table Header */}
+          <div className="hidden md:flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
             <div className="flex-1 min-w-[240px]">Token</div>
             <div className="w-24 text-right">Market Cap</div>
             <div className="w-24 text-right">24h Volume</div>
@@ -123,28 +123,51 @@ export function TokenSearchResults({
             <div className="w-36 text-right">Price/Change</div>
             <div className="w-24 text-right">Δ 24h</div>
           </div>
+          {/* Mobile Header */}
+          <div className="md:hidden px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+            Tokens
+          </div>
           <div className="divide-y">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3">
-                <Skeleton className="w-10 h-10 rounded-md" />
-                <div className="flex-1 min-w-[200px]">
-                  <Skeleton className="h-4 w-32 mb-1" />
-                  <Skeleton className="h-3 w-16" />
+              <div key={i}>
+                {/* Desktop Loading Row */}
+                <div className="hidden md:flex items-center gap-4 px-4 py-3">
+                  <Skeleton className="w-10 h-10 rounded-md" />
+                  <div className="flex-1 min-w-[200px]">
+                    <Skeleton className="h-4 w-32 mb-1" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                  <div className="w-24">
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <div className="w-24">
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <div className="w-28">
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <div className="w-36">
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                  <div className="w-24">
+                    <Skeleton className="h-4 w-full" />
+                  </div>
                 </div>
-                <div className="w-24">
-                  <Skeleton className="h-4 w-full" />
-                </div>
-                <div className="w-24">
-                  <Skeleton className="h-4 w-full" />
-                </div>
-                <div className="w-28">
-                  <Skeleton className="h-4 w-full" />
-                </div>
-                <div className="w-36">
-                  <Skeleton className="h-4 w-full" />
-                </div>
-                <div className="w-24">
-                  <Skeleton className="h-4 w-full" />
+                {/* Mobile Loading Card */}
+                <div className="md:hidden px-4 py-3">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Skeleton className="w-10 h-10 rounded-md" />
+                    <div className="flex-1">
+                      <Skeleton className="h-4 w-32 mb-1" />
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
                 </div>
               </div>
             ))}
@@ -223,8 +246,9 @@ export function TokenSearchResults({
             </Button>
           )}
         </div>
-        {/* Table Header */}
-        <div className="flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+        
+        {/* Desktop Table Header */}
+        <div className="hidden md:flex items-center gap-4 px-4 py-3 border-b text-xs font-medium text-muted-foreground">
           <div className="flex-1 min-w-[240px] flex items-center justify-between">
             <span>
               Token
@@ -279,6 +303,45 @@ export function TokenSearchResults({
             <span>Δ 24h</span>
             {getSortIcon('priceChange')}
           </button>
+        </div>
+        
+        {/* Mobile Header with Sort Options */}
+        <div className="md:hidden px-4 py-3 border-b text-xs font-medium text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <span>
+              Tokens
+              {totalResults !== undefined && !isLoading && (
+                <span className="ml-2 font-normal">
+                  ({totalResults})
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              {searchQuery && (
+                <button
+                  onClick={() => handleSort('relevance')}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors text-xs"
+                >
+                  <span>Relevance</span>
+                  {getSortIcon('relevance')}
+                </button>
+              )}
+              <button
+                onClick={() => handleSort('marketCap')}
+                className="flex items-center gap-1 hover:text-foreground transition-colors text-xs"
+              >
+                <span>Cap</span>
+                {getSortIcon('marketCap')}
+              </button>
+              <button
+                onClick={() => handleSort('priceChange')}
+                className="flex items-center gap-1 hover:text-foreground transition-colors text-xs"
+              >
+                <span>24h</span>
+                {getSortIcon('priceChange')}
+              </button>
+            </div>
+          </div>
         </div>
         
         {/* Table Rows */}

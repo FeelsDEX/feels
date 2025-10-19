@@ -1,0 +1,211 @@
+# Vanity Miner WASM Justfile
+# Task runner for WASM module builds - uses Nix environment for tools
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Check environment and fetch dependencies
+install:
+    #!/usr/bin/env bash
+    
+    # Check if we're in the correct Nix environment
+    if ! command -v wasm-pack &> /dev/null; then
+        echo "wasm-pack not found - entering Nix frontend environment..."
+        cd .. && nix develop .#frontend --command bash -c "cd vanity-miner-wasm && just install"
+        exit $?
+    fi
+    
+    echo "Checking Nix environment and dependencies..."
+    if ! command -v cargo &> /dev/null; then
+        echo "ERROR: cargo not found. This should not happen in the Nix frontend environment."
+        exit 1
+    fi
+    echo "Environment verified - Nix tools available"
+    echo "Fetching Rust dependencies..."
+    cargo fetch
+
+# Build the WASM module with wasm-bindgen-rayon parallel support
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Check if we're in the correct Nix environment
+    if ! command -v wasm-pack &> /dev/null; then
+        echo "wasm-pack not found - entering Nix frontend environment..."
+        cd .. && nix develop .#frontend --command bash -c "cd vanity-miner-wasm && just build"
+        exit $?
+    fi
+    
+    wasm_out="../feels-app/public/wasm"
+    echo "Building WASM module with wasm-bindgen-rayon parallel features..."
+    rm -rf pkg
+    mkdir -p "$wasm_out"
+    export CARGO_TARGET_DIR="$PWD/target-rayon"
+    # Build with wasm-bindgen-rayon support - requires atomic features
+    echo "Building with wasm-bindgen-rayon parallel features..."
+    export RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export-table"
+    wasm-pack build --release --target web --out-dir pkg \
+        --no-default-features --features parallel
+    if [[ -f pkg/vanity_miner_wasm_bg.wasm ]]; then
+        cp pkg/vanity_miner_wasm* "$wasm_out/"
+        echo "Build complete and integrated into feels-app at $wasm_out"
+    else
+        echo "WASM build failed - no output files found"
+        exit 1
+    fi
+
+# Build for development (with debug info and panic hooks)
+build-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Check if we're in the correct Nix environment
+    if ! command -v wasm-pack &> /dev/null; then
+        echo "wasm-pack not found - entering Nix frontend environment..."
+        cd .. && nix develop .#frontend --command bash -c "cd vanity-miner-wasm && just build-dev"
+        exit $?
+    fi
+    
+    wasm_out="../feels-app/public/wasm"
+    echo "Building WASM module for development with wasm-bindgen-rayon..."
+    rm -rf pkg
+    mkdir -p "$wasm_out"
+    export CARGO_TARGET_DIR="$PWD/target-rayon-dev"
+    # Build development version with wasm-bindgen-rayon support - requires atomic features
+    echo "Building development version with wasm-bindgen-rayon..."
+    export RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export-table"
+    wasm-pack build --dev --target web --out-dir pkg \
+        --no-default-features --features "console_error_panic_hook parallel"
+    if [[ -f pkg/vanity_miner_wasm_bg.wasm ]]; then
+        cp pkg/vanity_miner_wasm* "$wasm_out/"
+        echo "Development build copied to $wasm_out"
+    else
+        echo "WASM development build failed - no output files found"
+        exit 1
+    fi
+
+# Build with wasm-bindgen-rayon for proper multithreading
+build-rayon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wasm_out="../feels-app/public/wasm"
+    echo "Building WASM module with wasm-bindgen-rayon..."
+    rm -rf pkg
+    mkdir -p "$wasm_out"
+    export CARGO_TARGET_DIR="$PWD/target-rayon"
+    # Build with rayon features using wasm-bindgen-rayon - requires specific nightly and atomic features
+    echo "Building with wasm-bindgen-rayon (requires nightly with atomics)..."
+    export RUSTFLAGS='-C target-feature=+atomics,+bulk-memory'
+    echo "RUSTFLAGS: $RUSTFLAGS"
+    # Use system rustup instead of Nix rustc for build-std support
+    if command -v rustup &> /dev/null && [[ -f "$HOME/.cargo/bin/rustc" ]]; then
+        echo "Using system rustup nightly for atomics and build-std support..."
+        # Use system cargo and rustc with proper PATH
+        export PATH="$HOME/.cargo/bin:$PATH"
+        # Set up nightly environment variables for build-std
+        export CARGO_BUILD_STD="panic_abort,std"
+        export CARGO_BUILD_STD_FEATURES=""
+        RUSTFLAGS="$RUSTFLAGS" rustup run nightly wasm-pack build --release --target web --out-dir pkg \
+            --no-default-features --features parallel
+    else
+        echo "Using standard wasm-pack with atomic RUSTFLAGS (may fail without build-std)..."
+        RUSTFLAGS="$RUSTFLAGS" wasm-pack build --release --target web --out-dir pkg \
+            --no-default-features --features parallel
+    fi
+    if [[ -f pkg/vanity_miner_wasm_bg.wasm ]]; then
+        cp pkg/vanity_miner_wasm* "$wasm_out/"
+        echo "Rayon build complete and integrated into feels-app at $wasm_out"
+    else
+        echo "WASM rayon build failed - no output files found"
+        exit 1
+    fi
+
+# Clean build artifacts
+clean:
+    @echo "Cleaning build artifacts..."
+    @rm -rf target target-rayon target-rayon-dev
+    @rm -rf pkg
+    @rm -rf ../feels-app/public/wasm/vanity_miner_wasm*
+    @echo "Clean complete!"
+
+# Run tests
+test:
+    #!/usr/bin/env bash
+    
+    # Check if we're in the correct Nix environment
+    if ! command -v wasm-pack &> /dev/null; then
+        echo "wasm-pack not found - entering Nix frontend environment..."
+        cd .. && nix develop .#frontend --command bash -c "cd vanity-miner-wasm && just test"
+        exit $?
+    fi
+    
+    echo "Running WASM tests..."
+    if command -v wasm-pack &> /dev/null; then
+        echo "Using wasm-pack for testing..."
+        wasm-pack test --headless --chrome
+    elif [[ -f "test.html" ]] && [[ -d "pkg" ]]; then
+        echo "Using local HTML test file..."
+        echo "Opening test.html in browser for manual testing..."
+        if command -v open &> /dev/null; then
+            open test.html
+        elif command -v xdg-open &> /dev/null; then
+            xdg-open test.html
+        else
+            echo "test.html is available for manual testing"
+            echo "Open the file in your browser to run tests"
+        fi
+        echo "Test file: $(pwd)/test.html"
+    else
+        echo "No test method available."
+        echo "Available options:"
+        echo "  1. Ensure you're in Nix environment: nix develop .#frontend"
+        echo "  2. Run 'just build' to ensure WASM files are available"
+        echo "  3. Use the frontend test pages: just test-pages"
+        exit 1
+    fi
+
+# Build optimized and run benchmark
+benchmark: build
+    @echo "Opening benchmark page..."
+    @open http://localhost:3000/test-benchmark.html
+
+# Test WASM files are properly integrated (quick check)
+test-integration:
+    #!/usr/bin/env bash
+    echo "Testing WASM integration..."
+    wasm_dir="../feels-app/public/wasm"
+    required_files=(
+        "vanity_miner_wasm.js"
+        "vanity_miner_wasm_bg.wasm"
+        "vanity_miner_wasm.d.ts"
+        "vanity_miner_wasm_bg.wasm.d.ts"
+    )
+    
+    missing=0
+    for file in "${required_files[@]}"; do
+        if [[ -f "$wasm_dir/$file" ]]; then
+            echo "[OK] $file"
+        else
+            echo "[MISSING] $file"
+            ((missing++))
+        fi
+    done
+    
+    if [[ $missing -eq 0 ]]; then
+        echo ""
+        echo "All WASM files are properly integrated!"
+        echo "Files located in: $wasm_dir/"
+    else
+        echo ""
+        echo "WARNING: $missing file(s) missing. Run 'just build' to integrate WASM files."
+        exit 1
+    fi
+
+# View the test pages
+test-pages:
+    @echo "Available test pages:"
+    @echo "  - http://localhost:3000/test-coordinator.html (Multi-threaded mining test)"
+    @echo "  - http://localhost:3000/test-benchmark.html (Performance benchmark)"
+    @echo "  - http://localhost:3000/test-match-logic.html (Match logic verification)"
+    @echo "  - file://$(pwd)/test.html (Local WASM test)"

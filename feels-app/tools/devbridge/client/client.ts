@@ -53,16 +53,30 @@ export function useDevBridge(): DevBridgeAPI {
                    process.env.NODE_ENV !== 'production';
     
     if (!enabled) {
-      return;
+      return; // Silently skip if not enabled
     }
+    
+    // Wrap connection attempt to handle failures gracefully
+    const connectToDevBridge = async () => {
+      try {
+        // Directly attempt WebSocket connection without HTTP pre-check
+        // The WebSocket server will return 426 Upgrade Required for HTTP requests
+        const ws = new WebSocket(DEVBRIDGE_URL);
+        wsRef.current = ws;
 
-    try {
-      const ws = new WebSocket(DEVBRIDGE_URL);
-      wsRef.current = ws;
+        // Add connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (ws.readyState === WebSocket.CONNECTING) {
+            console.debug('[DevBridge] Connection timeout - server may not be running');
+            ws.close();
+          }
+        }, 2000);
 
-      ws.onopen = () => {
-        setConnected(true);
-        ws.send(JSON.stringify({ t: 'hello', role: 'app', version: 1 }));
+        ws.onopen = () => {
+          clearTimeout(connectionTimeout);
+          setConnected(true);
+          console.info('[DevBridge] Connected to DevBridge server');
+          ws.send(JSON.stringify({ t: 'hello', role: 'app', version: 1 }));
         
         // Mirror console methods
         if (!originalConsoleRef.current) {
@@ -133,9 +147,15 @@ export function useDevBridge(): DevBridgeAPI {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         setConnected(false);
         wsRef.current = null;
+        
+        // Only log if we were previously connected
+        if (event.code !== 1000 && event.code !== 1006) {
+          console.info('[DevBridge] Disconnected from server');
+        }
         
         // Restore original console methods
         if (originalConsoleRef.current) {
@@ -146,17 +166,28 @@ export function useDevBridge(): DevBridgeAPI {
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('[devbridge] WebSocket error:', error);
-      };
+        ws.onerror = (event) => {
+          // Suppress connection errors - they're expected when DevBridge isn't running
+          // The close event will handle cleanup
+        };
+      } catch (error) {
+        // Silently fail - DevBridge is optional
+        // Only log in debug mode to avoid console clutter
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[DevBridge] Connection attempt failed (this is normal if DevBridge server is not running)');
+        }
+      }
+    };
 
-      return () => {
-        ws.close();
-      };
-    } catch (error) {
-      console.error('[devbridge] Failed to initialize:', error);
-      return undefined;
-    }
+    // Attempt connection
+    connectToDevBridge();
+
+    // Cleanup function
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   return {

@@ -69,6 +69,7 @@ impl JitBudget {
 /// 4. Drain protection throttles based on recent usage
 /// 5. Impact penalty discourages large price movements
 /// 6. Floor guard prevents asks below protocol floor price
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_safe_jit_allowance(
     budget: &mut JitBudget, // Budget tracker (mutable for updates)
     buffer: &mut Buffer,    // Buffer state (mutable for tracking)
@@ -158,7 +159,7 @@ pub fn calculate_concentration_multiplier(
     // Apply shift to the center point, not the distance
     // This moves the entire concentration zone around the current price
     let shifted_center = current_tick.saturating_add(shift_amount);
-    let adjusted_distance = target_tick.saturating_sub(shifted_center).abs() as u32;
+    let adjusted_distance = target_tick.saturating_sub(shifted_center).unsigned_abs();
 
     // Apply concentration multiplier based on distance from shifted center
     // Default width = 10 ticks, max multiplier = 10x

@@ -3,9 +3,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { PriceChartToolbar } from '@/components/trading/PriceChartToolbar';
 import { useSimulatedKlineData } from '@/components/trading/useSimulatedKlineData';
-import { useChartAdapter } from '@/components/trading/useChartAdapter';
+import { useChartAdapter } from '@/hooks/useChartAdapter';
+import { PLOT_BACKGROUND } from '@/hooks/chart-config';
 
 // ============================================================================
 // CONSTANTS
@@ -49,6 +51,7 @@ interface PriceChartProps {
   tokenImage?: string | any;
   isFeelsToken?: boolean;
   tokenCreator?: string;
+  isGraduated?: boolean;
 }
 
 // ============================================================================
@@ -86,6 +89,7 @@ export function PriceChart({
   tokenAddress,
   tokenSymbol = 'TOKEN',
   tokenImage,
+  isGraduated = true,
 }: PriceChartProps) {
   // --------------------------------------------------------------------------
   // State Management
@@ -254,7 +258,7 @@ export function PriceChart({
 
   // Initialize chart adapter
   const {
-    chart,
+    // chart,
     isReady,
     applyChartData,
     applyTimezone,
@@ -502,6 +506,12 @@ export function PriceChart({
             <div>
               <CardTitle className="flex items-center gap-2">
                 {tokenSymbol}/FeelsSOL
+                <Badge 
+                  variant="outline" 
+                  className="text-xs px-1.5 py-0 h-5 bg-primary/10 text-primary border-primary/20"
+                >
+                  {isGraduated ? 'Graduated' : 'Bonding'}
+                </Badge>
                 {priceChange && (
                   <span
                     className={`text-base font-normal ${priceChange.isPositive ? 'text-[#5cca39]' : 'text-red-600'}`}
@@ -516,7 +526,7 @@ export function PriceChart({
 
             {/* Token Metrics Grid */}
           <div className="flex-1 overflow-x-auto ml-14">
-            <div className="grid grid-cols-5 gap-1 min-w-max">
+            <div className="grid grid-cols-6 gap-1 min-w-max">
               <div>
                 <p className="text-xs text-muted-foreground">Market Cap</p>
                 <p className="text-sm font-semibold">
@@ -539,6 +549,12 @@ export function PriceChart({
                 <p className="text-xs text-muted-foreground">24h Range</p>
                 <p className="text-sm font-semibold">
                   {formatMetricValue(metrics.low24h)} - {formatMetricValue(metrics.high24h)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Floor Price</p>
+                <p className="text-sm font-semibold">
+                  {formatMetricValue(floorPrice)}
                 </p>
               </div>
               <div>

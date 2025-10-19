@@ -6,7 +6,7 @@ import {
   convertToSearchResult,
   searchFacets
 } from '@/utils/token-search';
-import { FEELS_TOKENS } from '@/data/tokens';
+import { FEELS_TOKENS } from '@/constants/mock-tokens';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
 import { useDataSource } from '@/contexts/DataSourceContext';
 import { useMarkets } from './useIndexer';
@@ -44,7 +44,12 @@ export function useTokenSearch(
       if (dataSource === 'test') {
         // Use test data
         return FEELS_TOKENS.map(convertToSearchResult);
-      } else if (dataSource === 'indexer' && indexerMarkets) {
+      } else if (dataSource === 'indexer') {
+        // If no markets available, fallback to test data
+        if (!indexerMarkets || indexerMarkets.length === 0) {
+          return FEELS_TOKENS.map(convertToSearchResult);
+        }
+        
         // Transform indexer markets to search results
         // This is simplified - in a real app you'd fetch token metadata
         return indexerMarkets.map((market, index) => {

@@ -158,6 +158,12 @@ pub fn initialize_protocol(
     config.mint_per_slot_cap_feelssol = 0;
     config.redeem_per_slot_cap_feelssol = 0;
 
+    // Set default AMM parameters (admin-controlled during memecoin phase)
+    config.default_base_fee_bps = 30; // 0.3%
+    config.default_tick_spacing = 64; // Matches Orca's 0.30% fee tier
+    config.default_initial_sqrt_price = 5825507814218144; // ~1e-7 FeelsSOL per token (tick -161216)
+    config.default_tick_step_size = 128; // 2x tick spacing for smooth bonding curve
+
     // Initialize protocol oracle defaults
     let oracle = &mut ctx.accounts.protocol_oracle;
     oracle.native_rate_q64 = 0;

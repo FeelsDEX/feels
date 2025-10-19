@@ -1,12 +1,15 @@
-# Service management recipes
+# Services & Infrastructure management
 
 # Import dependencies
 import 'common.just'
 
 # Service data directories
-postgres-data := PROJECT_ROOT + "/test-data/postgres"
-redis-data := PROJECT_ROOT + "/test-data/redis"
-rocksdb-data := PROJECT_ROOT + "/data/rocksdb"
+postgres-data := PROJECT_ROOT + "/localnet/data/postgres"
+redis-data := PROJECT_ROOT + "/localnet/data/redis"
+# Service log directory
+logs-dir := PROJECT_ROOT + "/localnet/logs"
+rocksdb-data := PROJECT_ROOT + "/localnet/indexer-storage/rocksdb"
+indexer-dir := PROJECT_ROOT + "/feels-indexer"
 
 # ===== All Services Control =====
 
@@ -32,27 +35,17 @@ services-status:
 pg-start:
     #!/usr/bin/env bash
     mkdir -p {{postgres-data}}
-    if [[ -n "$IN_NIX_SHELL" ]]; then
-        pg_isready_cmd="pg_isready"
+    mkdir -p {{logs-dir}}
+    if just nix-cmd pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+        just show-success "PostgreSQL already running"
     else
-        pg_isready_cmd="nix develop --quiet -c pg_isready"
-    fi
-    if ! $pg_isready_cmd -h localhost -p 5432 > /dev/null 2>&1; then
         just show-progress "Starting PostgreSQL"
-        if [[ -n "$IN_NIX_SHELL" ]]; then
-            initdb -D {{postgres-data}} > /dev/null 2>&1 || true
-        else
-            nix develop --quiet -c initdb -D {{postgres-data}} > /dev/null 2>&1 || true
-        fi
-        if [[ -n "$IN_NIX_SHELL" ]]; then
-            pg_ctl -D {{postgres-data}} -l {{postgres-data}}.log start
-        else
-            nix develop --quiet -c pg_ctl -D {{postgres-data}} -l {{postgres-data}}.log start
-        fi
+        just nix-cmd initdb -D {{postgres-data}} > /dev/null 2>&1 || true
+        just nix-cmd pg_ctl -D {{postgres-data}} -l {{logs-dir}}/postgres.log start
         
         # Wait for PostgreSQL to be ready
         timeout=10
-        while ! $pg_isready_cmd -h localhost -p 5432 > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
+        while ! just nix-cmd pg_isready -h localhost -p 5432 > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
             sleep 1
             ((timeout--))
         done
@@ -62,8 +55,6 @@ pg-start:
         else
             just show-success "PostgreSQL started"
         fi
-    else
-        just show-success "PostgreSQL already running"
     fi
 
 # Stop PostgreSQL
@@ -93,20 +84,15 @@ pg-clean:
 redis-start:
     #!/usr/bin/env bash
     mkdir -p {{redis-data}}
-    if [[ -n "$IN_NIX_SHELL" ]]; then
-        redis_cli_cmd="redis-cli"
-        redis_server_cmd="redis-server"
+    if just nix-cmd redis-cli ping > /dev/null 2>&1; then
+        just show-success "Redis already running"
     else
-        redis_cli_cmd="nix develop --quiet -c redis-cli"
-        redis_server_cmd="nix develop --quiet -c redis-server"
-    fi
-    if ! $redis_cli_cmd ping > /dev/null 2>&1; then
         just show-progress "Starting Redis"
-        $redis_server_cmd --dir {{redis-data}} --daemonize yes --logfile {{redis-data}}.log
+        just nix-cmd redis-server --dir {{redis-data}} --daemonize yes --logfile {{logs-dir}}/redis.log
         
         # Wait for Redis to be ready
         timeout=10
-        while ! $redis_cli_cmd ping > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
+        while ! just nix-cmd redis-cli ping > /dev/null 2>&1 && [ $timeout -gt 0 ]; do
             sleep 1
             ((timeout--))
         done
@@ -116,8 +102,6 @@ redis-start:
         else
             just show-success "Redis started"
         fi
-    else
-        just show-success "Redis already running"
     fi
 
 # Stop Redis
@@ -187,6 +171,53 @@ db-drop name="feels_indexer_test":
     @just show-progress "Dropping database {{name}}"
     @dropdb {{name}} || true
     @just show-success "Database {{name}} dropped"
+
+# ===== Indexer Management =====
+
+# Build indexer
+indexer-build:
+    @just show-progress "Building feels-indexer"
+    @cd {{indexer-dir}} && cargo build --release
+    @just show-success "Indexer built successfully"
+
+# Run indexer
+indexer-run:
+    @just show-progress "Starting feels-indexer"
+    @cd {{indexer-dir}} && ./target/release/feels-indexer
+
+# Test indexer
+indexer-test:
+    @just show-progress "Running indexer tests"
+    @cd {{indexer-dir}} && cargo test --lib --bins
+    @just show-success "Indexer tests passed"
+
+# Run database migrations
+indexer-migrate:
+    @just show-progress "Running database migrations"
+    @cd {{indexer-dir}} && sqlx migrate run
+    @just show-success "Migrations completed"
+
+# Advanced indexer testing (specialized indexer test development)
+indexer-test-advanced:
+    @echo "Advanced Indexer Testing Commands"
+    @echo "================================="
+    @echo ""
+    @echo "Location: feels-indexer/tests/"
+    @echo "Usage:    cd feels-indexer/tests && just <command>"
+    @echo ""
+    @echo "Key Features:"
+    @echo "  test-integration-geyser  - Integration tests with Geyser-enabled devnet"
+    @echo "  test-e2e-flow           - Full E2E indexer flow testing"
+    @echo "  test-performance        - Performance and load testing"
+    @echo "  test-data-integrity     - Data consistency validation"
+    @echo "  setup-test-db           - Set up isolated test database"
+    @echo ""
+    @echo "Example workflow:"
+    @echo "  cd feels-indexer/tests"
+    @echo "  just setup-test-db      # Set up test environment"
+    @echo "  just test-integration-geyser  # Run integration tests"
+    @echo ""
+    @echo "Run 'cd feels-indexer/tests && just --list' to see all available commands."
 
 # ===== Clean Everything =====
 

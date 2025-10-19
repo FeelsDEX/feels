@@ -11,7 +11,7 @@ test_all_environments!(
         ctx.airdrop(&token_creator.pubkey(), 1_000_000_000).await?; // 1 SOL
 
         let token_mint = ctx.create_mint(&token_creator.pubkey(), 6).await?;
-        println!("✓ Token created: {}", token_mint.pubkey());
+        println!("[OK] Token created: {}", token_mint.pubkey());
 
         // Step 2: Create escrow PDA manually to simulate protocol token
         let (escrow, _) =
@@ -44,8 +44,8 @@ test_all_environments!(
         // In test environment, this may succeed because we can't fully validate escrow
         match result {
             Ok(market) => {
-                println!("✓ Market created successfully: {}", market);
-                println!("✓ In production, this would require valid escrow from mint_token");
+                println!("[OK] Market created successfully: {}", market);
+                println!("[OK] In production, this would require valid escrow from mint_token");
             }
             Err(e) => {
                 println!("Market creation failed: {:?}", e);
@@ -54,7 +54,7 @@ test_all_environments!(
         }
 
         // Step 4: Test that this demonstrates the intended architecture
-        println!("\n✓ Test validates protocol architecture:");
+        println!("\n[OK] Test validates protocol architecture:");
         println!("  • FeelsSOL must be token_0 (hub-and-spoke requirement)");
         println!("  • In production, escrow from mint_token is required");
         println!("  • All markets must include FeelsSOL");
@@ -114,7 +114,7 @@ test_in_memory!(
             .create_mint_with_ordering_constraint(&creator2.pubkey(), 6, &ctx.feelssol_mint)
             .await?;
 
-        println!("✓ Created two tokens");
+        println!("[OK] Created two tokens");
         println!("  Token 1: {}", token1.pubkey());
         println!("  Token 2: {}", token2.pubkey());
 
@@ -144,7 +144,7 @@ test_in_memory!(
             "Should not be able to create market without FeelsSOL"
         );
         match result {
-            Err(e) => println!("✓ Market creation correctly rejected: {:?}", e),
+            Err(e) => println!("[OK] Market creation correctly rejected: {:?}", e),
             Ok(_) => panic!("Market should not have been created without FeelsSOL"),
         }
 
@@ -173,12 +173,12 @@ test_in_memory!(
         // In test environment, this should fail because token1 is not protocol-minted
         match result {
             Err(_) => {
-                println!("✓ Market creation failed as expected (non-protocol token)");
+                println!("[OK] Market creation failed as expected (non-protocol token)");
                 println!("  In production, tokens must be minted via mint_token instruction");
             }
             Ok(market) => {
                 // If it succeeds, that's also fine for testing the ordering
-                println!("✓ Market with FeelsSOL created: {}", market);
+                println!("[OK] Market with FeelsSOL created: {}", market);
             }
         }
 
@@ -198,11 +198,11 @@ test_in_memory!(
 
         assert!(result.is_err(), "FeelsSOL must be token_0");
         match result {
-            Err(e) => println!("✓ SDK correctly enforced FeelsSOL as token_0: {:?}", e),
+            Err(e) => println!("[OK] SDK correctly enforced FeelsSOL as token_0: {:?}", e),
             Ok(_) => panic!("Market should not have been created with FeelsSOL as token_1"),
         }
 
-        println!("\n✓ Validated hub-and-spoke requirements:");
+        println!("\n[OK] Validated hub-and-spoke requirements:");
         println!("  - Markets cannot be created without FeelsSOL");
         println!("  - FeelsSOL must be token_0 when present");
         println!("  - Token ordering is enforced by SDK");
@@ -224,7 +224,7 @@ test_in_memory!(test_initial_buy_validation, |ctx: TestContext| async move {
     ctx.airdrop(&creator.pubkey(), 1_000_000_000).await?;
 
     let token_mint = ctx.create_mint(&creator.pubkey(), 6).await?;
-    println!("✓ Token created: {}", token_mint.pubkey());
+    println!("[OK] Token created: {}", token_mint.pubkey());
 
     // Test 1: Try initial buy without FeelsSOL account (should fail)
     let result = ctx.initialize_market(
@@ -240,7 +240,7 @@ test_in_memory!(test_initial_buy_validation, |ctx: TestContext| async move {
     // Should fail or succeed with 0 balance check
     match result {
         Err(e) => {
-            println!("✓ Initial buy without FeelsSOL account failed: {:?}", e);
+            println!("[OK] Initial buy without FeelsSOL account failed: {:?}", e);
         }
         Ok(_) => {
             println!("Market created but initial buy would fail with insufficient balance");
@@ -261,7 +261,7 @@ test_in_memory!(test_initial_buy_validation, |ctx: TestContext| async move {
     ).await?;
 
     let balance = ctx.get_token_balance(&creator_feelssol).await?;
-    println!("✓ Creator has {} FeelsSOL", balance);
+    println!("[OK] Creator has {} FeelsSOL", balance);
 
     // Create token out account
     let creator_token_out = ctx.create_ata(&creator.pubkey(), &token_mint.pubkey()).await?;
@@ -280,7 +280,7 @@ test_in_memory!(test_initial_buy_validation, |ctx: TestContext| async move {
 
     match result {
         Err(e) => {
-            println!("✓ Excessive initial buy correctly rejected: {:?}", e);
+            println!("[OK] Excessive initial buy correctly rejected: {:?}", e);
         }
         Ok(_) => {
             println!("Warning: Market created but initial buy should fail on-chain");
@@ -302,15 +302,15 @@ test_in_memory!(test_initial_buy_validation, |ctx: TestContext| async move {
         initial_buy_amount,
     ).await?;
 
-    println!("✓ Market launched with valid initial buy: {}", market);
+    println!("[OK] Market launched with valid initial buy: {}", market);
 
     // Verify balance was affected
     let balance_after = ctx.get_token_balance(&creator_feelssol).await?;
-    println!("✓ FeelsSOL balance after: {} (was {})", balance_after, balance);
+    println!("[OK] FeelsSOL balance after: {} (was {})", balance_after, balance);
 
     // The actual deduction happens during the swap portion
     if balance_after < balance {
-        println!("✓ FeelsSOL was deducted for initial buy");
+        println!("[OK] FeelsSOL was deducted for initial buy");
     }
 
     println!("\n=== Initial Buy Validation Test Passed ===");

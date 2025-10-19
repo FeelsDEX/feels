@@ -26,7 +26,7 @@ test_all_environments!(
                 println!("FeelsHub already initialized or not needed");
             }
 
-            println!("✓ Simplified exact output swap test passed");
+            println!("[OK] Simplified exact output swap test passed");
             println!("  - Protocol initialized");
             println!("  - FeelsHub initialized");
             println!("\nFull exact output swap tests require devnet/localnet environment");
@@ -71,7 +71,7 @@ test_all_environments!(
             10_000_000_000,
         )
         .await?;
-        println!("✓ Creator funded with FeelsSOL");
+        println!("[OK] Creator funded with FeelsSOL");
 
         // Create test market with token using market helper
         let market_helper = ctx.market_helper();
@@ -81,9 +81,9 @@ test_all_environments!(
         let feelssol_mint = ctx.feelssol_mint;
         let (token_0, token_1) = (setup.token_0, setup.token_1);
 
-        println!("✓ Test token created: {}", token_mint);
-        println!("✓ Market created: {}", market);
-        println!("✓ Market setup complete with initial liquidity");
+        println!("[OK] Test token created: {}", token_mint);
+        println!("[OK] Market created: {}", market);
+        println!("[OK] Market setup complete with initial liquidity");
 
         // Setup test traders
         let trader1 = Keypair::new();
@@ -108,7 +108,7 @@ test_all_environments!(
             ctx.enter_feelssol(trader, &trader_jitosol, &trader_feelssol, 1_000_000_000)
                 .await?; // 1000 JitoSOL -> FeelsSOL
         }
-        println!("✓ Traders funded");
+        println!("[OK] Traders funded");
 
         // Scenario 1: Exact output swap buying project token
         println!("\n--- Scenario 1: Exact output swap buying project token ---");
@@ -138,7 +138,7 @@ test_all_environments!(
             "Should not exceed max input"
         );
         println!(
-            "✓ Bought exactly {} tokens for {} FeelsSOL",
+            "[OK] Bought exactly {} tokens for {} FeelsSOL",
             tokens_received, feelssol_spent
         );
 
@@ -179,7 +179,7 @@ test_all_environments!(
         );
         assert!(tokens_sold <= max_tokens_in, "Should not exceed max input");
         println!(
-            "✓ Sold {} tokens for exactly {} FeelsSOL",
+            "[OK] Sold {} tokens for exactly {} FeelsSOL",
             tokens_sold, feelssol_received
         );
 
@@ -207,7 +207,7 @@ test_all_environments!(
             "Should receive exact large output"
         );
         println!(
-            "✓ Large swap: {} tokens for {} FeelsSOL",
+            "[OK] Large swap: {} tokens for {} FeelsSOL",
             tokens_large, feelssol_large
         );
 
@@ -243,7 +243,7 @@ test_all_environments!(
             "Should require some input even for 1 unit"
         );
         println!(
-            "✓ Minimum swap: {} FeelsSOL for {} token unit",
+            "[OK] Minimum swap: {} FeelsSOL for {} token unit",
             input_for_min, output_min
         );
 
@@ -268,7 +268,7 @@ test_all_environments!(
             fail_result.is_err(),
             "Should fail with insufficient max input"
         );
-        println!("✓ Correctly rejected swap with insufficient max input");
+        println!("[OK] Correctly rejected swap with insufficient max input");
 
         // Scenario 6: Multi-hop exact output (if applicable)
         println!("\n--- Scenario 6: Testing exact output in active market ---");
@@ -280,7 +280,7 @@ test_all_environments!(
                 .swap(&market, &feelssol_mint, &token_mint, swap_amount, &trader1)
                 .await?;
         }
-        println!("✓ Market conditions established with multiple trades");
+        println!("[OK] Market conditions established with multiple trades");
 
         // Now test exact output in active market
         let active_exact_out = 750_000_000; // 750 tokens
@@ -304,7 +304,7 @@ test_all_environments!(
             "Should receive exact output in active market"
         );
         println!(
-            "✓ Active market exact swap: {} FeelsSOL for {} tokens",
+            "[OK] Active market exact swap: {} FeelsSOL for {} tokens",
             active_in, active_out
         );
 
@@ -323,7 +323,7 @@ test_all_environments!(
             .await;
 
         assert!(zero_result.is_err(), "Should reject zero output request");
-        println!("✓ Correctly rejected zero output swap");
+        println!("[OK] Correctly rejected zero output swap");
 
         // Final verification: Check market integrity
         let final_market_state = ctx.get_account::<Market>(&market).await?.unwrap();
@@ -337,7 +337,7 @@ test_all_environments!(
         // Verify conservation of value (no tokens created/destroyed)
         let total_feelssol_0 = ctx.get_token_balance(&final_market_state.vault_0).await?;
         let total_tokens_1 = ctx.get_token_balance(&final_market_state.vault_1).await?;
-        println!("\n✓ Final vault balances:");
+        println!("\n[OK] Final vault balances:");
         println!("  FeelsSOL (vault_0): {}", total_feelssol_0);
         println!("  Tokens (vault_1): {}", total_tokens_1);
 

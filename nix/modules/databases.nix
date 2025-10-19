@@ -27,7 +27,7 @@ let
       set -e
       
       PROJECT_ROOT="$(pwd)"
-      ROCKS_PATH="$PROJECT_ROOT/data/rocksdb"
+      ROCKS_PATH="$PROJECT_ROOT/localnet/indexer-storage/rocksdb"
       
       echo "=== RocksDB Initialization ==="
       echo "Creating RocksDB data directory at: $ROCKS_PATH"
@@ -56,7 +56,7 @@ EOF
       set -e
       
       PROJECT_ROOT="$(pwd)"
-      ROCKS_PATH="$PROJECT_ROOT/data/rocksdb"
+      ROCKS_PATH="$PROJECT_ROOT/localnet/indexer-storage/rocksdb"
       
       echo "=== RocksDB Cleanup ==="
       
@@ -94,82 +94,16 @@ in {
     pkgs.netcat
   ];
   
-  commands = [
-    {
-      name = "init-rocksdb";
-      package = initRocksDBScript;
-      help = "Initialize RocksDB data directory";
-    }
-    {
-      name = "clean-rocksdb";
-      package = cleanRocksDBScript;
-      help = "Clean RocksDB data directory";
-    }
-    {
-      name = "pg-start";
-      command = ''
-        mkdir -p $PWD/test-data/postgres
-        if ! pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-          echo "Starting PostgreSQL..."
-          initdb -D $PWD/test-data/postgres > /dev/null 2>&1 || true
-          pg_ctl -D $PWD/test-data/postgres -l $PWD/test-data/postgres.log start
-        else
-          echo "PostgreSQL already running"
-        fi
-      '';
-      help = "Start PostgreSQL server for testing";
-    }
-    {
-      name = "pg-stop";
-      command = ''
-        pg_ctl -D $PWD/test-data/postgres stop 2>/dev/null || true
-      '';
-      help = "Stop PostgreSQL server";
-    }
-    {
-      name = "redis-start";
-      command = ''
-        mkdir -p $PWD/test-data/redis
-        if ! redis-cli ping > /dev/null 2>&1; then
-          echo "Starting Redis..."
-          redis-server --dir $PWD/test-data/redis --daemonize yes --logfile $PWD/test-data/redis.log
-        else
-          echo "Redis already running"
-        fi
-      '';
-      help = "Start Redis server for testing";
-    }
-    {
-      name = "redis-stop";
-      command = ''
-        redis-cli shutdown 2>/dev/null || true
-      '';
-      help = "Stop Redis server";
-    }
-    {
-      name = "services-start";
-      command = ''
-        pg-start && redis-start
-      '';
-      help = "Start all database services";
-    }
-    {
-      name = "services-stop";
-      command = ''
-        pg-stop && redis-stop
-      '';
-      help = "Stop all database services";
-    }
-  ];
+  commands = [];
   
   env = [
     {
       name = "ROCKSDB_DATA_PATH";
-      value = "$PWD/data/rocksdb";
+      value = "$PWD/localnet/indexer-storage/rocksdb";
     }
     {
       name = "PGDATA";
-      value = "$PWD/test-data/postgres";
+      value = "$PWD/localnet/data/postgres";
     }
     {
       name = "DATABASE_URL";
@@ -226,30 +160,29 @@ in {
     databases = {
       deps = [];
       text = ''
-        echo "Database development environment loaded"
-        echo "Available databases:"
-        echo "  ✓ PostgreSQL 15"
-        echo "  ✓ Redis"
-        echo "  ✓ RocksDB with all compression libs"
+        echo "Database Tools"
+        echo "=============="
         echo ""
-        echo "Available commands:"
-        echo "  services-start/services-stop - Control all services"
-        echo "  pg-start/pg-stop            - Control PostgreSQL"
-        echo "  redis-start/redis-stop      - Control Redis"
-        echo "  init-rocksdb/clean-rocksdb  - Manage RocksDB data"
+        echo "Servers:"
+        echo "  postgresql (v15) - SQL database"
+        echo "  redis           - In-memory cache"
         echo ""
-        echo "Environment variables set:"
-        echo "  ROCKSDB_DATA_PATH=$ROCKSDB_DATA_PATH"
+        echo "CLI Tools:"
+        echo "  psql            - PostgreSQL interactive terminal"
+        echo "  pgcli           - PostgreSQL CLI with autocomplete"
+        echo "  redis-cli       - Redis command line interface"
+        echo "  sqlx            - Rust SQL toolkit (migrations)"
+        echo ""
+        echo "Management (via just):"
+        echo "  just services pg-start     - Start PostgreSQL"
+        echo "  just services redis-start  - Start Redis"
+        echo "  just services services-start - Start all services"
+        echo ""
+        echo "Environment:"
         echo "  DATABASE_URL=$DATABASE_URL"
         echo "  REDIS_URL=$REDIS_URL"
+        echo "  ROCKSDB_DATA_PATH=$ROCKSDB_DATA_PATH"
         echo ""
-        
-        # Check if data directory exists
-        if [ ! -d "$ROCKSDB_DATA_PATH" ]; then
-          echo "Run 'init-rocksdb' to create the RocksDB data directory"
-        else
-          echo "RocksDB data directory exists at: $ROCKSDB_DATA_PATH"
-        fi
       '';
     };
   };

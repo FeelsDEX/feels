@@ -12,6 +12,7 @@ pub mod geyser;
 pub mod models;
 pub mod processors;
 pub mod repositories;
+pub mod rpc_client;
 pub mod services;
 pub mod sdk_types;
 pub mod streaming_client;

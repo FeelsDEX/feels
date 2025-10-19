@@ -7,11 +7,12 @@ import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getConnection } from '@/services/connection';
 
-import { createFeelsProgram } from '@/sdk/program-workaround';
+import { createFeelsProgram } from '@/program/program-workaround';
 import { TokenInfo } from '@/services/jupiter-client';
-import { FEELS_TOKENS, getTokenByAddress } from '@/data/tokens';
+import { FEELS_TOKENS, getTokenByAddress } from '@/constants/mock-tokens';
 import { TokenHolders } from '@/components/market/TokenHolders';
 import { useDataSource } from '@/contexts/DataSourceContext';
+import { ProgramFallbackBanner } from '@/components/ui/fallback-banner';
 
 // Dynamic imports to prevent SSR issues
 const SwapInterface = dynamic(
@@ -66,6 +67,7 @@ function TokenSwapPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedOutputToken, setSelectedOutputToken] = useState<TokenInfo | null>(null);
+  const [fallback, setFallback] = useState<boolean>(false);
 
   // Initialize program only (connection is already available)
   useEffect(() => {
@@ -88,9 +90,10 @@ function TokenSwapPageContent() {
             setProgram(feelProgram);
           } catch (programError) {
             console.error('Failed to create program:', programError);
-            setError(
-              `Program initialization failed: ${programError instanceof Error ? programError.message : 'Unknown error'}`
-            );
+          // Enter fallback mode (test data) instead of blocking the page
+          setFallback(true);
+          setProgram(null);
+          setError(null);
           }
         } else {
           // Clear program if wallet is disconnected
@@ -164,7 +167,7 @@ function TokenSwapPageContent() {
     );
   }
 
-  if (error) {
+  if (error && !fallback) {
     return (
       <div id="token-error-container" className="container mx-auto px-4 py-8">
         <div className="flex justify-center">
@@ -199,6 +202,9 @@ function TokenSwapPageContent() {
 
   return (
     <div id="token-detail-page" className="container mx-auto px-4 pt-4 pb-8">
+      {fallback && (
+        <ProgramFallbackBanner onDismiss={() => setFallback(false)} />
+      )}
       <div id="token-detail-grid" className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Left Column: Price Chart, Recent Trades, and Tick Liquidity */}
         <div id="token-info-column" className="order-2 lg:order-1 lg:col-span-2 space-y-8">
@@ -215,6 +221,7 @@ function TokenSwapPageContent() {
                   ? true
                   : selectedOutputToken?.isFeelsToken || token.isFeelsToken
               }
+              isGraduated={token.isGraduated}
             />
           </div>
 

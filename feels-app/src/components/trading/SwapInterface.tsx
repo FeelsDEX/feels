@@ -5,10 +5,10 @@ import { Connection } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ChevronDown, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
-import { FEELS_TOKENS } from '@/data/tokens';
+import { FEELS_TOKENS } from '@/constants/mock-tokens';
 import { TokenSearchModal } from '@/components/search/TokenSearchModal';
 import { TokenSearchResult } from '@/utils/token-search';
-import { useTokenSearch } from '@/hooks/useTokenSearch';
+// import { useTokenSearch } from '@/hooks/useTokenSearch';
 
 interface SwapInterfaceProps {
   connection: Connection;
@@ -48,7 +48,7 @@ export function SwapInterface({
   const [hasInteractedWithSlippage, setHasInteractedWithSlippage] = useState(false);
   
   // Pre-fetch token data for instant dropdown display
-  const { results: preloadedTokens } = useTokenSearch('');
+  // const { results: preloadedTokens } = useTokenSearch('');
 
   // Initialize tokens
   useEffect(() => {
@@ -145,7 +145,7 @@ export function SwapInterface({
 
   return (
     <>
-      <div id="swap-container" className="bg-background border border-border rounded-2xl w-full max-w-[480px] mx-auto">
+      <div id="swap-container" className="bg-background border border-border rounded-2xl w-full min-w-0 sm:min-w-[400px] max-w-[480px] mx-auto">
       {/* Tab Navigation */}
       <div id="tab-navigation" className="flex items-center justify-between border-b border-border">
         <div className="flex">
@@ -184,6 +184,7 @@ export function SwapInterface({
                       width={20}
                       height={20}
                       className="rounded"
+                      style={{ width: 'auto', height: 'auto' }}
                     />
                   ) : (
                     <div className="w-5 h-5 bg-primary rounded" />
@@ -292,6 +293,7 @@ export function SwapInterface({
                     width={24}
                     height={24}
                     className="rounded-md"
+                    style={{ width: 'auto', height: 'auto' }}
                   />
                 ) : (
                   <div className="w-6 h-6 bg-primary rounded-md" />
@@ -431,6 +433,7 @@ export function SwapInterface({
                       width={24}
                       height={24}
                       className="rounded-md"
+                      style={{ width: 'auto', height: 'auto' }}
                     />
                   ) : (
                     <div className="w-6 h-6 bg-primary rounded-md" />
@@ -517,6 +520,7 @@ export function SwapInterface({
                       width={24}
                       height={24}
                       className="rounded-md"
+                      style={{ width: 'auto', height: 'auto' }}
                     />
                   ) : (
                     <div className="w-6 h-6 bg-primary rounded-md" />

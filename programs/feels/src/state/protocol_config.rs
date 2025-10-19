@@ -46,6 +46,16 @@ pub struct ProtocolConfig {
     /// Optional per-slot caps for mint/redeem (FeelsSOL units). 0 = unlimited.
     pub mint_per_slot_cap_feelssol: u64,
     pub redeem_per_slot_cap_feelssol: u64,
+
+    /// Default AMM parameters (admin-controlled during memecoin phase)
+    /// Default base fee in basis points (e.g., 30 = 0.3%)
+    pub default_base_fee_bps: u16,
+    /// Default tick spacing for new markets
+    pub default_tick_spacing: u16,
+    /// Default initial sqrt price for new markets (Q64.64 format)
+    pub default_initial_sqrt_price: u128,
+    /// Default tick step size for bonding curve deployment
+    pub default_tick_step_size: u16,
 }
 
 impl ProtocolConfig {
@@ -68,7 +78,10 @@ impl ProtocolConfig {
         7 +  // _reserved
         8 +  // mint_per_slot_cap_feelssol
         8 + // redeem_per_slot_cap_feelssol
-        6; // padding added by Rust compiler for alignment
+        2 +  // default_base_fee_bps
+        2 +  // default_tick_spacing
+        16 + // default_initial_sqrt_price (u128)
+        2; // default_tick_step_size
 
     /// Seed for deriving the protocol config PDA
     pub const SEED: &'static [u8] = b"protocol_config";

@@ -18,9 +18,10 @@ use anchor_lang::prelude::*;
 // Import instruction modules using Raydium pattern
 // This makes all Accounts structs available at crate root
 use instructions::*;
+use logic::SwapParams;
 use state::PoolPhase;
 
-declare_id!("FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx");
+declare_id!("B3w6rjs2vDjr6eKUXUiERV44BXud3nRqshctMp5p4au4");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*

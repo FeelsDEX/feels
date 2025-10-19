@@ -33,7 +33,7 @@ pub struct JitSwapStep {
 /// The function combines:
 /// - Base liquidity from actual LPs in the pool
 /// - Virtual JIT liquidity that exists only for this swap
-/// The result is higher effective liquidity without managing real positions
+///   The result is higher effective liquidity without managing real positions
 pub fn get_effective_liquidity_with_jit(
     base_liquidity: u128,                 // Existing pool liquidity from LPs
     current_tick: i32,                    // Current pool price
@@ -70,6 +70,7 @@ pub fn get_effective_liquidity_with_jit(
 /// 3. Executes the swap with enhanced liquidity
 /// 4. Removes the virtual liquidity (automatic - no cleanup needed)
 /// 5. Updates state based on execution results
+#[allow(clippy::too_many_arguments)]
 pub fn execute_swap_with_jit(
     ctx: &SwapContext,               // Current swap execution context
     market: &mut Market,             // Market state (mutable for updates)

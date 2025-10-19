@@ -308,6 +308,306 @@
     border-color: hsl(0 0% 65%) !important;
   }
 
+  /* Code block styling for docs and blog */
+  [data-rehype-pretty-code-fragment] {
+    font-family: var(--font-mono);
+  }
+
+  [data-rehype-pretty-code-fragment] code {
+    font-family: var(--font-mono);
+  }
+
+  [data-rehype-pretty-code-fragment] pre {
+    font-family: var(--font-mono);
+  }
+
+  /* Ensure all code elements use mono font */
+  pre code,
+  [data-rehype-pretty-code-fragment] pre,
+  [data-rehype-pretty-code-fragment] code {
+    font-family: var(--font-mono) !important;
+  }
+  
+  /* Code block font size and line height */
+  pre code {
+    font-size: 0.9rem; /* 14.4px */
+    line-height: 1.5;
+  }
+  
+  .prose pre code {
+    font-size: 0.9rem !important; /* 14.4px */
+    line-height: 1.5 !important;
+  }
+  
+  
+  /* Code block container styles */
+  .prose pre,
+  [data-rehype-pretty-code-fragment] pre,
+  [data-rehype-pretty-code-figure] pre {
+    line-height: 1.5 !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+  
+  /* Target code lines within rehype-pretty-code */
+  [data-rehype-pretty-code-fragment] .line {
+    line-height: 1.5 !important;
+    min-height: 1.5rem;
+  }
+
+  /* Table styles for docs and blog */
+  .prose table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    border-top: 1px solid hsl(var(--border)) !important;
+    border-right: 1px solid hsl(var(--border)) !important;
+    border-bottom: 1px solid hsl(var(--border)) !important;
+    border-left: 1px solid hsl(var(--border)) !important;
+    box-shadow: none !important;
+  }
+  
+  /* Table wrapper for horizontal scroll on mobile */
+  .prose div.table-wrapper {
+    overflow-x: auto;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .prose div.table-wrapper table {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .prose thead {
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .prose th {
+    font-weight: 600;
+    text-align: left;
+    padding: 0.5rem 1rem;
+    background-color: hsl(var(--muted) / 0.5);
+    color: hsl(var(--foreground));
+    border-bottom: 1px solid hsl(var(--border));
+    line-height: 1.4;
+  }
+
+  .prose td {
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    line-height: 1.4;
+  }
+
+
+  .prose tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Responsive tables */
+  @media (max-width: 768px) {
+    .prose table {
+      font-size: 0.75rem;
+    }
+    
+    .prose th,
+    .prose td {
+      padding: 0.5rem 0.75rem;
+    }
+  }
+  
+  /* Mobile container improvements */
+  @media (max-width: 768px) {
+    .container {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+    
+    /* Mobile-friendly button sizing */
+    button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Mobile-friendly touch targets */
+    a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+    }
+    
+    /* Better mobile form inputs */
+    input, textarea, select {
+      font-size: 16px; /* Prevents zoom on iOS */
+    }
+  }
+
+  /* Shared prose styles for docs and blog */
+  
+  /* Override prose inline code size */
+  .prose :where(code):not(:where(pre code, [class~="not-prose"] *)) {
+    font-size: 0.875rem !important; /* text-sm equivalent */
+    color: hsl(0 0% 35%) !important; /* Lighter grey than feels-grey-dark */
+  }
+  
+  /* Inline code in headings should be proportional */
+  .prose :where(h1 code):not(:where([class~="not-prose"] *)),
+  .prose :where(h2 code):not(:where([class~="not-prose"] *)),
+  .prose :where(h3 code):not(:where([class~="not-prose"] *)),
+  .prose :where(h4 code):not(:where([class~="not-prose"] *)),
+  .prose :where(h5 code):not(:where([class~="not-prose"] *)),
+  .prose :where(h6 code):not(:where([class~="not-prose"] *)) {
+    font-size: 0.9em !important; /* 90% of the heading size */
+  }
+
+  /* KaTeX math styling - override default KaTeX styles */
+  .prose .katex {
+    font-size: 1em !important;
+  }
+  
+  .prose .katex-display {
+    margin: 0 0 !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 !important;
+  }
+  
+  .prose .katex-display .katex {
+    font-size: 1.1em !important;
+  }
+  
+  /* Ensure KaTeX font size is consistent */
+  .prose .katex .katex-html {
+    font-size: 1em !important;
+  }
+  
+  /* Style inline math */
+  .prose :where(.katex):not(:where([class~="not-prose"] *)) {
+    color: inherit;
+  }
+  
+  /* Style display math - use multiple selectors for specificity */
+  .prose :where(.katex-display):not(:where([class~="not-prose"] *)),
+  .prose .katex-display,
+  .prose div.katex-display,
+  .prose span.katex-display,
+  .prose [class*="katex-display"] {
+    color: hsl(var(--foreground));
+    padding: 0 !important;
+    margin: 0 !important;
+    margin-bottom: 0.75rem !important;
+    display: block !important;
+    text-align: center !important;
+  }
+  
+  /* Target the actual KaTeX container elements */
+  .prose .katex-display > * {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  
+  /* Target span elements that might wrap equations */
+  .prose span.katex-display {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* Override Tailwind prose defaults for math blocks */
+  .prose :where(div):not(:where([class~="not-prose"] *)):has(.katex-display) {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Use attribute selector for any element with katex-display class */
+  [class~="katex-display"] {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Override any parent paragraph margins around equations */
+  .prose p:has(.katex-display) {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    text-align: center !important;
+  }
+  
+  /* Nuclear option - override everything with katex-display */
+  * [style*="katex-display"] {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  
+  /* Add space after equation blocks */
+  .prose .katex-display + *,
+  .prose [style*="katex-display"] + *,
+  .prose :has(.katex-display) + * {
+    margin-top: 1rem !important;
+  }
+  
+  /* Also try adding margin to the wrapper that contains katex-display */
+  .prose :has([style*="katex-display"]) {
+    margin-bottom: 1rem !important;
+  }
+
+  /* Additional centering rules for math equations */
+  .prose .katex-display,
+  .prose .katex-display .katex,
+  .prose .katex-display .katex .katex-html {
+    text-align: center !important;
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  /* Target any paragraph that contains only a math equation */
+  .prose p:has(.katex-display):not(:has(text)):not(:has(*:not(.katex-display))) {
+    text-align: center !important;
+    display: block !important;
+  }
+
+  /* Force center alignment for standalone math blocks */
+  .prose > p > .katex-display,
+  .prose > .katex-display {
+    text-align: center !important;
+    margin: 1rem auto !important;
+    display: block !important;
+  }
+
+
+  /* Use JavaScript to identify standalone math equations */
+  .prose p.math-equation-only {
+    text-align: center !important;
+    display: block !important;
+    margin: 1rem auto !important;
+  }
+
+  /* Center the KaTeX element itself in these cases */
+  .prose p.math-equation-only > .katex {
+    display: inline-block !important;
+    margin: 0 auto !important;
+  }
+  
+  /* Prose link styles */
+  .prose a {
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+    transition: color 0.2s ease;
+  }
+  
+  .prose a:hover {
+    color: hsl(var(--primary));
+    text-decoration-line: underline;
+  }
+
   
   /* Swap page input box height */
   main > div > div > div > div > div:nth-child(2) > div:nth-child(5) > div:nth-child(3) > div > input {
@@ -334,5 +634,658 @@
     outline: transparent !important;
     outline-opacity: 0 !important;
   }
+
+  /* Enhanced prose styles for blog and docs */
+  .prose code:not(pre code) {
+    @apply before:content-none after:content-none;
+  }
+  
+  /* Override prose heading sizes for blog and docs content */
+  .prose :where(h1):not(:where([class~="not-prose"] *)) {
+    font-size: 2.25rem !important;
+    line-height: 1.2 !important;
+    margin-top: 0 !important;
+    margin-bottom: 1.5rem !important;
+    font-weight: 700 !important;
+  }
+  
+  .prose :where(h2):not(:where([class~="not-prose"] *)) {
+    font-size: 1.75rem !important;
+    line-height: 1.3 !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  .prose :where(h3):not(:where([class~="not-prose"] *)) {
+    font-size: 1.375rem !important;
+    line-height: 1.35 !important;
+    margin-top: 0.875rem !important;
+    margin-bottom: 0.875rem !important;
+  }
+  
+  .prose :where(h4):not(:where([class~="not-prose"] *)) {
+    font-size: 1.25rem !important;
+    line-height: 1.4 !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  
+  .prose :where(h5):not(:where([class~="not-prose"] *)) {
+    font-size: 1.125rem !important;
+    line-height: 1.5 !important;
+    margin-top: 1.25rem !important;
+    margin-bottom: 0.625rem !important;
+  }
+  
+  .prose :where(h6):not(:where([class~="not-prose"] *)) {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    margin-top: 1rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Improved paragraph spacing */
+  .prose p {
+    margin-bottom: 1rem !important;
+  }
+  
+  /* Remove paragraph spacing when followed by a list */
+  .prose p:has(+ ul),
+  .prose p:has(+ ol) {
+    margin-bottom: 0 !important;
+  }
+
+  /* Remove paragraph spacing when containing Mermaid diagrams */
+  .prose p:has(.mermaid),
+  .prose p:has(.mermaid-container),
+  .prose p:has([class*="mermaid"]) {
+    margin-bottom: 0 !important;
+  }
+
+  /* Direct override for paragraphs inside Mermaid containers - higher specificity */
+  .prose .mermaid p,
+  .mermaid .prose p,
+  .mermaid-container .prose p,
+  .prose .mermaid-container p,
+  div.mermaid .prose p,
+  .prose div.mermaid p {
+    margin-bottom: 0 !important;
+  }
+  
+  /* Adjust spacing when heading follows paragraph */
+  .prose p + h2 {
+    margin-top: 1rem !important;
+  }
+  
+  .prose p + h3 {
+    margin-top: 0.875rem !important;
+  }
+  
+  .prose p + h4 {
+    margin-top: 2rem !important;
+  }
+
+  /* Better code block styling */
+  .prose pre {
+    @apply shadow-none;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: 0.5rem;
+    padding: 1rem 1rem 0.875rem 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .prose pre code {
+    font-size: 0.9rem !important; /* 14.4px - matching the above */
+    counter-reset: line;
+    display: block;
+  }
+  
+  /* Syntax highlighting support for rehype-pretty-code */
+  [data-rehype-pretty-code-fragment],
+  [data-rehype-pretty-code-figure] {
+    position: relative;
+  }
+  
+  /* CRITICAL: Allow inline styles from shiki to work */
+  [data-rehype-pretty-code-figure] pre code span[style],
+  [data-rehype-pretty-code-fragment] pre code span[style] {
+    /* Inline styles should take precedence */
+  }
+  
+  /* Line highlighting support */
+  [data-rehype-pretty-code-fragment] .line,
+  [data-rehype-pretty-code-figure] .line {
+    display: block;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+  }
+  
+  [data-rehype-pretty-code-fragment] .highlighted,
+  [data-rehype-pretty-code-figure] .highlighted {
+    background-color: hsl(var(--muted) / 0.5);
+    border-left: 4px solid hsl(var(--primary));
+    padding-left: calc(1rem - 4px);
+  }
+
+  /* Smooth scrolling for heading links */
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Anchor link styling */
+  .prose h1[id],
+  .prose h2[id],
+  .prose h3[id],
+  .prose h4[id],
+  .prose h5[id],
+  .prose h6[id] {
+    position: relative;
+    scroll-margin-top: 5rem;
+  }
+  
+  /* Different spacing for different heading levels */
+  .prose h1[id] {
+    padding-left: 2rem;
+    margin-left: -2rem;
+  }
+  
+  .prose h2[id] {
+    padding-left: 1.75rem;
+    margin-left: -1.75rem;
+  }
+  
+  .prose h3[id],
+  .prose h4[id],
+  .prose h5[id],
+  .prose h6[id] {
+    padding-left: 1.5rem;
+    margin-left: -1.5rem;
+  }
+  
+  .prose .anchor-link {
+    font-weight: normal !important;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    color: hsl(var(--muted-foreground) / 0.5) !important;
+    transition: color 0.2s ease;
+  }
+  
+  .prose .anchor-link:hover {
+    color: hsl(var(--muted-foreground) / 0.7);
+  }
+  
+  .prose .anchor-link svg {
+    width: 0.75em;
+    height: 0.75em;
+  }
+  
+  /* Smaller link icon for H1 */
+  .prose h1 .anchor-link svg {
+    width: 0.625em;
+    height: 0.625em;
+  }
+
+  /* Better list styling */
+  .prose :where(ul):not(:where([class~="not-prose"] *)) {
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin-top: 0.1rem !important;
+    margin-bottom: 0.2rem !important;
+  }
+  
+  .prose :where(ol):not(:where([class~="not-prose"] *)) {
+    list-style: none !important;
+    padding-left: 0 !important;
+    counter-reset: list-counter;
+    margin-top: 0.1rem !important;
+    margin-bottom: 0.2rem !important;
+  }
+  
+  /* Remove list bottom margin when followed by a paragraph */
+  .prose ul:has(+ p),
+  .prose ol:has(+ p) {
+    margin-bottom: 0 !important;
+  }
+  
+  /* Add top margin to paragraph after list */
+  .prose ul + p,
+  .prose ol + p {
+    margin-top: 0.25rem !important;
+  }
+  
+  /* All list items - base positioning */
+  .prose li {
+    position: relative;
+  }
+  
+  /* Unordered list items at any nesting level */
+  .prose ul > li {
+    padding-left: 0.75rem;
+  }
+  
+  /* Ordered list items at any nesting level */
+  .prose ol > li {
+    padding-left: 1.25rem;
+    counter-increment: list-counter;
+  }
+  
+  /* Unordered list bullets - ensure bullets for ALL ul > li */
+  .prose ul > li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    @apply text-foreground;
+  }
+  
+  /* Ordered list numbers - ensure numbers for ALL ol > li */
+  .prose ol > li::before {
+    content: counter(list-counter) ".";
+    position: absolute;
+    left: 0;
+    @apply text-foreground font-semibold;
+  }
+  
+  /* Override any inherited styles for nested unordered lists */
+  .prose ol ul > li {
+    counter-increment: none !important;
+  }
+  
+  .prose ol ul > li::before {
+    content: "•" !important;
+    @apply text-foreground;
+    font-weight: normal !important;
+  }
+  
+  /* Reset counter for each nested ordered list */
+  .prose ol {
+    counter-reset: list-counter;
+  }
+  
+  /* Ensure proper styling for deeply nested combinations */
+  .prose ul ol > li::before {
+    content: counter(list-counter) "." !important;
+    @apply text-foreground font-semibold;
+  }
+  
+  .prose ol ol > li::before {
+    content: counter(list-counter) "." !important;
+    @apply text-foreground font-semibold;
+  }
+  
+  .prose ul ul > li::before {
+    content: "•" !important;
+    @apply text-foreground;
+  }
+  
+  /* Add spacing for nested lists */
+  .prose ul ul,
+  .prose ol ol,
+  .prose ul ol,
+  .prose ol ul {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-left: 0 !important;
+  }
+
+  /* Enhanced blockquote styling */
+  .prose blockquote {
+    @apply bg-muted/30 border-l-2 pl-6 pr-4 py-4 my-4;
+    position: relative;
+    border-radius: 0 0.5rem 0.5rem 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-left-color: hsl(0 0% 85%);
+  }
+  
+  
+  .prose blockquote p {
+    margin-bottom: 0.5rem !important;
+    font-size: 1.1rem;
+    line-height: 1.6;
+  }
+  
+  .prose blockquote p:last-child {
+    margin-bottom: 0 !important;
+  }
+  
+  .prose blockquote cite {
+    @apply text-muted-foreground text-sm not-italic;
+    display: block;
+    margin-top: 0.75rem;
+  }
+  
+  .prose blockquote cite::before {
+    content: "— ";
+  }
+  
+  /* Horizontal rule styling */
+  .prose hr {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Better table styling */
+  .prose table {
+    @apply shadow-sm;
+  }
+
+  .prose thead {
+    @apply bg-muted;
+  }
+
+
   
 }
+
+  /* Mermaid diagram styling */
+  .mermaid-container {
+    display: flex;
+    justify-content: center;
+    margin: 2rem 0;
+    overflow-x: auto;
+  }
+
+  /* More aggressive targeting of paragraphs with Mermaid content */
+  .prose p.mermaid-paragraph,
+  .prose p[class*="mermaid"],
+  .prose div > p:only-child:has(.mermaid),
+  .prose div > p:only-child:has(.mermaid-container),
+  .prose div > p:only-child:has([class*="mermaid"]) {
+    margin-bottom: 0 !important;
+  }
+
+  /* Target paragraphs by their relationship to Mermaid elements */
+  .prose .mermaid-container ~ p,
+  .prose .mermaid ~ p,
+  .prose [class*="mermaid"] ~ p {
+    margin-top: 0 !important;
+  }
+
+  /* Use higher specificity to override prose p styles */
+  .prose div p:has(.mermaid),
+  .prose div p:has(.mermaid-container),
+  .prose div p:has([class*="mermaid"]),
+  .prose article p:has(.mermaid),
+  .prose article p:has(.mermaid-container),
+  .prose article p:has([class*="mermaid"]) {
+    margin-bottom: 0 !important;
+  }
+  
+  .prose .mermaid {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+  
+  /* Make mermaid diagrams larger */
+  .mermaid svg {
+    font-size: 16px !important;
+    max-width: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+  
+  /* Ensure mermaid text is readable */
+  .mermaid .nodeLabel {
+    font-size: 14px !important;
+  }
+  
+  .mermaid .edgeLabel {
+    font-size: 14px !important;
+    background-color: transparent !important;
+    background: transparent !important;
+  }
+  
+  /* More specific targeting for edge labels */
+  .prose .mermaid .edgeLabel,
+  .mermaid-container .edgeLabel,
+  .mermaid .edgeLabel,
+  .prose .mermaid g.edgeLabel,
+  .mermaid-container g.edgeLabel,
+  .mermaid g.edgeLabel,
+  .prose .mermaid [class*="edgeLabel"],
+  .mermaid-container [class*="edgeLabel"],
+  .mermaid [class*="edgeLabel"] {
+    background-color: transparent !important;
+    background: transparent !important;
+  }
+
+  /* Target all possible edge label background elements */
+  .prose .mermaid .edgeLabel rect,
+  .prose .mermaid g.edgeLabel rect,
+  .prose .mermaid [class*="edgeLabel"] rect,
+  .mermaid-container .edgeLabel rect,
+  .mermaid-container g.edgeLabel rect,
+  .mermaid-container [class*="edgeLabel"] rect,
+  .mermaid .edgeLabel rect,
+  .mermaid g.edgeLabel rect,
+  .mermaid [class*="edgeLabel"] rect {
+    fill: transparent !important;
+    stroke: none !important;
+    opacity: 0 !important;
+    display: none !important;
+  }
+  
+  .prose .mermaid svg {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  /* Mermaid text styling - research-based approach */
+  .prose .mermaid text {
+    fill: hsl(var(--foreground)) !important;
+    font-family: var(--font-default) !important;
+    text-anchor: middle !important;
+    dominant-baseline: central !important;
+  }
+
+  /* Target specific Mermaid node types for flowcharts */
+  .prose .mermaid .node text,
+  .prose .mermaid .nodeLabel,
+  .prose .mermaid .label,
+  .mermaid-container .node text,
+  .mermaid-container .nodeLabel,
+  .mermaid-container .label,
+  .mermaid .node text,
+  .mermaid .nodeLabel,
+  .mermaid .label {
+    text-anchor: middle !important;
+    dominant-baseline: central !important;
+    text-align: center !important;
+  }
+
+  /* For HTML labels when htmlLabels: true (key fix from research) */
+  .prose .mermaid .nodeLabel div,
+  .prose .mermaid .label div,
+  .mermaid-container .nodeLabel div,
+  .mermaid-container .label div,
+  .mermaid .nodeLabel div,
+  .mermaid .label div {
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    background-color: transparent !important;
+  }
+
+  /* Simple fix for edge/arrow labels - remove background only */
+  .prose .mermaid g.edgeLabel rect,
+  .mermaid-container g.edgeLabel rect,
+  .mermaid g.edgeLabel rect {
+    fill: none !important;
+    stroke: none !important;
+    display: none !important;
+  }
+
+  /* Adjust edge label text position slightly down */
+  .prose .mermaid .edgeLabel text,
+  .prose .mermaid g.edgeLabel text,
+  .mermaid-container .edgeLabel text,
+  .mermaid-container g.edgeLabel text,
+  .mermaid .edgeLabel text,
+  .mermaid g.edgeLabel text {
+    transform: translateY(2px) !important;
+  }
+
+  /* Remove background from any label containers and edge paths */
+  .prose .mermaid .label-container,
+  .prose .mermaid .edgePath,
+  .prose .mermaid .edgePath .edgeLabel,
+  .mermaid-container .label-container,
+  .mermaid-container .edgePath,
+  .mermaid-container .edgePath .edgeLabel,
+  .mermaid .label-container,
+  .mermaid .edgePath,
+  .mermaid .edgePath .edgeLabel {
+    background-color: transparent !important;
+    background: none !important;
+  }
+
+  /* SVG text elements inside Mermaid containers */
+  .prose .mermaid svg text,
+  .mermaid-container svg text,
+  .mermaid svg text,
+  div[class*="mermaid"] svg text,
+  .prose div[class*="mermaid"] svg text {
+    text-anchor: middle !important;
+    dominant-baseline: central !important;
+  }
+
+  /* Specific flowchart and sequence diagram targeting */
+  .prose .mermaid .flowchart-label,
+  .prose .mermaid .sequence-actor-label,
+  .prose .mermaid .state-title,
+  .mermaid-container .flowchart-label,
+  .mermaid-container .sequence-actor-label,
+  .mermaid-container .state-title,
+  .mermaid .flowchart-label,
+  .mermaid .sequence-actor-label,
+  .mermaid .state-title {
+    text-align: center !important;
+    text-anchor: middle !important;
+    dominant-baseline: central !important;
+  }
+
+  /* Force center alignment for all diagram types with foreignObject */
+  .prose .mermaid foreignObject div,
+  .mermaid-container foreignObject div,
+  .mermaid foreignObject div {
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Lightbox styles */
+  .lightbox-overlay {
+    animation: lightbox-fade-in 0.3s ease-out;
+  }
+
+  .lightbox-overlay.closing {
+    animation: lightbox-fade-out 0.3s ease-in;
+  }
+
+  @keyframes lightbox-fade-in {
+    from {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+    }
+    to {
+      opacity: 1;
+      backdrop-filter: blur(4px);
+    }
+  }
+
+  @keyframes lightbox-fade-out {
+    from {
+      opacity: 1;
+      backdrop-filter: blur(4px);
+    }
+    to {
+      opacity: 0;
+      backdrop-filter: blur(0px);
+    }
+  }
+
+  /* Mermaid diagram lightbox - no hover effects, just cursor */
+  .mermaid-container[style*="cursor: pointer"],
+  .mermaid[style*="cursor: pointer"] {
+    cursor: pointer;
+  }
+
+  /* Prevent overflow in parent containers */
+  .prose .mermaid-container,
+  .prose .mermaid {
+    overflow: visible !important;
+    margin: 0.5rem 0 !important;
+  }
+
+  /* Image lightbox styling handled by JavaScript wrapper */
+
+  /* Lightbox content animations */
+  .lightbox-content {
+    animation: lightbox-content-in 0.3s ease-out;
+  }
+
+  @keyframes lightbox-content-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  /* Mermaid lightbox specific styles */
+  .mermaid-lightbox {
+    overflow: auto;
+  }
+
+  .mermaid-lightbox .mermaid,
+  .mermaid-lightbox .mermaid-container {
+    margin: 0 !important;
+    cursor: default !important;
+  }
+
+  /* KLineChart background styling - light grey within chart axes */
+  #kline-chart > div > div:first-child > div:first-child {
+    background-color: rgb(248, 248, 248) !important;
+  }
+
+  .mermaid-lightbox svg {
+    max-width: none !important;
+    width: auto !important;
+    height: auto !important;
+  }
+  
+  /* Mermaid shapes and lines */
+  .prose .mermaid .node rect,
+  .prose .mermaid .node circle,
+  .prose .mermaid .node ellipse,
+  .prose .mermaid .node polygon {
+    fill: hsl(var(--muted)) !important;
+    stroke: hsl(var(--border)) !important;
+    stroke-width: 2px;
+  }
+  
+  .prose .mermaid .edgePath path,
+  .prose .mermaid .flowchart-link {
+    stroke: hsl(var(--border)) !important;
+    stroke-width: 2px;
+  }
+  
+  .prose .mermaid .marker {
+    fill: hsl(var(--border)) !important;
+  }
+

@@ -221,8 +221,8 @@ fn process_fee_calculation(
     // Calculate fees owed increment (simplified calculation)
     let liquidity = position.liquidity;
     if liquidity > 0 {
-        let fees_0_increment = ((fee_growth_0_increment as u128 * liquidity) >> 64) as u64;
-        let fees_1_increment = ((fee_growth_1_increment as u128 * liquidity) >> 64) as u64;
+        let fees_0_increment = ((fee_growth_0_increment * liquidity) >> 64) as u64;
+        let fees_1_increment = ((fee_growth_1_increment * liquidity) >> 64) as u64;
 
         position.tokens_owed_0 = position.tokens_owed_0.saturating_add(fees_0_increment);
         position.tokens_owed_1 = position.tokens_owed_1.saturating_add(fees_1_increment);

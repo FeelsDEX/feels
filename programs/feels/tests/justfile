@@ -1,6 +1,9 @@
 # Feels Protocol Test Suite Justfile
 # This justfile provides commands for running the test suite with proper Nix environment
 
+# Set the project root path for Nix flake
+PROJECT_ROOT := "../../../"
+
 # Show available test commands
 help:
     @just --list --unsorted
@@ -10,7 +13,7 @@ all:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running all tests                                                 ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels -- --test-threads=1
     @echo ""
     @echo "Note: This runs only in-memory tests. For devnet/localnet tests, use:"
     @echo "  - just devnet    # Run devnet tests"
@@ -22,28 +25,28 @@ unit:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running unit tests                                                ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels unit:: -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels unit:: -- --test-threads=1
 
 # Run integration tests
 integration:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running integration tests                                         ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels integration:: -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels integration:: -- --test-threads=1
 
 # Run property-based tests
 property:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running property-based tests                                      ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels property:: -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels property:: -- --test-threads=1
 
 # Run end-to-end tests
 e2e:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running end-to-end tests                                          ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels e2e:: -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels e2e:: -- --test-threads=1
 
 # Run E2E pipeline tests (indexer + frontend integration)
 e2e-pipeline:
@@ -59,36 +62,36 @@ e2e-pipeline:
     all_running=true
     
     if curl -s http://localhost:8899 >/dev/null 2>&1; then
-        echo "✓ Solana Validator: Running"
+        echo "[OK] Solana Validator: Running"
     else
-        echo "✗ Solana Validator: Not running"
+        echo "[ERROR] Solana Validator: Not running"
         all_running=false
     fi
     
     if curl -s http://localhost:8080/health >/dev/null 2>&1; then
-        echo "✓ Indexer: Running"
+        echo "[OK] Indexer: Running"
     else
-        echo "✗ Indexer: Not running"
+        echo "[ERROR] Indexer: Not running"
         all_running=false
     fi
     
     if curl -s http://localhost:3000 >/dev/null 2>&1; then
-        echo "✓ Frontend App: Running"
+        echo "[OK] Frontend App: Running"
     else
-        echo "✗ Frontend App: Not running"
+        echo "[ERROR] Frontend App: Not running"
         all_running=false
     fi
     
     if curl -s http://localhost:10000/status >/dev/null 2>&1; then
-        echo "✓ Streaming Adapter: Running"
+        echo "[OK] Streaming Adapter: Running"
     else
-        echo "✗ Streaming Adapter: Not running"
+        echo "[ERROR] Streaming Adapter: Not running"
         all_running=false
     fi
     
     if [ "$all_running" = false ]; then
         echo ""
-        echo "⚠️  Not all services are running"
+        echo "[WARN] Not all services are running"
         echo "To start the full E2E environment: just -f ../../../e2e/justfile run"
         echo ""
     fi
@@ -98,7 +101,7 @@ e2e-pipeline:
     just e2e-pipeline-indexer
     just e2e-pipeline-frontend
     @echo ""
-    @echo "✅ E2E Pipeline tests complete!"
+    @echo "E2E Pipeline tests complete!"
 
 # Run indexer pipeline tests
 e2e-pipeline-indexer:
@@ -106,7 +109,7 @@ e2e-pipeline-indexer:
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Indexer Data Pipeline"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_indexer_placeholder -- --nocapture --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels test_indexer_placeholder -- --nocapture --test-threads=1
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Indexer Analytics"
@@ -119,7 +122,7 @@ e2e-pipeline-frontend:
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Frontend DevBridge Integration"
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    nix develop -c cargo test -p feels test_devbridge_placeholder -- --nocapture --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels test_devbridge_placeholder -- --nocapture --test-threads=1
     @echo ""
     @echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     @echo "Testing Frontend Real-Time Updates"
@@ -136,44 +139,44 @@ filter PATTERN:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running tests matching: {{PATTERN}}                               ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo test -p feels {{PATTERN}} -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels {{PATTERN}} -- --test-threads=1
 
 # Run tests with verbose output
 verbose CATEGORY="":
     @echo "Running tests with verbose output..."
-    nix develop -c cargo test -p feels {{CATEGORY}} -- --test-threads=1 --nocapture
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels {{CATEGORY}} -- --test-threads=1 --nocapture
 
 # Run tests with multiple threads
 parallel THREADS="4" CATEGORY="":
     @echo "Running tests with {{THREADS}} threads..."
-    nix develop -c cargo test -p feels {{CATEGORY}} -- --test-threads={{THREADS}}
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels {{CATEGORY}} -- --test-threads={{THREADS}}
 
 # Run tests in release mode
 release CATEGORY="":
     @echo "Running tests in release mode..."
-    nix develop -c cargo test -p feels {{CATEGORY}} --release -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels {{CATEGORY}} --release -- --test-threads=1
 
 # Run tests without capturing output
 nocapture CATEGORY="":
     @echo "Running tests without output capture..."
-    nix develop -c cargo test -p feels {{CATEGORY}} -- --test-threads=1 --nocapture
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels {{CATEGORY}} -- --test-threads=1 --nocapture
 
 # Run ignored tests
 ignored:
     @echo "Running ignored tests..."
-    nix develop -c cargo test -p feels -- --test-threads=1 --ignored
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels -- --test-threads=1 --ignored
 
 # Run benchmarks
 bench:
     @echo "Running benchmarks..."
-    nix develop -c cargo bench -p feels
+    nix develop {{PROJECT_ROOT}} -c cargo bench -p feels
 
 # Run tests with coverage (requires cargo-tarpaulin)
 coverage:
     @echo "╔═══════════════════════════════════════════════════════════════════╗"
     @echo "║ Running tests with coverage                                       ║"
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
-    nix develop -c cargo tarpaulin -p feels --out Html --output-dir coverage
+    nix develop {{PROJECT_ROOT}} -c cargo tarpaulin -p feels --out Html --output-dir coverage
 
 # Run tests that require localnet
 localnet:
@@ -184,7 +187,7 @@ localnet:
         export ANCHOR_PROVIDER_URL=http://localhost:8899 && \
         export RUN_LOCALNET_TESTS=1 && \
         export DISABLE_AIRDROP_RATE_LIMIT=1 && \
-        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture --ignored
+        nix develop {{PROJECT_ROOT}} -c cargo test -p feels -- --test-threads=1 --nocapture --ignored
 
 # Run tests that require devnet
 devnet:
@@ -194,7 +197,7 @@ devnet:
     @echo "Note: Rate limiting is enabled by default to prevent airdrop failures."
     @echo "Use 'just devnet-no-limit' to disable rate limiting."
     @export RUN_DEVNET_TESTS=1 && \
-        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture
+        nix develop {{PROJECT_ROOT}} -c cargo test -p feels -- --test-threads=1 --nocapture
 
 # Run devnet tests without rate limiting
 devnet-no-limit:
@@ -203,7 +206,7 @@ devnet-no-limit:
     @echo "╚═══════════════════════════════════════════════════════════════════╝"
     @export RUN_DEVNET_TESTS=1 && \
         export DISABLE_AIRDROP_RATE_LIMIT=1 && \
-        nix develop -c cargo test -p feels -- --test-threads=1 --nocapture
+        nix develop {{PROJECT_ROOT}} -c cargo test -p feels -- --test-threads=1 --nocapture
 
 # Run ALL tests including in-memory, localnet, and devnet
 test-all:
@@ -225,12 +228,12 @@ test-all:
 # Watch tests and re-run on changes (requires cargo-watch)
 watch CATEGORY="":
     @echo "Starting watch mode... (Press Ctrl+C to exit)"
-    nix develop -c cargo watch -x "test -p feels {{CATEGORY}}"
+    nix develop {{PROJECT_ROOT}} -c cargo watch -x "test -p feels {{CATEGORY}}"
 
 # Run specific test file
 file PATH:
     @echo "Running tests in {{PATH}}..."
-    nix develop -c cargo test -p feels --test {{PATH}} -- --test-threads=1
+    nix develop {{PROJECT_ROOT}} -c cargo test -p feels --test {{PATH}} -- --test-threads=1
 
 # Clean test artifacts
 clean-tests:

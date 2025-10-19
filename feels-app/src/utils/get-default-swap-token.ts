@@ -1,5 +1,5 @@
-import { appConfig } from '@/config/app.config';
-import { FEELS_TOKENS } from '@/data/tokens';
+import { appConfig } from '@/constants/app';
+import { FEELS_TOKENS } from '@/constants/mock-tokens';
 import type { DataSource } from '@/contexts/DataSourceContext';
 
 export function getDefaultSwapToken(dataSource?: DataSource): string {

@@ -28,7 +28,8 @@ pub use builders::MarketBuilder;
 pub use client::TestClient;
 pub use context::TestContext;
 pub use environment::{should_run_devnet_tests, should_run_localnet_tests, TestEnvironment};
-pub use helpers::{MarketHelper, SwapHelper, SwapResult, TestMarketSetup};
+pub use helpers::{MarketHelper, SwapHelper};
+pub use sdk_compat::{TestMarketSetup, SwapResult, PositionInfo, CollectFeesResult};
 
 // Re-export assertion utilities
 pub use assertions::{
@@ -43,13 +44,13 @@ pub use assertions::{
 pub use crate::{test_all_environments, test_devnet, test_in_memory};
 
 // Common imports for all tests
+pub use anchor_lang::prelude::pubkey;
 pub use anchor_lang::prelude::{
     error, msg, require, require_eq, require_gt, require_gte, require_keys_eq, require_keys_neq,
-    require_neq, AccountDeserialize, AccountSerialize, AnchorDeserialize, AnchorSerialize, Accounts,
-    AccountsExit, Clock, Id, Key, Owner, ProgramData, ProgramError, Rent, Result, System,
+    require_neq, AccountDeserialize, AccountSerialize, Accounts, AccountsExit, AnchorDeserialize,
+    AnchorSerialize, Clock, Id, Key, Owner, ProgramData, ProgramError, Rent, Result, System,
     ToAccountInfo, ToAccountInfos, ToAccountMetas,
 };
-pub use anchor_lang::prelude::pubkey;
 pub use feels::{instructions::*, state::*, ID as PROGRAM_ID};
 pub use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -69,8 +70,8 @@ pub struct MarketInfo {
     pub tick_spacing: u16,
 }
 
-// SDK imports
-pub use self::sdk_compat::sdk;
+// SDK compatibility imports
+pub use self::sdk_compat as sdk;
 
 // Constants
 pub mod constants {

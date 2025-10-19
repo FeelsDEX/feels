@@ -83,6 +83,7 @@ pub fn validate_swap_params(
 }
 
 /// Execute token transfers for a swap
+#[allow(clippy::too_many_arguments)]
 pub fn execute_swap_transfers<'info>(
     user_src: &Account<'info, TokenAccount>,
     user_dst: &Account<'info, TokenAccount>,

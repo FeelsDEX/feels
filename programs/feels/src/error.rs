@@ -177,6 +177,9 @@ pub enum FeelsError {
     #[msg("Token-2022 is not supported in this version")]
     Token2022NotSupported,
 
+    #[msg("Token mint address must end with 'FEEL'")]
+    InvalidVanityAddress,
+
     #[msg("Invalid token program ID")]
     InvalidTokenProgramId,
 
@@ -210,6 +213,9 @@ pub enum FeelsError {
     // Fee cap errors
     #[msg("Computed fee exceeds caller-provided maximum total fee bps")]
     FeeCapExceeded,
+
+    #[msg("Fee too high")]
+    FeeTooHigh,
 
     // Rate limit errors
     #[msg("Rate limit exceeded for this slot")]

@@ -1,7 +1,7 @@
 // Centralized type definitions for the Feels app
 
-// Re-export token types from data
-export type { Token } from '@/data/tokens';
+// Re-export token types from constants
+export type { Token } from '@/constants/mock-tokens';
 
 // Market types
 export interface Market {
@@ -100,3 +100,10 @@ export interface ProtocolStats {
   totalPositions: number;
   totalSwaps24h: number;
 }
+
+// Search and faceting
+export type { 
+  TokenSearchResult, 
+  FacetConfig, 
+  SelectedFacets 
+} from './search';

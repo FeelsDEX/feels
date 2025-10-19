@@ -1,7 +1,6 @@
 //! Test token ordering validation
 
 use crate::common::*;
-use feels_sdk as sdk;
 
 #[tokio::test]
 async fn test_feelssol_must_be_token_0() {
@@ -126,7 +125,6 @@ async fn test_no_feelssol_fails() {
 
 #[tokio::test]
 async fn test_sdk_validation() {
-    use feels_sdk as sdk;
 
     let feelssol_mint = pubkey!("FeeLsW8fYn1CqkPuVChUdVVRMDYvdSkBEemkpf2ahXQ");
     let token_mint = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");

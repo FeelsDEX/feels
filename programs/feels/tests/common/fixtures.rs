@@ -25,18 +25,20 @@ pub mod test_constants {
     // Fee tiers (in basis points)
     pub const STABLE_FEE_TIER: u16 = 50; // 0.5 bps
     pub const LOW_FEE_TIER: u16 = 500; // 5 bps
-    pub const MEDIUM_FEE_TIER: u16 = 3000; // 30 bps
+    pub const MEDIUM_FEE_TIER: u16 = 30; // 0.3% (recommended default)
     pub const HIGH_FEE_TIER: u16 = 10000; // 100 bps
 
     // Common tick values
     pub const MIN_TICK: i32 = -443636;
     pub const MAX_TICK: i32 = 443636;
     pub const PRICE_1_TO_1_TICK: i32 = 0;
+    pub const RECOMMENDED_INITIAL_TICK: i32 = -161216; // ~1e-7 FeelsSOL per token
 
     // Common sqrt prices (Q64.64 format)
     pub const MIN_SQRT_PRICE: u128 = 4295048016;
     pub const MAX_SQRT_PRICE: u128 = 79226673515401279992447579055;
     pub const PRICE_1_TO_1: u128 = 79228162514264337593543950336; // sqrt(1) in Q64.64
+    pub const RECOMMENDED_INITIAL_SQRT_PRICE: u128 = 5825507814218144; // tick -161216
 }
 
 /// Pre-configured test accounts
@@ -91,9 +93,9 @@ pub fn get_market_configs() -> Vec<MarketConfig> {
         MarketConfig {
             name: "standard_pool",
             tick_spacing: test_constants::MEDIUM_FEE_TICK_SPACING,
-            fee_tier: test_constants::LOW_FEE_TIER,
-            initial_price: test_constants::PRICE_1_TO_1,
-            description: "Standard pool for most token pairs",
+            fee_tier: test_constants::MEDIUM_FEE_TIER,
+            initial_price: test_constants::RECOMMENDED_INITIAL_SQRT_PRICE,
+            description: "Standard pool using recommended defaults",
         },
         MarketConfig {
             name: "volatile_pool",

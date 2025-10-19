@@ -1,8 +1,48 @@
 # Solana development tools and environment
 { pkgs, inputs', lib, ... }:
 
-{
+let
+  # Create a wrapper for solana binaries that excludes cargo
+  # This prevents collision with the standalone cargo from nixpkgs
+  solana-wrapped = pkgs.runCommand "solana-wrapped" {} ''
+    mkdir -p $out/bin
+    # Copy only solana-related binaries, exclude cargo and rust tools
+    for bin in ${inputs'.zero-nix.packages.solana-node}/bin/*; do
+      binname=$(basename "$bin")
+      # Skip cargo and rust tools that might conflict
+      if [[ "$binname" != "cargo"* ]] && [[ "$binname" != "rust"* ]]; then
+        ln -s "$bin" "$out/bin/$binname"
+      fi
+    done
+  '';
+  
+  # Wrap anchor/solana-tools to exclude conflicting binaries
+  anchor-wrapped = pkgs.runCommand "anchor-wrapped" {} ''
+    mkdir -p $out/bin
+    # Copy only anchor and solana-related binaries, exclude cargo and rust tools
+    for bin in ${inputs'.zero-nix.packages.solana-tools}/bin/*; do
+      binname=$(basename "$bin")
+      # Skip cargo and rust tools that might conflict
+      if [[ "$binname" != "cargo"* ]] && [[ "$binname" != "rust"* ]]; then
+        ln -s "$bin" "$out/bin/$binname"
+      fi
+    done
+  '';
+in {
   packages = with pkgs; [
+    # Full Rust toolchain for IDE support (includes proc-macro server)
+    # Using nixpkgs Rust which has complete toolchain including proc-macro server
+    cargo
+    rustc
+    rustfmt
+    clippy
+    rust-analyzer
+    
+    # Wrapped Solana tools (without cargo collision)
+    solana-wrapped
+    anchor-wrapped
+    
+    # Build essentials
     openssl
     pkg-config
     protobuf
@@ -11,34 +51,13 @@
     just
     llvmPackages.libclang.lib
     cmake
-    rust-analyzer  # Add rust-analyzer separately to avoid conflicts
   ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
     libiconv
     darwin.apple_sdk.frameworks.Security
     darwin.apple_sdk.frameworks.SystemConfiguration
   ];
   
-  commands = [
-    {
-      name = "solana";
-      package = inputs'.zero-nix.packages.solana-node;
-      help = "Solana CLI and node tools";
-    }
-    {
-      name = "anchor";
-      package = inputs'.zero-nix.packages.solana-tools;
-      help = "Anchor and SBF development tools";
-    }
-    {package = inputs'.zero-nix.packages.setup-solana;}
-    # Metaplex download command
-    {
-      name = "download-metaplex";
-      help = "Download Metaplex Token Metadata program for tests";
-      command = ''
-        ${pkgs.just}/bin/just -f justfiles/solana-tools.just download-metaplex
-      '';
-    }
-  ];
+  commands = [];
   
   env = [
     {
@@ -73,10 +92,7 @@
       name = "BINDGEN_EXTRA_CLANG_ARGS";
       value = "-I${pkgs.llvmPackages.clang-unwrapped.lib}/lib/clang/${pkgs.llvmPackages.clang-unwrapped.version}/include";
     }
-    {
-      name = "RUST_SRC_PATH";
-      value = "${inputs'.zero-nix.packages.solana-node}/platform-tools/rust/lib/rustlib/src/rust/library";
-    }
+    # Note: RUST_SRC_PATH not needed - rust-analyzer discovers it from rustc automatically
   ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
     {
       name = "LIBRARY_PATH";
@@ -93,18 +109,33 @@
   ];
   
   startup = {
-    setup-solana = {
+    solana-tools = {
       deps = [];
       text = ''
-        echo "Solana development tools loaded"
-        echo "Available tools:"
-        echo "  - solana: Solana CLI and validator"
-        echo "  - anchor: Anchor framework for Solana development"
+        echo "Solana Development Tools"
+        echo "========================"
         echo ""
-        echo "Build commands:"
-        echo "  - cargo build-sbf           - Build Solana programs directly"
+        echo "Build Tools:"
+        echo "  anchor          - Anchor framework (build, test, deploy)"
+        echo "  cargo           - Rust build system"
+        echo "  cargo build-sbf - Build Solana programs (BPF)"
+        echo ""
+        echo "Solana CLI:"
+        echo "  solana          - Main Solana CLI (program deploy, account info)"
+        echo "  solana-validator - Run local test validator"
+        echo "  spl-token       - SPL Token CLI"
+        echo ""
+        echo "Development:"
+        echo "  rust-analyzer   - IDE support for Rust"
+        echo "  clippy          - Rust linter"
+        echo "  rustfmt         - Rust formatter"
+        echo ""
+        echo "Utilities:"
+        echo "  just            - Task runner (see 'just --list')"
+        echo "  jq              - JSON processor"
         echo ""
       '';
     };
   };
+  
 }

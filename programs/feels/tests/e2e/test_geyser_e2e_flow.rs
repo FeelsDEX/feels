@@ -426,12 +426,12 @@ async fn test_complete_geyser_e2e_flow() -> TestResult<()> {
         .is_ok();
 
     if !validator_available {
-        println!("⚠️  E2E infrastructure not available - skipping test");
+        println!("[WARN] E2E infrastructure not available - skipping test");
         println!("   To run this test: just -f e2e/justfile run");
         return Ok(());
     }
 
-    println!("✓ E2E infrastructure available - running simplified test");
+    println!("[OK] E2E infrastructure available - running simplified test");
     println!("   (Full E2E flow requires complex setup - this validates connectivity)");
     return Ok(());
 
@@ -673,11 +673,11 @@ async fn test_geyser_infrastructure_smoke() -> TestResult<()> {
 
     println!("Indexer configuration files exist");
 
-    // Check if streaming adapter exists
-    let streaming_adapter = project_root.join("e2e/streaming-adapter");
-    assert!(streaming_adapter.exists(), "Streaming adapter not found");
+    // Check if geyser plugin exists
+    let geyser_plugin = indexer_dir.join("geyser-plugin");
+    assert!(geyser_plugin.exists(), "Geyser plugin not found");
 
-    println!("Streaming adapter exists");
+    println!("Geyser plugin exists");
 
     println!("Geyser infrastructure smoke test PASSED!");
     println!("Note: This test validates the new justfile-based infrastructure");

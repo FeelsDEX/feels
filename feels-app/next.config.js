@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const webpack = require('webpack');
-const ChunkLoadErrorFixPlugin = require('./src/utils/webpack-chunk-fix-plugin');
+const ChunkLoadErrorFixPlugin = require('./src/utils/webpack/chunk-fix-plugin');
 
 const nextConfig = {
   // Disable strict mode for better Solana wallet compatibility
@@ -9,12 +9,13 @@ const nextConfig = {
     // Handle server-side externals and problematic modules
     if (isServer) {
       // Externalize ws and other node modules on server to prevent bundling issues
-      config.externals = [...(config.externals || []), 'ws', 'bufferutil', 'utf-8-validate'];
+      config.externals = [...(config.externals || []), 'ws', 'bufferutil', 'utf-8-validate', 'mermaid'];
       
-      // Mock ws for server-side rendering where it's not needed
+      // Mock ws and mermaid for server-side rendering where they're not needed
       config.resolve.alias = {
         ...config.resolve.alias,
-        'ws': require('path').resolve(__dirname, './src/utils/ws-mock.js'),
+        'ws': require('path').resolve(__dirname, './src/utils/webpack/ws-mock.js'),
+        'mermaid': require('path').resolve(__dirname, './src/utils/webpack/mermaid-mock.js'),
       };
     }
     
@@ -67,6 +68,31 @@ const nextConfig = {
       },
     });
 
+    // Add WASM support
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      layers: true,
+    };
+
+    // Handle WASM files
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'webassembly/async',
+    });
+    
+    // Copy WASM files to static directory for worker access
+    if (!isServer) {
+      config.module.rules.push({
+        test: /vanity_miner_wasm_bg\.wasm$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'static/wasm/[name][ext]',
+        },
+      });
+    }
+
+
     // Workaround for Next.js webpack runtime issues
     if (!isServer) {
       // Ensure webpack runtime doesn't try to dynamically load chunks that don't exist
@@ -83,58 +109,12 @@ const nextConfig = {
         : 'static/chunks/[name].[contenthash].js';
     }
 
-    // Configure optimization for better chunk splitting
+    // Use Next.js default optimization to avoid CSS/JS mixing issues
     if (!isServer) {
+      // Only set essential optimization options, let Next.js handle chunk splitting
       config.optimization = {
         ...config.optimization,
-        moduleIds: 'deterministic',
-        splitChunks: {
-          chunks: 'all',
-          maxAsyncRequests: 30,
-          maxInitialRequests: 30,
-          cacheGroups: {
-            default: {
-              minChunks: 2,
-              priority: -20,
-              reuseExistingChunk: true,
-            },
-            // Handle CSS separately to prevent JS/CSS mixing
-            styles: {
-              test: /\.(css|scss|sass)$/,
-              enforce: true,
-              priority: 20,
-            },
-            // Keep all vendor chunks in a stable vendor bundle
-            // Solana packages - group all @solana packages together
-            'vendor-solana': {
-              test: /[\\/]node_modules[\\/](@solana|@coral-xyz|@project-serum)[\\/]/,
-              name: 'vendor-solana',
-              priority: 30,
-              reuseExistingChunk: true,
-            },
-            // Wallet adapter packages
-            'vendor-wallet': {
-              test: /[\\/]node_modules[\\/].*wallet-adapter.*[\\/]/,
-              name: 'vendor-wallet',
-              priority: 25,
-              reuseExistingChunk: true,
-            },
-            // React/Next packages
-            'vendor-react': {
-              test: /[\\/]node_modules[\\/](react|next)[\\/]/,
-              name: 'vendor-react',
-              priority: 20,
-              reuseExistingChunk: true,
-            },
-            // All other vendor modules
-            'vendor-common': {
-              test: /[\\/]node_modules[\\/]/,
-              name: 'vendor-common',
-              priority: 10,
-              reuseExistingChunk: true,
-            },
-          },
-        },
+        // Let Next.js handle splitChunks properly to avoid CSS/JS conflicts
       };
     }
     
@@ -161,10 +141,14 @@ const nextConfig = {
         );
       }
     } else {
-      // In dev, provide Buffer globally
+      // In dev, provide Buffer globally and disable Lit dev mode
       config.plugins.push(
         new webpack.ProvidePlugin({
           Buffer: ['buffer', 'Buffer'],
+        }),
+        new webpack.DefinePlugin({
+          'globalThis.litDev': JSON.stringify(false),
+          'window.litDev': JSON.stringify(false),
         })
       );
     }
@@ -194,12 +178,13 @@ const nextConfig = {
     
     return config;
   },
+  // Set output file tracing root to silence workspace detection warning
+  outputFileTracingRoot: __dirname,
+  
   // Optimize for production builds with Solana
   experimental: {
-    esmExternals: 'loose',
+    // esmExternals removed as it's deprecated in Next.js 15
   },
-  // Temporarily disable SWC minification to fix CSS issues
-  swcMinify: false,
   transpilePackages: [
     '@solana/web3.js',
     '@solana/wallet-adapter-base',
@@ -207,6 +192,52 @@ const nextConfig = {
     '@solana/wallet-adapter-wallets',
     '@coral-xyz/anchor',
   ],
+  // Proxy API requests to avoid CORS issues in development
+  async rewrites() {
+    return [
+      {
+        source: '/api/indexer/:path*',
+        destination: 'http://localhost:8080/:path*',
+      },
+    ];
+  },
+
+  // Headers for SharedArrayBuffer support
+  async headers() {
+    return [
+      {
+        // Apply COEP/COOP headers to all pages for multi-threading support
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'credentialless',
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin',
+          },
+        ],
+      },
+      {
+        // Apply headers to WASM files
+        source: '/wasm/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin',
+          },
+          {
+            key: 'Cache-Control',
+            value: process.env.NODE_ENV === 'development' 
+              ? 'no-store, must-revalidate' 
+              : 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
+
   images: {
     remotePatterns: [
       {

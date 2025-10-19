@@ -141,19 +141,23 @@ pub struct MintToken<'info> {
 pub fn mint_token(ctx: Context<MintToken>, params: MintTokenParams) -> Result<()> {
     // Early validation - fail fast before any state changes
 
-    // 1. Validate parameters first
+    // 1. Validate vanity address suffix
+    let mint_key = ctx.accounts.token_mint.key().to_string();
+    require!(mint_key.ends_with("feel"), FeelsError::InvalidVanityAddress);
+
+    // 2. Validate parameters
     require!(params.ticker.len() <= 10, FeelsError::InvalidPrice);
     require!(params.name.len() <= 32, FeelsError::InvalidPrice);
     require!(params.uri.len() <= 200, FeelsError::InvalidPrice); // Reasonable URI length limit
 
-    // 2. Validate mint fee and balance
+    // 3. Validate mint fee and balance
     let mint_fee = ctx.accounts.protocol_config.mint_fee;
     require!(
         ctx.accounts.creator_feelssol.amount >= mint_fee,
         FeelsError::InsufficientBalance
     );
 
-    // 3. Validate account ownership
+    // 4. Validate account ownership
     require!(
         ctx.accounts.creator_feelssol.owner == ctx.accounts.creator.key(),
         FeelsError::InvalidAuthority

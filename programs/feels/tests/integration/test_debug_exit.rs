@@ -41,7 +41,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
         .await?;
 
     let feelssol_balance = ctx.get_token_balance(&user_feelssol).await?;
-    println!("✓ User has {} FeelsSOL", feelssol_balance);
+    println!("[OK] User has {} FeelsSOL", feelssol_balance);
 
     // Debug: Print all relevant PDAs
     let (hub, _) = Pubkey::find_program_address(
@@ -75,7 +75,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
     // Update protocol oracle before attempting exit
     println!("\nUpdating protocol oracle...");
     ctx.update_protocol_oracle_for_testing().await?;
-    println!("✓ Protocol oracle updated");
+    println!("[OK] Protocol oracle updated");
 
     // Debug: Check oracle state and clock
     let (protocol_oracle, _) = Pubkey::find_program_address(
@@ -106,7 +106,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
         .await
     {
         Ok(_) => {
-            println!("✓ Exit successful!");
+            println!("[OK] Exit successful!");
 
             // Verify balances
             let jitosol_balance_after = ctx.get_token_balance(&user_jitosol).await?;
@@ -116,7 +116,7 @@ test_in_memory!(test_debug_exit_feelssol, |ctx: TestContext| async move {
             println!("  FeelsSOL remaining: {}", feelssol_balance_after);
         }
         Err(e) => {
-            eprintln!("✗ Exit failed: {:?}", e);
+            eprintln!("[ERROR] Exit failed: {:?}", e);
             return Err(e);
         }
     }

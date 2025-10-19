@@ -1,0 +1,25 @@
+{
+  // Recommended VS Code extensions for Feels Protocol development
+  "recommendations": [
+    // Rust development
+    "rust-lang.rust-analyzer",
+    
+    // Nix support
+    "jnoortheen.nix-ide",
+    "arrterian.nix-env-selector",
+    "mkhl.direnv",
+    
+    // General development
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "editorconfig.editorconfig",
+    
+    // Solana/Anchor
+    "metaplex.metaplex"
+  ],
+  "unwantedRecommendations": [
+    // Avoid conflicts with rust-analyzer
+    "vadimcn.vscode-lldb"
+  ]
+}
+

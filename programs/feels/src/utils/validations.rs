@@ -229,7 +229,7 @@ pub fn validate_position_market(position: &Position, market: &Pubkey) -> Result<
 /// Validate sqrt price bounds
 pub fn validate_sqrt_price(sqrt_price: u128) -> Result<()> {
     require!(
-        sqrt_price >= MIN_SQRT_PRICE && sqrt_price <= MAX_SQRT_PRICE,
+        (MIN_SQRT_PRICE..=MAX_SQRT_PRICE).contains(&sqrt_price),
         FeelsError::InvalidPrice
     );
     Ok(())
@@ -278,7 +278,7 @@ pub fn validate_monotonic_increase(new_value: u64, old_value: u64) -> Result<()>
 /// Validate buffer threshold bounds
 pub fn validate_buffer_threshold(threshold: u64) -> Result<()> {
     require!(
-        threshold >= MIN_BUFFER_THRESHOLD && threshold <= MAX_BUFFER_THRESHOLD,
+        (MIN_BUFFER_THRESHOLD..=MAX_BUFFER_THRESHOLD).contains(&threshold),
         FeelsError::InvalidThreshold
     );
     Ok(())
@@ -350,11 +350,11 @@ pub fn validate_sqrt_price_movement(
     max_movement_bps: u16,
 ) -> Result<()> {
     let movement = if new_price > old_price {
-        ((new_price - old_price) as u128)
+        (new_price - old_price)
             .saturating_mul(10000)
             .saturating_div(old_price)
     } else {
-        ((old_price - new_price) as u128)
+        (old_price - new_price)
             .saturating_mul(10000)
             .saturating_div(old_price)
     };

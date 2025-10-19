@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multi-threaded Coordinator Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .metric { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .success { color: green; }
+        .error { color: red; }
+        button { margin: 5px; padding: 10px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Multi-threaded Vanity Miner Coordinator Test</h1>
+    
+    <div class="metric">
+        <strong>Environment:</strong>
+        <div id="env-status"></div>
+    </div>
+    
+    <div class="metric">
+        <strong>Worker Status:</strong>
+        <div id="worker-status">Not initialized</div>
+    </div>
+    
+    <div class="metric">
+        <strong>Mining Status:</strong>
+        <div id="mining-status">Not started</div>
+    </div>
+    
+    <div class="metric">
+        <strong>Mining Rate Statistics:</strong>
+        <div id="rate-stats">
+            <div>Current Rate: <strong>N/A</strong> attempts/sec</div>
+            <div>Average Rate (all time): <strong>N/A</strong> attempts/sec</div>
+            <div>Average Rate (last 5): <strong>N/A</strong> attempts/sec</div>
+            <div>Min / Max: N/A / N/A</div>
+            <div>Standard Deviation: ±N/A</div>
+            <div>Samples: N/A</div>
+            <div>Total Attempts: N/A</div>
+            <div>Total Time: N/A</div>
+        </div>
+    </div>
+    
+    <div class="metric">
+        <strong>Stored Address Information:</strong>
+        <div id="stored-address">Checking storage...</div>
+    </div>
+    
+    <div>
+        <button onclick="startMining()">Start Mining</button>
+        <button onclick="stopMining()">Stop Mining</button>
+        <button onclick="clearStorage()">Clear Storage</button>
+        <button onclick="refreshStoredAddress()">Fetch Storage</button>
+    </div>
+    
+    <h3>Console Output:</h3>
+    <pre id="console"></pre>
+    
+    <script>
+        let worker = null;
+        const consoleEl = document.getElementById('console');
+        const envStatus = document.getElementById('env-status');
+        const workerStatus = document.getElementById('worker-status');
+        const miningStatus = document.getElementById('mining-status');
+        const rateStats = document.getElementById('rate-stats');
+        const storedAddressEl = document.getElementById('stored-address');
+        
+        // Rate tracking
+        let rateHistory = [];
+        let totalAttempts = 0;
+        let totalTime = 0;
+        let miningStartTime = null;
+        let minRate = Infinity;
+        let maxRate = 0;
+        let lastFiveRates = [];
+        
+        function log(msg, type = '') {
+            const time = new Date().toLocaleTimeString();
+            const line = `[${time}] ${msg}`;
+            console.log(msg);
+            consoleEl.textContent += line + '\n';
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+        
+        // Check environment
+        function updateRateStatistics(rate, attempts, elapsedMs) {
+            if (!rate || rate <= 0) return;
+            
+            // Update total attempts and time
+            totalAttempts = attempts;
+            totalTime = elapsedMs;
+            
+            // Add to history
+            rateHistory.push(rate);
+            
+            // Update min/max
+            minRate = Math.min(minRate, rate);
+            maxRate = Math.max(maxRate, rate);
+            
+            // Update last five rates for moving average
+            lastFiveRates.push(rate);
+            if (lastFiveRates.length > 5) {
+                lastFiveRates.shift();
+            }
+            
+            // Calculate TRUE overall average: total attempts / total time
+            const overallAverage = Math.round(totalAttempts / (totalTime / 1000));
+            
+            // Calculate recent average (last 5 rates)
+            const recentAverage = lastFiveRates.length > 0 
+                ? Math.round(lastFiveRates.reduce((a, b) => a + b, 0) / lastFiveRates.length)
+                : 0;
+            
+            // Calculate standard deviation from rate history (not overall average)
+            const mean = rateHistory.length > 0 
+                ? rateHistory.reduce((a, b) => a + b, 0) / rateHistory.length 
+                : 0;
+            const squaredDiffs = rateHistory.map(r => Math.pow(r - mean, 2));
+            const avgSquaredDiff = squaredDiffs.length > 1 
+                ? squaredDiffs.reduce((a, b) => a + b, 0) / (rateHistory.length - 1) // Use sample standard deviation
+                : 0;
+            const standardDeviation = Math.round(Math.sqrt(avgSquaredDiff));
+            
+            // Update display
+            rateStats.innerHTML = `
+                <div>Current Rate: <strong>${rate.toLocaleString()}</strong> attempts/sec</div>
+                <div>Average Rate (all time): <strong>${overallAverage.toLocaleString()}</strong> attempts/sec</div>
+                <div>Average Rate (last 5): <strong>${recentAverage.toLocaleString()}</strong> attempts/sec</div>
+                <div>Min / Max: ${minRate.toLocaleString()} / ${maxRate.toLocaleString()}</div>
+                <div>Standard Deviation: ±${standardDeviation.toLocaleString()}</div>
+                <div>Samples: ${rateHistory.length}</div>
+                <div>Total Attempts: ${totalAttempts.toLocaleString()}</div>
+                <div>Total Time: ${(totalTime / 1000).toFixed(1)}s</div>
+            `;
+        }
+        
+        function checkEnvironment() {
+            const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+            const isCrossOriginIsolated = self.crossOriginIsolated;
+            const cores = navigator.hardwareConcurrency || 'unknown';
+            
+            envStatus.innerHTML = `
+                <div>SharedArrayBuffer: <span class="${hasSharedArrayBuffer ? 'success' : 'error'}">${hasSharedArrayBuffer}</span></div>
+                <div>crossOriginIsolated: <span class="${isCrossOriginIsolated ? 'success' : 'error'}">${isCrossOriginIsolated}</span></div>
+                <div>Hardware cores: ${cores}</div>
+                <div>Can use multi-threading: <span class="${hasSharedArrayBuffer && isCrossOriginIsolated ? 'success' : 'error'}">${hasSharedArrayBuffer && isCrossOriginIsolated}</span></div>
+            `;
+            
+            return hasSharedArrayBuffer && isCrossOriginIsolated;
+        }
+        
+        // Initialize worker
+        async function initWorker() {
+            if (worker) {
+                log('Worker already initialized');
+                return;
+            }
+            
+            const canUseMultiThreading = checkEnvironment();
+            
+            log(`Initializing ${canUseMultiThreading ? 'multi-threaded coordinator' : 'single worker'}...`);
+            log(`Environment: SharedArrayBuffer=${typeof SharedArrayBuffer !== 'undefined'}, crossOriginIsolated=${self.crossOriginIsolated}`);
+            workerStatus.textContent = 'Initializing...';
+            
+            if (canUseMultiThreading) {
+                // Use main-thread coordinator for better compatibility
+                try {
+                    const { VanityMinerMainThread } = await import('/wasm/vanity-coordinator-main-thread.js');
+                    const coordinator = new VanityMinerMainThread();
+                    
+                    // Set up callbacks
+                    coordinator.onReady = (data) => {
+                        workerStatus.innerHTML = `Ready - Multi-threaded (${data.workers} workers, ~${data.rate?.toLocaleString()} attempts/sec)`;
+                        log('Coordinator ready');
+                    };
+                    
+                    coordinator.onProgress = (data) => {
+                        log(`Progress update: ${data.attempts?.toLocaleString()} attempts, ${data.rate?.toLocaleString()} attempts/sec`);
+                        miningStatus.innerHTML = `
+                            Mining in progress...<br>
+                            Attempts: ${data.attempts?.toLocaleString()}<br>
+                            Time: ${(data.elapsedMs / 1000).toFixed(1)}s<br>
+                            Rate: ${data.rate?.toLocaleString()} attempts/sec
+                        `;
+                        updateRateStatistics(data.rate, data.attempts, data.elapsedMs);
+                    };
+                    
+                    coordinator.onFound = (data) => {
+                        const keypair = data.keypair || data.result;
+                        miningStatus.innerHTML = `
+                            <span class="success">Found!</span><br>
+                            Public Key: ${keypair?.publicKey || keypair?.public_key}<br>
+                            Attempts: ${data.attempts?.toLocaleString()}<br>
+                            Time: ${(data.elapsedMs / 1000).toFixed(1)}s<br>
+                            Worker ID: ${data.workerId}
+                        `;
+                        setTimeout(refreshStoredAddress, 100);
+                    };
+                    
+                    coordinator.onError = (error) => {
+                        workerStatus.innerHTML = `<span class="error">Error: ${error}</span>`;
+                    };
+                    
+                    // Initialize and store reference
+                    await coordinator.initialize();
+                    worker = coordinator; // Store coordinator as "worker" for compatibility
+                    
+                } catch (error) {
+                    log(`Failed to create coordinator: ${error.message}`, 'error');
+                    workerStatus.innerHTML = `<span class="error">Failed: ${error.message}</span>`;
+                    return;
+                }
+            } else {
+                // Fallback to single worker
+                try {
+                    worker = new Worker('/wasm/vanity-worker.js', { type: 'module' });
+                
+                worker.addEventListener('message', (e) => {
+                    const msg = e.data;
+                    log(`Worker message: ${JSON.stringify(msg)}`);
+                    
+                    switch (msg.type) {
+                        case 'ready':
+                            workerStatus.innerHTML = `Ready - ${msg.isMultiThreaded ? 
+                                `Multi-threaded (${msg.workers} workers, ~${msg.rate?.toLocaleString()} attempts/sec)` : 
+                                `Single-threaded (~${msg.rate?.toLocaleString()} attempts/sec)`}`;
+                            break;
+                            
+                        case 'progress':
+                            log(`Worker progress: ${msg.totalAttempts?.toLocaleString() || msg.attempts?.toLocaleString()} attempts, ${msg.rate?.toLocaleString()} attempts/sec`);
+                            miningStatus.innerHTML = `
+                                Mining in progress...<br>
+                                Attempts: ${msg.totalAttempts?.toLocaleString() || msg.attempts?.toLocaleString()}<br>
+                                Time: ${(msg.elapsedMs / 1000).toFixed(1)}s<br>
+                                Rate: ${msg.rate?.toLocaleString()} attempts/sec
+                            `;
+                            // Update rate statistics with attempts and time
+                            if (msg.rate && msg.elapsedMs) {
+                                // Use totalAttempts for display
+                                const displayAttempts = msg.totalAttempts || msg.attempts;
+                                updateRateStatistics(msg.rate, displayAttempts, msg.elapsedMs);
+                            }
+                            break;
+                            
+                        case 'found':
+                            const keypair = msg.keypair || msg.result;
+                            miningStatus.innerHTML = `
+                                <span class="success">Found!</span><br>
+                                Public Key: ${keypair?.publicKey || keypair?.public_key}<br>
+                                Attempts: ${msg.attempts?.toLocaleString()}<br>
+                                Time: ${(msg.elapsedMs / 1000).toFixed(1)}s<br>
+                                ${msg.workerId !== undefined ? `Worker ID: ${msg.workerId}` : ''}
+                            `;
+                            // Refresh stored address display after finding
+                            setTimeout(refreshStoredAddress, 100);
+                            break;
+                            
+                        case 'error':
+                            workerStatus.innerHTML = `<span class="error">Error: ${msg.error}</span>`;
+                            break;
+                    }
+                });
+                
+                worker.addEventListener('error', (e) => {
+                    console.error('Worker error event:', e);
+                    const errorDetails = {
+                        message: e.message,
+                        filename: e.filename,
+                        lineno: e.lineno,
+                        colno: e.colno,
+                        error: e.error
+                    };
+                    log(`Worker error: ${JSON.stringify(errorDetails)}`, 'error');
+                    
+                    // Try to get more specific error info
+                    let errorMsg = 'Unknown worker error';
+                    if (e.message) {
+                        errorMsg = e.message;
+                    } else if (e.filename && e.lineno) {
+                        errorMsg = `Error in ${e.filename} at line ${e.lineno}`;
+                    }
+                    
+                    workerStatus.innerHTML = `<span class="error">Worker error: ${errorMsg}</span>`;
+                });
+                
+                    log('Worker created successfully');
+                } catch (e) {
+                    log(`Failed to create worker: ${e.message}`, 'error');
+                    workerStatus.innerHTML = `<span class="error">Failed: ${e.message}</span>`;
+                }
+            }
+        }
+        
+        // Start mining
+        function startMining() {
+            if (!worker) {
+                log('Worker not initialized', 'error');
+                return;
+            }
+            
+            // Reset rate statistics for new mining session
+            rateHistory = [];
+            totalAttempts = 0;
+            totalTime = 0;
+            miningStartTime = Date.now();
+            minRate = Infinity;
+            maxRate = 0;
+            lastFiveRates = [];
+            rateStats.innerHTML = `
+                <div>Current Rate: <strong>N/A</strong> attempts/sec</div>
+                <div>Average Rate (all time): <strong>N/A</strong> attempts/sec</div>
+                <div>Average Rate (last 5): <strong>N/A</strong> attempts/sec</div>
+                <div>Min / Max: N/A / N/A</div>
+                <div>Standard Deviation: ±N/A</div>
+                <div>Samples: 0</div>
+                <div>Total Attempts: 0</div>
+                <div>Total Time: 0.0s</div>
+            `;
+            
+            log('Starting mining...');
+            miningStatus.textContent = 'Starting...';
+            
+            // Check if it's a coordinator or worker
+            if (worker.start) {
+                // It's a coordinator
+                log('Starting coordinator mining...');
+                worker.start('FEEL');
+            } else {
+                // It's a worker
+                log('Starting single worker mining...');
+                worker.postMessage({ type: 'start', suffix: 'FEEL' });
+            }
+        }
+        
+        // Stop mining
+        function stopMining() {
+            if (!worker) {
+                log('Worker not initialized', 'error');
+                return;
+            }
+            
+            log('Stopping mining...');
+            
+            // Check if it's a coordinator or worker
+            if (worker.stop) {
+                // It's a coordinator
+                worker.stop();
+            } else {
+                // It's a worker
+                worker.postMessage({ type: 'stop' });
+            }
+            
+            miningStatus.textContent = 'Stopped';
+        }
+        
+        // Clear storage
+        function clearStorage() {
+            localStorage.removeItem('vanityKeypair');
+            log('Cleared stored vanity keypair');
+            refreshStoredAddress();
+        }
+        
+        // Display stored address information
+        function refreshStoredAddress() {
+            const stored = localStorage.getItem('vanityKeypair');
+            
+            if (!stored) {
+                storedAddressEl.innerHTML = `
+                    <div class="error">No address in storage</div>
+                `;
+                return;
+            }
+            
+            try {
+                const parsed = JSON.parse(stored);
+                const publicKey = parsed.publicKey || parsed.public_key;
+                const secretKey = parsed.secretKey || parsed.secret_key;
+                
+                // Format secret key - SHOW FULL KEY FOR DEBUGGING
+                let secretKeyDisplay = 'Not available';
+                if (secretKey) {
+                    if (Array.isArray(secretKey)) {
+                        // Show full hex representation
+                        const fullHex = secretKey.map(b => b.toString(16).padStart(2, '0')).join('');
+                        // Also show as base58 if it's 32 bytes (Ed25519 secret key)
+                        if (secretKey.length === 32) {
+                            try {
+                                // Import bs58 for encoding
+                                const bs58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+                                // Simple base58 encoding for display
+                                const bytes = new Uint8Array(secretKey);
+                                secretKeyDisplay = `
+                                    <div><strong>Hex:</strong> ${fullHex}</div>
+                                    <div><strong>Bytes:</strong> [${secretKey.join(', ')}]</div>
+                                    <div style="word-break: break-all;"><strong>Raw array:</strong> ${JSON.stringify(secretKey)}</div>
+                                `;
+                            } catch (e) {
+                                secretKeyDisplay = `<div style="word-break: break-all;">Hex: ${fullHex}</div>`;
+                            }
+                        } else {
+                            secretKeyDisplay = `<div style="word-break: break-all;">Hex: ${fullHex} (${secretKey.length} bytes)</div>`;
+                        }
+                    } else if (typeof secretKey === 'string') {
+                        secretKeyDisplay = `<div style="word-break: break-all;">${secretKey}</div>`;
+                    }
+                }
+                
+                // Check if address matches suffix
+                const matchesSuffix = publicKey && publicKey.endsWith('FEEL');
+                
+                storedAddressEl.innerHTML = `
+                    <div class="${matchesSuffix ? 'success' : ''}">
+                        <strong>Public Key:</strong> ${publicKey || 'Not available'}
+                        ${matchesSuffix ? ' ✓' : ''}
+                    </div>
+                    <div style="margin-top: 10px; background: #f0f0f0; padding: 10px; border-radius: 4px;">
+                        <strong>Secret Key (DEBUG - DO NOT SHARE!):</strong>
+                        ${secretKeyDisplay}
+                    </div>
+                    ${parsed.attempts ? `<div style="margin-top: 5px;">
+                        <strong>Found after:</strong> ${parsed.attempts.toLocaleString()} attempts
+                    </div>` : ''}
+                    ${parsed.elapsed_ms ? `<div style="margin-top: 5px;">
+                        <strong>Mining time:</strong> ${(parsed.elapsed_ms / 1000).toFixed(1)}s
+                    </div>` : ''}
+                    <div style="margin-top: 5px; font-size: 0.9em; color: #666;">
+                        Stored in localStorage as 'vanityKeypair'
+                    </div>
+                `;
+                
+                log(`Displayed stored keypair: ${publicKey}`);
+            } catch (e) {
+                storedAddressEl.innerHTML = `
+                    <div class="error">Error parsing stored data</div>
+                    <div style="margin-top: 5px; font-size: 0.9em;">${e.message}</div>
+                `;
+                log(`Failed to parse stored keypair: ${e.message}`, 'error');
+            }
+        }
+        
+        // Check initial state and auto-initialize
+        window.addEventListener('load', async () => {
+            checkEnvironment();
+            refreshStoredAddress();
+            
+            // Auto-initialize worker after a short delay
+            log('Auto-initializing worker...');
+            setTimeout(async () => {
+                await initWorker();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

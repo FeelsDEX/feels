@@ -1,15 +1,30 @@
 'use client';
 
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { IndexerErrorBanner } from '@/components/ui/fallback-banner';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getHomepageTokens } from '@/data/tokens';
+import { getHomepageTokens } from '@/constants/mock-tokens';
 import { useDataSource } from '@/contexts/DataSourceContext';
 import { useMarkets } from '@/hooks/useIndexer';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
-import { IndexedMarket } from '@/services/indexer-client';
+import { IndexedMarket } from '@/services/indexer';
 import { useState, useEffect } from 'react';
+
+// Helper functions for price display
+function formatMetricValue(value: number): string {
+  if (value >= 1) return value.toFixed(4);
+  else if (value >= 0.01) return value.toFixed(4);
+  else if (value >= 0.001) return value.toFixed(5);
+  else return value.toFixed(6);
+}
+
+function formatPriceRange(low: number, high: number): string {
+  return `${formatMetricValue(low)} - ${formatMetricValue(high)}`;
+}
+
+// Removed unused formatFloorGtwapDisplay
 
 export default function HomePage() {
   const { dataSource } = useDataSource();
@@ -17,7 +32,9 @@ export default function HomePage() {
     refreshInterval: 30000, // Refresh every 30 seconds
     enabled: dataSource === 'indexer'
   });
-  const homepageTokens = getHomepageTokens();
+  
+  // Create homepageTokens once and memoize it
+  const [homepageTokens] = useState(() => getHomepageTokens());
   const [displayTokens, setDisplayTokens] = useState<typeof homepageTokens[0][]>(homepageTokens as any);
 
   // Transform markets data to match homepage tokens format
@@ -27,9 +44,10 @@ export default function HomePage() {
       return;
     }
     
-    // If using indexer but no markets, show empty state
+    // If using indexer but no markets, fallback to test data
     if (dataSource === 'indexer' && (!markets || !Array.isArray(markets) || markets.length === 0)) {
-      setDisplayTokens([]);
+      // Instead of showing empty state, fallback to test data for better UX
+      setDisplayTokens([...homepageTokens]);
       return;
     }
 
@@ -49,6 +67,14 @@ export default function HomePage() {
         decimals: 9, // Standard SPL token decimals
         price: price,
         priceChange24h: 0, // Would calculate from historical data
+        high24h: 0,
+        low24h: 0,
+        floorPrice: 0,
+        gtwapPrice: 0,
+        floorRatio: 0,
+        floorChange24h: 0,
+        floorGtwapRatio: 0,
+        isGraduated: false,
         marketCap: '$0', // Would calculate from circulating supply
         volume24h: '$0', // Would get from market stats
         launched: 'Live',
@@ -59,7 +85,7 @@ export default function HomePage() {
     });
 
     setDisplayTokens(marketTokens);
-  }, [dataSource, markets]);
+  }, [dataSource, markets]); // Removed homepageTokens from dependency array
 
   // Show loading state when fetching indexer data
   if (dataSource === 'indexer' && loading && displayTokens.length === homepageTokens.length) {
@@ -77,9 +103,7 @@ export default function HomePage() {
   if (dataSource === 'indexer' && error) {
     return (
       <div id="home-page" className="container mx-auto px-4 pt-4 pb-0 -mb-6">
-        <div className="text-center pb-4">
-          <p className="text-muted-foreground">Failed to load market data. Showing test data instead.</p>
-        </div>
+        <IndexerErrorBanner />
         <div id="token-grid" className="grid grid-cols-2 gap-8" style={{ gridTemplateRows: 'repeat(2, 1fr)' }}>
           {homepageTokens.map((token, index) => (
           <Link 
@@ -111,53 +135,79 @@ export default function HomePage() {
                       fill
                       className="object-contain rounded-xl"
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      priority={index === 0}
                     />
                   )}
                 </div>
               </div>
-              <div className="flex-1 flex flex-col">
-                <CardHeader id={`token-header-${token.symbol.toLowerCase()}`} className="pb-2">
-                  <div id={`token-header-content-${token.symbol.toLowerCase()}`} className="flex items-center justify-between mb-1">
-                    <div id={`token-title-container-${token.symbol.toLowerCase()}`}>
-                      <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="font-semibold flex items-center gap-2">
-                        <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
-                        <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-sm text-muted-foreground/70">${token.symbol}</span>
-                      </h3>
+              <div className="flex-1 flex flex-col p-6">
+                {/* Header with token name and badge */}
+                <div id={`token-header-${token.symbol.toLowerCase()}`} className="flex items-start justify-between mb-6">
+                  <div id={`token-title-container-${token.symbol.toLowerCase()}`} className="flex-1 min-w-0">
+                    <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="text-xl font-bold text-foreground leading-tight flex items-center gap-2">
+                      <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
+                      <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-lg font-medium text-muted-foreground">${token.symbol}</span>
+                    </h3>
+                  </div>
+                  <Badge 
+                    id={`token-launch-badge-${token.symbol.toLowerCase()}`}
+                    variant="outline" 
+                    className="text-sm font-medium shrink-0 ml-3"
+                  >
+                    {token.launched}
+                  </Badge>
+                </div>
+
+                {/* Consistent Grid Layout for All Metrics */}
+                <div id={`token-content-${token.symbol.toLowerCase()}`} className="flex-1">
+                  <div id={`token-stats-${token.symbol.toLowerCase()}`} className="grid grid-cols-2 gap-x-4 gap-y-3 h-full">
+                    {/* Row 1: Price, 24h Change */}
+                    <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Current Price</span>
+                      <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-lg font-bold text-foreground">${token.price.toFixed(4)}</span>
                     </div>
-                    <Badge 
-                      id={`token-launch-badge-${token.symbol.toLowerCase()}`}
-                      variant="outline" 
-                      className="text-xs"
-                    >
-                      {token.launched}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent id={`token-content-${token.symbol.toLowerCase()}`} className="pt-0 flex-1 flex flex-col justify-between">
-                <div id={`token-stats-${token.symbol.toLowerCase()}`} className="space-y-1">
-                  <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Price</span>
-                    <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold">${token.price.toFixed(4)}</span>
-                  </div>
-                  <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">24h</span>
-                    <span 
-                      id={`token-change-value-${token.symbol.toLowerCase()}`}
-                      className={`text-sm font-medium ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
-                    >
-                      {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
-                    </span>
-                  </div>
-                  <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Market Cap</span>
-                    <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-medium">{token.marketCap}</span>
-                  </div>
-                  <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Volume</span>
-                    <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-medium">{token.volume24h}</span>
+                    
+                    <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
+                      <span 
+                        id={`token-change-value-${token.symbol.toLowerCase()}`}
+                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
+                      >
+                        {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
+                      </span>
+                    </div>
+                    
+                    {/* Row 2: Market Cap, Floor Price */}
+                    <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Market Cap</span>
+                      <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.marketCap}</span>
+                    </div>
+                    
+                    <div id={`token-floor-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Floor Price</span>
+                      <span id={`token-floor-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">${formatMetricValue(token.floorPrice)}</span>
+                    </div>
+                    
+                    {/* Row 3: Volume, Range */}
+                    <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Volume</span>
+                      <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.volume24h}</span>
+                    </div>
+                    
+                    <div id={`token-range-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Range</span>
+                      <span id={`token-range-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{formatPriceRange(token.low24h, token.high24h)}</span>
+                    </div>
+                    
+                    {/* Row 4: Floor Change */}
+                    <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
+                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                        {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
               </div>
             </Card>
           </Link>
@@ -170,21 +220,9 @@ export default function HomePage() {
   // Main return statement - use displayTokens which will be either test data or indexer data
   return (
     <div id="home-page" className="container mx-auto px-4 pt-4 pb-0 -mb-6">
-      {dataSource === 'indexer' && displayTokens.length === 0 ? (
-        <div className="flex items-center justify-center h-[calc(100vh-10rem)]">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold mb-2">No Markets Available</h3>
-            <p className="text-muted-foreground">
-              The indexer is connected but no markets have been created yet.
-            </p>
-            <p className="text-muted-foreground text-sm mt-2">
-              Create markets through the protocol to see them here.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div id="token-grid" className="grid grid-cols-2 gap-8" style={{ gridTemplateRows: 'repeat(2, 1fr)' }}>
-          {displayTokens.map((token, index) => (
+      
+      <div id="token-grid" className="grid grid-cols-2 gap-8" style={{ gridTemplateRows: 'repeat(2, 1fr)' }}>
+        {displayTokens.map((token, index) => (
           <Link 
             key={token.id} 
             href={`/token/${token.address}`} 
@@ -214,59 +252,84 @@ export default function HomePage() {
                       fill
                       className="object-contain rounded-xl"
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      priority={index === 0}
                     />
                   )}
                 </div>
               </div>
-              <div className="flex-1 flex flex-col">
-                <CardHeader id={`token-header-${token.symbol.toLowerCase()}`} className="pb-2">
-                  <div id={`token-header-content-${token.symbol.toLowerCase()}`} className="flex items-center justify-between mb-1">
-                    <div id={`token-title-container-${token.symbol.toLowerCase()}`}>
-                      <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="font-semibold flex items-center gap-2">
-                        <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
-                        <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-sm text-muted-foreground/70">${token.symbol}</span>
-                      </h3>
+              <div className="flex-1 flex flex-col p-6">
+                {/* Header with token name and badge */}
+                <div id={`token-header-${token.symbol.toLowerCase()}`} className="flex items-start justify-between mb-6">
+                  <div id={`token-title-container-${token.symbol.toLowerCase()}`} className="flex-1 min-w-0">
+                    <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="text-xl font-bold text-foreground leading-tight flex items-center gap-2">
+                      <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
+                      <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-lg font-medium text-muted-foreground">${token.symbol}</span>
+                    </h3>
+                  </div>
+                  <Badge 
+                    id={`token-launch-badge-${token.symbol.toLowerCase()}`}
+                    variant="outline" 
+                    className="text-sm font-medium shrink-0 ml-3"
+                  >
+                    {token.launched}
+                  </Badge>
+                </div>
+
+                {/* Consistent Grid Layout for All Metrics */}
+                <div id={`token-content-${token.symbol.toLowerCase()}`} className="flex-1">
+                  <div id={`token-stats-${token.symbol.toLowerCase()}`} className="grid grid-cols-2 gap-x-4 gap-y-3 h-full">
+                    {/* Row 1: Price, 24h Change */}
+                    <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Current Price</span>
+                      <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-lg font-bold text-foreground">${token.price.toFixed(4)}</span>
                     </div>
-                    <Badge 
-                      id={`token-launch-badge-${token.symbol.toLowerCase()}`}
-                      variant="outline" 
-                      className="text-xs"
-                    >
-                      {token.launched}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent id={`token-content-${token.symbol.toLowerCase()}`} className="pt-0 flex-1 flex flex-col justify-between">
-                <div id={`token-stats-${token.symbol.toLowerCase()}`} className="space-y-1">
-                  <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Price</span>
-                    <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold">${token.price.toFixed(4)}</span>
-                  </div>
-                  <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">24h</span>
-                    <span 
-                      id={`token-change-value-${token.symbol.toLowerCase()}`}
-                      className={`text-sm font-medium ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
-                    >
-                      {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
-                    </span>
-                  </div>
-                  <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Market Cap</span>
-                    <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-medium">{token.marketCap}</span>
-                  </div>
-                  <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Volume</span>
-                    <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-medium">{token.volume24h}</span>
+                    
+                    <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
+                      <span 
+                        id={`token-change-value-${token.symbol.toLowerCase()}`}
+                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
+                      >
+                        {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
+                      </span>
+                    </div>
+                    
+                    {/* Row 2: Market Cap, Floor Price */}
+                    <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Market Cap</span>
+                      <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.marketCap}</span>
+                    </div>
+                    
+                    <div id={`token-floor-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">Floor Price</span>
+                      <span id={`token-floor-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">${formatMetricValue(token.floorPrice)}</span>
+                    </div>
+                    
+                    {/* Row 3: Volume, Range */}
+                    <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Volume</span>
+                      <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.volume24h}</span>
+                    </div>
+                    
+                    <div id={`token-range-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Range</span>
+                      <span id={`token-range-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{formatPriceRange(token.low24h, token.high24h)}</span>
+                    </div>
+                    
+                    {/* Row 4: Floor Change */}
+                    <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
+                      <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
+                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                        {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
               </div>
             </Card>
           </Link>
         ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

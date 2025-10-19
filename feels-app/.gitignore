@@ -1,107 +1,20 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# feels-app specific ignores
+# (Most patterns inherited from root .gitignore)
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
+# Next.js build artifacts (specific to this app)
 /.next/
 /out/
-
-# production
 /build
 
-# misc
-.DS_Store
-*.pem
+# Testing
+/coverage
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Velite content processor
+.velite
+/public/static/
 
-# local env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# artifacts
-/artifacts/
-
-# DevBridge logs
-devbridge.log
-
-# WebSocket test/debug scripts
-ws-*.js
-
-# Solana program binaries
-*.so
-
-# Key files and secrets
-*keypair.json
-*.pem
-
-# Temporary/test directories
+# Temporary test directories
 /test-data/
 /chart-demo/
 /preview/
 
-# Temporary configuration files
-*-temp.toml
-*.temp
-
-# OS-specific files (already have .DS_Store, adding more)
-Thumbs.db
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-
-# IDE files
-.idea/
-*.iml
-*.iws
-.vscode/
-*.swp
-*.swo
-*~
-
-# Build/compilation artifacts
-/build/
-/dist/
-*.tsbuildinfo
-
-# Logs (expanding beyond npm/yarn logs)
-*.log
-logs/
-*.log.*
-
-# Temporary files
-*.tmp
-*.temp
-.tmp/
-tmp/
-
-# Image source files that might be temporary
-*.psd
-*.ai
-*.sketch
-
-# Lock files that might be system-specific
-package-lock.json.backup
-yarn.lock.backup

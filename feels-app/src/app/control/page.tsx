@@ -5,8 +5,8 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { getConnection } from '@/services/connection';
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/sdk/sdk';
-import { createFeelsProgram } from '@/sdk/program-workaround';
+import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/program/sdk';
+import { createFeelsProgram } from '@/program/program-workaround';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ export default function ControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [airdropping, setAirdropping] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+  const [fallback, setFallback] = useState<boolean>(false);
 
   // Initialize program
   useEffect(() => {
@@ -42,7 +43,7 @@ export default function ControlPage() {
             // Create program with proper PublicKey
             // Check if FEELS_IDL is properly loaded
             if (!FEELS_IDL || typeof FEELS_IDL !== 'object') {
-              throw new Error('IDL not loaded properly. Please run: just idl-build');
+              throw new Error('IDL not loaded properly. Please run: just build idl');
             }
             
             // Debug: Let's see what's in the IDL
@@ -78,7 +79,10 @@ export default function ControlPage() {
             setBalance(bal / LAMPORTS_PER_SOL);
           } catch (programError) {
             console.error('Failed to create program:', programError);
-            setError(`Program initialization failed: ${programError instanceof Error ? programError.message : 'Unknown error'}`);
+            // Enter fallback mode (test data) instead of blocking the page
+            setFallback(true);
+            setProgram(null);
+            setError(null);
           }
         } else {
           // Clear program if wallet is disconnected
@@ -151,6 +155,19 @@ export default function ControlPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {fallback && (
+        <div className="mb-4 relative p-3 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+          <div className="pr-6">Feels program not yet initialized. Falling back to test data.</div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setFallback(false)}
+            className="absolute right-2 top-2 text-amber-800/80 hover:text-amber-900"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Control Panel</h1>
         <p className="text-muted-foreground">Manage protocol parameters and test utilities</p>

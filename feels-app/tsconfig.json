@@ -37,9 +37,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@/generated-sdk/*": ["../generated-sdk/typescript/*"]
+      "@/generated-sdk/*": ["../feels-sdk-generated/typescript/*"],
+      "@/.velite": ["./.velite"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".velite"],
   "exclude": ["node_modules"]
 }

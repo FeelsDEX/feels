@@ -55,6 +55,9 @@ pub const MAX_LIQUIDITY: u128 = u128::MAX / 2;
 /// This prevents griefing attacks where attackers create many empty ticks
 pub const MAX_TICKS_CROSSED: u8 = 200;
 
+/// Size of tick array - matches Orca Whirlpool standard
+pub const TICK_ARRAY_SIZE: i32 = 88;
+
 // Protocol token registry
 pub const PROTOCOL_TOKEN_SEED: &[u8] = b"protocol_token";
 
@@ -83,12 +86,9 @@ pub const POMM_MIN_WIDTH: i32 = 10;
 pub const POMM_MAX_WIDTH: i32 = 2000;
 
 // Metaplex Token Metadata Program ID
-// For localnet testing, this can be overridden at compile time
+// For localnet testing, use a default ID that can be overridden
 #[cfg(feature = "localnet")]
-pub const METAPLEX_TOKEN_METADATA_ID: &str = env!(
-    "METAPLEX_ID",
-    "5JaheUw6ZqL3DvdbcNVSw6cP2cRLgevxNTWPVL89Vvvd"
-);
+pub const METAPLEX_TOKEN_METADATA_ID: &str = "5JaheUw6ZqL3DvdbcNVSw6cP2cRLgevxNTWPVL89Vvvd";
 
 #[cfg(not(feature = "localnet"))]
 pub const METAPLEX_TOKEN_METADATA_ID: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";

@@ -5,7 +5,6 @@
 
 use crate::common::jito::*;
 use crate::common::*;
-use feels_sdk as sdk;
 use solana_sdk::pubkey::Pubkey;
 
 test_all_environments!(
@@ -32,7 +31,7 @@ test_all_environments!(
         .await?;
 
         let jitosol_balance = ctx.get_token_balance(&user_jitosol).await?;
-        println!("✓ User has {} JitoSOL", jitosol_balance);
+        println!("[OK] User has {} JitoSOL", jitosol_balance);
 
         // Debug: Check FeelsSOL mint authority
         let (mint_authority, _) = Pubkey::find_program_address(
@@ -71,7 +70,7 @@ test_all_environments!(
             "Should receive equal FeelsSOL"
         );
 
-        println!("✓ Successfully entered FeelsSOL system");
+        println!("[OK] Successfully entered FeelsSOL system");
         println!("  JitoSOL spent: {}", jitosol_amount);
         println!("  FeelsSOL received: {}", feelssol_balance);
 
@@ -97,7 +96,7 @@ test_all_environments!(
             enter_feelssol_with_mock_jitosol(&ctx, &user, 1_000_000_000).await?;
 
         let feelssol_balance = ctx.get_token_balance(&user_feelssol).await?;
-        println!("✓ User has {} FeelsSOL", feelssol_balance);
+        println!("[OK] User has {} FeelsSOL", feelssol_balance);
 
         // Debug: Check if safety controller exists
         let (safety_controller, _) =
@@ -126,7 +125,7 @@ test_all_environments!(
         // Update protocol oracle before attempting exit
         println!("\nUpdating protocol oracle...");
         ctx.update_protocol_oracle_for_testing().await?;
-        println!("✓ Protocol oracle updated");
+        println!("[OK] Protocol oracle updated");
 
         // Exit FeelsSOL system
         let exit_amount = 500_000_000; // 0.5 FeelsSOL
@@ -155,7 +154,7 @@ test_all_environments!(
             "FeelsSOL should be burned"
         );
 
-        println!("✓ Successfully exited FeelsSOL system");
+        println!("[OK] Successfully exited FeelsSOL system");
         println!("  FeelsSOL burned: {}", exit_amount);
         println!("  JitoSOL received: {}", jitosol_balance_after);
         println!("  FeelsSOL remaining: {}", feelssol_balance_after);
@@ -188,7 +187,7 @@ test_all_environments!(
         .await?;
 
         let feelssol_balance = ctx.get_token_balance(&creator_feelssol).await?;
-        println!("✓ Creator has {} FeelsSOL", feelssol_balance);
+        println!("[OK] Creator has {} FeelsSOL", feelssol_balance);
 
         // Create a protocol token using mint_token instruction
         // Keep generating keypairs until we get one that satisfies token ordering
@@ -228,7 +227,7 @@ test_all_environments!(
         ctx.process_instruction(mint_ix, &[&creator, &token_mint])
             .await?;
 
-        println!("✓ Created protocol token: {}", token_mint.pubkey());
+        println!("[OK] Created protocol token: {}", token_mint.pubkey());
 
         // Verify escrow was created
         let (escrow_pda, _) = Pubkey::find_program_address(
@@ -237,9 +236,9 @@ test_all_environments!(
         );
 
         match ctx.get_account_raw(&escrow_pda).await {
-            Ok(account) => println!("✓ Escrow exists at: {}", escrow_pda),
+            Ok(account) => println!("[OK] Escrow exists at: {}", escrow_pda),
             Err(e) => {
-                println!("✗ Escrow not found at {}: {:?}", escrow_pda, e);
+                println!("[ERROR] Escrow not found at {}: {:?}", escrow_pda, e);
                 return Err(format!("Escrow not found: {:?}", e).into());
             }
         }
@@ -250,8 +249,8 @@ test_all_environments!(
         // 3. The escrow is created correctly
 
         // These are the key integrations we're testing
-        println!("✓ Successfully entered FeelsSOL via JitoSOL");
-        println!("✓ Successfully created protocol token with escrow");
+        println!("[OK] Successfully entered FeelsSOL via JitoSOL");
+        println!("[OK] Successfully created protocol token with escrow");
 
         // Verify the creator still has their FeelsSOL
         let feelssol_balance_after = ctx.get_token_balance(&creator_feelssol).await?;
@@ -282,7 +281,7 @@ test_in_memory!(test_helper_functions, |ctx: TestContext| async move {
 
     let jitosol_balance = ctx.get_token_balance(&user_jitosol).await?;
 
-    println!("✓ Created user with:");
+    println!("[OK] Created user with:");
     println!("  User pubkey: {}", user.pubkey());
     println!("  JitoSOL balance: {}", jitosol_balance);
     println!("  JitoSOL account: {}", user_jitosol);

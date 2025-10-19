@@ -1,5 +1,5 @@
 {
-  "address": "FQSZnecUCVc2HnKsdPgNic641etrPT7gYiSic9NDPuTx",
+  "address": "",
   "metadata": {
     "name": "feels",
     "version": "0.1.0",
@@ -733,6 +733,12 @@
           "name": "rent",
           "docs": [
             "Rent sysvar"
+          ]
+        },
+        {
+          "name": "protocol_config",
+          "docs": [
+            "Protocol config account (for validating admin-controlled parameters)"
           ]
         }
       ],
@@ -4536,6 +4542,35 @@
           {
             "name": "redeem_per_slot_cap_feelssol",
             "type": "u64"
+          },
+          {
+            "name": "default_base_fee_bps",
+            "docs": [
+              "Default AMM parameters (admin-controlled during memecoin phase)",
+              "Default base fee in basis points (e.g., 30 = 0.3%)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "default_tick_spacing",
+            "docs": [
+              "Default tick spacing for new markets"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "default_initial_sqrt_price",
+            "docs": [
+              "Default initial sqrt price for new markets (Q64.64 format)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "default_tick_step_size",
+            "docs": [
+              "Default tick step size for bonding curve deployment"
+            ],
+            "type": "u16"
           }
         ]
       }
