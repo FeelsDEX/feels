@@ -80,6 +80,7 @@ nix-build-*
 
 # Build artifacts
 */target/
+vanity-miner-wasm/target-rayon/
 feels-indexer/data/rocksdb/
 feels-indexer/data/tantivy/
 test-ledger/

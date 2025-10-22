@@ -33,6 +33,11 @@ const DEFAULT_SUFFIX: &str = "FEEL";
 #[cfg(feature = "parallel")]
 static PARALLEL_READY: AtomicBool = AtomicBool::new(false);
 
+// Re-export init_thread_pool for wasm-bindgen-rayon
+// This is REQUIRED for wasm-bindgen to generate the threading support correctly
+#[cfg(feature = "parallel")]
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 // Initialize WebAssembly thread pool for parallel mining (requires SharedArrayBuffer)
 #[cfg(feature = "parallel")]
 #[wasm_bindgen]

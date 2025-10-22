@@ -260,7 +260,7 @@ export function NavBar() {
             <div className="container mx-auto px-4">
               <div className="flex items-center h-16">
                 <div className="flex-1" />
-                <div className="flex-1 max-w-xl mx-8 pointer-events-auto relative z-[1001]">
+                <div className="flex-1 max-w-xl mx-8 pointer-events-auto relative z-10">
                   <SearchBar mode="navigation" />
                 </div>
                 <div className="flex-1" />

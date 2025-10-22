@@ -69,8 +69,13 @@ export function useVanityAddressMiner() {
         const workerPath = canUseMultiThreading ? '/wasm/vanity-coordinator.js' : '/wasm/vanity-worker.js';
         const workerType = canUseMultiThreading ? 'multi-threaded coordinator' : 'single worker';
         
+        // Add cache-busting parameter to force reload
+        const cacheBuster = `?v=${Date.now()}`;
+        const workerPathWithCache = workerPath + cacheBuster;
+        
         console.log(`Creating ${workerType}...`);
-        const worker = new Worker(workerPath, { type: 'module' });
+        console.log(`Worker URL: ${workerPathWithCache}`);
+        const worker = new Worker(workerPathWithCache, { type: 'module' });
         
         worker.addEventListener('message', (event: MessageEvent<MinerResult>) => {
           if (!mounted) return;
@@ -130,24 +135,52 @@ export function useVanityAddressMiner() {
           }
         });
 
-        worker.addEventListener('error', (error) => {
+        worker.addEventListener('error', (event: ErrorEvent) => {
           if (!mounted) return;
-          console.error('Vanity address miner worker error:', error);
+          const errorMessage = event.error?.message || event.message || 'Worker error';
+          console.error('Vanity address miner worker error:');
+          console.error('  Message:', errorMessage);
+          console.error('  Filename:', event.filename || 'unknown');
+          console.error('  Line:', event.lineno, 'Column:', event.colno);
+          if (event.error) {
+            console.error('  Error stack:', event.error.stack);
+          }
           setStatus(prev => ({
             ...prev,
-            error: error.message || 'Worker error',
+            error: errorMessage,
+            isRunning: false,
+          }));
+        });
+
+        worker.addEventListener('messageerror', (event) => {
+          if (!mounted) return;
+          console.error('Worker message deserialization error:', event);
+          setStatus(prev => ({
+            ...prev,
+            error: 'Worker message error',
             isRunning: false,
           }));
         });
 
         workerRef.current = worker;
+        console.log(`Worker created successfully: ${workerType}`);
+        
+        // Send init message to coordinator
+        if (canUseMultiThreading) {
+          console.log('Sending init message to coordinator...');
+          worker.postMessage({ type: 'init' });
+        }
         
       } catch (error) {
         console.error('Failed to create worker:', error);
         if (!mounted) return;
+        const errorMsg = error instanceof Error ? error.message : 'Failed to initialize miner';
+        const helpText = errorMsg.includes('Failed to fetch') || errorMsg.includes('import') 
+          ? 'WASM files missing. Run: cd vanity-miner-wasm && just build'
+          : errorMsg;
         setStatus(prev => ({
           ...prev,
-          error: 'Failed to initialize miner',
+          error: helpText,
           isRunning: false,
         }));
       }

@@ -60,6 +60,8 @@ USDC → FeelsSOL → SOL
 
 ## Building
 
+### Solana Program
+
 ```bash
 # Using Nix (recommended)
 nix develop
@@ -70,6 +72,22 @@ anchor build
 ```
 
 **Note**: The `just build` command uses a Nix shell and runs `nix develop --command anchor build --no-idl --program-name feels`. Direct `anchor build` may not work without the proper environment setup.
+
+### WASM Vanity Miner
+
+The vanity address miner uses multi-threaded WebAssembly with `wasm-bindgen-rayon`:
+
+```bash
+# Build with parallel features (production)
+just frontend generate-wasm
+
+# Or from vanity-miner-wasm directory
+cd vanity-miner-wasm
+just build         # Production build
+just build-dev     # Development build with debug info
+```
+
+See [vanity-miner-wasm/BUILD.md](vanity-miner-wasm/BUILD.md) for detailed build configuration and troubleshooting.
 
 ## Testing
 
@@ -157,6 +175,11 @@ The deployment scripts will automatically:
 
 ## Documentation
 
+### Developer Resources
+- [DeepWiki MCP Integration](docs/deepwiki-mcp-guide.md) - AI-assisted documentation access via MCP
+- [WASM Build Guide](vanity-miner-wasm/BUILD.md) - Parallel WASM builds with wasm-bindgen-rayon
+
+### Core Documentation
 - [System Introduction](docs/900_system_intro.md)
 - [Unified Markets](docs/901_unified_markets.md)
 - [FeelsSOL Solvency](docs/200_feelssol_solvency.md)

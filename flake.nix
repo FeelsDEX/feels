@@ -10,6 +10,7 @@
     devshell.url = "github:numtide/devshell";
     zero-nix.url = "github:timewave-computer/zero.nix/main";
     crate2nix.url = "github:timewave-computer/crate2nix";
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
   outputs = { self, flake-parts, ... } @ inputs:
@@ -36,6 +37,12 @@
 
       perSystem = { config, pkgs, inputs', system, ... }:
         let
+          # Apply rust-overlay to pkgs
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };
+          
           # Import the new modular structure
           lib = import ./nix/lib { inherit pkgs inputs'; };
           projectConfig = import ./nix/project/config.nix { inherit pkgs inputs' lib; };
@@ -145,6 +152,7 @@
             default = environments.default;
             frontend = environments.frontend;
             indexer = environments.indexer;
+            wasm = environments.wasm;
             e2e = environments.e2e;
           };
 

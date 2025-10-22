@@ -115,6 +115,39 @@ in {
     '';
   };
   
+  # WASM development environment (isolated for vanity-miner builds)
+  # Note: Uses rust-overlay instead of solana-tools to avoid collision
+  wasm = {
+    packages = lib.mkPackages [
+      modules.wasm-tools    # Provides rust-overlay toolchain with rust-src and WASM tools
+      feelsTools
+    ];
+    
+    commands = lib.mkCommands [
+      modules.wasm-tools
+      feelsTools
+    ];
+    
+    env = lib.mkEnvVars [
+      modules.wasm-tools
+      feelsTools
+    ];
+    
+    devshell.motd = ''
+      ${projectConfig.devEnv.welcomeMessage}
+      WASM Development Environment
+      
+      Rust toolchain: rust-overlay (stable with rust-src)
+      
+      Quick start:
+        cd vanity-miner-wasm
+        just build       - Build WASM with parallel features
+        just build-dev   - Development build with debug info
+        just test        - Run WASM tests
+        wasm-info        - Show environment details
+    '';
+  };
+  
   # Complete E2E development environment
   e2e = {
     packages = lib.mkPackages [

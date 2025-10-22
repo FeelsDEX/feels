@@ -62,16 +62,7 @@ export const metadata: Metadata = {
   title: 'FEELS - Solana DEX',
   description: 'Trade any token on Solana with concentrated liquidity and Jupiter aggregation',
   keywords: ['Solana', 'DeFi', 'AMM', 'Concentrated Liquidity', 'FEELS', 'Jupiter', 'Trading'],
-  icons: {
-    icon: [
-      { url: './favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: './favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: './favicon.ico', sizes: 'any' },
-    ],
-    apple: [
-      { url: './apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-    ],
-  },
+  // Next.js automatically serves favicon.ico from the app directory
 };
 
 export default function RootLayout({
