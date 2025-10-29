@@ -59,7 +59,7 @@ export function TokenSearchModal({
     <Portal>
       {/* Full screen backdrop to capture all clicks */}
       <div 
-        className="fixed inset-0 z-[2000] bg-background/80 backdrop-blur-sm" 
+        className="fixed inset-0 z-[2000] bg-background/80" 
         onClick={handleBackdropClick}
       />
       <div id="token-search-modal-container" className="fixed top-0 left-0 right-0 z-[2001] pt-2">

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { TokenSearchResult } from '@/utils/token-search';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import Link from 'next/link';
 import Image from 'next/image';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
 import { useRouter } from 'next/navigation';
@@ -13,12 +13,19 @@ interface SearchDropdownProps {
   isLoading: boolean;
   searchQuery: string;
   onClose: () => void;
+  onNavigate?: () => void;
+  searchBarRect?: DOMRect;
 }
 
-export function SearchDropdown({ results, isLoading, searchQuery, onClose }: SearchDropdownProps) {
+export function SearchDropdown({ results, isLoading, searchQuery, onClose, onNavigate, searchBarRect }: SearchDropdownProps) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
-  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   useEffect(() => {
     setSelectedIndex(-1);
@@ -40,6 +47,7 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
           onClose();
         }
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
       }
     };
@@ -59,17 +67,47 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
     return undefined;
   }, [selectedIndex]);
   
-  if (!searchQuery.trim()) return null;
+  if (!searchQuery.trim() || !mounted) return null;
+
+  const dropdownStyle = searchBarRect ? {
+    position: 'fixed' as const,
+    top: searchBarRect.bottom + 8,
+    left: searchBarRect.left,
+    width: searchBarRect.width,
+    zIndex: 99999,
+  } : {
+    position: 'absolute' as const,
+    top: '100%',
+    marginTop: '8px',
+    width: '100%',
+    zIndex: 99999,
+  };
   
-  return (
+  const dropdownContent = (
     <>
       {/* Invisible backdrop to ensure dropdown stays on top */}
       <div 
-        className="fixed inset-0 z-[1098]" 
-        onClick={onClose}
+        className="fixed inset-0 z-[99998]" 
+        onClick={(e) => {
+          // Only close if clicking the backdrop itself, not child elements
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        onMouseDown={(e) => {
+          // Prevent form submission on backdrop click
+          e.preventDefault();
+        }}
       />
       <div 
-        className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-100 z-[1099]"
+        id="global-search-dropdown"
+        className="bg-background border border-border rounded-lg shadow-xl overflow-hidden"
+        style={dropdownStyle}
+        onMouseDown={(e) => {
+          // Prevent form submission when clicking inside dropdown
+          e.preventDefault();
+          e.stopPropagation();
+        }}
       >
       {isLoading ? (
         <div className="p-4 text-center text-sm text-muted-foreground">
@@ -78,33 +116,72 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
       ) : results.length === 0 ? (
         <div className="p-4 text-center">
           <p className="text-sm text-muted-foreground">No tokens found</p>
-          <Link 
-            href={`/search?q=${encodeURIComponent(searchQuery)}`}
-            onClick={onClose}
-            className="text-xs text-primary hover:underline mt-1 block"
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const searchUrl = `/search?q=${encodeURIComponent(searchQuery)}`;
+              
+              // Call onNavigate first if provided
+              if (onNavigate) {
+                onNavigate();
+              } else {
+                onClose();
+              }
+              
+              // Use setTimeout to ensure the navigation happens after the dropdown closes
+              setTimeout(() => {
+                router.push(searchUrl);
+              }, 10);
+            }}
+            className="text-sm text-primary hover:underline mt-1 block cursor-pointer bg-transparent border-none w-full"
           >
             View all results
-          </Link>
+          </button>
         </div>
       ) : (
         <>
           <div className="max-h-[400px] overflow-y-auto">
             {results.slice(0, 8).map((token, index) => {
-              const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
+              const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500';
               const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
               const isSelected = selectedIndex === index;
               
               return (
-                <Link
+                <button
+                  type="button"
                   key={token.address}
                   ref={el => { 
                     itemRefs.current[index] = el; 
                     return undefined; 
                   }}
-                  href={`/token/${token.address}`}
-                  onClick={onClose}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const tokenUrl = `/token/${token.address}`;
+                    
+                    // Call onNavigate first if provided
+                    if (onNavigate) {
+                      onNavigate();
+                    } else {
+                      onClose();
+                    }
+                    
+                    setTimeout(() => {
+                      router.push(tokenUrl);
+                    }, 10);
+                  }}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex items-center gap-3 p-3 transition-colors duration-75 ${
+                  className={`flex items-center gap-3 p-3 transition-colors duration-75 w-full text-left cursor-pointer bg-transparent border-none ${
                     isSelected ? 'bg-muted/50' : 'hover:bg-muted/50'
                   }`}
                 >
@@ -137,22 +214,45 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose }: Sea
                       </span>
                     </div>
                   </div>
-                </Link>
+                </button>
               );
             })}
           </div>
           
           {/* View All / Go to Search page Link */}
-          <Link
-            href={`/search?q=${encodeURIComponent(searchQuery)}`}
-            onClick={onClose}
-            className="block p-3 text-sm text-center text-primary hover:bg-muted/50 border-t border-border transition-colors duration-75"
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const searchUrl = `/search?q=${encodeURIComponent(searchQuery)}`;
+              
+              // Call onNavigate first if provided
+              if (onNavigate) {
+                onNavigate();
+              } else {
+                onClose();
+              }
+              
+              setTimeout(() => {
+                router.push(searchUrl);
+              }, 10);
+            }}
+            className="block w-full p-3 text-sm text-center text-primary hover:bg-muted/50 border-t border-border transition-colors duration-75 cursor-pointer bg-transparent"
           >
             {results.length > 8 ? `View all ${results.length} results` : 'Go to search page'}
-          </Link>
+          </button>
         </>
       )}
       </div>
     </>
   );
+  
+  return mounted && typeof window !== 'undefined' 
+    ? createPortal(dropdownContent, document.body)
+    : null;
 }

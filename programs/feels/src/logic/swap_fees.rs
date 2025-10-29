@@ -9,7 +9,7 @@
 use crate::{
     error::FeelsError,
     events::FloorRatcheted,
-    logic::fees::{calculate_impact_bps, combine_base_and_impact},
+    logic::fees::combine_base_and_impact,
     state::{Buffer, FeeDomain, Market, ProtocolConfig, ProtocolToken},
 };
 use anchor_lang::prelude::*;
@@ -28,9 +28,9 @@ pub struct FeeSplit {
 /// helping to manage large trades and prevent excessive price impact.
 pub fn calculate_dynamic_fees(
     base_fee_bps: u16,
-    amount_in: u64,
-    liquidity: u128,
-    sqrt_price: u128,
+    _amount_in: u64,
+    _liquidity: u128,
+    _sqrt_price: u128,
 ) -> Result<u16> {
     // For now, use zero impact fee to fix compilation
     // In production, we'd calculate this from tick movement

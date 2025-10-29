@@ -166,7 +166,7 @@ export function useDevBridge(): DevBridgeAPI {
         }
       };
 
-        ws.onerror = (event) => {
+        ws.onerror = (_event) => {
           // Suppress connection errors - they're expected when DevBridge isn't running
           // The close event will handle cleanup
         };

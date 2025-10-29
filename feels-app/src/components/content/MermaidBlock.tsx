@@ -158,7 +158,7 @@ export function MermaidBlock({ chart }: MermaidBlockProps) {
         } catch (error) {
           console.error('Failed to render mermaid diagram:', error);
           if (elementRef.current) {
-            elementRef.current.innerHTML = `<pre class="text-red-500">Failed to render diagram: ${error}</pre>`;
+            elementRef.current.innerHTML = `<pre class="text-danger-500">Failed to render diagram: ${error}</pre>`;
           }
         }
       }

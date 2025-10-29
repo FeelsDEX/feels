@@ -36,6 +36,8 @@ export function SearchBar({
   const [searchFocused, setSearchFocused] = useState(autoFocus || false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [searchBarRect, setSearchBarRect] = useState<DOMRect | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -96,8 +98,8 @@ export function SearchBar({
     
     const timer = setTimeout(() => {
       setSearchQuery(localSearchQuery);
-      // Show dropdown for navigation and token-select modes when not clearing
-      if (!isClearing) {
+      // Show dropdown for navigation and token-select modes when not clearing or navigating
+      if (!isClearing && !isNavigating) {
         if (mode === 'navigation') {
           setShowDropdown(localSearchQuery.trim().length > 0);
         } else if (mode === 'token-select') {
@@ -107,7 +109,7 @@ export function SearchBar({
     }, 100);
     
     return () => clearTimeout(timer);
-  }, [localSearchQuery, setSearchQuery, mode, onSearchChange, isClearing, searchFocused]);
+  }, [localSearchQuery, setSearchQuery, mode, onSearchChange, isClearing, isNavigating, searchFocused]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -118,7 +120,12 @@ export function SearchBar({
       // Skip for token-select mode - let the modal handle it
       if (mode === 'token-select') return;
       
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+      // Check if the click is on the portal dropdown
+      const clickedElement = e.target as HTMLElement;
+      const isDropdownClick = clickedElement.closest('#global-search-dropdown') || 
+                             clickedElement.closest('[id*="search-dropdown"]');
+      
+      if (searchRef.current && !searchRef.current.contains(e.target as Node) && !isDropdownClick) {
         setShowDropdown(false);
         setSearchFocused(false);
         // Don't clear the search query for page-search mode
@@ -152,6 +159,39 @@ export function SearchBar({
     }
     return undefined;
   }, [autoFocus]);
+
+  // Update search bar position when window is scrolled or resized
+  useEffect(() => {
+    if (!showDropdown || mode === 'token-select') return;
+
+    const updatePosition = () => {
+      if (searchRef.current) {
+        setSearchBarRect(searchRef.current.getBoundingClientRect());
+      }
+    };
+
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [showDropdown, mode]);
+
+  // Reset navigation flag after a delay or on cleanup
+  useEffect(() => {
+    if (!isNavigating) return;
+    
+    const timer = setTimeout(() => {
+      setIsNavigating(false);
+    }, 1000); // Reset after 1 second
+
+    return () => {
+      clearTimeout(timer);
+      setIsNavigating(false);
+    };
+  }, [isNavigating]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,14 +243,17 @@ export function SearchBar({
       <form id={formId} onSubmit={handleSearch} className="relative">
         <div 
           id={containerId} 
-          className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${
-            (searchFocused || mode === 'token-select') ? 'border-[#5cca39]' : 'border-border'
+          className={`relative flex items-center bg-white border rounded-lg ${
+            mode === 'token-select' ? '' : 'transition-all duration-150'
+          } ${
+            (searchFocused || mode === 'token-select') ? 'border-primary' : 'border-border'
           }`}
           style={{
             boxShadow: (searchFocused || mode === 'token-select') 
               ? '0 0 12px 2px rgba(92, 202, 57, 0.15)' 
               : '0 0 12px 2px rgba(92, 202, 57, 0)',
-            outline: 'none'
+            outline: 'none',
+            ...(mode === 'token-select' ? { transition: 'none' } : {})
           }}
         >
           {mode === 'navigation' ? (
@@ -230,7 +273,11 @@ export function SearchBar({
             onChange={(e) => setLocalSearchQuery(e.target.value)}
             onFocus={() => {
               setSearchFocused(true);
-              if (!isClearing) {
+              // Update search bar position for portal
+              if (searchRef.current) {
+                setSearchBarRect(searchRef.current.getBoundingClientRect());
+              }
+              if (!isClearing && !isNavigating) {
                 if (mode === 'navigation' && localSearchQuery.trim()) {
                   setShowDropdown(true);
                 } else if (mode === 'token-select') {
@@ -278,7 +325,7 @@ export function SearchBar({
                 e.stopPropagation();
                 clearSearch();
               }}
-              className="relative z-[1103] p-2 hover:bg-muted/10 rounded-md transition-colors mr-1"
+              className="relative z-[10001] p-2 hover:bg-muted/10 rounded-md transition-colors mr-1"
             >
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
@@ -287,33 +334,41 @@ export function SearchBar({
         
         {/* Dropdown - show for navigation and token-select modes, but not in docs area */}
         {showDropdown && ((mode === 'navigation' && localSearchQuery.trim()) || mode === 'token-select') && searchArea !== SearchContextArea.DOCS && (
-          <div id={`${mode}-dropdown-wrapper`} className="relative z-[1102]">
+          <>
             {mode === 'token-select' ? (
-              <TokenSelectDropdown
-                results={filteredResults}
-                isLoading={isLoading}
-                searchQuery={searchQuery}
-                onSelect={handleTokenSelect}
-                onClose={() => {
-                  // For token-select mode, don't handle closing here
-                  if (mode === 'token-select') return;
-                  setShowDropdown(false);
-                  setSearchFocused(false);
-                }}
-                preloadedTokens={preloadedTokens}
-              />
+              <div id={`${mode}-dropdown-wrapper`} className="absolute top-full left-0 right-0 z-[9999]">
+                <TokenSelectDropdown
+                  results={filteredResults}
+                  isLoading={isLoading}
+                  searchQuery={searchQuery}
+                  onSelect={handleTokenSelect}
+                  onClose={() => {
+                    // For token-select mode, don't handle closing here
+                    if (mode === 'token-select') return;
+                    setShowDropdown(false);
+                    setSearchFocused(false);
+                  }}
+                  preloadedTokens={preloadedTokens}
+                />
+              </div>
             ) : (
               <SearchDropdown
                 results={filteredResults}
                 isLoading={isLoading}
                 searchQuery={searchQuery}
+                searchBarRect={searchBarRect || undefined}
                 onClose={() => {
+                  setShowDropdown(false);
+                  setSearchFocused(false);
+                }}
+                onNavigate={() => {
+                  setIsNavigating(true);
                   setShowDropdown(false);
                   setSearchFocused(false);
                 }}
               />
             )}
-          </div>
+          </>
         )}
       </form>
     </div>

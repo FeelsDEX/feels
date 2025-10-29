@@ -27,7 +27,7 @@ interface TokenInfo {
   balance?: number;
 }
 
-type TabType = 'swap' | 'limit';
+type TabType = 'swap' | 'limit' | 'borrow' | 'supply';
 
 export function SwapInterface({
   onSwapComplete,
@@ -46,6 +46,15 @@ export function SwapInterface({
   const [limitPrice, setLimitPrice] = useState('');
   const [slippagePercentage, setSlippagePercentage] = useState('1');
   const [hasInteractedWithSlippage, setHasInteractedWithSlippage] = useState(false);
+  
+  // Borrow/Supply states
+  const [borrowAmount, setBorrowAmount] = useState('');
+  const [collateralAmount, setCollateralAmount] = useState('');
+  const [supplyAmount, setSupplyAmount] = useState('');
+  const borrowApr = '8.5'; // Mock APR (static for now)
+  const supplyApy = '6.2'; // Mock APY (static for now)
+  const ltv = 75; // Loan-to-value ratio (static for now)
+  const healthFactor = 1.5; // Mock health factor (static for now)
   
   // Pre-fetch token data for instant dropdown display
   // const { results: preloadedTokens } = useTokenSearch('');
@@ -148,21 +157,21 @@ export function SwapInterface({
       <div id="swap-container" className="bg-background border border-border rounded-2xl w-full min-w-0 sm:min-w-[400px] max-w-[480px] mx-auto">
       {/* Tab Navigation */}
       <div id="tab-navigation" className="flex items-center justify-between border-b border-border">
-        <div className="flex">
-          {(['swap', 'limit'] as TabType[]).map((tab) => (
+        <div className="flex w-full">
+          {(['swap', 'limit', 'borrow', 'supply'] as TabType[]).map((tab, index) => (
             <button
               key={tab}
               id={`tab-button-${tab}`}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-4 text-sm font-medium capitalize transition-colors relative ${
+              className={`flex-1 py-4 text-sm font-medium capitalize transition-colors relative ${
                 activeTab === tab
                   ? 'text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+              } ${index === 0 ? 'pl-3' : ''} ${index === 3 ? 'pr-3' : ''}`}
             >
               {tab}
               {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-0.5 bg-primary" />
               )}
             </button>
           ))}
@@ -304,7 +313,278 @@ export function SwapInterface({
           </div>
         )}
 
-        {/* From Section */}
+        {/* Borrow Section - Only show for Borrow tab */}
+        {activeTab === 'borrow' && (
+          <div id="borrow-section">
+            {/* Collateral Section */}
+            <div id="collateral-section" className="mb-0">
+              <div className="text-sm text-muted-foreground mb-1">Collateral</div>
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#f8f8f8' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <input
+                      id="collateral-amount-input"
+                      type="text"
+                      value={collateralAmount}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (/^\d*\.?\d*$/.test(value)) {
+                          setCollateralAmount(value);
+                          // Auto-calculate borrow amount based on LTV
+                          if (value) {
+                            const borrow = (parseFloat(value) * ltv / 100).toFixed(2);
+                            setBorrowAmount(borrow);
+                          }
+                        }
+                      }}
+                      placeholder="0"
+                      className="text-3xl font-medium bg-transparent outline-none w-full"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
+                      inputMode="decimal"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      id="collateral-token-selector"
+                      onClick={() => setShowFromTokenSearch(true)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      {fromToken?.logoURI ? (
+                        <Image
+                          src={fromToken.logoURI}
+                          alt={fromToken.symbol}
+                          width={24}
+                          height={24}
+                          className="rounded-md"
+                          style={{ width: 'auto', height: 'auto' }}
+                        />
+                      ) : (
+                        <div className="w-6 h-6 bg-primary rounded-md" />
+                      )}
+                      <span className="font-medium">{fromToken?.symbol}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm text-muted-foreground mt-2">
+                  <div>Balance: 10.0 {fromToken?.symbol}</div>
+                  <div className="text-xs text-primary">Max LTV: {ltv}%</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Spacer to match swap tab visual spacing */}
+            <div className="flex justify-center relative z-10 -mt-1">
+              <div className="p-2">
+                <div className="h-6 w-6"></div>
+              </div>
+            </div>
+
+            {/* Borrow Amount Section */}
+            <div id="borrow-amount-section" className="-mt-7">
+              <div className="text-sm text-muted-foreground mb-1">Borrow</div>
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#f8f8f8' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <input
+                      id="borrow-amount-input"
+                      type="text"
+                      value={borrowAmount}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (/^\d*\.?\d*$/.test(value)) {
+                          setBorrowAmount(value);
+                        }
+                      }}
+                      placeholder="0"
+                      className="text-3xl font-medium bg-transparent outline-none w-full"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
+                      inputMode="decimal"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      id="borrow-token-selector"
+                      onClick={() => setShowToTokenSearch(true)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      {toToken?.logoURI ? (
+                        <Image
+                          src={toToken.logoURI}
+                          alt={toToken.symbol}
+                          width={24}
+                          height={24}
+                          className="rounded-md"
+                          style={{ width: 'auto', height: 'auto' }}
+                        />
+                      ) : (
+                        <div className="w-6 h-6 bg-primary rounded-md" />
+                      )}
+                      <span className="font-medium">{toToken?.symbol}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm text-muted-foreground mt-2">
+                  <div>APR: <span className="text-orange-500 font-medium">{borrowApr}%</span></div>
+                  <div>Health: <span className={`font-medium ${healthFactor > 1.2 ? 'text-success-500' : healthFactor > 1 ? 'text-yellow-500' : 'text-danger-500'}`}>{healthFactor.toFixed(2)}</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning */}
+            <div className="flex items-start gap-2 p-3 mt-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+              <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-orange-500">
+                <p className="font-medium mb-1">Liquidation Risk</p>
+                <p className="opacity-90">Your position may be liquidated if the collateral value drops below the liquidation threshold.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Supply Section - Only show for Supply tab */}
+        {activeTab === 'supply' && (
+          <div id="supply-section">
+            {/* Supply Amount Section */}
+            <div id="supply-amount-section" className="mb-0">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-sm text-muted-foreground">Supply</div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      const balance = 10.0;
+                      setSupplyAmount((balance * 0.25).toFixed(6));
+                    }}
+                    className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                  >
+                    25%
+                  </button>
+                  <button
+                    onClick={() => {
+                      const balance = 10.0;
+                      setSupplyAmount((balance * 0.5).toFixed(6));
+                    }}
+                    className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                  >
+                    50%
+                  </button>
+                  <button
+                    onClick={() => {
+                      const balance = 10.0;
+                      setSupplyAmount((balance * 0.75).toFixed(6));
+                    }}
+                    className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                  >
+                    75%
+                  </button>
+                  <button
+                    onClick={() => {
+                      const balance = 10.0;
+                      setSupplyAmount(balance.toString());
+                    }}
+                    className="px-2 py-0.5 text-xs font-medium border border-border rounded-full hover:bg-muted transition-colors"
+                  >
+                    All
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#f8f8f8' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <input
+                      id="supply-amount-input"
+                      type="text"
+                      value={supplyAmount}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (/^\d*\.?\d*$/.test(value)) {
+                          setSupplyAmount(value);
+                        }
+                      }}
+                      placeholder="0"
+                      className="text-3xl font-medium bg-transparent outline-none w-full"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
+                      inputMode="decimal"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      id="supply-token-selector"
+                      onClick={() => setShowFromTokenSearch(true)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      {fromToken?.logoURI ? (
+                        <Image
+                          src={fromToken.logoURI}
+                          alt={fromToken.symbol}
+                          width={24}
+                          height={24}
+                          className="rounded-md"
+                          style={{ width: 'auto', height: 'auto' }}
+                        />
+                      ) : (
+                        <div className="w-6 h-6 bg-primary rounded-md" />
+                      )}
+                      <span className="font-medium">{fromToken?.symbol}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm text-muted-foreground mt-2">
+                  <div>Balance: 10.0 {fromToken?.symbol}</div>
+                  <div>APY: <span className="text-success-500 font-medium">{supplyApy}%</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Supply Info Card */}
+            <div className="mt-4 rounded-xl p-4 bg-success-500/10 border border-success-500/20">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">APY</div>
+                  <div className="text-sm font-medium text-success-500">
+                    {supplyApy}%
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Total Pool Size</div>
+                  <div className="text-sm font-medium">$1.2M</div>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-success-500/20">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full bg-success-500 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] text-black font-bold">i</span>
+                  </div>
+                  <div className="text-xs text-success-700">
+                    <p className="font-medium">Earn interest on your deposits</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* From Section - Hide for Borrow/Supply tabs */}
+        {(activeTab === 'swap' || activeTab === 'limit') && (
+        <>
         <div id="from-token-section" className="mb-0">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1">
@@ -344,7 +624,7 @@ export function SwapInterface({
               <div className="relative group w-4 h-4">
                 {isHighSlippage && (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    <AlertTriangle className="h-4 w-4 text-danger-500" />
                     <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10">
                       Warning: high max slippage selected
                       <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-gray-900"></div>
@@ -479,7 +759,7 @@ export function SwapInterface({
           </button>
         </div>
 
-        {/* To Section */}
+        {/* To Section - Hide for Borrow/Supply tabs */}
         <div id="to-token-section" className="-mt-7">
           <div className="text-sm text-muted-foreground mb-1">Buy</div>
           <div className="rounded-xl p-4" style={{ backgroundColor: '#f8f8f8' }}>
@@ -537,27 +817,44 @@ export function SwapInterface({
             </div>
           </div>
         </div>
+        </>
+        )}
 
-        {/* Swap/Limit Button */}
+        {/* Action Button */}
         <button
           id="swap-button"
           onClick={handleSwap}
-          disabled={!connected || !fromAmount || parseFloat(fromAmount) <= 0 || isLoading || (activeTab === 'limit' && !limitPrice)}
+          disabled={
+            !connected || 
+            isLoading || 
+            (activeTab === 'swap' && (!fromAmount || parseFloat(fromAmount) <= 0)) ||
+            (activeTab === 'limit' && (!fromAmount || parseFloat(fromAmount) <= 0 || !limitPrice)) ||
+            (activeTab === 'borrow' && (!collateralAmount || parseFloat(collateralAmount) <= 0 || !borrowAmount)) ||
+            (activeTab === 'supply' && (!supplyAmount || parseFloat(supplyAmount) <= 0))
+          }
           className={`w-full py-4 rounded-xl font-medium text-lg transition-all mt-4 ${
-            connected && fromAmount && parseFloat(fromAmount) > 0 && (activeTab !== 'limit' || limitPrice)
+            connected && !isLoading &&
+            ((activeTab === 'swap' && fromAmount && parseFloat(fromAmount) > 0) ||
+             (activeTab === 'limit' && fromAmount && parseFloat(fromAmount) > 0 && limitPrice) ||
+             (activeTab === 'borrow' && collateralAmount && parseFloat(collateralAmount) > 0 && borrowAmount) ||
+             (activeTab === 'supply' && supplyAmount && parseFloat(supplyAmount) > 0))
               ? 'bg-primary text-primary-foreground hover:opacity-90'
               : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >
           {!connected
             ? 'Connect Wallet'
-            : !fromAmount || parseFloat(fromAmount) <= 0
-            ? 'Enter an amount'
-            : activeTab === 'limit' && !limitPrice
-            ? 'Set limit price'
             : isLoading
-            ? activeTab === 'limit' ? 'Placing order...' : 'Swapping...'
-            : activeTab === 'limit' ? 'Place limit order' : 'Swap'}
+            ? activeTab === 'limit' ? 'Placing order...' : activeTab === 'borrow' ? 'Borrowing...' : activeTab === 'supply' ? 'Supplying...' : 'Swapping...'
+            : activeTab === 'swap'
+            ? (!fromAmount || parseFloat(fromAmount) <= 0 ? 'Enter an amount' : 'Swap')
+            : activeTab === 'limit'
+            ? (!fromAmount || parseFloat(fromAmount) <= 0 ? 'Enter an amount' : !limitPrice ? 'Set limit price' : 'Place limit order')
+            : activeTab === 'borrow'
+            ? (!collateralAmount || parseFloat(collateralAmount) <= 0 ? 'Enter collateral amount' : !borrowAmount ? 'Enter borrow amount' : 'Borrow')
+            : activeTab === 'supply'
+            ? (!supplyAmount || parseFloat(supplyAmount) <= 0 ? 'Enter supply amount' : 'Supply')
+            : 'Swap'}
         </button>
       </div>
       </div>

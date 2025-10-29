@@ -14,7 +14,7 @@ interface TokenSearchRowProps {
 }
 
 export const TokenSearchRow = React.memo(function TokenSearchRow({ token, showRelevance }: TokenSearchRowProps) {
-  const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
+  const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500';
   // const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
   
   return (

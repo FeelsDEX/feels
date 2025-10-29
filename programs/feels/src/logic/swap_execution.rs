@@ -10,14 +10,14 @@ use crate::{
     constants::{MAX_TICKS_CROSSED, TICK_ARRAY_SIZE},
     error::FeelsError,
     logic::jit_safety::{
-        calculate_safe_jit_allowance, update_directional_volume, update_price_snapshot, JitBudget,
+        calculate_safe_jit_allowance, JitBudget,
     },
     logic::{
-        compute_swap_step, maybe_pomm_add_liquidity, update_fee_growth_segment, StepOutcome,
+        compute_swap_step, update_fee_growth_segment, StepOutcome,
         SwapContext, SwapDirection, TickArrayIterator, MAX_SWAP_STEPS,
     },
     state::{Buffer, Market},
-    utils::{apply_liquidity_net, sqrt_price_from_tick, tick_from_sqrt_price},
+    utils::{sqrt_price_from_tick, tick_from_sqrt_price},
 };
 use anchor_lang::prelude::*;
 
@@ -115,7 +115,7 @@ pub fn initialize_jit_liquidity(
     target_tick: i32,
     direction: SwapDirection,
     swap_ctx: &mut SwapContext,
-    trader: &Pubkey,
+    _trader: &Pubkey,
     current_slot: u64,
 ) -> Result<u64> {
     // Check if JIT is enabled in the buffer (you'll need to add this field)

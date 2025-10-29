@@ -128,7 +128,7 @@ export function PriceChartToolbar({
             label="GTWAP"
             active={showGTWAPPrice}
             onClick={onToggleGTWAP}
-            activeClass="text-[#5cca39]"
+            activeClass="text-success-500"
           />
           <ToggleButton
             label="Last Price"
@@ -149,7 +149,7 @@ export function PriceChartToolbar({
                 variant={timeRange === range ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => onTimeRangeChange(range)}
-                className="h-7 px-2 py-0.5 text-xs font-bold min-w-[32px] border-border hover:border-green-500"
+                className="h-7 px-2 py-0.5 text-xs font-bold min-w-[32px] border-border hover:border-success-500"
               >
                 {range === 'all' ? 'All' : range}
               </Button>
@@ -230,7 +230,7 @@ function TimezoneDropdown({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-2 text-xs font-normal w-48 flex items-center justify-between group border-border hover:text-white hover:border-green-500 focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="h-7 px-2 text-xs font-normal w-48 flex items-center justify-between group border-border hover:text-white hover:border-success-500 focus-visible:ring-0 focus-visible:ring-offset-0"
         >
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
@@ -303,7 +303,7 @@ function AxisDropdown({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-2 text-xs font-normal w-12 flex items-center justify-between group border-border hover:text-white hover:border-green-500 focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="h-7 px-2 text-xs font-normal w-12 flex items-center justify-between group border-border hover:text-white hover:border-success-500 focus-visible:ring-0 focus-visible:ring-offset-0"
         >
           {/* Abbreviated axis type labels (Lin/Log/%) */}
           <span className="text-left group-hover:text-white">

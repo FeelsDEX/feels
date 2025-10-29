@@ -171,7 +171,7 @@ export default function HomePage() {
                       <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
                       <span 
                         id={`token-change-value-${token.symbol.toLowerCase()}`}
-                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
+                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}
                       >
                         {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
                       </span>
@@ -202,7 +202,7 @@ export default function HomePage() {
                     {/* Row 4: Floor Change */}
                     <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
                       <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
-                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
                       </span>
                     </div>
@@ -288,7 +288,7 @@ export default function HomePage() {
                       <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
                       <span 
                         id={`token-change-value-${token.symbol.toLowerCase()}`}
-                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}
+                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}
                       >
                         {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
                       </span>
@@ -319,7 +319,7 @@ export default function HomePage() {
                     {/* Row 4: Floor Change */}
                     <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
                       <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
-                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
                       </span>
                     </div>

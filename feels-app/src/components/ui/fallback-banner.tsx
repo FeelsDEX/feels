@@ -24,8 +24,8 @@ const variantStyles = {
     button: 'text-blue-800/80 hover:text-blue-900'
   },
   error: {
-    container: 'bg-red-50 text-red-800 border-red-200',
-    button: 'text-red-800/80 hover:text-red-900'
+    container: 'bg-danger-50 text-danger-800 border-danger-200',
+    button: 'text-danger-800/80 hover:text-danger-900'
   }
 };
 

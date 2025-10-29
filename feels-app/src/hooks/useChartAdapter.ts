@@ -4,8 +4,6 @@ import type { Chart as KLineChart } from 'klinecharts';
 import type { KLineData } from '@/types/trading';
 import { 
   buildChartStyles, 
-  createFloorIndicator, 
-  createGtwapIndicator,
   AXIS_NAME,
   type AxisType 
 } from './chart-config';
@@ -103,7 +101,7 @@ export function useChartAdapter(params: UseChartAdapterParams): UseChartAdapterR
             key: 'floorLine',
             title: 'Floor: ',
             type: 'line',
-            styles: (data: any) => ({
+            styles: (_data: any) => ({
               color: '#3B82F6',
               size: 1,
               lineWidth: 1,
@@ -114,7 +112,7 @@ export function useChartAdapter(params: UseChartAdapterParams): UseChartAdapterR
             key: 'gtwapLine',
             title: 'GTWAP: ',
             type: 'line',
-            styles: (data: any) => ({
+            styles: (_data: any) => ({
               color: '#5cca39',
               size: 1,
               lineWidth: 1,
@@ -238,7 +236,7 @@ export function useChartAdapter(params: UseChartAdapterParams): UseChartAdapterR
     // Remove existing indicator if both are hidden
     if (!showFloorRef.current && !showGtwapRef.current) {
       if (indicatorStateRef.current.floorIndicatorId) {
-        chart.removeIndicator(indicatorStateRef.current.floorIndicatorId);
+        chart.removeIndicator({ id: indicatorStateRef.current.floorIndicatorId });
         indicatorStateRef.current.floorIndicatorId = undefined;
       }
     } else {

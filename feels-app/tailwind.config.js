@@ -58,6 +58,34 @@ module.exports = {
           'grey-light': '#808080',
           'grey-dark': '#404040',
         },
+        // FEELS Green Color Scale (based on brand green #5cca39 - HSL: 108, 57%, 51%)
+        // All shades derived from the brand green for consistency
+        'success': {
+          50: 'hsl(108, 57%, 95%)',   // Very light green background
+          100: 'hsl(108, 57%, 85%)',  // Light green background
+          200: 'hsl(108, 57%, 75%)',  // Light green border
+          300: 'hsl(108, 57%, 65%)',  // Medium-light green
+          400: 'hsl(108, 57%, 58%)',  // Medium green
+          500: 'hsl(108, 57%, 51%)',  // Brand green #5cca39 (primary)
+          600: 'hsl(108, 57%, 43%)',  // Darker green text
+          700: 'hsl(108, 57%, 35%)',  // Dark green text
+          800: 'hsl(108, 57%, 27%)',  // Very dark green
+          900: 'hsl(108, 57%, 20%)',  // Darkest green
+        },
+        // FEELS Red Color Scale (based on chart red #ef4444 - HSL: 0, 84%, 60%)
+        // Used for negative states, errors, and down movements
+        'danger': {
+          50: 'hsl(0, 84%, 97%)',     // Very light red background
+          100: 'hsl(0, 84%, 90%)',    // Light red background  
+          200: 'hsl(0, 84%, 80%)',    // Light red border
+          300: 'hsl(0, 84%, 70%)',    // Medium-light red
+          400: 'hsl(0, 84%, 65%)',    // Medium red
+          500: 'hsl(0, 84%, 60%)',    // Chart red #ef4444 (down candles)
+          600: 'hsl(0, 84%, 50%)',    // Darker red text
+          700: 'hsl(0, 84%, 40%)',    // Dark red text
+          800: 'hsl(0, 84%, 30%)',    // Very dark red
+          900: 'hsl(0, 84%, 20%)',    // Darkest red
+        },
       },
       borderRadius: {
         'none': '0',

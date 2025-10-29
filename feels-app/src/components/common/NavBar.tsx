@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSearchContext } from '@/contexts/SearchContext';
 import { useDataSource } from '@/contexts/DataSourceContext';
+import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
 import { Menu, X, Search } from 'lucide-react';
 
 export function NavBar() {
@@ -22,7 +23,8 @@ export function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
   const { isTokenSearchModalOpen } = useSearchContext();
-  const { dataSource } = useDataSource();
+  const { dataSource, isUsingFallback } = useDataSource();
+  const { isDeveloperMode } = useDeveloperMode();
 
   // Handle hydration
   useEffect(() => {
@@ -171,7 +173,7 @@ export function NavBar() {
                   </h1>
                 </Link>
               </div>
-              <nav id="left-nav-menu" className="flex items-center space-x-6 ml-4 mt-0.5">
+              <nav id="left-nav-menu" className="flex items-center space-x-8 ml-4 mt-0.5">
                 <Link 
                   id="nav-discover-link"
                   href="/" 
@@ -210,7 +212,35 @@ export function NavBar() {
             
             {/* Right section - Right navigation and wallet */}
             <div className="flex items-center">
-              <nav id="right-nav-menu" className="flex items-center space-x-6 mr-10 mt-0.5">
+              <nav id="right-nav-menu" className="flex items-center space-x-8 mr-10 mt-0.5">
+                {/* Connection status badge - only visible in developer mode */}
+                {isDeveloperMode && (
+                  <div className="flex items-center">
+                    <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                      isUsingFallback 
+                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
+                        : 'bg-success-100 text-success-800 border border-success-200'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                        isUsingFallback ? 'bg-yellow-500' : 'bg-success-500'
+                      }`} />
+                      {isUsingFallback ? 'disconnected' : 'connected'}
+                    </span>
+                  </div>
+                )}
+                
+                <Link 
+                  id="nav-faucet-link"
+                  href="/faucet" 
+                  className="text-lg font-medium text-foreground hover:text-primary transition-colors relative"
+                  prefetch={true}
+                >
+                  faucet
+                  {isLinkActive('/faucet') && (
+                    <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-[75%] h-0.5 bg-primary" />
+                  )}
+                </Link>
+                
                 <Link 
                   id="nav-launch-link"
                   href="/launch" 
@@ -273,6 +303,22 @@ export function NavBar() {
         {mobileMenuOpen && (
           <div className="md:hidden absolute top-16 left-0 right-0 bg-background border-b border-border shadow-lg z-50">
             <nav className="flex flex-col p-4 space-y-4">
+              {/* Connection status badge for mobile - only visible in developer mode */}
+              {isDeveloperMode && (
+                <div className="flex items-center pb-2 border-b border-border">
+                  <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                    isUsingFallback 
+                      ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
+                      : 'bg-success-100 text-success-800 border border-success-200'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                      isUsingFallback ? 'bg-yellow-500' : 'bg-success-500'
+                    }`} />
+                    {isUsingFallback ? 'disconnected' : 'connected'}
+                  </span>
+                </div>
+              )}
+              
               <Link 
                 href="/" 
                 className="text-lg font-medium text-foreground hover:text-primary transition-colors py-2"
@@ -300,6 +346,17 @@ export function NavBar() {
               >
                 swap
                 {isLinkActive(swapTokenAddress ? `/token/${swapTokenAddress}` : '') && (
+                  <span className="ml-2 w-2 h-2 bg-primary rounded-full inline-block" />
+                )}
+              </Link>
+              <Link 
+                href="/faucet" 
+                className="text-lg font-medium text-foreground hover:text-primary transition-colors py-2"
+                prefetch={true}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                faucet
+                {isLinkActive('/faucet') && (
                   <span className="ml-2 w-2 h-2 bg-primary rounded-full inline-block" />
                 )}
               </Link>

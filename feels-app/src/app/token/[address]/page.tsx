@@ -12,6 +12,7 @@ import { TokenInfo } from '@/services/jupiter-client';
 import { FEELS_TOKENS, getTokenByAddress } from '@/constants/mock-tokens';
 import { TokenHolders } from '@/components/market/TokenHolders';
 import { useDataSource } from '@/contexts/DataSourceContext';
+import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
 import { ProgramFallbackBanner } from '@/components/ui/fallback-banner';
 
 // Dynamic imports to prevent SSR issues
@@ -113,6 +114,7 @@ function TokenSwapPageContent() {
 
   // Get data source to check if we're in test mode
   const { dataSource } = useDataSource();
+  const { isDeveloperMode } = useDeveloperMode();
 
   // Validate that the token is a Feels token
   const tokenData = getTokenByAddress(tokenAddress);
@@ -231,8 +233,8 @@ function TokenSwapPageContent() {
             <RecentTradesList tokenSymbol={token.symbol} tokenAddress={token.address} />
           </div>
 
-          {/* Liquidity Visualization */}
-          {connection && (
+          {/* Liquidity Visualization - only visible in developer mode */}
+          {connection && isDeveloperMode && (
             <div id="liquidity-visualization-section">
               <LiquidityVisualization
                 connection={connection}

@@ -4,39 +4,18 @@ A concentrated liquidity AMM on Solana implementing a physics-based 3D trading m
 
 ## Overview
 
-Feels Protocol implements Uniswap V3-style concentrated liquidity with a key innovation: every token must pair with FeelsSOL (wrapped liquid staking tokens). This creates efficient routing and unified liquidity while preparing for future three-dimensional trading capabilities.
+Feels Protocol is a hub-and-spoke AMM where all tokens trade through FeelsSOL as the central routing asset. The protocol converts speculative trading into long-term value through programmatic market making and floor price mechanisms. Trading fees accumulate in protocol-owned accounts that provide just-in-time liquidity and maintain hard price floors.
 
-### Hub-and-Spoke Routing
-- **Central Hub**: All pools must include FeelsSOL as one side
-- **Bounded Routes**: Maximum 2 hops for any swap (TokenA → FeelsSOL → TokenB)
-- **Entry/Exit**: System access only through JitoSOL ↔ FeelsSOL conversion
-- **Predictable Gas**: Route length bounded by design
-- **No Legacy Support**: Clean implementation with zero backwards compatibility
+The protocol implements concentrated liquidity with tick-based positioning to place capital precisely where needed. Each token has exactly one market paired with FeelsSOL, creating unified liquidity and eliminating routing complexity. Protocol-owned accounts deploy autonomous market making strategies including floor liquidity that creates hard price floors and JIT liquidity that captures value from directional trades.
 
-### FeelsSOL Hub Token
-- Wraps yield-bearing LSTs (initially JitoSOL)
-- Central token in all trading pairs
-- Enables unified liquidity and simplified routing
-- Automatic yield distribution to holders
+Implementation includes:
 
-### Concentrated Liquidity
-- LPs provide liquidity within custom price ranges
-- Capital efficiency through tick position concentration
-- NFT-based tick position tracking with accumulated fees
-- Tick-based pricing with configurable spacing
+- Concentrated liquidity AMM with tick-based price ranges
+- Protocol-owned market making with floor and JIT strategies
+- Geometric time-weighted average pricing for manipulation resistance
+- Dynamic fee structure based on price impact and market conditions
 
-### Dynamic Fee Model
-- **Base Fees**: Configurable per-market base trading fees
-- **Impact Fees**: Dynamic fees based on price movement (ticks crossed)
-- **Fee Distribution**: Split between LPs, protocol treasury, and creators
-- **Floor Protection**: Monotonic floor ratchet mechanism
-
-### Architecture
-- **Routing Constraints**: MAX_ROUTE_HOPS = 2, MAX_SEGMENTS_PER_HOP = 10
-- **Segmentation**: Size-based trade splitting within hops
-- **Zero-copy accounts**: Efficient state management
-- **Safe math**: Overflow protection throughout
-- **Token-2022 support**: Next-gen token standard
+Architecture constraints include maximum 2-hop routing, segmented trade execution, and zero-copy account management for efficient state updates. The system uses Token-2022 standards and implements comprehensive overflow protection throughout the codebase.
 
 ## Quick Start
 
@@ -50,7 +29,7 @@ Feels Protocol implements Uniswap V3-style concentrated liquidity with a key inn
 // Direct swap (1 hop)
 USDC → FeelsSOL
 
-// Indirect swap (2 hops)  
+// Indirect swap (2 hops)
 USDC → FeelsSOL → SOL
 ```
 

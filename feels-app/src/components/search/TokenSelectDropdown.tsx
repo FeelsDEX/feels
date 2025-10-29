@@ -78,7 +78,8 @@ export function TokenSelectDropdown({
   return (
     <div 
       id="token-select-dropdown"
-      className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl overflow-hidden z-[1099]"
+      className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl overflow-hidden"
+      style={{ zIndex: 50000 }}
     >
       {isLoading && searchQuery ? (
         <div id="token-search-loading" className="p-4 text-center text-sm text-muted-foreground">
@@ -88,7 +89,7 @@ export function TokenSelectDropdown({
         <div id="token-search-results">
           <div className="max-h-[400px] overflow-y-auto">
           {filteredResults.slice(0, 8).map((token, index) => {
-            const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
+            const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500';
             const PriceIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
             const isSelected = selectedIndex === index;
             
@@ -114,6 +115,7 @@ export function TokenSelectDropdown({
                       width={32}
                       height={32}
                       className="rounded-md"
+                      style={{ width: '32px', height: '32px', objectFit: 'contain' }}
                       onError={(e) => {
                         e.currentTarget.src = feelsGuyImage.src;
                       }}

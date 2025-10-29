@@ -3,10 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { filename: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ filename: string }> }
 ) {
-  const { filename } = params;
+  const { filename } = await params;
   
   // Security check - only allow specific WASM files
   const allowedFiles = [
@@ -34,7 +34,7 @@ export async function GET(
       contentType = 'text/plain';
     }
     
-    return new NextResponse(fileContent, {
+    return new NextResponse(new Uint8Array(fileContent), {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000, immutable',

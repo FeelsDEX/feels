@@ -8,6 +8,9 @@ import { createFeelsProgram } from '@/program/program-workaround';
 
 import { MarketExplorer } from '@/components/market/MarketExplorer';
 import { FeelsMetrics } from '@/components/market/FeelsMetrics';
+import { ProtocolParametersAdmin } from '@/components/market/ProtocolParametersAdmin';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/program/sdk';
 
 // Import shadcn/ui components
 // import { Button } from '@/components/ui/button';
@@ -87,29 +90,71 @@ export default function InfoPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
-      {fallback && (
-        <div className="relative p-3 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-          <div className="pr-6">Feels program not yet initialized. Falling back to test data.</div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={() => setFallback(false)}
-            className="absolute right-4 top-[calc(50%-2px)] -translate-y-1/2 text-amber-800/80 hover:text-amber-900"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      
-      {/* Feels Metrics - Full Width */}
-      {connection && (
-        <FeelsMetrics 
-          program={program} 
-          connection={connection} 
-        />
-      )}
+      {/* Main Layout - Two Columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column - Protocol Parameters and SDK Information */}
+        <div className="space-y-6">
+          {/* Protocol Parameters */}
+          {connection && (
+            <ProtocolParametersAdmin 
+              program={program} 
+              connection={connection} 
+              fallback={fallback}
+            />
+          )}
 
-      {/* Market Explorer */}
+          {/* SDK Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">SDK Information</CardTitle>
+              <CardDescription className="text-base">
+                Details about the Feels Protocol program and available instructions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Program Details - Compact Layout */}
+                <div className="grid grid-cols-1 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Program ID:</span>
+                    <div className="font-mono text-xs mt-1 break-all">
+                      {FEELS_PROGRAM_ID}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Version:</span>
+                    <div className="mt-1">{(FEELS_IDL as any)?.metadata?.version || (FEELS_IDL as any)?.version || 'Unknown'}</div>
+                  </div>
+                </div>
+                
+                {/* Instructions - Compact Grid */}
+                <div>
+                  <h3 className="text-base font-medium mb-2">Instructions ({FEELS_IDL?.instructions?.length || 0})</h3>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(FEELS_IDL?.instructions || []).map((instruction: any, index: number) => (
+                      <div key={index} className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                        {instruction.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column - Feels Metrics */}
+        <div className="space-y-6">
+          {connection && (
+            <FeelsMetrics 
+              program={program} 
+              connection={connection} 
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Market Explorer - Full Width */}
       {connection && (
         <MarketExplorer 
           program={program} 

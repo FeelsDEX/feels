@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { Loader2, Crosshair } from 'lucide-react';
+import { Crosshair } from 'lucide-react';
 
 interface ImageCropperProps {
   image: string;

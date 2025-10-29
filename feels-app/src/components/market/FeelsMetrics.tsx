@@ -270,9 +270,9 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
                       {metric.change >= 0 ? (
                         <TrendingUp className="h-3 w-3 text-primary mr-1" />
                       ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                        <TrendingDown className="h-3 w-3 text-danger-500 mr-1" />
                       )}
-                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {Math.abs(metric.change).toFixed(1)}%
                       </span>
                     </div>
@@ -303,9 +303,9 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
                       {metric.change >= 0 ? (
                         <TrendingUp className="h-3 w-3 text-primary mr-1" />
                       ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                        <TrendingDown className="h-3 w-3 text-danger-500 mr-1" />
                       )}
-                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {Math.abs(metric.change).toFixed(1)}%
                       </span>
                     </div>
@@ -336,9 +336,9 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
                       {metric.change >= 0 ? (
                         <TrendingUp className="h-3 w-3 text-primary mr-1" />
                       ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                        <TrendingDown className="h-3 w-3 text-danger-500 mr-1" />
                       )}
-                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {Math.abs(metric.change).toFixed(1)}%
                       </span>
                     </div>
@@ -369,9 +369,9 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
                       {metric.change >= 0 ? (
                         <TrendingUp className="h-3 w-3 text-primary mr-1" />
                       ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                        <TrendingDown className="h-3 w-3 text-danger-500 mr-1" />
                       )}
-                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                      <span className={`text-xs ${metric.change >= 0 ? 'text-primary' : 'text-danger-500'}`}>
                         {Math.abs(metric.change).toFixed(1)}%
                       </span>
                     </div>

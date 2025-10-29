@@ -6,10 +6,10 @@
 # Run `just` (no arguments) to see available commands.
 #
 # ═══════════════════════════════════════════════════════════════════════════
-# JUSTFILE SYSTEM ARCHITECTURE
+# JUSTFILE OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# The justfile system is modular and organized as follows:
+# The justfile system is organized as follows:
 #
 # justfiles/
 #   ├── common.just          - Shared utilities (nix-cmd, logging, validation)
@@ -122,7 +122,8 @@ default:
     @echo "  just validate [subcommand]   - Environment validation (all, build, deploy, preflight)"
     @echo "  just nix [subcommand]        - Nix environment (info, shell, run, build, show, check)"
     @echo "  just program [subcommand]    - Program management (id, init, keypair, authority, info)"
-    @echo "  just localnet [subcommand]   - Local validator (start, stop, status, setup, airdrop)"
+    @echo "  just localnet [subcommand]   - Local validator (start, stop, status, setup, airdrop, clean)"
+    @echo "  just localnet clean          - Clean localnet data directories"
     @echo "  just --list                  - Show all available commands"
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -283,11 +284,11 @@ clean-workspace: clean
 # VALIDATION
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Validate environment and configuration with subcommands  
+# Validate environment and configuration with subcommands
 validate *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     args_array=({{args}})
     if [[ ${#args_array[@]} -eq 0 ]]; then
         subcommand="all"
@@ -295,7 +296,7 @@ validate *args:
         subcommand=${args_array[0]}
         remaining_args="${args_array[@]:1}"
     fi
-    
+
     case "$subcommand" in
         build)
             just validate-build
@@ -350,7 +351,7 @@ validate *args:
 nix *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     args_array=({{args}})
     if [[ ${#args_array[@]} -eq 0 ]]; then
         subcommand="info"
@@ -358,7 +359,7 @@ nix *args:
         subcommand=${args_array[0]}
         remaining_args="${args_array[@]:1}"
     fi
-    
+
     case "$subcommand" in
         info)
             just nix-info
@@ -430,7 +431,7 @@ nix *args:
 program *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     args_array=({{args}})
     if [[ ${#args_array[@]} -eq 0 ]]; then
         subcommand="id"
@@ -438,7 +439,7 @@ program *args:
         subcommand=${args_array[0]}
         remaining_args="${args_array[@]:1}"
     fi
-    
+
     case "$subcommand" in
         id)
             echo "Program ID: $(just get-program-id)"
@@ -452,20 +453,20 @@ program *args:
                 # Remove component from args for passing to subcommands
                 init_remaining_args="${remaining_args_array[@]:1}"
             fi
-            
+
             case "$component" in
                 protocol)
                     # Initialize Feels Protocol (deploy ProtocolConfig account with 0.3% default fee)
                     PROGRAM_ID=$(just get-program-id)
                     TREASURY=$(solana address)
                     RPC_URL="${SOLANA_RPC_URL:-http://localhost:8899}"
-                    
+
                     echo "Initializing Feels Protocol..."
                     echo "  Program ID: $PROGRAM_ID"
                     echo "  Treasury: $TREASURY"
                     echo "  RPC URL: $RPC_URL"
                     echo ""
-                    
+
                     feels init protocol \
                         --treasury "$TREASURY" \
                         --base-fee-bps 30 \
@@ -485,16 +486,16 @@ program *args:
                         echo "  JITOSOL_MINT=<address> just program init hub"
                         exit 1
                     fi
-                    
+
                     PROGRAM_ID=$(just get-program-id)
                     RPC_URL="${SOLANA_RPC_URL:-http://localhost:8899}"
-                    
+
                     echo "Initializing FeelsSOL Hub..."
                     echo "  Program ID: $PROGRAM_ID"
                     echo "  JitoSOL Mint: $JITOSOL_MINT"
                     echo "  RPC URL: $RPC_URL"
                     echo ""
-                    
+
                     feels init hub \
                         --jitosol-mint "$JITOSOL_MINT" \
                         --program-id "$PROGRAM_ID" \
@@ -510,17 +511,17 @@ program *args:
                         echo "  just program init market <token_mint>"
                         exit 1
                     fi
-                    
+
                     TOKEN_MINT=${init_remaining_args_array[0]}
                     PROGRAM_ID=$(just get-program-id)
                     RPC_URL="${SOLANA_RPC_URL:-http://localhost:8899}"
-                    
+
                     echo "Initializing Market..."
                     echo "  Program ID: $PROGRAM_ID"
                     echo "  Token Mint: $TOKEN_MINT"
                     echo "  RPC URL: $RPC_URL"
                     echo ""
-                    
+
                     feels init market \
                         --token-mint "$TOKEN_MINT" \
                         --program-id "$PROGRAM_ID" \
@@ -648,7 +649,7 @@ program *args:
 workspace *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     args_array=({{args}})
     if [[ ${#args_array[@]} -eq 0 ]]; then
         subcommand="clean"
@@ -656,7 +657,7 @@ workspace *args:
         subcommand=${args_array[0]}
         remaining_args="${args_array[@]:1}"
     fi
-    
+
     case "$subcommand" in
         clean)
             remaining_args_array=($remaining_args)
@@ -722,7 +723,7 @@ workspace *args:
 localnet *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    
+
     args_array=({{args}})
     if [[ ${#args_array[@]} -eq 0 ]]; then
         subcommand="start"
@@ -730,7 +731,7 @@ localnet *args:
         subcommand=${args_array[0]}
         remaining_args="${args_array[@]:1}"
     fi
-    
+
     case "$subcommand" in
         start)
             just validator
@@ -807,6 +808,21 @@ localnet *args:
                 echo "Slot: $(solana slot 2>/dev/null || echo 'Unable to fetch')"
             fi
             ;;
+        clean)
+            echo "Cleaning localnet data..."
+            # Stop validator first if running
+            if just check-service "{{LOCALNET_RPC}}" "validator" 2>/dev/null; then
+                echo "Stopping validator..."
+                just stop-localnet
+                sleep 2
+            fi
+            # Clean localnet directories
+            rm -rf {{TEST_LEDGER_PATH}}/
+            rm -rf {{LOGS_PATH}}/*
+            rm -rf {{PROJECT_ROOT}}/localnet/data/*
+            rm -rf {{PROJECT_ROOT}}/localnet/indexer-storage/*
+            echo "Localnet data cleaned successfully"
+            ;;
         *)
             echo "Error: Unknown localnet subcommand: $subcommand"
             echo ""
@@ -819,6 +835,7 @@ localnet *args:
             echo "  logs      - View validator logs"
             echo "  airdrop   - Airdrop SOL to wallet [amount]"
             echo "  info      - Show localnet configuration"
+            echo "  clean     - Clean localnet data directories"
             echo ""
             echo "Usage:"
             echo "  just localnet [subcommand]"

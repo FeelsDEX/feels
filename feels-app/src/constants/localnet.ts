@@ -16,7 +16,7 @@ let localnetConfig: any = {};
 
 // Default to test values or loaded config
 let JITOSOL_MINT = localnetConfig.jitosol?.mint || 'So11111111111111111111111111111111111111112';
-let FEELSSOL_MINT = localnetConfig.feelssol?.mint || '11111111111111111111111111111112';
+let FEELSSOL_MINT = localnetConfig.feelssol?.mint || 'So11111111111111111111111111111111111111112';
 let localnetMetaplexId: string | null = null;
 
 // Store promises for async loading

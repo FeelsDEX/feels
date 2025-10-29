@@ -36,10 +36,12 @@ export function BackgroundPrefetch() {
       });
 
       // Also prefetch some common token pages if we have them
-      // You can expand this based on your needs
+      // These addresses match mock-tokens.ts
       const commonTokens = [
-        '/token/feelsWojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb',
-        '/token/feelsPepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu'
+        '/token/WojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb1feel',
+        '/token/PepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu2feel',
+        '/token/ChadGPT4NL8z3xZpYjQcBJknmggY3htVKe3SUBz1feel',
+        '/token/NPCfQ2XbTDN4bWoFZCTQDrdgnDVXKyVGaBPc8Qy7feel'
       ];
       
       commonTokens.forEach(tokenRoute => {

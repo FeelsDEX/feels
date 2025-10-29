@@ -7,6 +7,7 @@
     "dev": "velite && NEXT_PUBLIC_INDEXER_URL=http://localhost:8080 next dev",
     "dev:watch": "npm-run-all -p velite:watch dev dev:bridge",
     "dev:all": "npm-run-all -p velite:dev dev dev:bridge",
+    "dev:precompile": "node scripts/precompile-pages.js",
     "dev:bridge": "mkdir -p ../../localnet/logs && node tools/devbridge/cleanup.js && DEVBRIDGE_ENABLED=true ts-node --project tsconfig.server.json tools/devbridge/server/server.ts 2>&1 | tee ../../localnet/logs/devbridge.log",
     "cleanup:devbridge": "node tools/devbridge/cleanup.js",
     "build": "velite && next build",

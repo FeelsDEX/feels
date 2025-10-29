@@ -10,6 +10,9 @@ import { PublicKey } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ExternalLink } from 'lucide-react';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
+import wojakImage from '@/assets/images/wojak_original.jpg';
+import chadImage from '@/assets/images/chad.png';
+import npcWojakImage from '@/assets/images/npc_wojak.png';
 
 interface TokenHolding {
   tokenAddress: string;
@@ -51,38 +54,66 @@ export default function AccountPage() {
         new PublicKey(address); // Throws if invalid
         
         // TODO: Replace with actual API calls to your indexer
-        // For now, using mock data
+        // For now, using mock data - these addresses match mock-tokens.ts
         const mockHoldings: TokenHolding[] = [
           {
-            tokenAddress: 'feelsWojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb',
+            tokenAddress: 'WojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb1feel',
             tokenName: 'Wojak',
             tokenSymbol: 'WOJAK',
-            tokenImage: feelsGuyImage.src,
+            tokenImage: wojakImage.src,
             balance: 1500000,
             decimals: 9,
-            totalSupply: 1000000000,
-            percentageOwned: 0.15
+            totalSupply: 100000000,
+            percentageOwned: 1.5
           },
           {
-            tokenAddress: 'feelsPepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu',
+            tokenAddress: 'PepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu2feel',
             tokenName: 'Pepe',
             tokenSymbol: 'PEPE',
             tokenImage: feelsGuyImage.src,
             balance: 50000000,
             decimals: 9,
-            totalSupply: 1000000000,
-            percentageOwned: 5.0
+            totalSupply: 100000000,
+            percentageOwned: 50.0
+          },
+          {
+            tokenAddress: 'ChadGPT4NL8z3xZpYjQcBJknmggY3htVKe3SUBz1feel',
+            tokenName: 'Chad',
+            tokenSymbol: 'CHAD',
+            tokenImage: chadImage.src,
+            balance: 25000000,
+            decimals: 9,
+            totalSupply: 100000000,
+            percentageOwned: 25.0
+          },
+          {
+            tokenAddress: 'NPCfQ2XbTDN4bWoFZCTQDrdgnDVXKyVGaBPc8Qy7feel',
+            tokenName: 'NPC',
+            tokenSymbol: 'NPC',
+            tokenImage: npcWojakImage.src,
+            balance: 10000000,
+            decimals: 9,
+            totalSupply: 100000000,
+            percentageOwned: 10.0
           }
         ];
 
         const mockCreated: CreatedToken[] = [
           {
-            address: 'feelsWojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb',
+            address: 'WojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb1feel',
             name: 'Wojak',
             symbol: 'WOJAK',
-            imageUrl: feelsGuyImage.src,
+            imageUrl: wojakImage.src,
             marketCap: '$4.2M',
             launched: '3 days ago'
+          },
+          {
+            address: 'PepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu2feel',
+            name: 'Pepe',
+            symbol: 'PEPE',
+            imageUrl: feelsGuyImage.src,
+            marketCap: '$890K',
+            launched: '5 days ago'
           }
         ];
 

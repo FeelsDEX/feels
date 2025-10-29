@@ -19,7 +19,7 @@ interface TokenSearchCardProps {
 }
 
 export const TokenSearchCard = React.memo(function TokenSearchCard({ token }: TokenSearchCardProps) {
-  const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-red-500';
+  const priceChangeColor = token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500';
   const priceChangeIcon = token.priceChange24h >= 0 ? TrendingUp : TrendingDown;
   const PriceIcon = priceChangeIcon;
   

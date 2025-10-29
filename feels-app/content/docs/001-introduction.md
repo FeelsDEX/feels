@@ -7,33 +7,24 @@ order: 1
 
 # Introduction
 
-## Welcome to Feels Protocol
+Feels Protocol is a concentrated liquidity AMM that converts speculative trading into long-term value through programmatic market making and floor price mechanisms.
 
-Feels Protocol is a concentrated liquidity AMM on Solana implementing a physics-based 3D trading model with hub-and-spoke routing.
+## Architecture
 
-## Key Features
+The protocol implements concentrated liquidity with tick-based positioning to place capital precisely where needed. Each token has exactly one market paired with FeelsSOL, creating unified liquidity and eliminating routing complexity. Protocol-owned accounts deploy autonomous market making strategies including floor liquidity that creates hard price floors and JIT liquidity that captures value from directional trades.
 
-### Hub-and-Spoke Architecture
-All tokens trade through a universal FeelsSOL base pair, creating bounded routing with maximum 2 hops.
+Key features include:
 
-### Concentrated Liquidity
-Provide liquidity in specific price ranges for maximum capital efficiency.
+- Concentrated liquidity AMM with tick-based price ranges
+- Hub-and-spoke topology with FeelsSOL as universal routing token
+- Protocol-owned market making with floor and JIT strategies
+- Geometric time-weighted average pricing for manipulation resistance
+- Dynamic fee structure based on price impact and market conditions
 
-### Physics-Based Model
-Three-dimensional trading incorporating spot price, time-weighted pricing, and leverage.
-
-### Built on Solana
-Lightning-fast transactions with minimal fees.
+Trading fees accumulate in protocol-owned accounts that provide just-in-time liquidity and maintain hard price floors. The system uses bounded routing with maximum 2 hops, segmented trade execution, and zero-copy account management for efficient state updates.
 
 ## Quick Links
 
 - [Quickstart Guide](/docs/quickstart) - Get started with Feels Protocol
 - [Hub and Spoke Model](/docs/hub-and-spoke-architecture) - Understand our routing system
 - [SDK Reference](/docs/sdk-reference) - Integrate with Feels Protocol
-
-## Community
-
-Join our community:
-- X: [@FeelsDEX](https://x.com/feelsdex)
-- Discord: [Join our server](https://discord.gg/feelsdex)
-- GitHub: [FeelsDEX](https://github.com/feelsdex)

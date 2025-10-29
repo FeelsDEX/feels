@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { PriceChartToolbar } from '@/components/trading/PriceChartToolbar';
 import { useSimulatedKlineData } from '@/components/trading/useSimulatedKlineData';
 import { useChartAdapter } from '@/hooks/useChartAdapter';
-import { PLOT_BACKGROUND } from '@/hooks/chart-config';
 
 // ============================================================================
 // CONSTANTS
@@ -514,7 +513,7 @@ export function PriceChart({
                 </Badge>
                 {priceChange && (
                   <span
-                    className={`text-base font-normal ${priceChange.isPositive ? 'text-[#5cca39]' : 'text-red-600'}`}
+                    className={`text-base font-normal ${priceChange.isPositive ? 'text-success-500' : 'text-danger-600'}`}
                   >
                     {priceChange.isPositive ? '+' : ''}
                     {priceChange.percent.toFixed(2)}%
@@ -560,7 +559,7 @@ export function PriceChart({
               <div>
                 <p className="text-xs text-muted-foreground">24hr Floor Δ</p>
                 <p className="text-sm font-semibold">
-                  <span className={metrics.floorChange24h >= 0 ? 'text-primary' : 'text-red-500'}>
+                  <span className={metrics.floorChange24h >= 0 ? 'text-primary' : 'text-danger-500'}>
                     {metrics.floorChange24h >= 0 ? '+' : ''}
                     {metrics.floorChange24h.toFixed(2)}%
                   </span>
@@ -586,7 +585,7 @@ export function PriceChart({
       <CardContent className="pl-8 pr-2 pt-2 pb-4">
         {/* Error display */}
         {error && (
-          <div className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-4 rounded border border-danger-300 bg-danger-50 px-3 py-2 text-sm text-danger-700">
             {error}
           </div>
         )}

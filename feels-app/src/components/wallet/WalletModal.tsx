@@ -135,6 +135,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                               className={`rounded-md ${
                                 installedWallet.adapter.name === 'Ledger' ? 'invert' : ''
                               }`}
+                              style={{ width: '24px', height: '24px', objectFit: 'contain' }}
                             />
                           )}
                           <span>{installedWallet.adapter.name}</span>
@@ -165,6 +166,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                                 width={20}
                                 height={20}
                                 className="rounded-md"
+                                style={{ width: '20px', height: '20px', objectFit: 'contain' }}
                               />
                             </div>
                             <span>Your Profile</span>
@@ -190,6 +192,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                             className={`rounded-md ${
                               installedWallet.adapter.name === 'Ledger' ? 'invert' : ''
                             }`}
+                            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
                           />
                         )}
                         <span>{installedWallet.adapter.name}</span>
@@ -246,6 +249,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                             className={`rounded-md ${
                               wallet.adapter.name === 'Ledger' ? 'invert' : ''
                             }`}
+                            style={{ width: '24px', height: '24px', objectFit: 'contain' }}
                           />
                         )}
                         <span>{wallet.adapter.name}</span>
@@ -274,6 +278,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                                 width={24}
                                 height={24}
                                 className="rounded-md"
+                                style={{ width: '24px', height: '24px', objectFit: 'contain' }}
                               />
                             )}
                             <span>{wallet.adapter.name}</span>

@@ -16,6 +16,7 @@ import { useDropzone } from 'react-dropzone';
 import { processImage, processCroppedImage, cleanupPreview, formatFileSize, ProcessedImage } from '@/utils/image-processing';
 import { ImageCropper } from '@/components/content/ImageCropper';
 import { useVanityAddress } from '@/contexts/VanityAddressContext';
+import { useDataSource } from '@/contexts/DataSourceContext';
 
 interface CreateMarketProps {
   connection: Connection;
@@ -43,6 +44,8 @@ interface MarketParams {
 export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps) {
   const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
   const vanityAddress = useVanityAddress();
+  const { dataSource } = useDataSource();
+  const isTestDataMode = dataSource === 'test';
   const [isCreating, setIsCreating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +274,12 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
     // Validate vanity address
     const vanityKeypair = vanityAddress.getSolanaKeypair();
     if (!vanityKeypair) {
-      setError('Vanity address not ready');
+      // In test data mode, the vanity address should be available immediately
+      if (isTestDataMode) {
+        setError('Development keypair not available. Please refresh the page.');
+      } else {
+        setError('Vanity address not ready');
+      }
       return;
     }
 
@@ -304,7 +312,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
       
       // Dynamically import heavy dependencies only when needed
       const [
-        { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, Keypair, Transaction },
+        { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, Transaction },
         { AnchorProvider, BN },
         { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, Token }
       ] = await Promise.all([
@@ -565,12 +573,17 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
   };
 
   const isFormValid = () => {
+    // In test data mode, vanity address should be available immediately
+    const vanityAddressReady = isTestDataMode 
+      ? vanityAddress.status.isReady 
+      : vanityAddress.status.keypair !== null;
+    
     return (
       params.tokenName.trim() !== '' &&
       params.tokenSymbol.trim() !== '' &&
       params.tokenImage !== undefined && // Image required
       params.initialBuyFeelsSOLAmount >= 0 && // Allow 0 for no initial buy
-      vanityAddress.status.keypair !== null && // Vanity address must be ready
+      vanityAddressReady && // Vanity address must be ready
       connected
     );
   };
@@ -665,7 +678,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
                         {formatFileSize(params.tokenImage.file.size)}
                       </p>
                       {params.uploadId && !isUploading && (
-                        <p className="text-xs mt-1" style={{ color: '#5cca39' }}>Uploaded</p>
+                        <p className="text-xs mt-1 text-success-500">Uploaded</p>
                       )}
                       {params.uploadId && isUploading && (
                         <p className="text-xs text-primary mt-1">Uploading...</p>
@@ -692,12 +705,9 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
             <div className="p-4 bg-muted rounded-lg space-y-3">
               {vanityAddress.status.keypair ? (
                 <>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Your token will be created at:</p>
-                      <p className="font-mono text-sm break-all">{vanityAddress.status.keypair.publicKey}</p>
-                    </div>
-                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 ml-2" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Your token will be created at:</p>
+                    <p className="font-mono text-sm break-all">{vanityAddress.status.keypair.publicKey}</p>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Sparkles className="h-3 w-3" />

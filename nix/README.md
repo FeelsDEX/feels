@@ -4,10 +4,10 @@ This directory contains the Nix infrastructure for Feels Protocol development en
 
 ## Rust Toolchain Strategy
 
-Feels Protocol uses a **dual Rust toolchain** approach to support both excellent IDE experience and correct Solana program compilation:
+Feels Protocol uses a dual Rust toolchain approach to support both excellent IDE experience and correct Solana program compilation:
 
 ### 1. nixpkgs Rust (Primary - IDE & Regular Builds)
-- Full Rust toolchain with all components including **proc-macro server**
+- Full Rust toolchain with all components including proc-macro server
 - Used by rust-analyzer for IDE features (no "proc-macro server exited" errors)
 - Used for SDK, indexer, and other regular Rust code
 - Provides: `rustc`, `cargo`, `rust-analyzer`, `clippy`, `rustfmt`

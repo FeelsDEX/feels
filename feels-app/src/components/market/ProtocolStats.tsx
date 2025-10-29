@@ -121,7 +121,7 @@ export function ProtocolStats({ program, connection }: ProtocolStatsProps) {
             {data?.configExists ? (
               <span className="text-feels-purple">[OK]</span>
             ) : (
-              <span className="text-black">[<span className="text-red-600">X</span>]</span>
+              <span className="text-black">[<span className="text-danger-600">X</span>]</span>
             )}
           </div>
           <div className="text-sm font-medium text-feels-gray-900">

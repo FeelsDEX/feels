@@ -7,8 +7,8 @@ export type StylesLike = Record<string, any>;
 export const PLOT_BACKGROUND = '#f8f8f8';
 
 export const CHART_COLORS = {
-  up: '#5cca39',
-  down: '#ef4444',
+  up: '#5cca39',        // success-500 - brand green for up candles
+  down: '#ef4444',      // danger-500 - brand red for down candles  
   neutral: '#666666',
   priceMark: '#a6a6a6',
   lastPrice: '#b0b0b0',

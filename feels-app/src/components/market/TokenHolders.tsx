@@ -32,15 +32,16 @@ export function TokenHolders({ tokenCreator }: TokenHoldersProps) {
     }
     
     // Top holders with decreasing percentages
+    // Include dev keypair address for consistency with account page test data
     const topHolderAddresses = [
-      'H5PM3UTgejrBHFfKEAY2cGdsFnTuFvEfJiNU8X7FdDRB',
-      '3Xny6SaKZfUZRzHWkf9kg3HYkPJqq6vwEFkVMVa3miKJ',
-      'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK',
-      '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
-      'FriELggez2Dy3phZeHHAdpcoEXkKQVkv6tx3zDtCVP8T',
-      '2g9TLFJDP3iKqPUuBa5pHFECyNvQHz7HUVJhfGLNdQPi',
-      '7oo1B5YcKJGBH2sV7qrFMPRQ5zM9sZrQ8fRxbM6VBJd8',
-      'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
+      'tRfecbDu1OqMfcjEaR49esSFbLFEEL', // Dev keypair from devKeypairs.ts
+      '7XawhbbxtsRcQA8FstyZpudN8pSDS9DC95uJDxPBaqMf', // Creator of Wojak/Pepe
+      'BsV4An3XGGe7S7DqmTz8kMS9gJ3JAddVHRBM54GfJpBQ', // Creator of Doomer/Bloomer
+      'Gz7VkD4MacbEB6yC5XD3HcumEiYx2EtDYYrfikGsvopG', // Creator of Coomer/Chad
+      'FUkonnF8eCT8x3wfhXdNPKNs6MaRVqxaCyRdAQUwVWXw', // Creator of Grug
+      '5Q544fKrFoe6tsEbD7S8Emxmy5WPg4zAqx5c9cW9STKS', // Creator of NPC
+      'E5rk3nmgJUfKpKBGM7cP6RNKD4onPZU5gT7xhPhZYigN', // Creator of Zoomer/Pink
+      'CUqDJqBBKiXMKRiZN4fAf7NbMR8p8UaG8M6U7X8hQxvb'  // Creator of Bobo
     ];
     
     // Distribute remaining percentage among top holders

@@ -11,13 +11,13 @@ import { ReactQueryProvider } from '@/components/common/ReactQueryProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
 import { SearchProvider } from '@/contexts/SearchContext';
+import { DeveloperModeProvider } from '@/contexts/DeveloperModeContext';
 import { BackgroundPrefetch } from '@/components/common/BackgroundPrefetch';
+import { Footer } from '@/components/common/Footer';
 import { ChunkErrorBoundary } from '@/components/common/ChunkErrorBoundary';
 import { GlobalHotkeyProvider } from '@/components/common/GlobalHotkeyProvider';
 import { LightboxProvider } from '@/components/ui/LightboxProvider';
-import { GlobalNoMarketsBanner } from '@/components/common/GlobalNoMarketsBanner';
 import { VanityAddressProvider } from '@/contexts/VanityAddressContext';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
 // Dynamic import for DevBridge to avoid production bundle impact
@@ -71,9 +71,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${terminalGrotesque.variable} ${jetbrainsMono.variable}`} data-scroll-behavior="smooth">
+    <html lang="en" className={`${terminalGrotesque.variable} ${jetbrainsMono.variable}`} data-scroll-behavior="smooth" suppressHydrationWarning={true}>
       <head>
-        <script src="/wallet-patch.js"></script>
+        {/* WASM Preload Links for Fastest Vanity Mining Initialization */}
+        <link rel="modulepreload" href="/wasm/vanity_miner_wasm.js" />
+        <link rel="prefetch" href="/wasm/vanity_miner_wasm_bg.wasm" />
+        <link rel="preload" href="/wasm/vanity-worker.js" as="script" />
+        <link rel="preload" href="/wasm/vanity-coordinator.js" as="script" />
+        
+        <script src="/wallet-patch.js" defer></script>
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -91,15 +97,50 @@ export default function RootLayout({
                 global.litDevMode = false;
                 global.litDev = false;
               }
+              
+              // Register service worker for WASM optimization
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                  .then(registration => {
+                    console.log('SW registered:', registration);
+                    
+                    // Listen for messages from service worker
+                    navigator.serviceWorker.addEventListener('message', event => {
+                      if (event.data.type === 'wasm-precompiled') {
+                        window.__wasmPromise = Promise.resolve(event.data.module);
+                        console.log('Pre-compiled WASM received from service worker');
+                      }
+                    });
+                  })
+                  .catch(error => console.log('SW registration failed:', error));
+              }
+              
+              // Precompile WASM for instant initialization
+              if (typeof window !== 'undefined' && 'WebAssembly' in window) {
+                window.__wasmPromise = WebAssembly.compileStreaming(fetch('/wasm/vanity_miner_wasm_bg.wasm'))
+                  .catch(() => null); // Fallback gracefully if compilation fails
+              }
+              
+              // Initialize optimized WASM loader and worker pool
+              if (typeof window !== 'undefined') {
+                import('@/lib/wasmCache').then(({ initializeGlobalWasmLoader }) => {
+                  initializeGlobalWasmLoader();
+                });
+                
+                import('@/lib/workerPool').then(({ initializeGlobalWorkerPool }) => {
+                  initializeGlobalWorkerPool();
+                });
+              }
             `,
           }}
         />
       </head>
       <body className={terminalGrotesque.className}>
         <ReactQueryProvider>
-          <DataSourceProvider>
-            <SearchProvider>
-                <SolanaWalletProvider>
+          <DeveloperModeProvider>
+            <DataSourceProvider>
+              <SearchProvider>
+                  <SolanaWalletProvider>
                   <VanityAddressProvider>
                     <DevBridgeWrapper>
                       <ChunkErrorBoundary>
@@ -107,40 +148,11 @@ export default function RootLayout({
                           <LightboxProvider>
                             <div className="min-h-screen bg-background flex flex-col">
                         <ConditionalNavBar />
-                        <GlobalNoMarketsBanner />
                         <main className="relative z-10 flex-1 flex flex-col">
                           {children}
                         </main>
                         <BackgroundPrefetch />
-                        <footer className="py-6 md:py-10 mt-auto">
-                        <div className="container mx-auto px-4 md:px-6">
-                          <div className="relative flex flex-col md:flex-row items-center md:items-center gap-4 md:gap-0">
-                            <div className="flex-1 flex justify-center md:justify-start">
-                              <div className="flex flex-row md:flex-col space-x-4 md:space-x-0 md:space-y-1 text-center md:text-left">
-                                <Link href="/docs" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                  docs
-                                </Link>
-                                <Link href="/blog" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                  blog
-                                </Link>
-                              </div>
-                            </div>
-                            <p className="text-center text-muted-foreground order-first md:order-none">
-                              feels good man
-                            </p>
-                            <div className="flex-1 flex justify-center md:justify-end">
-                              <div className="flex flex-row md:flex-col space-x-4 md:space-x-0 md:space-y-1 text-center md:text-right">
-                                <Link href="/info" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                  info
-                                </Link>
-                                <Link href="/control" className="text-muted-foreground hover:text-primary transition-colors" prefetch={true}>
-                                  control
-                                </Link>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                          </footer>
+                        <Footer />
                         </div>
                         <Toaster />
                           </LightboxProvider>
@@ -149,8 +161,9 @@ export default function RootLayout({
                     </DevBridgeWrapper>
                   </VanityAddressProvider>
                 </SolanaWalletProvider>
-            </SearchProvider>
-          </DataSourceProvider>
+              </SearchProvider>
+            </DataSourceProvider>
+          </DeveloperModeProvider>
         </ReactQueryProvider>
       </body>
     </html>

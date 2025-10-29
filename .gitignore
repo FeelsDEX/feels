@@ -139,6 +139,7 @@ temp/
 *-temp.toml
 *.temp
 *.tmp
+*.pid
 preview/
 logs/
 *.log.*

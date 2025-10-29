@@ -11,7 +11,7 @@ use crate::{
     error::FeelsError,
     events::{FeeSplitApplied, SwapExecuted},
     logic::{
-        execute_swap_steps, SwapParams, SwapState, SwapExecutionResult,
+        execute_swap_steps, SwapParams, SwapState,
         finalize_fee_state, split_and_apply_fees,
         SwapDirection,
     },

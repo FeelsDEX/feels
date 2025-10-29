@@ -18,6 +18,7 @@ import { Info, Settings, Shield, Percent, Loader2, AlertCircle, Lock, Unlock } f
 interface ProtocolParametersAdminProps {
   program: Program<Idl> | null;
   connection: Connection;
+  fallback?: boolean;
 }
 
 interface Parameter {
@@ -37,7 +38,7 @@ const PROTOCOL_CONFIG_SEED = Buffer.from('protocol_config');
 // const PROTOCOL_ORACLE_SEED = Buffer.from('protocol_oracle'); // Commented out as unused
 // const SAFETY_CONTROLLER_SEED = Buffer.from('safety_controller'); // Commented out as unused
 
-export function ProtocolParametersAdmin({ program, connection }: ProtocolParametersAdminProps) {
+export function ProtocolParametersAdmin({ program, connection, fallback = false }: ProtocolParametersAdminProps) {
   const { publicKey } = useWallet();
   const [loading, setLoading] = useState(true);
   const [isAuthority, setIsAuthority] = useState(false);
@@ -212,6 +213,30 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
   // Load protocol configuration and check authority
   useEffect(() => {
     async function loadProtocolConfig() {
+      // Handle fallback mode (test data) - skip loading real protocol config
+      if (fallback) {
+        setProtocolConfig({
+          authority: publicKey || new PublicKey('11111111111111111111111111111111'),
+          treasury: publicKey || new PublicKey('11111111111111111111111111111111'),
+          dexTwapUpdater: publicKey || new PublicKey('11111111111111111111111111111111'),
+          mintFee: 1000000, // 0.001 FeelsSOL
+          defaultProtocolFeeRate: 8,
+          defaultCreatorFeeRate: 2,
+          maxProtocolFeeRate: 50,
+          depegThresholdBps: 50,
+          depegRequiredObs: 3,
+          clearRequiredObs: 5,
+          dexTwapWindowSecs: 900,
+          dexTwapStaleAgeSecs: 1800,
+          mintPerSlotCapFeelssol: 0,
+          redeemPerSlotCapFeelssol: 0,
+          tokenExpirationSeconds: 3600,
+        });
+        setIsAuthority(true); // In test mode, assume authority
+        setLoading(false);
+        return;
+      }
+
       if (!program || !publicKey) {
         setLoading(false);
         return;
@@ -255,7 +280,11 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
             // We'll fetch directly using the provider
             const accountData = await connection.getAccountInfo(protocolConfigPDA);
             if (!accountData) {
-              throw new Error('Protocol config account not found on chain. Please ensure the protocol is initialized.');
+              // Protocol not initialized - set error state instead of throwing
+              setLoadError('Protocol config account not found on chain. The protocol may not be initialized yet.');
+              setProtocolConfig(null);
+              setLoading(false);
+              return;
             }
             
             // For now, we'll skip the deserialization and just check if account exists
@@ -311,7 +340,7 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
     }
 
     loadProtocolConfig();
-  }, [program, publicKey, connection]);
+  }, [program, publicKey, connection, fallback]);
 
   const handleParameterChange = (field: string, value: any) => {
     setPendingChanges(prev => ({
@@ -469,7 +498,7 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="space-y-2">
               <p>The protocol configuration could not be loaded. This may be because the protocol hasn&apos;t been initialized yet.</p>
-              {loadError.includes('Account does not exist') && (
+              {(loadError.includes('Account does not exist') || loadError.includes('not found')) && (
                 <div className="mt-2">
                   <p className="text-sm font-medium">To initialize the protocol:</p>
                   <ol className="text-sm list-decimal list-inside mt-1 space-y-1">
@@ -493,7 +522,13 @@ export function ProtocolParametersAdmin({ program, connection }: ProtocolParamet
           <div>
             <CardTitle className="text-xl">Protocol Parameters</CardTitle>
             <CardDescription>
-              {isAuthority ? 'Manage protocol configuration' : 'View current protocol settings'}
+              {fallback ? (
+                <span className="text-amber-600">
+                  Test data mode - showing placeholder protocol parameters
+                </span>
+              ) : (
+                isAuthority ? 'Manage protocol configuration' : 'View current protocol settings'
+              )}
             </CardDescription>
           </div>
           {isAuthority && (

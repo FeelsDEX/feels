@@ -38,15 +38,14 @@ build:
     fi
     
     wasm_out="../feels-app/public/wasm"
-    echo "Building WASM module with parallel features..."
+    echo "Building WASM module..."
     rm -rf pkg
     mkdir -p "$wasm_out"
     
-    # Build with wasm-pack using config from .cargo/config.toml
-    # The config enables atomics, bulk-memory, and build-std automatically
-    echo "  Using wasm-pack with nightly Rust (config from .cargo/config.toml)..."
-    wasm-pack build --release --target web --out-dir pkg \
-        --no-default-features --features parallel
+    # Build with wasm-pack with SIMD optimizations only
+    # Clear RUSTFLAGS to avoid atomics/threading flags
+    echo "  Using wasm-pack for release build..."
+    RUSTFLAGS="" wasm-pack build --release --target web --out-dir pkg
     
     if [[ -f pkg/vanity_miner_wasm_bg.wasm ]]; then
         cp pkg/vanity_miner_wasm* "$wasm_out/"
@@ -83,8 +82,9 @@ build-dev:
     mkdir -p "$wasm_out"
     
     # Build with dev profile and panic hooks for better debugging
-    wasm-pack build --dev --target web --out-dir pkg \
-        --no-default-features --features "console_error_panic_hook parallel"
+    # Clear RUSTFLAGS to avoid atomics/threading flags
+    RUSTFLAGS="" wasm-pack build --dev --target web --out-dir pkg \
+        --no-default-features --features "console_error_panic_hook"
     
     if [[ -f pkg/vanity_miner_wasm_bg.wasm ]]; then
         cp pkg/vanity_miner_wasm* "$wasm_out/"

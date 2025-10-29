@@ -50,6 +50,38 @@
     --feels-black: 0 0% 0%; /* #000000 */
     --feels-grey-light: 0 0% 50%; /* #808080 */
     --feels-grey-dark: 0 0% 25%; /* #404040 */
+    
+    /* FEELS Green Color Scale
+     * All success/positive states use the 'success' color scale (defined in tailwind.config.js)
+     * Based on brand green #5cca39 (HSL: 108, 57%, 51%)
+     * 
+     * Usage guide:
+     * - success-50:  Very light green backgrounds (alerts, info cards)
+     * - success-100: Light green backgrounds (badges, status indicators)
+     * - success-200: Light green borders (active states, highlights)
+     * - success-500: Primary brand green (main actions, active states)
+     * - success-600: Medium-dark green text (readable on light backgrounds)
+     * - success-700: Dark green text (strong emphasis on light backgrounds)
+     * - success-800: Very dark green (high contrast text)
+     * 
+     * Use 'success' instead of generic 'green' for all positive/success states
+     */
+    
+    /* FEELS Red Color Scale
+     * All error/negative states use the 'danger' color scale (defined in tailwind.config.js)
+     * Based on chart red #ef4444 (HSL: 0, 84%, 60%) - used for down candles
+     * 
+     * Usage guide:
+     * - danger-50:  Very light red backgrounds (error alerts, warnings)
+     * - danger-100: Light red backgrounds (error badges)
+     * - danger-200: Light red borders (error states)
+     * - danger-500: Chart red (down candles, negative price changes)
+     * - danger-600: Medium-dark red text (readable on light backgrounds)
+     * - danger-700: Dark red text (strong emphasis, errors)
+     * - danger-800: Very dark red (high contrast error text)
+     * 
+     * Use 'danger' instead of generic 'red' for all negative/error states
+     */
   }
 
   .dark {
@@ -275,13 +307,13 @@
 
   /* High slippage warning input styles */
   .feels-input.slippage-warning {
-    border-color: #ef4444 !important;
+    border-color: #ef4444 !important; /* danger-500 */
   }
 
   .feels-input.slippage-warning:focus,
   .feels-input.slippage-warning:focus-visible {
     outline: none !important;
-    border-color: #ef4444 !important;
+    border-color: #ef4444 !important; /* danger-500 */
     box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.15) !important;
     -webkit-box-shadow: 0 0 12px 2px rgba(239, 68, 68, 0.15) !important;
     --tw-ring-offset-shadow: none !important;

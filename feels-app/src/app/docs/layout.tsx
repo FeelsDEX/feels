@@ -85,7 +85,7 @@ export default function DocsLayout({
             <form onSubmit={(e) => e.preventDefault()} className="relative">
               <div 
                 className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${
-                  searchFocused ? 'border-[#5cca39]' : 'border-border'
+                  searchFocused ? 'border-primary' : 'border-border'
                 }`}
                 style={{
                   boxShadow: searchFocused 
@@ -144,7 +144,7 @@ export default function DocsLayout({
               <form onSubmit={(e) => e.preventDefault()} className="relative">
                 <div 
                   className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${
-                    searchFocused ? 'border-[#5cca39]' : 'border-border'
+                    searchFocused ? 'border-primary' : 'border-border'
                   }`}
                   style={{
                     boxShadow: searchFocused 

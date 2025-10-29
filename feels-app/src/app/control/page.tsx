@@ -1,27 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { Program, AnchorProvider, Idl } from '@coral-xyz/anchor';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { getConnection } from '@/services/connection';
-import { FEELS_IDL, FEELS_PROGRAM_ID } from '@/program/sdk';
 import { createFeelsProgram } from '@/program/program-workaround';
+import { FEELS_IDL } from '@/program/sdk';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Droplets } from 'lucide-react';
 import { ProtocolParametersAdmin } from '@/components/market/ProtocolParametersAdmin';
 import { NetworkConnection } from '@/components/common/NetworkConnection';
+import { ProgramStatus } from '@/components/admin/ProgramStatus';
+import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
+import { Switch } from '@/components/ui/switch';
 
 export default function ControlPage() {
-  const { publicKey, signTransaction, signAllTransactions, connected } = useWallet();
+  const { publicKey, signTransaction, signAllTransactions } = useWallet();
+  const { isDeveloperMode, setDeveloperMode } = useDeveloperMode();
   const connection = getConnection(); // Use singleton connection
   const [program, setProgram] = useState<Program<Idl> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [airdropping, setAirdropping] = useState(false);
-  const [balance, setBalance] = useState<number | null>(null);
   const [fallback, setFallback] = useState<boolean>(false);
 
   // Initialize program
@@ -73,10 +71,6 @@ export default function ControlPage() {
             
             const feelProgram = createFeelsProgram(provider);
             setProgram(feelProgram);
-
-            // Get initial balance
-            const bal = await connection.getBalance(publicKey);
-            setBalance(bal / LAMPORTS_PER_SOL);
           } catch (programError) {
             console.error('Failed to create program:', programError);
             // Enter fallback mode (test data) instead of blocking the page
@@ -87,7 +81,6 @@ export default function ControlPage() {
         } else {
           // Clear program if wallet is disconnected
           setProgram(null);
-          setBalance(null);
         }
         
         setLoading(false);
@@ -100,45 +93,6 @@ export default function ControlPage() {
 
     initializeProgram();
   }, [publicKey, signTransaction, signAllTransactions, connection]);
-
-  // Refresh balance
-  const refreshBalance = async () => {
-    if (!connection || !publicKey) return;
-    try {
-      const bal = await connection.getBalance(publicKey);
-      setBalance(bal / LAMPORTS_PER_SOL);
-    } catch (err) {
-      console.error('Failed to fetch balance:', err);
-    }
-  };
-
-  // Handle airdrop
-  const handleAirdrop = async () => {
-    if (!connection || !publicKey) return;
-
-    setAirdropping(true);
-    try {
-      // Request airdrop of 2 SOL
-      const signature = await connection.requestAirdrop(
-        publicKey,
-        2 * LAMPORTS_PER_SOL
-      );
-      
-      // Wait for confirmation
-      await connection.confirmTransaction(signature, 'confirmed');
-      
-      // Refresh balance
-      await refreshBalance();
-      
-      // Show success
-      console.log('Airdrop successful:', signature);
-    } catch (err) {
-      console.error('Airdrop failed:', err);
-      setError('Airdrop failed. Please try again.');
-    } finally {
-      setAirdropping(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -155,19 +109,6 @@ export default function ControlPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {fallback && (
-        <div className="mb-4 relative p-3 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-          <div className="pr-6">Feels program not yet initialized. Falling back to test data.</div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={() => setFallback(false)}
-            className="absolute right-2 top-2 text-amber-800/80 hover:text-amber-900"
-          >
-            ×
-          </button>
-        </div>
-      )}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Control Panel</h1>
         <p className="text-muted-foreground">Manage protocol parameters and test utilities</p>
@@ -181,6 +122,7 @@ export default function ControlPage() {
             <ProtocolParametersAdmin 
               program={program} 
               connection={connection} 
+              fallback={fallback}
             />
           ) : (
             <Card>
@@ -199,111 +141,41 @@ export default function ControlPage() {
 
         {/* Right Side - Stacked Components */}
         <div className="space-y-6">
-          {/* Network Connection */}
-          <NetworkConnection />
+          {/* Program Status */}
+          {connection && (
+            <ProgramStatus 
+              connection={connection} 
+              program={program}
+              fallback={fallback}
+            />
+          )}
 
-          {/* Devnet Faucet */}
+          {/* Developer Mode Toggle */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Droplets className="h-5 w-5" />
-                Devnet Faucet
-              </CardTitle>
+              <CardTitle>Developer Mode</CardTitle>
               <CardDescription>
-                Request test SOL for development and testing
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!connected ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground mb-4">Connect your wallet to use the faucet</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Wallet Address</span>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Current Balance</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono">{balance?.toFixed(4) ?? '0.0000'} SOL</span>
-                        <button
-                          onClick={refreshBalance}
-                          className="p-1 hover:bg-muted rounded transition-colors"
-                          disabled={!connection || !publicKey}
-                        >
-                          <RefreshCw className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4">
-                    <Button
-                      onClick={handleAirdrop}
-                      disabled={airdropping || !connection}
-                      className="w-full"
-                    >
-                      {airdropping ? (
-                        <div className="flex items-center gap-2">
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                          Airdropping...
-                        </div>
-                      ) : (
-                        'Request 2 SOL'
-                      )}
-                    </Button>
-                    <p className="text-xs text-muted-foreground text-center mt-2">
-                      Devnet only • Max 2 SOL per request
-                    </p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* SDK Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">SDK Information</CardTitle>
-              <CardDescription className="text-base">
-                Details about the Feels Protocol program and available instructions
+                Toggle developer features and debugging information
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {/* Program Details - Compact Layout */}
-                <div className="grid grid-cols-1 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Program ID:</span>
-                    <div className="font-mono text-xs mt-1 break-all">
-                      {FEELS_PROGRAM_ID}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Version:</span>
-                    <div className="mt-1">{(FEELS_IDL as any)?.metadata?.version || (FEELS_IDL as any)?.version || 'Unknown'}</div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium">Enable Developer Mode</div>
+                  <div className="text-xs text-muted-foreground">
+                    Shows additional debugging information like connection status badges
                   </div>
                 </div>
-                
-                {/* Instructions - Compact Grid */}
-                <div>
-                  <h3 className="text-base font-medium mb-2">Instructions ({FEELS_IDL?.instructions?.length || 0})</h3>
-                  <div className="grid grid-cols-2 gap-1">
-                    {(FEELS_IDL?.instructions || []).map((instruction: any, index: number) => (
-                      <div key={index} className="text-xs font-mono bg-muted px-2 py-1 rounded">
-                        {instruction.name}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <Switch
+                  checked={isDeveloperMode}
+                  onCheckedChange={setDeveloperMode}
+                />
               </div>
             </CardContent>
           </Card>
+
+          {/* Network Connection */}
+          <NetworkConnection />
         </div>
       </div>
 

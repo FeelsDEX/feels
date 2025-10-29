@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useEffect } from 'react';
-import { useVanityAddressMiner, type VanityKeypair, type MinerStatus } from '@/hooks/useVanityAddressMiner';
+import { useVanityAddressMiner, type MinerStatus } from '@/hooks/useVanityAddressMiner';
+import { useDataSource } from '@/contexts/DataSourceContext';
 import type { Keypair } from '@solana/web3.js';
 
 interface VanityAddressContextType {
@@ -15,13 +16,16 @@ interface VanityAddressContextType {
 const VanityAddressContext = createContext<VanityAddressContextType | undefined>(undefined);
 
 export function VanityAddressProvider({ children }: { children: React.ReactNode }) {
-  const miner = useVanityAddressMiner();
+  const { dataSource } = useDataSource();
+  const isTestDataMode = dataSource === 'test';
+  const miner = useVanityAddressMiner(isTestDataMode);
 
   // Start mining automatically when the app loads if we don't have a keypair
   // This allows the system to mine in the background while users navigate the site
+  // With optimizations, this should now start much faster
   useEffect(() => {
     if (miner.status.isReady && !miner.status.keypair && !miner.status.isRunning) {
-      console.log('Starting vanity address mining in background...');
+      console.log('Starting optimized vanity address mining in background...');
       miner.startMining();
     }
   }, [miner.status.isReady, miner.status.keypair, miner.status.isRunning, miner.startMining]);
