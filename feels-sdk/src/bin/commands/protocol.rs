@@ -2,10 +2,16 @@
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
-use feels_sdk::{instructions::InitializeProtocolParams, FeelsClient};
+use feels_sdk::{
+    instructions::{InitializeProtocolParams, ProtocolInstructionBuilder},
+    protocol::PdaBuilder,
+};
 use solana_sdk::signature::Signer;
 
-use super::utils::{get_program_id, info, load_keypair, parse_pubkey, success};
+use super::{
+    utils::{get_program_id, info, load_keypair, parse_pubkey, success},
+    RpcHelper,
+};
 
 #[derive(Args)]
 pub struct ProtocolCmd {
@@ -17,29 +23,37 @@ pub struct ProtocolCmd {
 enum ProtocolSubcommand {
     /// Initialize protocol configuration (one-time setup)
     Init {
-        /// Base fee in basis points (e.g., 30 = 0.3%)
-        #[arg(long, default_value = "30")]
-        base_fee_bps: u16,
+        /// Treasury address (defaults to wallet)
+        #[arg(long)]
+        treasury: Option<String>,
 
-        /// Maximum fee in basis points
-        #[arg(long, default_value = "300")]
-        max_fee_bps: u16,
+        /// DEX TWAP updater authority (defaults to wallet)
+        #[arg(long)]
+        dex_twap_updater: Option<String>,
 
-        /// Fee growth rate
+        /// Mint fee in FeelsSOL lamports
+        #[arg(long, default_value = "1000000")]
+        mint_fee: u64,
+
+        /// De-peg threshold in basis points
         #[arg(long, default_value = "100")]
-        fee_growth_rate: u64,
+        depeg_threshold_bps: u16,
 
-        /// Protocol fee share in basis points
-        #[arg(long, default_value = "20")]
-        protocol_fee_share_bps: u16,
+        /// Consecutive breaches required to pause
+        #[arg(long, default_value = "3")]
+        depeg_required_obs: u8,
 
-        /// Treasury address
-        #[arg(long)]
-        treasury: String,
+        /// Consecutive clears required to resume
+        #[arg(long, default_value = "3")]
+        clear_required_obs: u8,
 
-        /// Oracle authority address (defaults to wallet)
-        #[arg(long)]
-        oracle_authority: Option<String>,
+        /// DEX TWAP window in seconds
+        #[arg(long, default_value = "300")]
+        dex_twap_window_secs: u32,
+
+        /// DEX TWAP stale age in seconds
+        #[arg(long, default_value = "600")]
+        dex_twap_stale_age_secs: u32,
     },
 
     /// Get protocol configuration
@@ -54,55 +68,60 @@ pub async fn execute(
 ) -> Result<()> {
     match cmd.command {
         ProtocolSubcommand::Init {
-            base_fee_bps,
-            max_fee_bps,
-            fee_growth_rate,
-            protocol_fee_share_bps,
             treasury,
-            oracle_authority,
+            dex_twap_updater,
+            mint_fee,
+            depeg_threshold_bps,
+            depeg_required_obs,
+            clear_required_obs,
+            dex_twap_window_secs,
+            dex_twap_stale_age_secs,
         } => {
             info("Initializing Feels Protocol...");
 
             let wallet = load_keypair(wallet_path)?;
             let program_id = get_program_id(program_id_str)?;
-            let treasury = parse_pubkey(&treasury)?;
-            let oracle_authority = match oracle_authority {
+            let treasury = match treasury {
+                Some(addr) => parse_pubkey(&addr)?,
+                None => wallet.pubkey(),
+            };
+            let dex_twap_updater = match dex_twap_updater {
                 Some(addr) => parse_pubkey(&addr)?,
                 None => wallet.pubkey(),
             };
 
-            // Create client
-            let client = if let Some(_pid_str) = program_id_str {
-                FeelsClient::with_program_id(rpc_url, program_id).await?
-            } else {
-                FeelsClient::new(rpc_url).await?
-            };
+            // Create instruction builder
+            let builder = ProtocolInstructionBuilder::new(program_id);
+            let rpc = RpcHelper::new(rpc_url);
+
+            info(&format!("Using program ID: {}", program_id));
 
             // Build initialize instruction
             let params = InitializeProtocolParams {
-                base_fee_bps,
-                max_fee_bps,
-                fee_growth_rate,
-                protocol_fee_share_bps,
+                mint_fee,
                 treasury,
-                oracle_authority,
+                default_protocol_fee_rate: Some(100), // 1%
+                default_creator_fee_rate: Some(50),   // 0.5%
+                max_protocol_fee_rate: Some(1000),    // 10%
+                dex_twap_updater,
+                depeg_threshold_bps,
+                depeg_required_obs,
+                clear_required_obs,
+                dex_twap_window_secs,
+                dex_twap_stale_age_secs,
+                dex_whitelist: vec![],
             };
 
-            let ix = client
-                .protocol
-                .initialize_protocol_ix(wallet.pubkey(), params)?;
-
-            // Send transaction
-            let signature = client
-                .base
-                .send_transaction(&[ix], &[&wallet])
-                .await
+            let ix = builder
+                .initialize_protocol(wallet.pubkey(), params)
+                .context("Failed to build instruction")?;
+            let signature = rpc
+                .build_and_send_transaction(vec![ix], &wallet, &[])
                 .context("Failed to send transaction")?;
 
             success(&format!("Protocol initialized! Signature: {}", signature));
-            info(&format!("Program ID: {}", program_id));
             info(&format!("Treasury: {}", treasury));
-            info(&format!("Oracle Authority: {}", oracle_authority));
+            info(&format!("DEX TWAP Updater: {}", dex_twap_updater));
 
             Ok(())
         }
@@ -110,16 +129,12 @@ pub async fn execute(
         ProtocolSubcommand::Info => {
             info("Fetching protocol configuration...");
 
-            let client = if let Some(pid_str) = program_id_str {
-                let program_id = get_program_id(Some(pid_str))?;
-                FeelsClient::with_program_id(rpc_url, program_id).await?
-            } else {
-                FeelsClient::new(rpc_url).await?
-            };
-
-            let (protocol_config, _) = client.pda.protocol_config();
+            let program_id = get_program_id(program_id_str)?;
+            let pda = PdaBuilder::new(program_id);
+            let (protocol_config, _) = pda.protocol_config();
 
             info(&format!("Protocol Config PDA: {}", protocol_config));
+            info(&format!("Program ID: {}", program_id));
             info("Use solana account command to view details");
 
             Ok(())

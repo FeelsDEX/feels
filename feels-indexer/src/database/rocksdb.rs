@@ -8,15 +8,37 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::config::RocksDBConfig;
-use crate::models::{*, Transaction};
-use crate::models::buffer::IndexedBuffer as Buffer;
-use crate::models::floor::IndexedFloor as FloorLiquidity;
-use crate::models::market::IndexedMarket as Market;
-use crate::models::position::IndexedPosition as Position;
-use super::Swap;
+use crate::core::types::BlockInfo;
+use crate::models::{
+    IndexedBuffer as Buffer,
+    IndexedFloor as FloorLiquidity,
+    IndexedMarket as Market,
+    IndexedPosition as Position,
+    IndexedSwap as Swap,
+};
+
+// Temporary placeholder types for legacy database code
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    pub signature: String,
+    pub slot: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlotInfo {
+    pub slot: u64,
+    pub parent: Option<u64>,
+    pub timestamp: i64,
+}
 
 /// Type alias for the RocksDB instance
 pub type RocksDB = DBWithThreadMode<MultiThreaded>;
+
+/// Type alias for byte iterator over key-value pairs
+type ByteIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>;
+
+/// Type alias for boxed byte iterator
+type BoxedByteIterator<'a> = Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>;
 
 /// Column family names for different data types
 pub struct ColumnFamilies;
@@ -56,6 +78,7 @@ impl ColumnFamilies {
 #[derive(Clone)]
 pub struct RocksDBManager {
     db: Arc<RocksDB>,
+    #[allow(dead_code)]
     config: RocksDBConfig,
 }
 
@@ -191,7 +214,7 @@ impl RocksDBManager {
         cf_name: &str, 
         start: &[u8], 
         end: Vec<u8>
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>> {
+    ) -> Result<ByteIterator<'a>> {
         let cf = self.get_cf(cf_name)?;
         let iter = self.db.iterator_cf(
             &cf,
@@ -227,10 +250,10 @@ impl RocksDBManager {
     }
 
     /// Get an iterator over a column family
-    pub fn iter_cf(&self, cf_name: &str) -> Result<impl Iterator<Item = (Box<[u8]>, Box<[u8]>)> + '_> {
+    pub fn iter_cf(&self, cf_name: &str) -> Result<BoxedByteIterator<'_>> {
         let cf = self.get_cf(cf_name)?;
-        Ok(self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start)
-            .map(|result| result.expect("Failed to read from iterator")))
+        Ok(Box::new(self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start)
+            .map(|result| result.expect("Failed to read from iterator"))))
     }
 
     /// Get database statistics

@@ -47,7 +47,8 @@
 //! }
 //! ```
 
-pub mod client;
+// Temporarily disabled client module due to solana-client dependency conflicts
+// pub mod client;
 pub mod core;
 pub mod instructions;
 pub mod jupiter;
@@ -55,7 +56,7 @@ pub mod prelude;
 pub mod protocol;
 
 // Re-export main types and functions
-pub use client::FeelsClient;
+// pub use client::FeelsClient;  // Temporarily disabled
 pub use core::{
     constants::program_id, FeeEstimate, MarketInfo, PositionInfo, Route, SdkError, SdkResult,
     SwapDirection, SwapSimulation,

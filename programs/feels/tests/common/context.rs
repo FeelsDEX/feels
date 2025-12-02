@@ -1111,6 +1111,19 @@ impl TestContext {
 
         Ok(tick_arrays)
     }
+
+    // Helper accessor methods
+    pub fn market_helper(&self) -> super::helpers::MarketHelper {
+        super::helpers::MarketHelper::new(self.clone())
+    }
+
+    pub fn position_helper(&self) -> super::helpers::PositionHelper {
+        super::helpers::PositionHelper::new(self.clone())
+    }
+
+    pub fn swap_helper(&self) -> super::helpers::SwapHelper {
+        super::helpers::SwapHelper::new(self.clone())
+    }
 }
 
 // Make TestContext cloneable for helper usage

@@ -2,10 +2,16 @@
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
-use feels_sdk::FeelsClient;
+use feels_sdk::{
+    instructions::{InitializeHubParams, ProtocolInstructionBuilder},
+    protocol::PdaBuilder,
+};
 use solana_sdk::signature::Signer;
 
-use super::utils::{get_program_id, info, load_keypair, parse_pubkey, success};
+use super::{
+    utils::{get_program_id, info, load_keypair, parse_pubkey, success},
+    RpcHelper,
+};
 
 #[derive(Args)]
 pub struct HubCmd {
@@ -40,23 +46,19 @@ pub async fn execute(
             let program_id = get_program_id(program_id_str)?;
             let jitosol_mint = parse_pubkey(&jitosol_mint)?;
 
-            // Create client
-            let client = if let Some(_pid_str) = program_id_str {
-                FeelsClient::with_program_id(rpc_url, program_id).await?
-            } else {
-                FeelsClient::new(rpc_url).await?
-            };
+            // Create instruction builder
+            let builder = ProtocolInstructionBuilder::new(program_id);
 
             // Build initialize hub instruction
-            let ix = client
-                .protocol
-                .initialize_hub_ix(wallet.pubkey(), jitosol_mint)?;
+            let params = InitializeHubParams { jitosol_mint };
+            let ix = builder
+                .initialize_hub(wallet.pubkey(), params)
+                .context("Failed to build instruction")?;
 
             // Send transaction
-            let signature = client
-                .base
-                .send_transaction(&[ix], &[&wallet])
-                .await
+            let rpc = RpcHelper::new(rpc_url);
+            let signature = rpc
+                .build_and_send_transaction(vec![ix], &wallet, &[])
                 .context("Failed to send transaction")?;
 
             success(&format!(
@@ -71,16 +73,12 @@ pub async fn execute(
         HubSubcommand::Info => {
             info("Fetching hub information...");
 
-            let client = if let Some(pid_str) = program_id_str {
-                let program_id = get_program_id(Some(pid_str))?;
-                FeelsClient::with_program_id(rpc_url, program_id).await?
-            } else {
-                FeelsClient::new(rpc_url).await?
-            };
-
-            let (hub_pda, _) = client.pda.feels_hub();
+            let program_id = get_program_id(program_id_str)?;
+            let pda = PdaBuilder::new(program_id);
+            let (hub_pda, _) = pda.feels_hub();
 
             info(&format!("FeelsSOL Hub PDA: {}", hub_pda));
+            info(&format!("Program ID: {}", program_id));
             info("Use solana account command to view details");
 
             Ok(())

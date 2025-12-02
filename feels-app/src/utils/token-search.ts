@@ -1,6 +1,17 @@
 // Token search types and configuration
 import feelsGuyImage from '@/assets/images/feels_guy.png';
 
+// Define 6 trending token addresses
+// These tokens will be marked as trending and prioritized in default sorting
+export const TRENDING_TOKEN_ADDRESSES = [
+  'GrugJ3fYgKwpt5HqNYoiFcF3WgC5Nz7VXeMBBBq6feel', // Grug - 67.3% gain, hot new token
+  'NPCfQ2XbTDN4bWoFZCTQDrdgnDVXKyVGaBPc8Qy7feel', // NPC - $12.3M market cap, graduated
+  'WojakMvNsD5n2R8rUPzFiHkq9JbgSstPVNkDPGb1feel', // Wojak - the original, $4.2M market cap
+  'BloomJ34hNPn8NAzX5HJpNvFcXJGGWTZWkKUbjRpfeel', // Bloomer - 15.6% gain, optimistic
+  'ZoomrMb58rwhpJXagnSy2ypqJm8H5RJJvPPuxmW8feel', // Zoomer - 12.4% gain, young energy
+  'PepewJ9nJKy3sLKCqczaTrd2TRnhjxNLPqZB8nu2feel', // Pepe - classic meme, graduated
+];
+
 export interface TokenSearchResult {
   address: string;
   symbol: string;
@@ -21,6 +32,7 @@ export interface TokenSearchResult {
   isVerified: boolean;
   hasLiquidity: boolean;
   isGraduated: boolean;
+  isTrending: boolean;
   
   // Metadata
   description?: string;
@@ -184,6 +196,7 @@ export function convertToSearchResult(token: any): TokenSearchResult {
     isVerified: token.isVerified || false,
     hasLiquidity: token.hasLiquidity !== false,
     isGraduated: token.isGraduated || false,
+    isTrending: TRENDING_TOKEN_ADDRESSES.includes(token.address),
     description: token.description,
     decimals: token.decimals || 9,
   };

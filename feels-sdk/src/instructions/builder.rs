@@ -24,6 +24,7 @@ pub trait InstructionBuilder: AnchorSerialize {
 pub struct FeelsInstructionBuilder {
     accounts: Vec<AccountMeta>,
     data: Vec<u8>,
+    program_id: Pubkey,
 }
 
 impl FeelsInstructionBuilder {
@@ -31,6 +32,15 @@ impl FeelsInstructionBuilder {
         Self {
             accounts: Vec::new(),
             data: Vec::new(),
+            program_id: program_id(),
+        }
+    }
+
+    pub fn with_program_id(program_id: Pubkey) -> Self {
+        Self {
+            accounts: Vec::new(),
+            data: Vec::new(),
+            program_id,
         }
     }
 
@@ -78,7 +88,7 @@ impl FeelsInstructionBuilder {
     /// Build the final instruction
     pub fn build(self) -> Instruction {
         Instruction {
-            program_id: program_id(),
+            program_id: self.program_id,
             accounts: self.accounts,
             data: self.data,
         }

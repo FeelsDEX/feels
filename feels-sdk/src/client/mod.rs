@@ -10,7 +10,8 @@ pub mod swap;
 use std::sync::Arc;
 
 use crate::prelude::*;
-use solana_client::nonblocking::rpc_client::RpcClient;
+// Removed heavy solana_client dependency - using ureq for RPC calls
+// pub struct RpcClient will be implemented with ureq
 
 use crate::{
     core::{program_id, SdkResult},

@@ -239,7 +239,7 @@ function TokenSwapPageContent() {
               <LiquidityVisualization
                 connection={connection}
                 program={program}
-                selectedPool={`${token.symbol}/FeelsSOL`}
+                selectedPool={`${token.symbol}/SOL`}
               />
             </div>
           )}

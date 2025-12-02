@@ -67,7 +67,7 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
         tightSpread: 1,
         mediumSpread: 4
       },
-      'FeelsSOL/SOL': { 
+      'SOL/SOL': { 
         basePrice: 0.98, 
         maxLiquidity: 600000, 
         isStable: false, 
@@ -97,7 +97,7 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
         tightSpread: 1,
         mediumSpread: 3
       },
-      'WOJAK/FeelsSOL': { 
+      'WOJAK/SOL': { 
         basePrice: 0.0423, 
         maxLiquidity: 420000, 
         isStable: false, 
@@ -107,7 +107,7 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
         tightSpread: 3,
         mediumSpread: 10
       },
-      'COOMER/FeelsSOL': { 
+      'COOMER/SOL': { 
         basePrice: 0.0234, 
         maxLiquidity: 380000, 
         isStable: false, 
@@ -117,7 +117,7 @@ export function LiquidityVisualization({ connection, program, selectedPool = 'SO
         tightSpread: 3,
         mediumSpread: 9
       },
-      'CHAD/FeelsSOL': { 
+      'CHAD/SOL': { 
         basePrice: 0.0345, 
         maxLiquidity: 560000, 
         isStable: false, 

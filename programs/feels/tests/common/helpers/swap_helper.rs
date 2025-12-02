@@ -175,6 +175,7 @@ impl SwapHelper {
         Ok(SwapResult {
             amount_in,
             amount_out,
+            fee_amount: fee_paid_est,
             fee_paid: fee_paid_est,
             price_impact: price_impact_bps,
         })
@@ -332,13 +333,14 @@ impl SwapHelper {
         Ok(SwapResult {
             amount_in,
             amount_out: amount_out_actual,
+            fee_amount: fee_paid_est,
             fee_paid: fee_paid_est,
             price_impact: price_impact_bps,
         })
     }
 
     /// Perform multiple swaps in sequence
-    pub async fn multi_swap(&self, swaps: Vec<SwapParams>) -> TestResult<Vec<SwapResult>> {
+    pub async fn multi_swap(&self, swaps: Vec<crate::common::sdk_compat::SwapParams>) -> TestResult<Vec<SwapResult>> {
         let mut results = Vec::new();
 
         for swap in swaps {

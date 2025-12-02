@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::prelude::*;
-use solana_client::nonblocking::rpc_client::RpcClient;
+// Removed heavy solana_client - CLI doesn't need async client for initialization
 use solana_sdk::{
     account::Account,
     commitment_config::CommitmentConfig,

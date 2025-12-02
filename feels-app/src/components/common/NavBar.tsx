@@ -204,6 +204,19 @@ export function NavBar() {
                     <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-[75%] h-0.5 bg-primary" />
                   )}
                 </Link>
+                {isDeveloperMode && (
+                  <Link 
+                    id="nav-window-link"
+                    href="/window" 
+                    className="text-lg font-medium text-foreground hover:text-primary transition-colors relative"
+                    prefetch={true}
+                  >
+                    window
+                    {isLinkActive('/window') && (
+                      <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-[75%] h-0.5 bg-primary" />
+                    )}
+                  </Link>
+                )}
               </nav>
             </div>
             
@@ -211,7 +224,7 @@ export function NavBar() {
             <div className="flex-1" />
             
             {/* Right section - Right navigation and wallet */}
-            <div className="flex items-center">
+            <div className="flex items-center pr-2 md:pr-6">
               <nav id="right-nav-menu" className="flex items-center space-x-8 mr-10 mt-0.5">
                 {/* Connection status badge - only visible in developer mode */}
                 {isDeveloperMode && (
@@ -349,6 +362,19 @@ export function NavBar() {
                   <span className="ml-2 w-2 h-2 bg-primary rounded-full inline-block" />
                 )}
               </Link>
+              {isDeveloperMode && (
+                <Link 
+                  href="/window" 
+                  className="text-lg font-medium text-foreground hover:text-primary transition-colors py-2"
+                  prefetch={true}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  window
+                  {isLinkActive('/window') && (
+                    <span className="ml-2 w-2 h-2 bg-primary rounded-full inline-block" />
+                  )}
+                </Link>
+              )}
               <Link 
                 href="/faucet" 
                 className="text-lg font-medium text-foreground hover:text-primary transition-colors py-2"

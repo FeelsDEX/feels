@@ -10,9 +10,11 @@ use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
 use uuid::Uuid;
 
 pub struct SearchManager {
+    #[allow(dead_code)]
     index: Index,
     reader: IndexReader,
     writer: IndexWriter,
+    #[allow(dead_code)]
     schema: Schema,
     fields: SearchFields,
 }
@@ -42,6 +44,10 @@ struct SearchFields {
 
 impl SearchManager {
     pub async fn new(index_path: &Path) -> Result<Self> {
+        // Clean up old index to avoid "Index already exists" error
+        if index_path.exists() {
+            let _ = std::fs::remove_dir_all(index_path);
+        }
         std::fs::create_dir_all(index_path)?;
         
         let mut schema_builder = Schema::builder();

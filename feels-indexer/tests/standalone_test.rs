@@ -13,6 +13,6 @@ fn test_string() {
 
 #[test]
 fn test_vector() {
-    let v = vec![1, 2, 3];
+    let v = [1, 2, 3];
     assert_eq!(v.len(), 3);
 }

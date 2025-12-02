@@ -14,7 +14,7 @@ interface FeelsMetricsProps {
 interface Metric {
   label: string;
   value: string | number;
-  feelsValue?: number; // FeelsSOL amount
+  feelsValue?: number; // SOL amount
   change?: number;
   icon?: React.ReactNode;
   format?: 'number' | 'currency' | 'percent' | 'time' | 'dual' | 'text';
@@ -26,7 +26,7 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
   });
 
   // Mock SOL price for conversion (in production, get from oracle)
-  const solPrice = 50; // $50 per SOL/FeelsSOL
+  const solPrice = 50; // $50 per SOL
 
   // Calculate 16 key metrics based on protocol docs
   // Note: Some metrics are estimated or mocked until the indexer provides them
@@ -36,7 +36,7 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
     // Protocol Health Metrics (Critical)
     {
       label: 'Solvency Ratio',
-      value: 102.5, // JitoSOL reserves / FeelsSOL supply (>100% due to staking yield)
+      value: 102.5, // JitoSOL reserves / SOL supply (>100% due to staking yield)
       format: 'percent',
       icon: <Shield className="h-4 w-4 text-primary" />,
     },
@@ -68,8 +68,8 @@ export function FeelsMetrics({}: FeelsMetricsProps) {
       icon: <DollarSign className="h-4 w-4" />,
     },
     {
-      label: 'FeelsSOL Supply',
-      value: totalLiquidity * solPrice, // Total liquidity approximates FeelsSOL supply
+      label: 'SOL Supply',
+      value: totalLiquidity * solPrice, // Total liquidity approximates SOL supply
       feelsValue: totalLiquidity,
       format: 'dual',
     },

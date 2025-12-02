@@ -47,8 +47,13 @@ pub async fn list_markets(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
     
+    // Convert to frontend format
+    let indexed_markets: Vec<IndexedMarket> = markets.into_iter()
+        .map(|m| m.into())
+        .collect();
+    
     Ok(Json(MarketsResponse {
-        markets,
+        markets: indexed_markets,
         total,
         limit: limit as usize,
         offset: offset as usize,
@@ -69,7 +74,7 @@ pub async fn get_market(
     if let Ok(Some(market)) = state.db_manager.redis
         .get_json::<Market>(&cache_key)
         .await {
-        return Ok(Json(MarketResponse { market }));
+        return Ok(Json(MarketResponse { market: market.into() }));
     }
     
     // Fallback to PostgreSQL
@@ -82,7 +87,7 @@ pub async fn get_market(
         })?;
     
     match market {
-        Some(market) => Ok(Json(MarketResponse { market })),
+        Some(market) => Ok(Json(MarketResponse { market: market.into() })),
         None => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -165,8 +170,13 @@ pub async fn get_market_swaps(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
     
+    // Convert to frontend format
+    let indexed_swaps: Vec<IndexedSwap> = swaps.into_iter()
+        .map(|s| s.into())
+        .collect();
+    
     Ok(Json(SwapsResponse {
-        swaps,
+        swaps: indexed_swaps,
         total,
         limit: limit as usize,
         offset: offset as usize,
@@ -248,7 +258,7 @@ pub async fn get_market_floor(
         current_floor_price: floor.floor_price.to_f64().unwrap_or(0.0),
         jitosol_reserves: floor.jitosol_reserves.to_string(),
         circulating_supply: floor.circulating_supply.to_string(),
-        last_update_slot: floor.last_update_slot,
+        last_update_slot: floor.last_update_slot as u64,
         timestamp: chrono::Utc::now().timestamp(),
     }))
 }
@@ -323,8 +333,13 @@ pub async fn list_swaps(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
     
+    // Convert to frontend format
+    let indexed_swaps: Vec<IndexedSwap> = swaps.into_iter()
+        .map(|s| s.into())
+        .collect();
+    
     Ok(Json(SwapsResponse {
-        swaps,
+        swaps: indexed_swaps,
         total,
         limit: limit as usize,
         offset: offset as usize,
@@ -343,7 +358,7 @@ pub async fn get_swap(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     match swap {
-        Some(swap) => Ok(Json(SwapResponse { swap })),
+        Some(swap) => Ok(Json(SwapResponse { swap: swap.into() })),
         None => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -371,8 +386,13 @@ pub async fn get_user_swaps(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? as usize;
     
+    // Convert to frontend format
+    let indexed_swaps: Vec<IndexedSwap> = swaps.into_iter()
+        .map(|s| s.into())
+        .collect();
+    
     Ok(Json(SwapsResponse {
-        swaps,
+        swaps: indexed_swaps,
         total,
         limit: limit as usize,
         offset: offset as usize,
@@ -508,20 +528,26 @@ pub async fn get_protocol_volume(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     use rust_decimal::prelude::ToPrimitive;
+    use chrono::{DateTime, Utc};
     
-    let daily_volumes = volume_data.into_iter()
+    let daily_volumes: Vec<DailyVolume> = volume_data.into_iter()
         .map(|v| DailyVolume {
-            date: v.date,
+            date: DateTime::<Utc>::from_timestamp(v.date, 0)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
             volume: v.volume.to_f64().unwrap_or(0.0),
             fees: v.fees.to_f64().unwrap_or(0.0),
             swap_count: v.swap_count as u64,
         })
         .collect();
     
+    let total_volume = daily_volumes.iter().map(|v| v.volume).sum();
+    let total_fees = daily_volumes.iter().map(|v| v.fees).sum();
+    
     Ok(Json(VolumeResponse {
         daily_volumes,
-        total_volume: daily_volumes.iter().map(|v| v.volume).sum(),
-        total_fees: daily_volumes.iter().map(|v| v.fees).sum(),
+        total_volume,
+        total_fees,
         timestamp: chrono::Utc::now().timestamp(),
     }))
 }

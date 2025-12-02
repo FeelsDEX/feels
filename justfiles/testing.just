@@ -155,3 +155,19 @@ test-advanced:
     @echo "  just watch unit   # Watch unit tests continuously"
     @echo ""
     @echo "Run 'cd programs/feels/tests && just --list' to see all available commands."
+
+# ===== Indexer Integration Tests =====
+
+# Run feels-indexer integration tests with services
+test-indexer-integration:
+    @echo "╔═══════════════════════════════════════════════════════════════╗"
+    @echo "║     FEELS INDEXER - INTEGRATION TESTS WITH SERVICES          ║"
+    @echo "╚═══════════════════════════════════════════════════════════════╝"
+    @echo ""
+    @cd feels-indexer && nix develop ..#indexer -c tests/test_with_services.sh
+
+# Run indexer unit tests only (no services required)
+test-indexer-unit:
+    @just show-progress "Running feels-indexer unit tests"
+    @cd feels-indexer && cargo test --lib
+    @just show-success "Indexer unit tests passed"

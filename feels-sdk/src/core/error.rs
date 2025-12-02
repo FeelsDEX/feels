@@ -6,7 +6,8 @@ pub enum SdkError {
     InvalidParameters(String),
 
     #[error("RPC error: {0}")]
-    RpcError(#[from] solana_client::client_error::ClientError),
+    // RpcError(#[from] solana_client::client_error::ClientError),  // Disabled - no solana-client
+    RpcError(String),  // Simple string error for RPC issues
 
     #[error("Serialization error: {0}")]
     SerializationError(String),

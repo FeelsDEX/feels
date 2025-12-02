@@ -294,29 +294,15 @@ pub fn deploy_initial_liquidity<'info>(
         let deployer_token_out_data = &ctx.accounts.deployer_token_out.try_borrow_data()?;
         let deployer_token_out = TokenAccountState::unpack(deployer_token_out_data)?;
 
-        // Determine which token is FeelsSOL
-        let feelssol_is_token_0 = ctx.accounts.market.token_0 == ctx.accounts.escrow.feelssol_mint;
-
-        // Validate accounts based on which token is FeelsSOL
-        if feelssol_is_token_0 {
-            require!(
-                deployer_feelssol.mint == ctx.accounts.market.token_0,
-                FeelsError::InvalidMint
-            );
-            require!(
-                deployer_token_out.mint == ctx.accounts.market.token_1,
-                FeelsError::InvalidMint
-            );
-        } else {
-            require!(
-                deployer_feelssol.mint == ctx.accounts.market.token_1,
-                FeelsError::InvalidMint
-            );
-            require!(
-                deployer_token_out.mint == ctx.accounts.market.token_0,
-                FeelsError::InvalidMint
-            );
-        }
+        // FeelsSOL is always token_0 (enforced in initialize_market)
+        require!(
+            deployer_feelssol.mint == ctx.accounts.market.token_0,
+            FeelsError::InvalidMint
+        );
+        require!(
+            deployer_token_out.mint == ctx.accounts.market.token_1,
+            FeelsError::InvalidMint
+        );
 
         require!(
             deployer_feelssol.owner == ctx.accounts.deployer.key(),
@@ -327,12 +313,8 @@ pub fn deploy_initial_liquidity<'info>(
             FeelsError::InsufficientBalance
         );
 
-        // Transfer FeelsSOL to appropriate vault
-        let feelssol_vault = if feelssol_is_token_0 {
-            &ctx.accounts.vault_0
-        } else {
-            &ctx.accounts.vault_1
-        };
+        // Transfer FeelsSOL to vault_0 (FeelsSOL is always token_0)
+        let feelssol_vault = &ctx.accounts.vault_0;
 
         transfer_from_user_to_vault_unchecked(
             &ctx.accounts.deployer_feelssol.to_account_info(),
@@ -356,15 +338,11 @@ pub fn deploy_initial_liquidity<'info>(
             ctx.accounts.market.sqrt_price,
             token_0_decimals,
             token_1_decimals,
-            feelssol_is_token_0,
+            true, // FeelsSOL is always token_0
         )?;
 
-        // Transfer output tokens from vault to deployer
-        let token_out_vault = if feelssol_is_token_0 {
-            &ctx.accounts.vault_1
-        } else {
-            &ctx.accounts.vault_0
-        };
+        // Transfer output tokens from vault_1 to deployer (project token is always token_1)
+        let token_out_vault = &ctx.accounts.vault_1;
 
         let market_key = ctx.accounts.market.key();
         let market_authority_seeds = &[
@@ -394,20 +372,12 @@ pub fn deploy_initial_liquidity<'info>(
         // Update market state to reflect the initial buy
         // This ensures the market remains in a consistent state
 
-        // 1. Update cumulative volume
-        if feelssol_is_token_0 {
-            ctx.accounts.market.total_volume_token_0 = ctx
-                .accounts
-                .market
-                .total_volume_token_0
-                .saturating_add(params.initial_buy_feelssol_amount);
-        } else {
-            ctx.accounts.market.total_volume_token_1 = ctx
-                .accounts
-                .market
-                .total_volume_token_1
-                .saturating_add(params.initial_buy_feelssol_amount);
-        }
+        // 1. Update cumulative volume (FeelsSOL is always token_0)
+        ctx.accounts.market.total_volume_token_0 = ctx
+            .accounts
+            .market
+            .total_volume_token_0
+            .saturating_add(params.initial_buy_feelssol_amount);
 
         // 2. Calculate and apply base fee to buffer
         let base_fee_bps = ctx.accounts.market.base_fee_bps;
@@ -418,20 +388,12 @@ pub fn deploy_initial_liquidity<'info>(
         };
 
         if base_fee_amount > 0 {
-            // Add fees to buffer accounting
-            if feelssol_is_token_0 {
-                ctx.accounts.buffer.fees_token_0 = ctx
-                    .accounts
-                    .buffer
-                    .fees_token_0
-                    .saturating_add(base_fee_amount as u128);
-            } else {
-                ctx.accounts.buffer.fees_token_1 = ctx
-                    .accounts
-                    .buffer
-                    .fees_token_1
-                    .saturating_add(base_fee_amount as u128);
-            }
+            // Add fees to buffer accounting (FeelsSOL is always token_0)
+            ctx.accounts.buffer.fees_token_0 = ctx
+                .accounts
+                .buffer
+                .fees_token_0
+                .saturating_add(base_fee_amount as u128);
 
             msg!(
                 "  Base fee collected: {} ({}bps)",
@@ -451,20 +413,12 @@ pub fn deploy_initial_liquidity<'info>(
         // price impact is minimal, but we should still account for it
         let price_impact_bps = 1; // Minimal impact for initial buy
 
-        // 5. Emit swap event for the initial buy
+        // 5. Emit swap event for the initial buy (FeelsSOL is always token_0)
         emit!(crate::events::SwapExecuted {
             market: ctx.accounts.market.key(),
             user: ctx.accounts.deployer.key(),
-            token_in: if feelssol_is_token_0 {
-                ctx.accounts.market.token_0
-            } else {
-                ctx.accounts.market.token_1
-            },
-            token_out: if feelssol_is_token_0 {
-                ctx.accounts.market.token_1
-            } else {
-                ctx.accounts.market.token_0
-            },
+            token_in: ctx.accounts.market.token_0,  // FeelsSOL (token_0)
+            token_out: ctx.accounts.market.token_1, // Project token (token_1)
             amount_in: params.initial_buy_feelssol_amount,
             amount_out: output_amount,
             fee_paid: base_fee_amount,
@@ -569,9 +523,7 @@ fn deploy_protocol_stair_pattern<'info>(
         escrow_feelssol_balance
     );
 
-    // Determine if FeelsSOL is token_0 or token_1
-    let feelssol_is_token_0 = market.token_0 == escrow.feelssol_mint;
-
+    // FeelsSOL is always token_0 (enforced in initialize_market)
     // Transfer tokens from escrow vaults to market vaults
     let escrow_authority_seeds = &[
         ESCROW_AUTHORITY_SEED,
@@ -579,12 +531,10 @@ fn deploy_protocol_stair_pattern<'info>(
         &[escrow.escrow_authority_bump],
     ];
 
-    // Transfer non-FeelsSOL token
-    let (from_vault, to_vault, transfer_amount) = if feelssol_is_token_0 {
-        (escrow_token_vault, vault_1, deploy_token_amount)
-    } else {
-        (escrow_token_vault, vault_0, deploy_token_amount)
-    };
+    // Transfer non-FeelsSOL token (project token) to vault_1
+    let from_vault = escrow_token_vault;
+    let to_vault = vault_1;
+    let transfer_amount = deploy_token_amount;
 
     anchor_spl::token::transfer(
         CpiContext::new_with_signer(
@@ -599,12 +549,10 @@ fn deploy_protocol_stair_pattern<'info>(
         transfer_amount,
     )?;
 
-    // Transfer FeelsSOL
-    let (from_vault, to_vault, transfer_amount) = if feelssol_is_token_0 {
-        (escrow_feelssol_vault, vault_0, deploy_feelssol_amount)
-    } else {
-        (escrow_feelssol_vault, vault_1, deploy_feelssol_amount)
-    };
+    // Transfer FeelsSOL to vault_0 (FeelsSOL is always token_0)
+    let from_vault = escrow_feelssol_vault;
+    let to_vault = vault_0;
+    let transfer_amount = deploy_feelssol_amount;
 
     anchor_spl::token::transfer(
         CpiContext::new_with_signer(
@@ -669,11 +617,8 @@ fn deploy_protocol_stair_pattern<'info>(
                 sqrt_price_lower
             };
 
-        let (amount_0, amount_1) = if feelssol_is_token_0 {
-            (step_feelssol_amount, step_token_amount)
-        } else {
-            (step_token_amount, step_feelssol_amount)
-        };
+        // FeelsSOL is always token_0, project token is always token_1
+        let (amount_0, amount_1) = (step_feelssol_amount, step_token_amount);
 
         let liquidity = liquidity_from_amounts(
             sqrt_price_current,

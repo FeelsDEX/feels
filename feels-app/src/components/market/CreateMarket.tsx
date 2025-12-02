@@ -596,7 +596,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
           Create New Market
         </CardTitle>
         <CardDescription id="create-market-description">
-          Deploy a new token and create a FeelsSOL trading market
+          Deploy a new token and create a SOL trading market
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -821,7 +821,7 @@ export function CreateMarket({ connection, onMarketCreated }: CreateMarketProps)
           <div id="market-params-section" className="space-y-2">
             <h3 id="market-params-heading" className="text-lg font-semibold">Market Parameters</h3>
             <div id="initial-buy-field">
-              <Label htmlFor="initialBuy">Initial Purchase Amount (FeelsSOL)</Label>
+              <Label htmlFor="initialBuy">Initial Purchase Amount (SOL)</Label>
               <Input
                 id="initial-buy-input"
                 type="text"

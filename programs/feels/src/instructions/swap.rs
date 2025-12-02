@@ -221,12 +221,8 @@ fn validate_swap_inputs(
     let token_out = ctx.accounts.token_out.key();
 
     // Validate routing constraints (hub-and-spoke model)
-    // In hub-and-spoke model, one of the market tokens must be FeelsSOL
-    let feelssol_mint = if market.token_0 < market.token_1 {
-        market.token_0 // FeelsSOL is always token_0 in hub-and-spoke
-    } else {
-        market.token_1 // Should never happen, but handle it
-    };
+    // In hub-and-spoke model, FeelsSOL is ALWAYS token_0 (enforced in initialize_market)
+    let feelssol_mint = market.token_0;
     validate_swap_route(token_in, token_out, feelssol_mint)?;
 
     // Determine swap direction

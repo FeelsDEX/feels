@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Connection } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { ChevronDown, AlertTriangle } from 'lucide-react';
@@ -35,7 +36,16 @@ export function SwapInterface({
   initialToToken,
 }: SwapInterfaceProps) {
   const { publicKey, connected } = useWallet();
-  const [activeTab, setActiveTab] = useState<TabType>('swap');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  // Parse initial tab from URL query parameter
+  const initialTab = searchParams.get('tab') as TabType | null;
+  const validTabs: TabType[] = ['swap', 'limit', 'borrow', 'supply'];
+  const defaultTab: TabType = validTabs.includes(initialTab as TabType) ? (initialTab as TabType) : 'swap';
+  
+  const [activeTab, setActiveTab] = useState<TabType>(defaultTab);
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [fromToken, setFromToken] = useState<TokenInfo | null>(null);
@@ -92,6 +102,21 @@ export function SwapInterface({
     return undefined;
   }, [activeTab, limitPrice]);
 
+  // Update URL when tab changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    
+    // Add or remove tab parameter
+    if (activeTab !== 'swap') {
+      params.set('tab', activeTab);
+    } else {
+      params.delete('tab');
+    }
+    
+    // Update URL without triggering navigation
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [activeTab, pathname, router, searchParams]);
 
   // Calculate dollar values (mock)
   const fromDollarValue = useMemo(() => {
@@ -446,8 +471,8 @@ export function SwapInterface({
             <div className="flex items-start gap-2 p-3 mt-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
               <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
               <div className="text-xs text-orange-500">
-                <p className="font-medium mb-1">Liquidation Risk</p>
-                <p className="opacity-90">Your position may be liquidated if the collateral value drops below the liquidation threshold.</p>
+                <p className="font-medium mb-1">Redenomination Risk</p>
+                <p className="opacity-90">While Feels has no liquidations, positions may be redenominated during extreme market stress in order to ensure pool solvency. Redenomination occurs in proportion to net pool duration.</p>
               </div>
             </div>
           </div>

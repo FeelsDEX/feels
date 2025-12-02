@@ -37,8 +37,8 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
     // Generate 20 mock trades
     for (let i = 0; i < 20; i++) {
       const isBuy = Math.random() > 0.5;
-      const feelsAmount = Math.random() * 10 + 0.1; // 0.1 to 10 FeelsSOL
-      const usdAmount = feelsAmount * 50; // $50 per FeelsSOL
+      const feelsAmount = Math.random() * 10 + 0.1; // 0.1 to 10 SOL
+      const usdAmount = feelsAmount * 50; // $50 per SOL
       
       // Generate a mock Solana address (base58 format)
       const accountPrefix = ['Gm1z', 'Ape9', 'Dgen', 'Wojk', 'Chad', 'Anon'][Math.floor(Math.random() * 6)];
@@ -107,7 +107,7 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
           <div>Time</div>
           <div>Direction</div>
           <div className="text-right">USD</div>
-          <div className="text-right">FeelsSOL</div>
+          <div className="text-right">SOL</div>
           <div className="text-right">Mcap</div>
           <div className="text-right">Account</div>
         </div>
@@ -140,7 +140,7 @@ export function RecentTradesList({ tokenSymbol }: RecentTradesListProps) {
                 {formatUSD(trade.usdAmount)}
               </div>
               
-              {/* FeelsSOL Amount */}
+              {/* SOL Amount */}
               <div className="text-sm text-right">
                 {trade.feelsAmount.toFixed(2)}
               </div>

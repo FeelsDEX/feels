@@ -44,6 +44,14 @@ export const TokenSearchRow = React.memo(function TokenSearchRow({ token, showRe
                 <div className="font-medium">{token.name}</div>
                 <div className="text-sm text-muted-foreground">{token.symbol}</div>
               </div>
+              {token.isTrending && (
+                <Badge 
+                  variant="default" 
+                  className="text-xs self-start bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 hover:text-primary"
+                >
+                  Trending
+                </Badge>
+              )}
               {token.isGraduated && (
                 <Badge variant="secondary" className="text-xs self-start">
                   Graduated
@@ -116,6 +124,14 @@ export const TokenSearchRow = React.memo(function TokenSearchRow({ token, showRe
                 <div className="font-medium truncate">{token.name}</div>
                 <div className="text-sm text-muted-foreground">{token.symbol}</div>
               </div>
+              {token.isTrending && (
+                <Badge 
+                  variant="default" 
+                  className="text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 hover:text-primary"
+                >
+                  Trending
+                </Badge>
+              )}
               {token.isGraduated && (
                 <Badge variant="secondary" className="text-xs">
                   Graduated

@@ -1,0 +1,72 @@
+# Feels Indexer Configuration for Devnet
+# Real data consumption from Solana devnet
+
+[geyser]
+endpoint = "https://api.devnet.solana.com"  # Will be overridden by DEVNET_ENDPOINT if set
+program_id = "3WFbQgBbzoLw4yiAPLLfysDNvivobh86pHMtWH2SGnmF"  # Feels Protocol program ID (devnet)
+commitment = "confirmed"
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5
+
+# Network configuration - loads endpoints from environment variables
+use_triton = true  # Set to true to use Triton One endpoints
+network = "devnet"  # This will load DEVNET_ENDPOINT and DEVNET_TOKEN from .env
+token = ""  # Will be loaded from DEVNET_TOKEN environment variable
+
+[storage]
+tantivy_path = "../localnet/indexer-storage/tantivy"
+
+[storage.rocksdb]
+path = "../localnet/indexer-storage/rocksdb"
+enable_compression = true
+max_open_files = 1000
+write_buffer_size_mb = 256
+max_write_buffer_number = 4
+block_cache_size_mb = 512
+
+[database]
+postgres_url = "postgresql://localhost:5432/feels_devnet"
+max_connections = 10
+min_connections = 2
+acquire_timeout_secs = 30
+idle_timeout_secs = 600
+max_lifetime_secs = 1800
+
+[redis]
+url = "redis://localhost:6379"
+max_connections = 10
+connection_timeout_secs = 5
+response_timeout_secs = 10
+
+[search]
+index_path = "../localnet/indexer-storage/tantivy"
+writer_memory_mb = 100
+commit_interval_secs = 30
+max_concurrent_searches = 4
+
+[api]
+bind_address = "127.0.0.1:8080"
+enable_cors = true
+cors_origins = ["http://localhost:3000"]
+request_timeout_secs = 30
+max_request_size_mb = 10
+
+[monitoring]
+metrics_port = 9090
+log_level = "info"
+structured_logging = true
+enable_tracing = true
+enable_jaeger = false
+jaeger_endpoint = "http://localhost:14268/api/traces"
+
+[indexer]
+batch_size = 100
+flush_interval_secs = 10
+max_lag_slots = 100
+max_pending_transactions = 1000
+enable_backfill = true
+backfill_batch_size = 50
+enable_account_indexing = true
+enable_transaction_indexing = true
+enable_position_tracking = true
+enable_swap_tracking = true

@@ -1,0 +1,168 @@
+---
+title: "Pool Oracle System"
+description: "Time-weighted price oracle implementation for Feels Protocol"
+category: "Specifications"
+order: 204
+draft: false
+searchable: true
+---
+
+# Market Oracle (GTWAP) Specification
+
+This document specifies the design and implementation of the on-chain Geometric Time-Weighted Average Price (GTWAP) oracle used by each Feels market.
+
+**Implementation Note**: This oracle is implemented via the `OracleState` account structure, linked 1:1 with each `Market` account. References to "pool oracle" or `pool::Oracle` in this document refer to the per-market GTWAP oracle (distinct from the protocol-level reserve oracle).
+
+## 1. Overview
+
+Each Feels pool requires a robust, on-chain, and manipulation-resistant price feed for its internal operations, such as for the dynamic fee model and JIT liquidity system. The protocol cannot rely on external oracles, especially for newly launched tokens that have no other trading venues.
+
+To solve this, each pool implements its own oracle that calculates a Geometric Time-Weighted Average Price (GTWAP). This oracle is updated with every swap, providing a continuously refreshed, manipulation-resistant price source derived directly from trading activity within the pool.
+
+## 2. Core Concepts
+
+### 2.1. Time-Weighted Average Price (TWAP)
+
+A TWAP is an average price calculated over a period of time. Unlike a simple moving average, a TWAP is weighted by the amount of time each price point was active. This makes it significantly more resistant to short-term price manipulation (e.g., via flash loans) because an attacker must hold the price at an artificial level for a sustained period to have a meaningful impact on the average, which is economically costly.
+
+### 2.2. Geometric Mean and Ticks
+
+The Feels oracle calculates a geometric mean of the price, not an arithmetic one. This is achieved by averaging the tick index over time.
+
+- **Ticks are Logarithmic**: As described in the CLMM specification, the price at a given tick is `price = 1.0001^tick_index`. This is a logarithmic relationship.
+- **Averaging Logs**: The average of logarithms is the logarithm of the geometric mean: `(log(a) + log(b)) / 2 = log(sqrt(a*b))`.
+
+By calculating the time-weighted average of the tick index, the oracle is implicitly and efficiently calculating the geometric mean of the price, which is better suited for representing proportional price changes in financial markets.
+
+### 2.3. Cumulative Tick Value
+
+To calculate the average tick efficiently, the oracle does not store a long history of individual price points. Instead, it stores a cumulative tick value at discrete time intervals.
+
+- `tick_cumulative = Σ (tick_i * time_delta_i)`
+
+This value represents the integral of the tick index over time. By taking two `Observation`s, the average tick over that period can be calculated with a single subtraction and division:
+
+- `avg_tick = (tick_cumulative_new - tick_cumulative_old) / (timestamp_new - timestamp_old)`
+
+## 3. Data Structures
+
+The oracle state is stored in a dedicated `OracleState` account, linked to a specific `Pool`.
+
+### 3.1. `OracleState` Account
+
+This account holds a ring buffer of observations.
+
+```rust
+// programs/feels/src/state/pool_oracle.rs
+
+#[account]
+pub struct OracleState {
+    pub pool_id: Pubkey,
+    pub observation_index: u16,
+    pub observation_cardinality: u16,
+    pub observations: [Observation; MAX_OBSERVATIONS],
+    // ... and other fields
+}
+```
+
+- **`observations`**: A fixed-size array (currently `MAX_OBSERVATIONS = 12`) that acts as a ring buffer.
+- **`observation_index`**: The index of the most recently written observation in the array.
+- **`observation_cardinality`**: The number of initialized observations in the buffer. This grows from 1 to `MAX_OBSERVATIONS` as the oracle records more data.
+
+### 3.2. `Observation` Struct
+
+Represents a single data point recorded by the oracle.
+
+```rust
+// programs/feels/src/state/oracle.rs
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct Observation {
+    pub block_timestamp: i64,
+    pub tick_cumulative: i128,
+    pub initialized: bool,
+}
+```
+
+## 4. How It Works
+
+### 4.1. Initialization
+
+- When a new pool is created via the `initialize_pool` instruction, a corresponding `OracleState` account is also created.
+- The `initialize` method is called, which populates the first slot (`index = 0`) of the `observations` array with the current block timestamp and a `tick_cumulative` of 0.
+- The `observation_cardinality` is set to 1.
+
+### 4.2. Updating Observations
+
+- The `update` method on the `OracleState` account is called at the end of every swap.
+- The method performs the following steps:
+  1. It retrieves the last observation from the ring buffer.
+  2. It only proceeds if the current block timestamp is greater than the last observation's timestamp (skip write when timestamp has not advanced to avoid redundant updates and CU spikes).
+  3. It calculates the time delta since the last observation.
+  4. It calculates the new `tick_cumulative` by adding `(last_tick * time_delta)` to the previous `tick_cumulative`.
+  5. It advances the `observation_index` to the next slot in the ring buffer.
+  6. It writes a new `Observation` with the current timestamp and the new cumulative value into this new slot.
+  7. If the ring buffer is not yet full, it may increment the `observation_cardinality`.
+
+### 4.3. Calculating the GTWAP (Lazy, On-Read Accumulation)
+
+- Any on-chain program can calculate the GTWAP over a desired period by calling `get_twap_tick(seconds_ago)`.
+- This function performs a lazy accumulation so inactive pools do not require cranks:
+  1. Determines `now` from the current clock and the target timestamp (`now - seconds_ago`).
+  2. Uses the most recent stored observation as the “new” point, but virtually extends it to `now` by adding `last_tick * (now - last_obs_ts)` to the cumulative value (no write required).
+  3. Searches the ring to find the observation closest to, but not after, the target timestamp.
+  4. Computes the average tick as `(tick_cumulative(now) - tick_cumulative_old) / (now - timestamp_old)`.
+
+This makes GTWAP liveness maintenance-free for inactive pools: time continues to accrue at the last known tick and is realized lazily on read.
+
+## 5. Security and Manipulation Resistance
+
+The GTWAP oracle design is inherently resistant to several forms of attack:
+
+- **Flash Loan Resistance**: An attacker cannot manipulate the TWAP with a single-transaction flash loan. To influence the average, they must hold the market at an artificial price for a duration, incurring significant capital costs and risk.
+- **Minimum Duration**: The `get_twap_tick` function enforces a `MIN_TWAP_DURATION` (currently 60 seconds). This prevents queries over extremely short and easily manipulated time windows, ensuring that any calculated TWAP is based on a meaningful period of trading activity.
+- **Timestamp Dependency**: While the oracle relies on block timestamps, which can have minor variance, the time-weighting mechanism averages out small fluctuations. Significant timestamp manipulation is difficult for validators to perform without being slashed.
+
+## 6. Parameters & Staleness
+
+- MIN_TWAP_DURATION: 60 seconds (minimum averaging window)
+- observation_cardinality: 12 (ring buffer size)
+- staleness_threshold_slots: 150 slots (max slots since last observation before degrade; tune via governance)
+
+Behavior on staleness:
+- If stale, GTWAP-dependent features (rebates, equilibrium bias) are disabled; the equilibrium anchor should fall back to `max(current_tick, pool_floor.get_safe_ask_tick())`. Fee impact still uses realized ticks moved.
+- Emit Degraded(GTWAP) via SafetyController.
+
+## 7. Integration within the System
+
+The GTWAP is a foundational pool component used by other systems within a pool (dynamic fees, JIT, floor).
+
+### 7.1. Relationship to Protocol Oracle
+
+The pool GTWAP oracle is separate from the protocol‑level reserve rate oracle. The protocol oracle provides a conservative FeelsSOL↔JitoSOL exchange rate used for global solvency checks and treasury accounting. Consumers should fetch GTWAP from `pool::Oracle` and the reserve rate from `protocol::Oracle` as needed; do not conflate the two.
+
+### 6.2. Consumers of GTWAP
+
+- **Dynamic Fee Model (Phase 2)**: When advanced fees are enabled, GTWAP anchors the equilibrium target. Trades moving the price away from equilibrium pay a surcharge, while trades moving toward it may receive a rebate. In MVP, fees are base + impact only and do not use GTWAP directly.
+- **JIT Liquidity**: The Just-In-Time liquidity provider uses the GTWAP as its primary anchor for placing quotes, ensuring its operations are centered around a stable, manipulation-resistant price point.
+
+## See Also
+
+**Prerequisites (read first)**:
+- [GLOSSARY.md](GLOSSARY.md) - Terms: GTWAP, tick, ring buffer, staleness
+- [203-pool-clmm.md](203-pool-clmm.md) - Understanding ticks and price representation
+
+**Oracle Consumers (systems using GTWAP)**:
+- [202-jit-liquidity.md](202-jit-liquidity.md) - JIT uses GTWAP as price anchor (§Anchor & Placement)
+- [201-dynamic-fees.md](201-dynamic-fees.md) - Phase 2 equilibrium calculation (deferred in MVP)
+- [205-floor-liquidity.md](205-floor-liquidity.md) - Floor calculations reference GTWAP
+
+**Safety and Monitoring**:
+- [210-safety-controller.md](210-safety-controller.md) - Oracle health monitoring and staleness handling
+- [208-after-swap-pipeline.md](208-after-swap-pipeline.md) - Oracle updates in post-swap sequence
+
+**Comparison**:
+- [200-feelssol-solvency.md](200-feelssol-solvency.md#oracle-architecture-layered) - protocol::Oracle (different from pool::Oracle)
+
+**Configuration**:
+- [209-params-and-governance.md](209-params-and-governance.md) - Oracle parameters (min duration, cardinality)

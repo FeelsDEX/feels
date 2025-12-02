@@ -9,6 +9,9 @@ skip-lint = false
 [programs.localnet]
 feels = "B3w6rjs2vDjr6eKUXUiERV44BXud3nRqshctMp5p4au4"
 
+[programs.devnet]
+feels = "3WFbQgBbzoLw4yiAPLLfysDNvivobh86pHMtWH2SGnmF"
+
 [registry]
 url = "https://anchor.projectserum.com"
 

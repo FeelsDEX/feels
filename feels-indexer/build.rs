@@ -4,7 +4,9 @@ use std::path::PathBuf;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    // Create a stub proto file that compiles without protoc
+    // Always generate geyser stub types for both real and mock modes
+    // These types are compatible with Yellowstone gRPC protobuf protocol
+    // We use manual types to avoid yellowstone-grpc-proto dependency conflicts
     let generated_content = r#"
 // This is a stub for geyser client functionality
 // In production, you would use actual Solana gRPC client
@@ -139,7 +141,7 @@ pub mod geyser_stub {
         T: tonic::client::GrpcService<tonic::body::BoxBody>,
         T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
         T::ResponseBody: tonic::codec::Decoder + Default + Send + 'static,
-        <T::ResponseBody as tonic::body::Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
+        <T::ResponseBody as http_body::Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     {
         pub fn new(inner: T) -> Self {
             let inner = tonic::client::Grpc::new(inner);

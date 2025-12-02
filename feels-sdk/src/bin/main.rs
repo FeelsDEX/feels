@@ -4,6 +4,7 @@
 // enabling both user operations and administrative setup tasks.
 
 mod commands;
+mod rpc_helper;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

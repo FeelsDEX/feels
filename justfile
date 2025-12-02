@@ -77,6 +77,48 @@ mod services 'justfiles/services.just'
 import 'justfiles/e2e.just'
 
 # ═══════════════════════════════════════════════════════════════════════════
+# PROCESS MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Force kill all Solana, indexer, and frontend processes
+kill-all:
+    #!/usr/bin/env bash
+    set +e
+    just show-progress "Killing all Solana and Feels processes"
+    
+    # Kill Solana validator
+    if pkill -9 -f solana-test-validator 2>/dev/null; then
+        echo "  ✓ Killed solana-test-validator"
+    else
+        echo "  - No solana-test-validator running"
+    fi
+    
+    # Kill indexer
+    if pkill -9 -f feels-indexer 2>/dev/null; then
+        echo "  ✓ Killed feels-indexer"
+    else
+        echo "  - No feels-indexer running"
+    fi
+    
+    # Kill Next.js frontend
+    if pkill -9 -f "next-server|next dev" 2>/dev/null; then
+        echo "  ✓ Killed Next.js frontend"
+    else
+        echo "  - No Next.js frontend running"
+    fi
+    
+    sleep 1
+    
+    # Verify all processes are dead
+    remaining=$(ps aux | grep -E "(solana-test-validator|feels-indexer|next dev)" | grep -v grep | wc -l)
+    if [[ $remaining -eq 0 ]]; then
+        just show-success "All processes killed successfully"
+    else
+        just show-warning "Some processes may still be running"
+        ps aux | grep -E "(solana-test-validator|feels-indexer|next dev)" | grep -v grep
+    fi
+
+# ═══════════════════════════════════════════════════════════════════════════
 # DEFAULT COMMAND - HELP
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -105,9 +147,16 @@ default:
     @echo "  just test filter <pattern>   - Run tests matching pattern"
     @echo "  just test advanced           - Show advanced testing capabilities"
     @echo ""
+    @echo "Indexer:"
+    @echo "  just indexer mock            - Run indexer with synthetic test data"
+    @echo "  just indexer devnet          - Run indexer with live devnet data"
+    @echo "  just indexer mainnet         - Run indexer with live mainnet data"
+    @echo "  just indexer build [mode]    - Build indexer (mock|real|both)"
+    @echo ""
     @echo "E2E Environment:"
     @echo "  just run                     - Start complete stack (validator + indexer + frontend)"
-    @echo "  just stop                    - Stop all services"
+    @echo "  just stop                    - Stop all services gracefully"
+    @echo "  just kill-all                - Force kill all processes (Solana, indexer, frontend)"
     @echo "  just status                  - Check service status"
     @echo "  just logs [service]          - View logs (validator|indexer|frontend|geyser)"
     @echo "  just verify                  - Verify protocol setup"
@@ -115,6 +164,14 @@ default:
     @echo "Modules (use 'just <module> <command>'):"
     @echo "  just frontend                - Next.js app (dev, build, test, clean)"
     @echo "  just services                - Services & Infrastructure (pg-start, indexer-build, etc.)"
+    @echo ""
+    @echo "Network Deployment (using .env credentials):"
+    @echo "  just deploy-devnet           - Deploy to Solana devnet with authenticated RPC"
+    @echo "  just deploy-mainnet          - Deploy to Solana mainnet (requires confirmation)"
+    @echo "  just query-devnet <id>       - Query devnet program using authenticated RPC"
+    @echo "  just query-mainnet <id>      - Query mainnet program using authenticated RPC"
+    @echo "  just query-rpc-curl <net> <id> - Query using curl (network: devnet|mainnet)"
+    @echo "  just test-rpc-auth <net>     - Test RPC authentication (network: devnet|mainnet)"
     @echo ""
     @echo "Utilities:"
     @echo "  just docs                    - Generate and open documentation"
@@ -125,6 +182,10 @@ default:
     @echo "  just localnet [subcommand]   - Local validator (start, stop, status, setup, airdrop, clean)"
     @echo "  just localnet clean          - Clean localnet data directories"
     @echo "  just --list                  - Show all available commands"
+    @echo ""
+    @echo "Documentation:"
+    @echo "  CLAUDE.md                    - Main AI agent guide"
+    @echo "  docs/DEPLOYMENT-SKILL.md     - Deployment and RPC querying guide"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # BUILD & DEPLOYMENT
@@ -712,6 +773,176 @@ workspace *args:
             echo "  just workspace [subcommand]"
             echo "  just workspace clean [target]"
             exit {{EXIT_GENERAL_ERROR}}
+            ;;
+    esac
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INDEXER MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Run indexer in different modes with clean architecture
+indexer *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    args_array=({{args}})
+    if [[ ${#args_array[@]} -eq 0 ]]; then
+        subcommand="help"
+    else
+        subcommand=${args_array[0]}
+        remaining_args="${args_array[@]:1}"
+    fi
+
+    case "$subcommand" in
+        mock)
+            # Mock mode - test data generation for local development
+            just show-progress "Starting indexer in MOCK mode (test data generation)"
+            cd feels-indexer
+            if [[ ! -f target/release/test-geyser ]]; then
+                just show-progress "Building indexer with mock-geyser feature"
+                just nix-cmd cargo build --release --features 'mock-geyser,runtime-sqlx' --bin test-geyser
+            fi
+            echo ""
+            echo "🧪 MOCK MODE: Generating synthetic test data"
+            echo "📍 Config: indexer-localnet.toml"
+            echo "🎯 Use: Local development and testing"
+            echo ""
+            ./target/release/test-geyser localnet
+            ;;
+        devnet)
+            # Real mode - devnet data consumption
+            just show-progress "Starting indexer in REAL mode (devnet data)"
+            cd feels-indexer
+            if [[ ! -f target/release/test-geyser ]] || ! ldd target/release/test-geyser 2>/dev/null | grep -q "real-geyser" 2>/dev/null; then
+                just show-progress "Building indexer with real-geyser feature"
+                just nix-cmd cargo build --release --features 'real-geyser,runtime-sqlx' --bin test-geyser
+            fi
+            echo ""
+            echo "🌐 REAL MODE: Consuming live devnet blockchain data"
+            echo "📍 Config: indexer-devnet.toml"  
+            echo "🎯 Network: Solana Devnet"
+            echo "🔗 Endpoint: Loaded from DEVNET_ENDPOINT (.env)"
+            echo ""
+            source ../.env 2>/dev/null || true
+            ./target/release/test-geyser devnet
+            ;;
+        mainnet)
+            # Real mode - mainnet data consumption
+            just show-progress "Starting indexer in REAL mode (mainnet data)"
+            cd feels-indexer
+            if [[ ! -f target/release/test-geyser ]] || ! ldd target/release/test-geyser 2>/dev/null | grep -q "real-geyser" 2>/dev/null; then
+                just show-progress "Building indexer with real-geyser feature"
+                just nix-cmd cargo build --release --features 'real-geyser,runtime-sqlx' --bin test-geyser
+            fi
+            echo ""
+            echo "🚀 REAL MODE: Consuming live mainnet blockchain data"
+            echo "📍 Config: indexer-mainnet.toml"
+            echo "🎯 Network: Solana Mainnet"
+            echo "🔗 Endpoint: Loaded from MAINNET_ENDPOINT (.env)"
+            echo "⚠️  WARNING: This consumes real mainnet data"
+            echo ""
+            read -p "Continue with mainnet indexer? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                source ../.env 2>/dev/null || true
+                ./target/release/test-geyser mainnet
+            else
+                echo "Mainnet indexer cancelled"
+            fi
+            ;;
+        build)
+            # Build indexer for specific mode
+            remaining_args_array=($remaining_args)
+            if [[ ${#remaining_args_array[@]} -eq 0 ]]; then
+                mode="mock"
+            else
+                mode=${remaining_args_array[0]}
+            fi
+            
+            case "$mode" in
+                mock)
+                    just show-progress "Building indexer for mock mode"
+                    cd feels-indexer
+                    just nix-cmd cargo build --release --features 'mock-geyser,runtime-sqlx' --bin test-geyser
+                    just show-success "Mock indexer built successfully"
+                    ;;
+                real)
+                    just show-progress "Building indexer for real mode"
+                    cd feels-indexer
+                    just nix-cmd cargo build --release --features 'real-geyser,runtime-sqlx' --bin test-geyser
+                    just show-success "Real indexer built successfully"
+                    ;;
+                both)
+                    just show-progress "Building indexer for both modes"
+                    cd feels-indexer
+                    just nix-cmd cargo build --release --features 'mock-geyser,runtime-sqlx' --bin test-geyser
+                    just nix-cmd cargo build --release --features 'real-geyser,runtime-sqlx' --bin test-geyser
+                    just show-success "Both indexer modes built successfully"
+                    ;;
+                *)
+                    echo "Error: Unknown build mode: $mode"
+                    echo "Available modes: mock, real, both"
+                    exit {{EXIT_GENERAL_ERROR}}
+                    ;;
+            esac
+            ;;
+        test)
+            # Run indexer tests
+            just show-progress "Running indexer tests"
+            cd feels-indexer
+            just nix-cmd cargo test --lib --bins
+            just show-success "Indexer tests completed"
+            ;;
+        clean)
+            # Clean indexer build artifacts
+            just show-progress "Cleaning indexer build artifacts"
+            cd feels-indexer
+            cargo clean
+            just show-success "Indexer artifacts cleaned"
+            ;;
+        help|*)
+            echo "Feels Protocol Indexer Commands"
+            echo "==============================="
+            echo ""
+            echo "Indexer Modes:"
+            echo "  just indexer mock     - Run in mock mode (synthetic test data)"
+            echo "  just indexer devnet   - Run in real mode with devnet data"
+            echo "  just indexer mainnet  - Run in real mode with mainnet data"
+            echo ""
+            echo "Build Commands:"
+            echo "  just indexer build [mode]  - Build indexer (modes: mock|real|both)"
+            echo "  just indexer test          - Run indexer tests"
+            echo "  just indexer clean         - Clean build artifacts"
+            echo ""
+            echo "Mode Details:"
+            echo "  MOCK MODE:"
+            echo "    • Generates synthetic test data"
+            echo "    • No network dependencies"
+            echo "    • Perfect for local development"
+            echo "    • Config: indexer-localnet.toml"
+            echo ""
+            echo "  REAL MODE (Devnet):"
+            echo "    • Consumes live Solana devnet data"
+            echo "    • Requires DEVNET_ENDPOINT in .env"
+            echo "    • Real blockchain account changes"
+            echo "    • Config: indexer-devnet.toml"
+            echo ""
+            echo "  REAL MODE (Mainnet):"
+            echo "    • Consumes live Solana mainnet data"
+            echo "    • Requires MAINNET_ENDPOINT in .env"
+            echo "    • Production blockchain data"
+            echo "    • Config: indexer-mainnet.toml"
+            echo ""
+            echo "Environment Variables (.env):"
+            echo "  DEVNET_ENDPOINT   - Devnet RPC endpoint"
+            echo "  DEVNET_TOKEN      - Devnet auth token (optional)"
+            echo "  MAINNET_ENDPOINT  - Mainnet RPC endpoint"
+            echo "  MAINNET_TOKEN     - Mainnet auth token (optional)"
+            echo ""
+            if [[ "$subcommand" != "help" ]]; then
+                echo "Error: Unknown indexer subcommand: $subcommand"
+                exit {{EXIT_GENERAL_ERROR}}
+            fi
             ;;
     esac
 

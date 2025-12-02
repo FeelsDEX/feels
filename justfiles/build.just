@@ -533,6 +533,7 @@ _compare-idl-sdk:
 # Clean build artifacts for specific target or all
 # Usage: just clean [target]
 # Targets: all (default), feels, indexer, frontend, nix
+# Note: 'all' removes everything including node_modules - run 'npm install' after
 clean target="all":
     #!/usr/bin/env bash
     just show-progress "Cleaning {{target}} artifacts"
@@ -542,8 +543,12 @@ clean target="all":
             just nix-cmd cargo clean || true
             rm -rf target/ .anchor/
             rm -rf .nix-build/ result result-*
-            cd {{PROJECT_ROOT}}/feels-indexer && just nix-cmd cargo clean || true
-            cd {{FEELS_APP_PATH}} && rm -rf .next out node_modules/.cache || true
+            rm -rf {{PROJECT_ROOT}}/feels-indexer/target/
+            rm -rf {{PROJECT_ROOT}}/vanity-miner-wasm/target/
+            rm -rf {{PROJECT_ROOT}}/localnet/data/
+            rm -rf {{PROJECT_ROOT}}/localnet/indexer-storage/
+            cd {{FEELS_APP_PATH}} && rm -rf .next out node_modules/.cache node_modules || true
+            just show-warning "Run 'npm install' in feels-app/ to reinstall Node dependencies"
             ;;
         feels)
             just nix-cmd cargo clean || true
@@ -551,6 +556,7 @@ clean target="all":
             ;;
         indexer)
             cd {{PROJECT_ROOT}}/feels-indexer && just nix-cmd cargo clean || true
+            rm -rf {{PROJECT_ROOT}}/feels-indexer/target/
             ;;
         frontend)
             cd {{FEELS_APP_PATH}} && rm -rf .next out node_modules/.cache || true
@@ -560,6 +566,7 @@ clean target="all":
             ;;
         *)
             just show-error "Unknown clean target: {{target}}"
+            just show-warning "Available targets: all, feels, indexer, frontend, nix"
             exit {{EXIT_GENERAL_ERROR}}
             ;;
     esac

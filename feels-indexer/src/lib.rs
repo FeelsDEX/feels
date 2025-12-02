@@ -2,28 +2,44 @@
 //! 
 //! Modern multi-tier indexer for Feels Protocol state with PostgreSQL,
 //! Redis caching, Tantivy search, and RocksDB for raw blockchain data.
+//!
+//! ## Architecture
+//!
+//! This codebase follows hexagonal architecture (ports & adapters):
+//!
+//! - **core**: Domain abstractions, error types, and port traits
+//! - **domain**: Business logic and domain models
+//! - **adapters**: Infrastructure implementations (storage, networking)
+//! - **infrastructure**: Cross-cutting concerns (config, telemetry)
+//! - **api**: REST API layer
+//!
+//! ## New Architecture (Active Development)
+pub mod adapters;
+pub mod core;
+pub mod domain;
+pub mod infrastructure;
 
-#![allow(dead_code)]
-
-pub mod api;
+// ## Active Modules
 pub mod config;
 pub mod database;
 pub mod geyser;
-pub mod models;
-pub mod processors;
-pub mod repositories;
-pub mod rpc_client;
-pub mod services;
-pub mod sdk_types;
-pub mod streaming_client;
 
-mod minimal_test;
+// Legacy models module - now re-exports from domain
+pub mod models {
+    //! Legacy models module (DEPRECATED - use crate::domain::models instead)
+    pub use crate::domain::models::*;
+}
 
-// Re-export commonly used types
+// API module for REST server
+pub mod api;
+
+// Re-export from new architecture
+pub use core::{IndexerError, IndexerResult};
+pub use adapters::storage::StorageAdapter;
+
+// Legacy re-exports (for backwards compatibility)
 pub use config::IndexerConfig;
 pub use database::{DatabaseManager, DatabaseHealth};
-pub use models::*;
-pub use sdk_types::feels_sdk;
 
 #[cfg(test)]
 mod tests {
@@ -46,11 +62,12 @@ mod tests {
         
         let db = RocksDBManager::new(config).await?;
         
-        // Test basic put/get
-        db.put_raw(ColumnFamilies::MARKETS, b"test", b"value")?;
-        let result = db.get::<Vec<u8>>(ColumnFamilies::MARKETS, b"test")?;
+        // Test basic put/get with typed data
+        let test_value = vec![1u8, 2, 3, 4, 5];
+        db.put(ColumnFamilies::MARKETS, b"test", &test_value)?;
+        let result: Option<Vec<u8>> = db.get(ColumnFamilies::MARKETS, b"test")?;
         
-        assert_eq!(result, Some(b"value".to_vec()));
+        assert_eq!(result, Some(test_value));
         
         Ok(())
     }

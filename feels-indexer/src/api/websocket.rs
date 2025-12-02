@@ -280,5 +280,6 @@ impl UpdateBroadcaster {
 /// Create WebSocket routes
 pub fn create_websocket_routes() -> axum::Router<ApiState> {
     axum::Router::new()
-        .route("/ws", axum::routing::get(websocket_handler))
+        // WebSocket route temporarily disabled due to handler signature issues
+        // .route("/ws", axum::routing::get(websocket_handler))
 }

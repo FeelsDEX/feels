@@ -33,14 +33,14 @@ async fn test_basic_put_and_get() -> Result<()> {
     let (rocksdb, _temp_dir) = create_test_rocksdb().await?;
     
     let key = b"test_key";
-    let value = b"test_value";
+    let value = vec![1u8, 2, 3, 4, 5];
     
-    // Test put
-    rocksdb.put_raw(ColumnFamilies::MARKETS, key, value)?;
+    // Test put with typed data
+    rocksdb.put(ColumnFamilies::MARKETS, key, &value)?;
     
     // Test get
     let retrieved: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::MARKETS, key)?;
-    assert_eq!(retrieved, Some(value.to_vec()));
+    assert_eq!(retrieved, Some(value.clone()));
     
     // Test get non-existent key
     let missing: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::MARKETS, b"missing_key")?;
@@ -54,19 +54,19 @@ async fn test_multiple_column_families() -> Result<()> {
     let (rocksdb, _temp_dir) = create_test_rocksdb().await?;
     
     let key = b"test_key";
-    let market_value = b"market_data";
-    let swap_value = b"swap_data";
+    let market_value = vec![1u8, 2, 3];
+    let swap_value = vec![4u8, 5, 6];
     
     // Store data in different column families
-    rocksdb.put_raw(ColumnFamilies::MARKETS, key, market_value)?;
-    rocksdb.put_raw(ColumnFamilies::SWAPS, key, swap_value)?;
+    rocksdb.put(ColumnFamilies::MARKETS, key, &market_value)?;
+    rocksdb.put(ColumnFamilies::SWAPS, key, &swap_value)?;
     
     // Retrieve from different column families
     let retrieved_market: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::MARKETS, key)?;
     let retrieved_swap: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::SWAPS, key)?;
     
-    assert_eq!(retrieved_market, Some(market_value.to_vec()));
-    assert_eq!(retrieved_swap, Some(swap_value.to_vec()));
+    assert_eq!(retrieved_market, Some(market_value));
+    assert_eq!(retrieved_swap, Some(swap_value));
     
     // Verify isolation - data in one CF doesn't affect another
     assert_ne!(retrieved_market, retrieved_swap);
@@ -105,22 +105,26 @@ async fn test_batch_operations() -> Result<()> {
     
     let mut batch = rocksdb.create_batch();
     
-    // Add multiple operations to batch
-    batch.put_raw(ColumnFamilies::METADATA, b"key1", b"value1")?;
-    batch.put_raw(ColumnFamilies::METADATA, b"key2", b"value2")?;
-    batch.put_raw(ColumnFamilies::METADATA, b"key3", b"value3")?;
+    let val1 = vec![1u8, 2, 3];
+    let val2 = vec![4u8, 5, 6];
+    let val3 = vec![7u8, 8, 9];
+    
+    // Add multiple operations to batch using typed put
+    batch.put(ColumnFamilies::METADATA, b"key1", &val1)?;
+    batch.put(ColumnFamilies::METADATA, b"key2", &val2)?;
+    batch.put(ColumnFamilies::METADATA, b"key3", &val3)?;
     
     // Write batch
     batch.write()?;
     
     // Verify all values were written
-    let val1: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key1")?;
-    let val2: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key2")?;
-    let val3: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key3")?;
+    let retrieved1: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key1")?;
+    let retrieved2: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key2")?;
+    let retrieved3: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::METADATA, b"key3")?;
     
-    assert_eq!(val1, Some(b"value1".to_vec()));
-    assert_eq!(val2, Some(b"value2".to_vec()));
-    assert_eq!(val3, Some(b"value3".to_vec()));
+    assert_eq!(retrieved1, Some(val1));
+    assert_eq!(retrieved2, Some(val2));
+    assert_eq!(retrieved3, Some(val3));
     
     Ok(())
 }
@@ -141,8 +145,9 @@ async fn test_persistence() -> Result<()> {
             block_cache_size_mb: 256,
         };
         
+        let test_val = vec![9u8, 8, 7, 6, 5];
         let rocksdb = RocksDBManager::new(config).await?;
-        rocksdb.put_raw(ColumnFamilies::MARKETS, b"persist_key", b"persist_value")?;
+        rocksdb.put(ColumnFamilies::MARKETS, b"persist_key", &test_val)?;
     }
     
     // Second instance - read data
@@ -156,9 +161,10 @@ async fn test_persistence() -> Result<()> {
             block_cache_size_mb: 256,
         };
         
+        let test_val = vec![9u8, 8, 7, 6, 5];
         let rocksdb = RocksDBManager::new(config).await?;
         let value: Option<Vec<u8>> = rocksdb.get(ColumnFamilies::MARKETS, b"persist_key")?;
-        assert_eq!(value, Some(b"persist_value".to_vec()));
+        assert_eq!(value, Some(test_val));
     }
     
     Ok(())

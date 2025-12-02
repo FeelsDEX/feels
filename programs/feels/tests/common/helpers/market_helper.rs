@@ -145,6 +145,7 @@ impl MarketHelper {
 
         Ok(TestMarketSetup {
             market_id,
+            market: market_id,
             oracle_id,
             vault_0,
             vault_1,
@@ -157,6 +158,7 @@ impl MarketHelper {
             custom_token_keypair: Keypair::new(), // Placeholder - this might need to be passed in
             token_0,
             token_1,
+            token_mint: *token_mint,
         })
     }
 
@@ -224,9 +226,11 @@ impl MarketHelper {
                 let (buffer_id, _) = sdk_compat::find_buffer_address(&market_id);
                 let (protocol_config, _) = sdk_compat::find_protocol_config_address();
                 let protocol_treasury = self.ctx.accounts.protocol_treasury.pubkey();
+                let token_mint_pubkey = token_mint.pubkey(); // Get pubkey before move
 
                 Ok(TestMarketSetup {
                     market_id,
+                    market: market_id,
                     oracle_id,
                     vault_0,
                     vault_1,
@@ -235,10 +239,11 @@ impl MarketHelper {
                     protocol_config,
                     protocol_treasury,
                     feelssol_mint: self.ctx.feelssol_mint,
-                    custom_token_mint: token_mint.pubkey(),
+                    custom_token_mint: token_mint_pubkey,
                     custom_token_keypair: token_mint,
                     token_0,
                     token_1,
+                    token_mint: token_mint_pubkey,
                 })
             }
             _ => {
@@ -299,9 +304,11 @@ impl MarketHelper {
                 let (buffer_id, _) = sdk_compat::find_buffer_address(&market_id);
                 let (protocol_config, _) = sdk_compat::find_protocol_config_address();
                 let protocol_treasury = self.ctx.accounts.protocol_treasury.pubkey();
+                let token_mint_pubkey = token_mint.pubkey(); // Get pubkey before move
 
                 Ok(TestMarketSetup {
                     market_id,
+                    market: market_id,
                     oracle_id,
                     vault_0,
                     vault_1,
@@ -310,10 +317,11 @@ impl MarketHelper {
                     protocol_config,
                     protocol_treasury,
                     feelssol_mint: self.ctx.feelssol_mint,
-                    custom_token_mint: token_mint.pubkey(),
+                    custom_token_mint: token_mint_pubkey,
                     custom_token_keypair: token_mint,
                     token_0,
                     token_1,
+                    token_mint: token_mint_pubkey,
                 })
             }
         }
@@ -447,6 +455,7 @@ impl MarketHelper {
 
         Ok(TestMarketSetup {
             market_id,
+            market: market_id,
             oracle_id,
             vault_0,
             vault_1,
@@ -459,6 +468,7 @@ impl MarketHelper {
             custom_token_keypair: Keypair::from_bytes(&token_mint.to_bytes()).unwrap(),
             token_0,
             token_1,
+            token_mint: token_mint.pubkey(),
         })
     }
 }

@@ -56,12 +56,9 @@ pub fn update_floor(ctx: Context<UpdateFloor>) -> Result<()> {
     let buffer = &ctx.accounts.buffer;
     let clock = &ctx.accounts.clock;
 
-    // Validate constraints (moved from struct to save stack space)
+    // Validate constraints (FeelsSOL is always token_0, project token is always token_1)
     require!(
-        (ctx.accounts.project_mint.key() == market.token_0
-            && market.token_1 == market.feelssol_mint)
-            || (ctx.accounts.project_mint.key() == market.token_1
-                && market.token_0 == market.feelssol_mint),
+        ctx.accounts.project_mint.key() == market.token_1 && market.token_0 == market.feelssol_mint,
         FeelsError::InvalidProjectMint
     );
     require!(
@@ -73,13 +70,9 @@ pub fn update_floor(ctx: Context<UpdateFloor>) -> Result<()> {
         FeelsError::InvalidVaultMint
     );
 
-    // Identify FeelsSOL as token_0 or token_1
-    let feelssol_is_token_0 = market.token_0 == market.feelssol_mint;
-    let (feels_vault, project_vault) = if feelssol_is_token_0 {
-        (&ctx.accounts.vault_0, &ctx.accounts.vault_1)
-    } else {
-        (&ctx.accounts.vault_1, &ctx.accounts.vault_0)
-    };
+    // FeelsSOL is always token_0 (enforced in initialize_market)
+    let feels_vault = &ctx.accounts.vault_0;
+    let project_vault = &ctx.accounts.vault_1;
 
     // Compute reserves and circulating supply
     let feels_reserve: u128 = buffer.tau_spot.saturating_add(feels_vault.amount as u128);

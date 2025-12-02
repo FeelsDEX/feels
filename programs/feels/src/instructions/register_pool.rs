@@ -47,12 +47,8 @@ pub fn register_pool(ctx: Context<RegisterPool>) -> Result<()> {
     let market = &ctx.accounts.market;
     let clock = &ctx.accounts.clock;
 
-    // Determine which token is the project token (non-FeelsSOL)
-    let project_mint = if market.token_0 == market.feelssol_mint {
-        market.token_1
-    } else {
-        market.token_0
-    };
+    // Project token is always token_1 (FeelsSOL is always token_0)
+    let project_mint = market.token_1;
 
     // Validate project mint matches
     require!(

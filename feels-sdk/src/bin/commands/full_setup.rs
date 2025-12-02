@@ -2,11 +2,16 @@
 
 use anyhow::{Context, Result};
 use clap::Args;
-use feels_sdk::{instructions::InitializeProtocolParams, FeelsClient};
+use feels_sdk::{
+    instructions::{InitializeHubParams, InitializeProtocolParams, ProtocolInstructionBuilder},
+};
 use solana_sdk::signature::Signer;
 use std::fs;
 
-use super::utils::{get_program_id, info, load_keypair, parse_pubkey, success, warn};
+use super::{
+    utils::{get_program_id, info, load_keypair, parse_pubkey, success, warn},
+    RpcHelper,
+};
 
 #[derive(Args)]
 pub struct FullSetupCmd {
@@ -49,33 +54,32 @@ pub async fn execute(
         None => wallet.pubkey(),
     };
 
-    // Create client
-    let client = if let Some(_pid_str) = program_id_str {
-        FeelsClient::with_program_id(rpc_url, program_id).await?
-    } else {
-        FeelsClient::new(rpc_url).await?
-    };
+    // Create instruction builder and RPC helper
+    let builder = ProtocolInstructionBuilder::new(program_id);
+    let rpc = RpcHelper::new(rpc_url);
 
     // Step 1: Initialize protocol
     info("\n[1/2] Initializing protocol...");
     let protocol_params = InitializeProtocolParams {
-        base_fee_bps: cmd.base_fee_bps,
-        max_fee_bps: 300,
-        fee_growth_rate: 100,
-        protocol_fee_share_bps: 20,
+        mint_fee: 1_000_000, // 1 FeelsSOL
         treasury,
-        oracle_authority: wallet.pubkey(),
+        default_protocol_fee_rate: Some(100), // 1%
+        default_creator_fee_rate: Some(50),   // 0.5%
+        max_protocol_fee_rate: Some(1000),    // 10%
+        dex_twap_updater: wallet.pubkey(),
+        depeg_threshold_bps: 100,
+        depeg_required_obs: 3,
+        clear_required_obs: 3,
+        dex_twap_window_secs: 300,
+        dex_twap_stale_age_secs: 600,
+        dex_whitelist: vec![],
     };
 
-    let protocol_ix = client
-        .protocol
-        .initialize_protocol_ix(wallet.pubkey(), protocol_params)?;
+    let protocol_ix = builder
+        .initialize_protocol(wallet.pubkey(), protocol_params)
+        .context("Failed to build protocol instruction")?;
 
-    match client
-        .base
-        .send_transaction(&[protocol_ix], &[&wallet])
-        .await
-    {
+    match rpc.build_and_send_transaction(vec![protocol_ix], &wallet, &[]) {
         Ok(sig) => success(&format!("Protocol initialized: {}", sig)),
         Err(e) => {
             if e.to_string().contains("already in use") {
@@ -88,11 +92,12 @@ pub async fn execute(
 
     // Step 2: Initialize hub
     info("\n[2/2] Initializing FeelsSOL hub...");
-    let hub_ix = client
-        .protocol
-        .initialize_hub_ix(wallet.pubkey(), jitosol_mint)?;
+    let hub_params = InitializeHubParams { jitosol_mint };
+    let hub_ix = builder
+        .initialize_hub(wallet.pubkey(), hub_params)
+        .context("Failed to build hub instruction")?;
 
-    match client.base.send_transaction(&[hub_ix], &[&wallet]).await {
+    match rpc.build_and_send_transaction(vec![hub_ix], &wallet, &[]) {
         Ok(sig) => success(&format!("Hub initialized: {}", sig)),
         Err(e) => {
             if e.to_string().contains("already in use") {

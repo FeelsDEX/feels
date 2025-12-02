@@ -1,0 +1,72 @@
+# Feels Indexer Configuration for Localnet
+# Mock data generation for local development
+
+[geyser]
+endpoint = "http://localhost:8899"  # Local validator
+program_id = "J13h8cLst2B5H6RbWi9CVmeaDnAqio38uyJiUmAd1RPF"  # Feels Protocol program ID
+commitment = "confirmed"
+max_reconnect_attempts = 3
+reconnect_delay_secs = 2
+
+# Network configuration - uses mock client for local development
+use_triton = false
+network = "localnet"  # This will use mock client with test data generation
+token = ""
+
+[storage]
+tantivy_path = "../localnet/indexer-storage/tantivy"
+
+[storage.rocksdb]
+path = "../localnet/indexer-storage/rocksdb"
+enable_compression = false
+max_open_files = 500
+write_buffer_size_mb = 128
+max_write_buffer_number = 2
+block_cache_size_mb = 256
+
+[database]
+postgres_url = "postgresql://localhost:5432/feels_localnet"
+max_connections = 5
+min_connections = 1
+acquire_timeout_secs = 10
+idle_timeout_secs = 300
+max_lifetime_secs = 900
+
+[redis]
+url = "redis://localhost:6379"
+max_connections = 5
+connection_timeout_secs = 5
+response_timeout_secs = 10
+
+[search]
+index_path = "../localnet/indexer-storage/tantivy"
+writer_memory_mb = 50
+commit_interval_secs = 60
+max_concurrent_searches = 2
+
+[api]
+bind_address = "127.0.0.1:8080"
+enable_cors = true
+cors_origins = ["http://localhost:3000"]
+request_timeout_secs = 30
+max_request_size_mb = 10
+
+[monitoring]
+metrics_port = 9091
+log_level = "debug"
+structured_logging = true
+enable_tracing = true
+enable_jaeger = false
+jaeger_endpoint = "http://localhost:14268/api/traces"
+
+[indexer]
+batch_size = 50
+flush_interval_secs = 15
+max_lag_slots = 200
+max_pending_transactions = 500
+enable_backfill = false
+backfill_batch_size = 25
+enable_account_indexing = true
+enable_transaction_indexing = true
+enable_position_tracking = true
+enable_swap_tracking = true

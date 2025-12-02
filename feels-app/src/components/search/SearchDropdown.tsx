@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { Portal } from '@/components/common/Portal';
 import { TokenSearchResult } from '@/utils/token-search';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import Image from 'next/image';
@@ -252,7 +252,11 @@ export function SearchDropdown({ results, isLoading, searchQuery, onClose, onNav
     </>
   );
   
-  return mounted && typeof window !== 'undefined' 
-    ? createPortal(dropdownContent, document.body)
-    : null;
+  if (!mounted) return null;
+  
+  return (
+    <Portal>
+      {dropdownContent}
+    </Portal>
+  );
 }

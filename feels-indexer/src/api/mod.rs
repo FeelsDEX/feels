@@ -1,16 +1,17 @@
 //! REST API for querying indexed Feels Protocol data
 
 mod handlers;
-mod routes;
 mod responses;
-mod swap_simulation;
-mod token_balance;
-mod transaction_builder;
-mod websocket;
-mod jupiter_integration;
+pub mod routes;
+// Temporarily disabled - need dependencies
+// mod swap_simulation;
+// mod token_balance;
+// mod transaction_builder;
+// mod websocket;
+// mod jupiter_integration;
 
-pub use routes::*;
-pub use websocket::UpdateBroadcaster;
+pub use routes::{create_market_routes, create_swap_routes, create_position_routes, create_protocol_routes};
+// pub use websocket::UpdateBroadcaster;
 
 use crate::config::ApiConfig;
 use crate::database::DatabaseManager;
@@ -75,9 +76,10 @@ async fn create_app(db_manager: Arc<DatabaseManager>) -> Result<Router> {
         .merge(create_swap_routes())
         .merge(create_position_routes())
         .merge(create_protocol_routes())
-        .merge(create_token_routes())
-        .merge(websocket::create_websocket_routes())
-        .merge(jupiter_integration::create_jupiter_routes())
+        // Temporarily disabled
+        // .merge(create_token_routes())
+        // .merge(websocket::create_websocket_routes())
+        // .merge(jupiter_integration::create_jupiter_routes())
         .route("/health", get(health_handler))
         .with_state(api_state)
         .layer(

@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { 
   SelectedFacets, 
   convertToSearchResult,
-  searchFacets
+  searchFacets,
+  TRENDING_TOKEN_ADDRESSES
 } from '@/utils/token-search';
 import { FEELS_TOKENS } from '@/constants/mock-tokens';
 import feelsGuyImage from '@/assets/images/feels_guy.png';
@@ -73,6 +74,7 @@ export function useTokenSearch(
             isVerified: true,
             hasLiquidity: parseFloat(market.liquidity) > 0,
             isGraduated: market.phase === 'SteadyState',
+            isTrending: TRENDING_TOKEN_ADDRESSES.includes(market.token_1),
             description: `Token ${index + 1}`, // Added missing property
             decimals: 9 // Added missing property
           };
@@ -176,9 +178,20 @@ export function useTokenSearch(
       return true;
     });
     
+    // Determine if we're in default state (no filters, no search, relevance sort)
+    const hasActiveFilters = Object.values(selectedFacets).some(arr => arr.length > 0);
+    const isDefaultState = !searchQuery.trim() && !hasActiveFilters && sortBy === 'relevance';
+    
     // Apply sorting
     if (sortBy !== 'relevance' || !searchQuery) {
       results.sort((a, b) => {
+        // In default state, prioritize trending tokens
+        if (isDefaultState) {
+          if (a.isTrending && !b.isTrending) return -1;
+          if (!a.isTrending && b.isTrending) return 1;
+        }
+        
+        // Then apply normal sorting
         switch (sortBy) {
           case 'marketCap':
             return b.marketCap - a.marketCap;
@@ -189,7 +202,8 @@ export function useTokenSearch(
           case 'age':
             return b.launchDate.getTime() - a.launchDate.getTime();
           default:
-            return 0;
+            // For relevance sort in default state, sort by market cap after trending
+            return b.marketCap - a.marketCap;
         }
       });
     }

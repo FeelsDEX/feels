@@ -237,7 +237,17 @@ impl PositionHelper {
             .await?;
 
         Ok(PositionInfo {
+            address: position_pda,
             pubkey: position_pda,
+            market: *market,
+            owner: owner.pubkey(),
+            lower_tick,
+            upper_tick,
+            liquidity: 0, // Placeholder - would need to fetch from account
+            fee_growth_inside_0: 0,
+            fee_growth_inside_1: 0,
+            tokens_owed_0: 0,
+            tokens_owed_1: 0,
             mint: position_mint.pubkey(),
             token_account: position_token_account,
         })
@@ -409,6 +419,8 @@ impl PositionHelper {
         let final_balance_1 = self.ctx.get_token_balance(&owner_token_1).await?;
 
         Ok(CollectFeesResult {
+            amount_0: final_balance_0 - initial_balance_0,
+            amount_1: final_balance_1 - initial_balance_1,
             fee_a_collected: final_balance_0 - initial_balance_0,
             fee_b_collected: final_balance_1 - initial_balance_1,
         })

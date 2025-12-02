@@ -178,3 +178,10 @@ feels-deployed.so
 # AI documentation
 CLAUDE.md
 AGENTS.md
+
+# Code search
+.ck/
+.ckignore
+
+# TODO
+TODO.md

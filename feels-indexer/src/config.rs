@@ -28,6 +28,10 @@ pub struct GeyserConfig {
     pub max_reconnect_attempts: u32,
     #[validate(range(min = 1, max = 300))]
     pub reconnect_delay_secs: u64,
+    // Triton One configuration
+    pub use_triton: bool,
+    pub network: String, // localnet, devnet, mainnet
+    pub token: String,   // Auth token (loaded from env vars)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -130,6 +134,9 @@ impl Default for GeyserConfig {
             commitment: "confirmed".to_string(),
             max_reconnect_attempts: 10,
             reconnect_delay_secs: 5,
+            use_triton: false,
+            network: "localnet".to_string(),
+            token: String::new(),
         }
     }
 }
@@ -229,12 +236,51 @@ impl IndexerConfig {
     /// Load configuration from file
     pub fn from_file(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let config: Self = toml::from_str(&content)?;
+        let mut config: Self = toml::from_str(&content)?;
+        
+        // Load environment variables for Triton One configuration
+        config.load_env_vars()?;
         
         // Validate configuration
         config.validate()?;
         
         Ok(config)
+    }
+
+    /// Load environment variables for network configuration
+    pub fn load_env_vars(&mut self) -> Result<()> {
+        match self.geyser.network.as_str() {
+            "devnet" => {
+                // Load devnet endpoint and token from environment
+                if let Ok(endpoint) = std::env::var("DEVNET_ENDPOINT") {
+                    self.geyser.endpoint = endpoint;
+                    tracing::info!("Using devnet endpoint from environment");
+                }
+                if let Ok(token) = std::env::var("DEVNET_TOKEN") {
+                    self.geyser.token = token;
+                    tracing::info!("Using devnet token from environment");
+                }
+            }
+            "mainnet" => {
+                // Load mainnet endpoint and token from environment
+                if let Ok(endpoint) = std::env::var("MAINNET_ENDPOINT") {
+                    self.geyser.endpoint = endpoint;
+                    tracing::info!("Using mainnet endpoint from environment");
+                }
+                if let Ok(token) = std::env::var("MAINNET_TOKEN") {
+                    self.geyser.token = token;
+                    tracing::info!("Using mainnet token from environment");
+                }
+            }
+            "localnet" => {
+                // Keep default local endpoint for development
+                tracing::info!("Using localnet configuration");
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Invalid network: {}. Must be 'localnet', 'devnet', or 'mainnet'", self.geyser.network));
+            }
+        }
+        Ok(())
     }
 
     /// Ensure required directories exist

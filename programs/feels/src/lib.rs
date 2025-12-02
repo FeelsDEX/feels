@@ -21,7 +21,7 @@ use instructions::*;
 use logic::SwapParams;
 use state::PoolPhase;
 
-declare_id!("B3w6rjs2vDjr6eKUXUiERV44BXud3nRqshctMp5p4au4");
+declare_id!("3WFbQgBbzoLw4yiAPLLfysDNvivobh86pHMtWH2SGnmF");
 
 // Accounts structs are defined in instruction modules
 // and re-exported through instructions::*

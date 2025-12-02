@@ -17,10 +17,14 @@ Implementation includes:
 
 Architecture constraints include maximum 2-hop routing, segmented trade execution, and zero-copy account management for efficient state updates. The system uses Token-2022 standards and implements comprehensive overflow protection throughout the codebase.
 
+## For AI Agents
+
+**Start with [CLAUDE.md](CLAUDE.md)** - Primary entry point with project orientation, code-to-doc mapping, and navigation to detailed specifications.
+
 ## Quick Start
 
 ### Entry Flow
-1. Convert JitoSOL to FeelsSOL using `enter_feelssol`
+1. Deposit JitoSOL to protocol vaults using `enter_feelssol` to mint FeelsSOL
 2. Use FeelsSOL to trade any token in the protocol
 3. Provide liquidity to any FeelsSOL pair
 
@@ -35,7 +39,7 @@ USDC → FeelsSOL → SOL
 
 ### Exit Flow
 1. Exit positions to FeelsSOL
-2. Convert FeelsSOL back to JitoSOL using `exit_feelssol`
+2. Redeem FeelsSOL for JitoSOL using `exit_feelssol` from protocol vaults
 
 ## Building
 
@@ -50,7 +54,7 @@ just build
 anchor build
 ```
 
-**Note**: The `just build` command uses a Nix shell and runs `nix develop --command anchor build --no-idl --program-name feels`. Direct `anchor build` may not work without the proper environment setup.
+**Note**: The `just build` command automatically detects your environment and uses Anchor by default. It can optionally use Nix with `just build feels nix` for reproducible builds. Direct `anchor build` may not work without the proper environment setup.
 
 ### WASM Vanity Miner
 
@@ -75,8 +79,8 @@ See [vanity-miner-wasm/BUILD.md](vanity-miner-wasm/BUILD.md) for detailed build 
 just test
 
 # Run specific test categories
-just test unit           # Unit tests only
-just test integration    # Integration tests only
+just test unit          # Unit tests only
+just test integration   # Integration tests only
 just test e2e           # End-to-end tests only
 just test property      # Property-based tests only
 just test localnet      # Localnet tests with validator
@@ -149,31 +153,29 @@ The deployment scripts will automatically:
 
 ## Program Addresses
 
-- Protocol: `5EeFL2XscLKAg9HWq5Ssbo3h4nBWHb1qcRZK6V6yt18S`
+- Protocol: `J13h8cLst2B5H6RbWi9CVmeaDnAqio38uyJiUmAd1RPF`
 - FeelsSOL Mint: Determined at initialization
 
 ## Documentation
 
-### Developer Resources
-- [DeepWiki MCP Integration](docs/deepwiki-mcp-guide.md) - AI-assisted documentation access via MCP
-- [WASM Build Guide](vanity-miner-wasm/BUILD.md) - Parallel WASM builds with wasm-bindgen-rayon
+**Start Here**: [Documentation Index](feels-app/content/specs/DOCS-INDEX.md) | [Glossary](feels-app/content/specs/GLOSSARY.md)
 
 ### Core Documentation
-- [System Introduction](docs/900_system_intro.md)
-- [Unified Markets](docs/901_unified_markets.md)
-- [FeelsSOL Solvency](docs/200_feelssol_solvency.md)
-- [Dynamic Fees](docs/201_dynamic_fees.md)
-- [JIT Liquidity](docs/202_jit_liquidity.md)
-- [Pool CLMM](docs/203_pool_clmm.md)
-- [Pool Oracle](docs/204_pool_oracle.md)
-- [Floor Liquidity](docs/205_floor_liquidity.md)
-- [Pool Allocation](docs/206_pool_allocation.md)
-- [Bonding Curve Feels](docs/207_bonding_curve_feels.md)
-- [After Swap Pipeline](docs/208_after_swap_pipeline.md)
-- [Params and Governance](docs/209_params_and_governance.md)
-- [Safety Controller](docs/210_safety_controller.md)
-- [Events and Units](docs/211_events_and_units.md)
-- [Pool Registry](docs/212_pool_registry.md)
-- [Launch Sequence](docs/300_launch_sequence.md)
-- [Vaults and Lending Future](docs/400_vaults_and_lending_future.md)
-- [Phase 2 Roadmap](docs/500_phase2_roadmap.md)
+- [Introduction](feels-app/content/specs/001-introduction.md)
+- [Quickstart Guide](feels-app/content/specs/002-quickstart.md)
+- [Hub and Spoke Architecture](feels-app/content/specs/003-hub-and-spoke-architecture.md)
+- [FeelsSOL Solvency](feels-app/content/specs/200-feelssol-solvency.md)
+- [Dynamic Fees](feels-app/content/specs/201-dynamic-fees.md)
+- [JIT Liquidity](feels-app/content/specs/202-jit-liquidity.md)
+- [Pool CLMM](feels-app/content/specs/203-pool-clmm.md)
+- [Pool Oracle](feels-app/content/specs/204-pool-oracle.md)
+- [Floor Liquidity](feels-app/content/specs/205-floor-liquidity.md)
+- [Pool Allocation](feels-app/content/specs/206-pool-allocation.md)
+- [Bonding Curve Implementation](feels-app/content/specs/207-bonding-curve-feels.md)
+- [After Swap Pipeline](feels-app/content/specs/208-after-swap-pipeline.md)
+- [Params and Governance](feels-app/content/specs/209-params-and-governance.md)
+- [Safety Controller](feels-app/content/specs/210-safety-controller.md)
+- [Events and Units](feels-app/content/specs/211-events-and-units.md)
+- [Pool Registry](feels-app/content/specs/212-pool-registry.md)
+- [Launch Sequence](feels-app/content/specs/300-launch-sequence.md)
+- [Market State and Lifecycle](feels-app/content/specs/301-market-state-and-lifecycle.md)

@@ -5,6 +5,7 @@
 use anchor_lang::prelude::*;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Keypair;
 use std::str::FromStr;
 
 // Re-export feels_sdk for convenience
@@ -586,20 +587,32 @@ pub struct SwapResult {
     pub amount_out: u64,
     pub price_impact: f64,
     pub fee_amount: u64,
+    pub fee_paid: u64, // Alias for fee_amount for backwards compatibility
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TestMarketSetup {
-    pub market: Pubkey,
+    pub market_id: Pubkey,
+    pub market: Pubkey, // Derived from market_id for backwards compatibility
+    pub oracle_id: Pubkey,
+    pub vault_0: Pubkey,
+    pub vault_1: Pubkey,
+    pub market_authority: Pubkey,
+    pub buffer_id: Pubkey,
+    pub protocol_config: Pubkey,
+    pub protocol_treasury: Pubkey,
+    pub feelssol_mint: Pubkey,
+    pub custom_token_mint: Pubkey,
+    pub custom_token_keypair: Keypair,
     pub token_0: Pubkey,
     pub token_1: Pubkey,
-    pub feelssol_mint: Pubkey,
-    pub token_mint: Pubkey,
+    pub token_mint: Pubkey, // Alias for custom_token_mint
 }
 
 #[derive(Debug, Clone)]
 pub struct PositionInfo {
     pub address: Pubkey,
+    pub pubkey: Pubkey, // Alias for address
     pub market: Pubkey,
     pub owner: Pubkey,
     pub lower_tick: i32,
@@ -609,12 +622,25 @@ pub struct PositionInfo {
     pub fee_growth_inside_1: u128,
     pub tokens_owed_0: u64,
     pub tokens_owed_1: u64,
+    pub mint: Pubkey, // Position NFT mint
+    pub token_account: Pubkey, // Position NFT token account
 }
 
 #[derive(Debug, Clone)]
 pub struct CollectFeesResult {
     pub amount_0: u64,
     pub amount_1: u64,
+    pub fee_a_collected: u64, // Alias for amount_0
+    pub fee_b_collected: u64, // Alias for amount_1
+}
+
+#[derive(Debug)]
+pub struct SwapParams {
+    pub market: Pubkey,
+    pub token_in: Pubkey,
+    pub token_out: Pubkey,
+    pub amount_in: u64,
+    pub trader: Keypair,
 }
 
 /// Build update dex twap instruction

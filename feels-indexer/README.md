@@ -99,25 +99,55 @@ graph TB
 
 ### Configuration
 
-Edit `indexer.toml` to customize:
+The indexer supports multiple streaming modes:
 
+#### 1. Mock Mode (Default - Testing)
+```bash
+# Build with mock geyser (default)
+cargo build --release
+
+# Run with local config
+cargo run --release -- --config indexer.toml
+```
+
+#### 2. Real Yellowstone gRPC Mode
+```bash
+# Build with real geyser support
+cargo build --release --features real-geyser
+
+# Set up environment variables for Triton One
+export DEVNET_ENDPOINT="https://api.rpcpool.com:443"
+export DEVNET_TOKEN="your_triton_one_token_here"
+
+# Run with Triton One config
+cargo run --release --features real-geyser -- --config indexer-triton.toml
+```
+
+#### Configuration Files
+
+**Local/Mock Mode (`indexer.toml`):**
 ```toml
 [geyser]
-endpoint = "http://localhost:10000"  # Yellowstone gRPC endpoint (local only - change for devnet/mainnet)
+endpoint = "http://localhost:10000"
 program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
-
-[storage]
-rocksdb_path = "../localnet/indexer-storage/rocksdb"
-enable_compression = true
-
-[api]
-bind_address = "127.0.0.1:8080"
-enable_cors = true
-
-[monitoring]
-metrics_port = 9090
-log_level = "info"
+use_triton = false
+network = "localnet"
 ```
+
+**Triton One Mode (`indexer-triton.toml`):**
+```toml
+[geyser]
+endpoint = "https://api.rpcpool.com:443"  # Overridden by env vars
+program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
+use_triton = true
+network = "devnet"  # or "mainnet"
+```
+
+#### Environment Variables
+- `DEVNET_ENDPOINT` - Triton One devnet Dragon's Mouth endpoint
+- `DEVNET_TOKEN` - Triton One devnet authentication token
+- `MAINNET_ENDPOINT` - Triton One mainnet Dragon's Mouth endpoint  
+- `MAINNET_TOKEN` - Triton One mainnet authentication token
 
 ## API Endpoints
 

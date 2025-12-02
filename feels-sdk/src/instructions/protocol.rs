@@ -19,12 +19,30 @@ const UPDATE_NATIVE_RATE_DISCRIMINATOR: [u8; 8] = [100, 175, 161, 10, 254, 80, 9
 /// Parameters for initializing protocol
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct InitializeProtocolParams {
-    pub base_fee_bps: u16,
-    pub max_fee_bps: u16,
-    pub fee_growth_rate: u64,
-    pub protocol_fee_share_bps: u16,
+    /// Initial mint fee in FeelsSOL lamports
+    pub mint_fee: u64,
+    /// Treasury account to receive fees
     pub treasury: Pubkey,
-    pub oracle_authority: Pubkey,
+    /// Default protocol fee rate (basis points, e.g. 100 = 1%)
+    pub default_protocol_fee_rate: Option<u16>,
+    /// Default creator fee rate for protocol tokens (basis points, e.g. 50 = 0.5%)
+    pub default_creator_fee_rate: Option<u16>,
+    /// Maximum allowed protocol fee rate (basis points)
+    pub max_protocol_fee_rate: Option<u16>,
+    /// DEX TWAP updater authority
+    pub dex_twap_updater: Pubkey,
+    /// De-peg threshold (bps)
+    pub depeg_threshold_bps: u16,
+    /// Consecutive breaches to pause
+    pub depeg_required_obs: u8,
+    /// Consecutive clears to resume
+    pub clear_required_obs: u8,
+    /// DEX TWAP window seconds
+    pub dex_twap_window_secs: u32,
+    /// DEX TWAP stale age seconds
+    pub dex_twap_stale_age_secs: u32,
+    /// Initial DEX whitelist (optional; empty ok)
+    pub dex_whitelist: Vec<Pubkey>,
 }
 
 impl_instruction!(InitializeProtocolParams, INITIALIZE_PROTOCOL_DISCRIMINATOR);
@@ -91,9 +109,9 @@ impl ProtocolInstructionBuilder {
     ) -> SdkResult<Instruction> {
         let (protocol_config, _) = self.pda.protocol_config();
         let (protocol_oracle, _) = self.pda.protocol_oracle();
-        let (safety, _) = Pubkey::find_program_address(&[b"safety"], &self.pda.program_id);
+        let (safety, _) = Pubkey::find_program_address(&[b"safety_controller"], &self.pda.program_id);
 
-        Ok(FeelsInstructionBuilder::new()
+        Ok(FeelsInstructionBuilder::with_program_id(self.pda.program_id)
             .add_signer(authority)
             .add_writable(protocol_config)
             .add_readonly(solana_program::system_program::id())
@@ -101,6 +119,27 @@ impl ProtocolInstructionBuilder {
             .add_writable(safety)
             .with_data(params.build_data()?)
             .build())
+    }
+    
+    /// Helper to create default InitializeProtocolParams
+    pub fn default_init_params(
+        treasury: Pubkey,
+        dex_twap_updater: Pubkey,
+    ) -> InitializeProtocolParams {
+        InitializeProtocolParams {
+            mint_fee: 1_000_000, // 1 FeelsSOL
+            treasury,
+            default_protocol_fee_rate: Some(100), // 1%
+            default_creator_fee_rate: Some(50),   // 0.5%
+            max_protocol_fee_rate: Some(1000),    // 10%
+            dex_twap_updater,
+            depeg_threshold_bps: 100,             // 1%
+            depeg_required_obs: 3,
+            clear_required_obs: 3,
+            dex_twap_window_secs: 300,            // 5 minutes
+            dex_twap_stale_age_secs: 600,         // 10 minutes
+            dex_whitelist: vec![],
+        }
     }
 
     /// Build update protocol instruction
@@ -111,7 +150,7 @@ impl ProtocolInstructionBuilder {
     ) -> SdkResult<Instruction> {
         let (protocol_config, _) = self.pda.protocol_config();
 
-        Ok(FeelsInstructionBuilder::new()
+        Ok(FeelsInstructionBuilder::with_program_id(self.pda.program_id)
             .add_signer(authority)
             .add_writable(protocol_config)
             .with_data(params.build_data()?)
@@ -121,21 +160,32 @@ impl ProtocolInstructionBuilder {
     /// Build initialize hub instruction
     pub fn initialize_hub(
         &self,
-        authority: Pubkey,
+        payer: Pubkey,
         params: InitializeHubParams,
     ) -> SdkResult<Instruction> {
-        let (feels_hub, _) = self.pda.feels_hub();
         let (feels_mint, _) = self.pda.feels_mint();
-        let (protocol_config, _) = self.pda.protocol_config();
+        let (feels_hub, _) = Pubkey::find_program_address(
+            &[b"feels_hub", feels_mint.as_ref()],
+            &self.pda.program_id
+        );
+        let (jitosol_vault, _) = Pubkey::find_program_address(
+            &[b"jitosol_vault", feels_mint.as_ref()],
+            &self.pda.program_id
+        );
+        let (vault_authority, _) = Pubkey::find_program_address(
+            &[b"vault_authority", feels_mint.as_ref()],
+            &self.pda.program_id
+        );
 
-        Ok(FeelsInstructionBuilder::new()
-            .add_signer(authority)
-            .add_writable(feels_hub)
-            .add_writable(feels_mint)
-            .add_readonly(params.jitosol_mint)
-            .add_readonly(protocol_config)
-            .add_readonly(solana_program::system_program::id())
-            .add_readonly(spl_token::id())
+        Ok(FeelsInstructionBuilder::with_program_id(self.pda.program_id)
+            .add_signer(payer)           // payer (mut)
+            .add_readonly(feels_mint)     // feelssol_mint
+            .add_readonly(params.jitosol_mint)  // jitosol_mint
+            .add_writable(feels_hub)      // hub (init)
+            .add_writable(jitosol_vault)  // jitosol_vault (init)
+            .add_readonly(vault_authority)  // vault_authority
+            .add_readonly(spl_token::id())      // token_program
+            .add_readonly(solana_program::system_program::id())  // system_program
             .with_data(params.build_data()?)
             .build())
     }

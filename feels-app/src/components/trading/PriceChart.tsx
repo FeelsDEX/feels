@@ -5,8 +5,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PriceChartToolbar } from '@/components/trading/PriceChartToolbar';
-import { useSimulatedKlineData } from '@/components/trading/useSimulatedKlineData';
 import { useChartAdapter } from '@/hooks/useChartAdapter';
+import { useUnifiedHistoricalData } from '@/hooks/useUnifiedHistoricalData';
 
 // ============================================================================
 // CONSTANTS
@@ -124,7 +124,7 @@ export function PriceChart({
   // --------------------------------------------------------------------------
   
   const { loading, error, klineData, floorPrice, gtwapPrice, floorSeries, gtwapSeries } =
-    useSimulatedKlineData({
+    useUnifiedHistoricalData({
       tokenAddress,
       timeRange,
     });
@@ -504,7 +504,7 @@ export function PriceChart({
             {/* Token symbol and price change */}
             <div>
               <CardTitle className="flex items-center gap-2">
-                {tokenSymbol}/FeelsSOL
+                {tokenSymbol}/SOL
                 <Badge 
                   variant="outline" 
                   className="text-xs px-1.5 py-0 h-5 bg-primary/10 text-primary border-primary/20"

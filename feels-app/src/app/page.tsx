@@ -1,335 +1,334 @@
+// Splash page displaying all tokens with card and table views and shared filters
 'use client';
 
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { IndexerErrorBanner } from '@/components/ui/fallback-banner';
-import Link from 'next/link';
-import Image from 'next/image';
-import { getHomepageTokens } from '@/constants/mock-tokens';
-import { useDataSource } from '@/contexts/DataSourceContext';
-import { useMarkets } from '@/hooks/useIndexer';
-import feelsGuyImage from '@/assets/images/feels_guy.png';
-import { IndexedMarket } from '@/services/indexer';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useTokenSearch } from '@/hooks/useTokenSearch';
+import { TokenSearchResults } from '@/components/search/TokenSearchResults';
+import { TokenCardGrid } from '@/components/search/TokenCardGrid';
+import { MultiTokenChart } from '@/components/search/MultiTokenChart';
+import { SidebarTabs } from '@/components/search/SidebarTabs';
+import { SearchBar } from '@/components/search/SearchBar';
+import { SelectedFacets } from '@/utils/token-search';
+import { LayoutGrid, List, LineChart } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-// Helper functions for price display
-function formatMetricValue(value: number): string {
-  if (value >= 1) return value.toFixed(4);
-  else if (value >= 0.01) return value.toFixed(4);
-  else if (value >= 0.001) return value.toFixed(5);
-  else return value.toFixed(6);
-}
+type ViewMode = 'card' | 'table' | 'chart';
 
-function formatPriceRange(low: number, high: number): string {
-  return `${formatMetricValue(low)} - ${formatMetricValue(high)}`;
-}
-
-// Removed unused formatFloorGtwapDisplay
-
-export default function HomePage() {
-  const { dataSource } = useDataSource();
-  const { data: markets, loading, error } = useMarkets({ 
-    refreshInterval: 30000, // Refresh every 30 seconds
-    enabled: dataSource === 'indexer'
+function SplashContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  // Parse initial values from URL
+  const initialQuery = searchParams.get('q') || '';
+  const initialSort = searchParams.get('sort') || 'relevance';
+  const initialView = (searchParams.get('view') || 'chart') as ViewMode;
+  
+  // Parse initial facets from URL with simplified keys
+  const initialFacets: SelectedFacets = {};
+  
+  // Market cap: mc=small,medium
+  searchParams.get('mc')?.split(',').filter(Boolean).forEach(v => {
+    initialFacets.marketCapRange = initialFacets.marketCapRange || [];
+    const mcMap: Record<string, string> = {
+      'micro': 'Micro (<$100k)',
+      'small': 'Small ($100k-$1M)',
+      'medium': 'Medium ($1M-$10M)',
+      'large': 'Large (>$10M)'
+    };
+    initialFacets.marketCapRange.push(mcMap[v] || v);
   });
   
-  // Create homepageTokens once and memoize it
-  const [homepageTokens] = useState(() => getHomepageTokens());
-  const [displayTokens, setDisplayTokens] = useState<typeof homepageTokens[0][]>(homepageTokens as any);
-
-  // Transform markets data to match homepage tokens format
+  // Volume: vol=low,high
+  searchParams.get('vol')?.split(',').filter(Boolean).forEach(v => {
+    initialFacets.volumeRange = initialFacets.volumeRange || [];
+    const volMap: Record<string, string> = {
+      'low': 'Low (<$50k)',
+      'medium': 'Medium ($50k-$500k)',
+      'high': 'High ($500k-$2M)',
+      'very-high': 'Very High (>$2M)'
+    };
+    initialFacets.volumeRange.push(volMap[v] || v);
+  });
+  
+  // Price change: pc=up,moon
+  searchParams.get('pc')?.split(',').filter(Boolean).forEach(v => {
+    initialFacets.priceChange = initialFacets.priceChange || [];
+    const pcMap: Record<string, string> = {
+      'dump': 'Dumping (<-20%)',
+      'down': 'Down (-20% to 0%)',
+      'up': 'Up (0% to +20%)',
+      'moon': 'Mooning (>+20%)'
+    };
+    initialFacets.priceChange.push(pcMap[v] || v);
+  });
+  
+  // Age: age=new,fresh
+  searchParams.get('age')?.split(',').filter(Boolean).forEach(v => {
+    initialFacets.age = initialFacets.age || [];
+    const ageMap: Record<string, string> = {
+      'launch': 'Just Launched (<1hr)',
+      'fresh': 'Fresh (<1 day)',
+      'new': 'New (1-7 days)',
+      'old': 'Established (>7 days)'
+    };
+    initialFacets.age.push(ageMap[v] || v);
+  });
+  
+  // Features: f=v,l,g (verified, liquidity, graduated)
+  searchParams.get('f')?.split(',').filter(Boolean).forEach(v => {
+    initialFacets.features = initialFacets.features || [];
+    const featMap: Record<string, string> = {
+      'v': 'verified',
+      'l': 'hasLiquidity',
+      'g': 'graduated'
+    };
+    initialFacets.features.push(featMap[v] || v);
+  });
+  
+  const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
+  
+  const {
+    searchQuery,
+    setSearchQuery,
+    selectedFacets,
+    toggleFacet,
+    clearFilters,
+    sortBy,
+    setSortBy,
+    results,
+    totalResults,
+    facetCounts,
+    isLoading,
+    error
+  } = useTokenSearch(initialQuery, initialFacets, initialSort as any);
+  
+  // Separate hook for chart data - always shows trending tokens
+  const {
+    results: trendingTokens
+  } = useTokenSearch('', {}, 'relevance');
+  
+  // Clear search query when switching to chart view
   useEffect(() => {
-    if (dataSource === 'test') {
-      setDisplayTokens([...homepageTokens]);
-      return;
+    if (viewMode === 'chart' && searchQuery) {
+      setSearchQuery('');
+    }
+  }, [viewMode, searchQuery, setSearchQuery]);
+  
+  // Update URL when filters, sort, search query, or view mode changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    
+    // Add search query
+    if (searchQuery) {
+      params.set('q', searchQuery);
     }
     
-    // If using indexer but no markets, fallback to test data
-    if (dataSource === 'indexer' && (!markets || !Array.isArray(markets) || markets.length === 0)) {
-      // Instead of showing empty state, fallback to test data for better UX
-      setDisplayTokens([...homepageTokens]);
-      return;
+    // Add sort
+    if (sortBy && sortBy !== 'relevance') {
+      params.set('sort', sortBy);
     }
-
-    // For now, we'll show the raw market data
-    // In a real implementation, you'd map these to token metadata
-    const marketTokens = (Array.isArray(markets) ? markets : []).slice(0, 4).map((market: IndexedMarket, index: number) => {
-      // Extract price from sqrt_price (simplified for demo)
-      const sqrtPrice = parseFloat(market.sqrt_price) / 1e9;
-      const price = (sqrtPrice * sqrtPrice) / 1e18;
-      
-      return {
-        id: `market-${market.address}`,
-        symbol: `MARKET${index + 1}`, // You'd fetch real token metadata
-        name: `Market ${index + 1}`,
-        address: market.token_1, // Use token_1 as the address (non-FeelsSOL token)
-        imageUrl: feelsGuyImage, // Using feels guy as placeholder
-        decimals: 9, // Standard SPL token decimals
-        price: price,
-        priceChange24h: 0, // Would calculate from historical data
-        high24h: 0,
-        low24h: 0,
-        floorPrice: 0,
-        gtwapPrice: 0,
-        floorRatio: 0,
-        floorChange24h: 0,
-        floorGtwapRatio: 0,
-        isGraduated: false,
-        marketCap: '$0', // Would calculate from circulating supply
-        volume24h: '$0', // Would get from market stats
-        launched: 'Live',
-        description: `Market ${index + 1} token`, // Added description
-        isFeelsToken: false, // Added isFeelsToken
-        creator: 'Unknown' // Added creator (market.creator not available)
+    
+    // Add view mode
+    if (viewMode !== 'chart') {
+      params.set('view', viewMode);
+    }
+    
+    // Add facets with simplified keys
+    if (selectedFacets.marketCapRange?.length) {
+      const mcRevMap: Record<string, string> = {
+        'Micro (<$100k)': 'micro',
+        'Small ($100k-$1M)': 'small',
+        'Medium ($1M-$10M)': 'medium',
+        'Large (>$10M)': 'large'
       };
-    });
-
-    setDisplayTokens(marketTokens);
-  }, [dataSource, markets]); // Removed homepageTokens from dependency array
-
-  // Show loading state when fetching indexer data
-  if (dataSource === 'indexer' && loading && displayTokens.length === homepageTokens.length) {
-    return (
-      <div id="home-page" className="container mx-auto px-4 py-4 h-[calc(100vh-10rem)] flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-muted-foreground">Loading market data...</p>
+      const simplified = selectedFacets.marketCapRange.map(v => mcRevMap[v] || v);
+      params.set('mc', simplified.join(','));
+    }
+    
+    if (selectedFacets.volumeRange?.length) {
+      const volRevMap: Record<string, string> = {
+        'Low (<$50k)': 'low',
+        'Medium ($50k-$500k)': 'medium',
+        'High ($500k-$2M)': 'high',
+        'Very High (>$2M)': 'very-high'
+      };
+      const simplified = selectedFacets.volumeRange.map(v => volRevMap[v] || v);
+      params.set('vol', simplified.join(','));
+    }
+    
+    if (selectedFacets.priceChange?.length) {
+      const pcRevMap: Record<string, string> = {
+        'Dumping (<-20%)': 'dump',
+        'Down (-20% to 0%)': 'down',
+        'Up (0% to +20%)': 'up',
+        'Mooning (>+20%)': 'moon'
+      };
+      const simplified = selectedFacets.priceChange.map(v => pcRevMap[v] || v);
+      params.set('pc', simplified.join(','));
+    }
+    
+    if (selectedFacets.age?.length) {
+      const ageRevMap: Record<string, string> = {
+        'Just Launched (<1hr)': 'launch',
+        'Fresh (<1 day)': 'fresh',
+        'New (1-7 days)': 'new',
+        'Established (>7 days)': 'old'
+      };
+      const simplified = selectedFacets.age.map(v => ageRevMap[v] || v);
+      params.set('age', simplified.join(','));
+    }
+    
+    if (selectedFacets.features?.length) {
+      const featRevMap: Record<string, string> = {
+        'verified': 'v',
+        'hasLiquidity': 'l',
+        'graduated': 'g'
+      };
+      const simplified = selectedFacets.features.map(v => featRevMap[v] || v);
+      params.set('f', simplified.join(','));
+    }
+    
+    // Update URL without triggering navigation
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [searchQuery, sortBy, selectedFacets, viewMode, router, pathname]);
+  
+  const hasActiveFilters = Object.values(selectedFacets).some(arr => arr.length > 0);
+  
+  return (
+    <>
+      {/* Search Bar - positioned like global search */}
+      <div className="container mx-auto px-4 relative z-[1001] pointer-events-none">
+        <div className="flex items-center h-16 -mt-16">
+          {/* Left spacer - same as NavBar */}
+          <div className="flex-1" />
+          
+          {/* Center - Search (wider on mobile) */}
+          <div className="flex-1 max-w-xl mx-2 md:mx-8 pointer-events-auto">
+            {viewMode === 'chart' ? (
+              <SearchBar
+                mode="navigation"
+                placeholder="Search for tokens..."
+                autoFocus={false}
+              />
+            ) : (
+              <SearchBar
+                mode="page-search"
+                placeholder="Search for tokens..."
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                autoFocus={false}
+              />
+            )}
+          </div>
+          
+          {/* Right spacer - same as NavBar */}
+          <div className="flex-1" />
         </div>
       </div>
-    );
-  }
-
-  // Show error state if indexer fails
-  if (dataSource === 'indexer' && error) {
-    return (
-      <div id="home-page" className="container mx-auto px-4 pt-4 pb-0 -mb-6">
-        <IndexerErrorBanner />
-        <div id="token-grid" className="grid grid-cols-2 gap-8" style={{ gridTemplateRows: 'repeat(2, 1fr)' }}>
-          {homepageTokens.map((token, index) => (
-          <Link 
-            key={token.id} 
-            href={`/token/${token.address}`} 
-            className="block group"
-            id={`token-card-link-${index}`}
-          >
-            <Card 
-              id={`token-card-${token.symbol.toLowerCase()}`}
-              className="h-full hover:shadow-lg hover:border-primary transition-all cursor-pointer flex overflow-hidden border"
-              style={{ height: 'calc((100vh - 14rem - 2rem) / 2)' }}
-            >
-              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 flex items-center justify-center rounded-lg p-4">
-                <div className="relative w-full h-full">
-                  {typeof token.imageUrl === 'string' ? (
-                    <img 
-                      id={`token-image-${token.symbol.toLowerCase()}`}
-                      src={token.imageUrl} 
-                      alt={token.name}
-                      className="w-full h-full object-contain rounded-xl"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <Image 
-                      id={`token-image-${token.symbol.toLowerCase()}`}
-                      src={token.imageUrl} 
-                      alt={token.name}
-                      fill
-                      className="object-contain rounded-xl"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      priority={index === 0}
-                    />
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 flex flex-col p-6">
-                {/* Header with token name and badge */}
-                <div id={`token-header-${token.symbol.toLowerCase()}`} className="flex items-start justify-between mb-6">
-                  <div id={`token-title-container-${token.symbol.toLowerCase()}`} className="flex-1 min-w-0">
-                    <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="text-xl font-bold text-foreground leading-tight flex items-center gap-2">
-                      <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
-                      <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-lg font-medium text-muted-foreground">${token.symbol}</span>
-                    </h3>
-                  </div>
-                  <Badge 
-                    id={`token-launch-badge-${token.symbol.toLowerCase()}`}
-                    variant="outline" 
-                    className="text-sm font-medium shrink-0 ml-3"
-                  >
-                    {token.launched}
-                  </Badge>
-                </div>
-
-                {/* Consistent Grid Layout for All Metrics */}
-                <div id={`token-content-${token.symbol.toLowerCase()}`} className="flex-1">
-                  <div id={`token-stats-${token.symbol.toLowerCase()}`} className="grid grid-cols-2 gap-x-4 gap-y-3 h-full">
-                    {/* Row 1: Price, 24h Change */}
-                    <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Current Price</span>
-                      <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-lg font-bold text-foreground">${token.price.toFixed(4)}</span>
-                    </div>
-                    
-                    <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
-                      <span 
-                        id={`token-change-value-${token.symbol.toLowerCase()}`}
-                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}
-                      >
-                        {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
-                      </span>
-                    </div>
-                    
-                    {/* Row 2: Market Cap, Floor Price */}
-                    <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Market Cap</span>
-                      <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.marketCap}</span>
-                    </div>
-                    
-                    <div id={`token-floor-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Floor Price</span>
-                      <span id={`token-floor-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">${formatMetricValue(token.floorPrice)}</span>
-                    </div>
-                    
-                    {/* Row 3: Volume, Range */}
-                    <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Volume</span>
-                      <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.volume24h}</span>
-                    </div>
-                    
-                    <div id={`token-range-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Range</span>
-                      <span id={`token-range-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{formatPriceRange(token.low24h, token.high24h)}</span>
-                    </div>
-                    
-                    {/* Row 4: Floor Change */}
-                    <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
-                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}>
-                        {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </div>
-    </div>
-    );
-  }
-
-  // Main return statement - use displayTokens which will be either test data or indexer data
-  return (
-    <div id="home-page" className="container mx-auto px-4 pt-4 pb-0 -mb-6">
       
-      <div id="token-grid" className="grid grid-cols-2 gap-8" style={{ gridTemplateRows: 'repeat(2, 1fr)' }}>
-        {displayTokens.map((token, index) => (
-          <Link 
-            key={token.id} 
-            href={`/token/${token.address}`} 
-            className="block group"
-            id={`token-card-link-${index}`}
-          >
-            <Card 
-              id={`token-card-${token.symbol.toLowerCase()}`}
-              className="h-full hover:shadow-lg hover:border-primary transition-all cursor-pointer flex overflow-hidden border"
-              style={{ height: 'calc((100vh - 14rem - 2rem) / 2)' }}
-            >
-              <div id={`token-image-container-${token.symbol.toLowerCase()}`} className="h-full aspect-square bg-white shrink-0 flex items-center justify-center rounded-lg p-4">
-                <div className="relative w-full h-full">
-                  {typeof token.imageUrl === 'string' ? (
-                    <img 
-                      id={`token-image-${token.symbol.toLowerCase()}`}
-                      src={token.imageUrl} 
-                      alt={token.name}
-                      className="w-full h-full object-contain rounded-xl"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <Image 
-                      id={`token-image-${token.symbol.toLowerCase()}`}
-                      src={token.imageUrl} 
-                      alt={token.name}
-                      fill
-                      className="object-contain rounded-xl"
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      priority={index === 0}
-                    />
-                  )}
-                </div>
+      {/* Main Content */}
+      <div className="container mx-auto px-4 pb-8 pt-4">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar - Always visible, but filters disabled in chart view */}
+          <aside className={`lg:w-64 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+            <SidebarTabs
+              selectedFacets={selectedFacets}
+              toggleFacet={toggleFacet}
+              clearFilters={clearFilters}
+              facetCounts={facetCounts}
+              isChartView={viewMode === 'chart'}
+            />
+          </aside>
+          
+          {/* Results Section */}
+          <main className="flex-1">
+            {/* View Toggle and Tagline */}
+            <div className="flex items-center justify-between mb-6">
+              {/* Centered Tagline */}
+              <div className="flex-1 text-center">
+                <h2 className="text-xl md:text-2xl font-semibold text-primary">
+                  Up only feel.
+                </h2>
               </div>
-              <div className="flex-1 flex flex-col p-6">
-                {/* Header with token name and badge */}
-                <div id={`token-header-${token.symbol.toLowerCase()}`} className="flex items-start justify-between mb-6">
-                  <div id={`token-title-container-${token.symbol.toLowerCase()}`} className="flex-1 min-w-0">
-                    <h3 id={`token-name-${token.symbol.toLowerCase()}`} className="text-xl font-bold text-foreground leading-tight flex items-center gap-2">
-                      <span id={`token-name-text-${token.symbol.toLowerCase()}`}>{token.name}</span>
-                      <span id={`token-symbol-${token.symbol.toLowerCase()}`} className="text-lg font-medium text-muted-foreground">${token.symbol}</span>
-                    </h3>
-                  </div>
-                  <Badge 
-                    id={`token-launch-badge-${token.symbol.toLowerCase()}`}
-                    variant="outline" 
-                    className="text-sm font-medium shrink-0 ml-3"
-                  >
-                    {token.launched}
-                  </Badge>
-                </div>
-
-                {/* Consistent Grid Layout for All Metrics */}
-                <div id={`token-content-${token.symbol.toLowerCase()}`} className="flex-1">
-                  <div id={`token-stats-${token.symbol.toLowerCase()}`} className="grid grid-cols-2 gap-x-4 gap-y-3 h-full">
-                    {/* Row 1: Price, 24h Change */}
-                    <div id={`token-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Current Price</span>
-                      <span id={`token-price-value-${token.symbol.toLowerCase()}`} className="text-lg font-bold text-foreground">${token.price.toFixed(4)}</span>
-                    </div>
-                    
-                    <div id={`token-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Change</span>
-                      <span 
-                        id={`token-change-value-${token.symbol.toLowerCase()}`}
-                        className={`text-lg font-bold ${token.priceChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}
-                      >
-                        {token.priceChange24h >= 0 ? '+' : ''}{token.priceChange24h.toFixed(2)}%
-                      </span>
-                    </div>
-                    
-                    {/* Row 2: Market Cap, Floor Price */}
-                    <div id={`token-market-cap-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Market Cap</span>
-                      <span id={`token-market-cap-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.marketCap}</span>
-                    </div>
-                    
-                    <div id={`token-floor-price-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">Floor Price</span>
-                      <span id={`token-floor-price-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">${formatMetricValue(token.floorPrice)}</span>
-                    </div>
-                    
-                    {/* Row 3: Volume, Range */}
-                    <div id={`token-volume-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Volume</span>
-                      <span id={`token-volume-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{token.volume24h}</span>
-                    </div>
-                    
-                    <div id={`token-range-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24h Range</span>
-                      <span id={`token-range-value-${token.symbol.toLowerCase()}`} className="text-sm font-semibold text-foreground">{formatPriceRange(token.low24h, token.high24h)}</span>
-                    </div>
-                    
-                    {/* Row 4: Floor Change */}
-                    <div id={`token-floor-change-row-${token.symbol.toLowerCase()}`} className="flex flex-col justify-center col-span-2">
-                      <span className="text-xs text-muted-foreground font-medium mb-1">24hr Floor Δ</span>
-                      <span id={`token-floor-change-value-${token.symbol.toLowerCase()}`} className={`text-sm font-semibold ${token.floorChange24h >= 0 ? 'text-primary' : 'text-danger-500'}`}>
-                        {token.floorChange24h >= 0 ? '+' : ''}{token.floorChange24h.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              
+              {/* View Toggle Buttons */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === 'card' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('card')}
+                  className={`h-8 min-w-[90px] border hover:border-primary ${viewMode === 'card' ? 'border-primary' : 'border-border'}`}
+                >
+                  <LayoutGrid className="h-4 w-4 mr-1.5" />
+                  Cards
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('table')}
+                  className={`h-8 min-w-[90px] border hover:border-primary ${viewMode === 'table' ? 'border-primary' : 'border-border'}`}
+                >
+                  <List className="h-4 w-4 mr-1.5" />
+                  Table
+                </Button>
+                <Button
+                  variant={viewMode === 'chart' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('chart')}
+                  className={`h-8 min-w-[90px] border hover:border-primary ${viewMode === 'chart' ? 'border-primary' : 'border-border'}`}
+                >
+                  <LineChart className="h-4 w-4 mr-1.5" />
+                  Chart
+                </Button>
               </div>
-            </Card>
-          </Link>
-        ))}
+            </div>
+            
+            {/* Results - Card, Table, or Chart View */}
+            {viewMode === 'card' ? (
+              <TokenCardGrid
+                results={results}
+                isLoading={isLoading}
+                error={error}
+                hasActiveFilters={hasActiveFilters}
+                onToggleFilters={() => setShowFilters(!showFilters)}
+              />
+            ) : viewMode === 'table' ? (
+              <TokenSearchResults
+                results={results}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                isLoading={isLoading}
+                error={error}
+                totalResults={totalResults}
+                searchQuery={searchQuery}
+                hasActiveFilters={hasActiveFilters}
+                showFilters={showFilters}
+                onToggleFilters={() => setShowFilters(!showFilters)}
+              />
+            ) : (
+              <div className="flex flex-col h-[calc(100vh-12rem)]">
+                <MultiTokenChart
+                  tokens={trendingTokens}
+                  timeRange="1D"
+                />
+              </div>
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
+
+export default function SplashPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-8">Loading...</div>}>
+      <SplashContent />
+    </Suspense>
+  );
+}
+

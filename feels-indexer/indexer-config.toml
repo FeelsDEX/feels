@@ -3,15 +3,25 @@
 # Use environment variables or command-line args to specify which sections to load
 
 [geyser]
-endpoint = "http://localhost:10000"
-program_id = "Cbv2aa2zMJdwAwzLnRZuWQ8efpr6Xb9zxpJhEzLe3v6N"
+# Geyser configuration - supports both local and Triton One endpoints
+endpoint = "https://api.devnet.solana.com"  # Devnet RPC endpoint
+program_id = "J13h8cLst2B5H6RbWi9CVmeaDnAqio38uyJiUmAd1RPF"  # Feels Protocol program ID
 commitment = "confirmed"
 max_reconnect_attempts = 10
 reconnect_delay_secs = 5
 
+# Triton One Dragon's Mouth endpoints (set via environment variables)
+# DEVNET_ENDPOINT and DEVNET_TOKEN for devnet
+# MAINNET_ENDPOINT and MAINNET_TOKEN for mainnet
+use_triton = false  # Set to true to use Triton One endpoints
+network = "devnet"  # Options: localnet, devnet, mainnet
+token = ""  # Auth token for Triton One (loaded from env vars)
+
 [storage]
-# RocksDB for raw blockchain data
-rocksdb_path = "../localnet/indexer-storage/rocksdb"
+tantivy_path = "../localnet/indexer-storage/tantivy"
+
+[storage.rocksdb]
+path = "../localnet/indexer-storage/rocksdb"
 enable_compression = true
 max_open_files = 1000
 write_buffer_size_mb = 256

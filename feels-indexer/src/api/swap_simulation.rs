@@ -407,7 +407,7 @@ async fn simulate_swap_on_market(
     market: &crate::database::Market,
     amount_in: u64,
     is_token_0_to_1: bool,
-) -> Result<feels_sdk::SwapSimulation, String> {
+) -> Result<String, String> {  // Temporarily return String instead of feels_sdk::SwapSimulation
     // Create market state
     
     let market_address = Pubkey::from_str(&market.address)

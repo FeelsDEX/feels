@@ -8,7 +8,17 @@ use anyhow::Result;
 use redis::AsyncCommands;
 use serde_json;
 use uuid::Uuid;
-use crate::sdk_types;
+use serde::{Serialize, Deserialize};
+use solana_sdk::pubkey::Pubkey;
+
+/// Simplified buffer data (pending full deserialization)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BufferData {
+    pub market: Pubkey,
+    pub tau_spot: u64,
+    pub tau_time: u64,
+    pub tau_leverage: u64,
+}
 
 impl RedisManager {
     /// Cache a market
@@ -40,7 +50,7 @@ impl RedisManager {
     }
 
     /// Cache buffer state
-    pub async fn cache_buffer_state(&self, address: String, buffer_data: &sdk_types::BufferData) -> Result<()> {
+    pub async fn cache_buffer_state(&self, address: String, buffer_data: &BufferData) -> Result<()> {
         let mut conn = self.pool.get().await?;
         
         let key = format!("buffer:{}", address);
